@@ -93,6 +93,11 @@ type CompactCeoCard = {
   explanation: string;
   evidence: string[];
   riskMeaning: string;
+  critical: boolean;
+  passRequirement: string;
+  currentTruth: string;
+  missingOrFailed: string;
+  nextAction: string;
   chartPoints?: CeoChartPoint[];
   href?: Route;
   actionLabel?: string;
@@ -102,6 +107,37 @@ type CeoChartPoint = {
   label: string;
   value: number;
 };
+
+type CeoReadinessSummary = {
+  overallStatus: MissionControlStatus;
+  passCount: number;
+  failedCount: number;
+  needsReviewCount: number;
+  totalCount: number;
+  readinessPercent: number;
+  criticalBlockers: CompactCeoCard[];
+  missingRequiredEvidence: CompactCeoCard[];
+};
+
+const CEO_CHECKLIST_IDS = new Set([
+  "platform-health",
+  "money-revenue",
+  "total-users",
+  "clients",
+  "barbers",
+  "shop-owners",
+  "bookings",
+  "payments",
+  "routing-payout",
+  "culture",
+  "active-supply",
+  "critical-incidents",
+  "deployment-regression",
+  "source-vault",
+  "action-registry",
+  "hive-ai",
+  "codex-packets"
+]);
 
 function findCeoCard(foundation: MissionControlFoundation, id: string) {
   return foundation.ceoCommandCenter.find((card) => card.id === id);
@@ -147,6 +183,46 @@ function riskMeaning(label: string, status: MissionControlStatus) {
   return `${label} is not fully connected. Do not treat this as healthy until real evidence is wired and verified.`;
 }
 
+function isCriticalChecklistItem(id: string) {
+  return CEO_CHECKLIST_IDS.has(id);
+}
+
+function passRequirement(label: string) {
+  return `${label} must report Pass from connected, role-safe evidence. Missing evidence stays Needs Review, and failed evidence stays Failed.`;
+}
+
+function currentTruth(label: string, status: MissionControlStatus, value: string, summary: string) {
+  return `${label} is currently ${status}. Current value: ${value}. ${summary}`;
+}
+
+function missingOrFailed(label: string, status: MissionControlStatus, value: string, summary: string) {
+  if (status === "Pass") {
+    return `No missing or failed evidence is reported for ${label}. Continue monitoring before release decisions.`;
+  }
+
+  if (status === "Failed") {
+    return `${label} has failed evidence: ${summary}`;
+  }
+
+  if (value === "Not connected") {
+    return `${label} is missing required connected evidence. This cannot be counted as Pass.`;
+  }
+
+  return `${label} needs review before it can be counted as Pass: ${summary}`;
+}
+
+function nextChecklistAction(label: string, status: MissionControlStatus) {
+  if (status === "Pass") {
+    return `Keep ${label} monitored and revalidate it before launch gates.`;
+  }
+
+  if (status === "Failed") {
+    return `Open the mapped Architect lane, repair the failed evidence, then rerun validation for ${label}.`;
+  }
+
+  return `Open the mapped Architect lane and connect the missing evidence required for ${label}.`;
+}
+
 function compactCard(input: {
   id: string;
   label: string;
@@ -172,9 +248,42 @@ function compactCard(input: {
     explanation: input.explanation ?? summary,
     evidence: input.evidence?.length ? input.evidence : ["No connected evidence source for this card yet."],
     riskMeaning: input.riskMeaning ?? riskMeaning(input.label, status),
+    critical: isCriticalChecklistItem(input.id),
+    passRequirement: passRequirement(input.label),
+    currentTruth: currentTruth(input.label, status, input.value ?? "Not connected", summary),
+    missingOrFailed: missingOrFailed(input.label, status, input.value ?? "Not connected", summary),
+    nextAction: nextChecklistAction(input.label, status),
     chartPoints: input.chartPoints,
     href: input.href,
     actionLabel: input.actionLabel
+  };
+}
+
+function buildCeoReadiness(cards: CompactCeoCard[]): CeoReadinessSummary {
+  const passCount = cards.filter((card) => card.status === "Pass").length;
+  const failedCount = cards.filter((card) => card.status === "Failed").length;
+  const needsReviewCount = cards.filter((card) => card.status !== "Pass" && card.status !== "Failed").length;
+  const criticalBlockers = cards.filter((card) => card.critical && card.status === "Failed");
+  const missingRequiredEvidence = cards.filter((card) => card.critical && card.status !== "Pass" && card.status !== "Failed");
+  const totalCount = cards.length;
+  const readinessPercent = totalCount ? Math.round((passCount / totalCount) * 100) : 0;
+  const overallStatus: MissionControlStatus = criticalBlockers.length
+    ? "Failed"
+    : missingRequiredEvidence.length
+      ? "Needs Review"
+      : totalCount > 0 && passCount === totalCount
+        ? "Pass"
+        : "Needs Review";
+
+  return {
+    overallStatus,
+    passCount,
+    failedCount,
+    needsReviewCount,
+    totalCount,
+    readinessPercent,
+    criticalBlockers,
+    missingRequiredEvidence
   };
 }
 
@@ -314,6 +423,61 @@ function CompactCeoCard({ card, onAction, onOpenDetail }: { card: CompactCeoCard
   );
 }
 
+function CeoReadinessCard({ readiness }: { readiness: CeoReadinessSummary }) {
+  const headline = readiness.overallStatus === "Pass" ? "100% Pass" : readiness.overallStatus;
+  const blockerLabels = readiness.criticalBlockers.map((card) => card.label);
+
+  return (
+    <article
+      data-testid="architect-ceo-readiness"
+      className="rounded-[22px] border border-white/8 bg-[linear-gradient(135deg,rgba(163,255,18,0.10),rgba(255,255,255,0.025)_42%,rgba(0,0,0,0.24))] p-4 shadow-[0_22px_70px_rgba(0,0,0,0.30)] sm:p-5"
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">App Readiness</p>
+            <StatusPill status={readiness.overallStatus} />
+          </div>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <p className="text-4xl font-black leading-none tracking-[-0.055em] text-white sm:text-5xl">{headline}</p>
+            <p className="pb-1 text-sm font-bold text-white/54">{readiness.readinessPercent}% Pass evidence</p>
+          </div>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/62">
+            Overall status requires every CEO checklist item to report Pass from connected evidence. Failed critical evidence blocks release; missing evidence stays Needs Review.
+          </p>
+          <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-white/44">Overall status</p>
+        </div>
+
+        <div className="grid min-w-full gap-2 sm:grid-cols-4 lg:min-w-[34rem]">
+          <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Pass count</p>
+            <p data-testid="ceo-readiness-pass-count" className="mt-1 text-2xl font-black text-[#d7ffab]">{readiness.passCount}</p>
+          </div>
+          <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Failed count</p>
+            <p data-testid="ceo-readiness-failed-count" className="mt-1 text-2xl font-black text-rose-100">{readiness.failedCount}</p>
+          </div>
+          <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Needs Review count</p>
+            <p data-testid="ceo-readiness-needs-review-count" className="mt-1 text-2xl font-black text-amber-100">{readiness.needsReviewCount}</p>
+          </div>
+          <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Critical blockers</p>
+            <p data-testid="ceo-readiness-critical-blockers" className="mt-1 text-2xl font-black text-white">{readiness.criticalBlockers.length}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-[16px] border border-white/8 bg-black/18 p-3">
+        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Critical Blocker</p>
+        <p className="mt-1 text-sm leading-6 text-white/62">
+          {blockerLabels.length ? blockerLabels.join(", ") : "No failed critical checklist blockers reported."}
+        </p>
+      </div>
+    </article>
+  );
+}
+
 function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: () => void }) {
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
@@ -350,14 +514,37 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
               <p className="mt-3 break-words text-3xl font-black leading-tight tracking-[-0.04em] text-white">{card.value}</p>
             </div>
             <div className="rounded-[18px] border border-white/8 bg-black/24 p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Plain-English explanation</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Checklist status</p>
+              <div className="mt-3">
+                <StatusPill status={card.status} />
+              </div>
+              <p className="mt-4 text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Plain-English explanation</p>
               <p className="mt-3 text-sm leading-6 text-white/70">{card.explanation}</p>
             </div>
           </div>
 
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
-              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Evidence summary</h4>
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">What must be true for Pass</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{card.passRequirement}</p>
+            </section>
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">What is currently true</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{card.currentTruth}</p>
+            </section>
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">What is missing or failed</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{card.missingOrFailed}</p>
+            </section>
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Why it matters</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{card.riskMeaning}</p>
+            </section>
+          </div>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Evidence</h4>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-white/62">
                 {card.evidence.slice(0, 6).map((item) => (
                   <li key={item} className="border-l border-[#A3FF12]/22 pl-3">{item}</li>
@@ -366,8 +553,8 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
             </section>
 
             <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
-              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Risk / meaning</h4>
-              <p className="mt-3 text-sm leading-6 text-white/68">{card.riskMeaning}</p>
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Next action</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{card.nextAction}</p>
             </section>
           </div>
 
@@ -392,6 +579,7 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
 
 function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexPacket }: { foundation: MissionControlFoundation; snapshot: MissionControlSnapshot; selectedIncident: ArchitectIncident | null; onCopyCodexPacket: () => void }) {
   const cards = buildCompactCeoCards(foundation, snapshot, selectedIncident);
+  const readiness = buildCeoReadiness(cards);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const selectedCard = cards.find((card) => card.id === selectedCardId) ?? null;
 
@@ -404,6 +592,7 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
         </div>
         <p className="text-xs text-white/48">Missing data stays Needs Review. Failed evidence stays Failed.</p>
       </div>
+      <CeoReadinessCard readiness={readiness} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
         {cards.map((card) => (
           <CompactCeoCard

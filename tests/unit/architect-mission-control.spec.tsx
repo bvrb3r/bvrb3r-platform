@@ -80,6 +80,113 @@ function createSnapshot() {
   };
 }
 
+function createNoIncidentSnapshot() {
+  const snapshot = createSnapshot();
+  return {
+    ...snapshot,
+    incidents: [],
+    selectedIncidentId: null,
+    packets: {}
+  };
+}
+
+function createAllPassEvidenceCard(id: string, label: string, metricValue = "1") {
+  return {
+    id,
+    label,
+    department: "CEO",
+    workflow: "100 Pass Checklist",
+    status: "Pass",
+    summary: `${label} evidence is connected and passing.`,
+    evidence: [`${label} verified from connected evidence.`],
+    metricValue
+  };
+}
+
+function createAllPassSnapshot() {
+  const snapshot = createSnapshot();
+  const incidentId = "packet_ready:regression:all-pass";
+  const selectedIncident = {
+    ...snapshot.incidents[0],
+    id: incidentId,
+    severity: "warning",
+    headline: "Regression packet is available.",
+    evidence: ["packet generated", "validation checklist available"]
+  };
+
+  return {
+    ...snapshot,
+    incidents: [selectedIncident],
+    selectedIncidentId: incidentId,
+    packets: {
+      [incidentId]: {
+        chatGptPacket: "DEBUG TYPE\nBVRB3R Mission Control Incident",
+        codexPacket: "TITLE\nALL PASS CHECKLIST PACKET",
+        incidentPacket: "{\"incident\":true}"
+      }
+    },
+    foundation: {
+      navigationLanes: [],
+      defaultLaneId: "ceo",
+      ceoCommandCenter: [
+        createAllPassEvidenceCard("overall-platform-status", "Overall platform status", "Pass"),
+        createAllPassEvidenceCard("ceo-platform-fees", "Platform fees", "$1"),
+        createAllPassEvidenceCard("ceo-total-users", "Total Users"),
+        createAllPassEvidenceCard("ceo-clients-total", "Clients"),
+        createAllPassEvidenceCard("ceo-barbers-total", "Barbers"),
+        createAllPassEvidenceCard("ceo-shop-owners-total", "Shop Owners"),
+        createAllPassEvidenceCard("ceo-total-bookings", "Total Bookings"),
+        createAllPassEvidenceCard("ceo-todays-bookings", "Today's Bookings"),
+        createAllPassEvidenceCard("ceo-payments-captured", "Payments", "$1"),
+        createAllPassEvidenceCard("ceo-payment-routing-health", "Payment routing health", "Pass"),
+        createAllPassEvidenceCard("ceo-payout-readiness-health", "Payout readiness health", "Pass"),
+        createAllPassEvidenceCard("ceo-culture-health", "Culture health", "Pass"),
+        createAllPassEvidenceCard("ceo-active-shops", "Active Shops"),
+        createAllPassEvidenceCard("ceo-active-barbers", "Active Barbers"),
+        createAllPassEvidenceCard("ceo-critical-incidents", "Critical Incidents", "0"),
+        createAllPassEvidenceCard("ceo-regression-deployment-health", "Deployment / Regression", "Pass"),
+        createAllPassEvidenceCard("source-vault-status", "Source Vault", "Pass"),
+        createAllPassEvidenceCard("agent-status", "Agent Status", "Pass")
+      ],
+      departmentLanes: [],
+      coreLoopValidators: [],
+      incidentTypes: [],
+      sourceVault: [{
+        id: "architect-super-master-plan",
+        sourceName: "Architect Super Master Plan",
+        category: "Architect",
+        purpose: "Governs Mission Control.",
+        linkedSystemArea: "Architect",
+        status: "Active",
+        ingestionStatus: "registered, not ingested"
+      }],
+      actionRegistry: [{
+        id: "refund",
+        label: "Refund",
+        riskClass: "Unsafe / blocked",
+        department: "Finance",
+        description: "Blocked in v1.",
+        allowed: false,
+        approvalRequired: true,
+        status: "Pass"
+      }],
+      agentRegistry: [{
+        id: "architect-prime",
+        name: "Architect Prime",
+        department: "Architect Prime",
+        job: "Govern the intelligence layer.",
+        dataAccess: "Read-only platform evidence.",
+        actionAccess: "Read-only.",
+        autonomyLevel: "Level 0 Read-only",
+        successMetric: "No unsafe autonomous action.",
+        failureRule: "Any money or account mutation is blocked.",
+        currentStatus: "Pass"
+      }],
+      codexFailureClasses: []
+    }
+  };
+}
+
 describe("architect mission control", () => {
   beforeEach(() => {
     fetchMock.mockReset();
@@ -103,7 +210,13 @@ describe("architect mission control", () => {
     expect(screen.getByTestId("architect-mission-control-root").className).not.toMatch(/min-h|h-screen|100svh|items-center|justify-end/);
     expect(screen.getByText("CEO Command Center")).toBeInTheDocument();
     expect(screen.getByText("One-screen platform posture")).toBeInTheDocument();
-    expect(screen.getByText("Platform Health")).toBeInTheDocument();
+    expect(screen.getByText("App Readiness")).toBeInTheDocument();
+    expect(screen.getByText("Pass count")).toBeInTheDocument();
+    expect(screen.getByText("Failed count")).toBeInTheDocument();
+    expect(screen.getByText("Needs Review count")).toBeInTheDocument();
+    expect(screen.getByText("Critical blockers")).toBeInTheDocument();
+    expect(screen.getByText("Overall status")).toBeInTheDocument();
+    expect(screen.getByTestId("architect-ceo-card-platform-health")).toBeInTheDocument();
     expect(screen.getByText("Money / App Revenue")).toBeInTheDocument();
     expect(screen.getByText("Total Users")).toBeInTheDocument();
     expect(screen.getByText("Clients")).toBeInTheDocument();
@@ -121,7 +234,7 @@ describe("architect mission control", () => {
     expect(screen.getByText("Hive AI")).toBeInTheDocument();
     expect(screen.getByText("Codex Packets")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /copy codex packet/i })).toBeInTheDocument();
-    expect(screen.getByText("Platform Health").closest("article")).toHaveClass("rounded-[18px]", "bg-black/24");
+    expect(screen.getByTestId("architect-ceo-card-platform-health")).toHaveClass("rounded-[18px]", "bg-black/24");
     [
       "Platform Health",
       "Money / App Revenue",
@@ -143,6 +256,52 @@ describe("architect mission control", () => {
     ].forEach((label) => {
       expect(screen.getByRole("button", { name: `Open ${label} detail` })).toBeInTheDocument();
     });
+  });
+
+  it("marks overall readiness Failed when a critical checklist item fails", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createSnapshot()
+    });
+
+    render(<ArchitectMissionControl />);
+
+    const readiness = await screen.findByTestId("architect-ceo-readiness");
+    expect(within(readiness).getAllByText("Failed").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("ceo-readiness-failed-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("ceo-readiness-critical-blockers")).toHaveTextContent("1");
+    expect(readiness).not.toHaveTextContent("100% Pass");
+  });
+
+  it("marks overall readiness Needs Review when required evidence is missing", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createNoIncidentSnapshot()
+    });
+
+    render(<ArchitectMissionControl />);
+
+    const readiness = await screen.findByTestId("architect-ceo-readiness");
+    expect(within(readiness).getAllByText("Needs Review").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("ceo-readiness-critical-blockers")).toHaveTextContent("0");
+    expect(Number(screen.getByTestId("ceo-readiness-needs-review-count").textContent)).toBeGreaterThan(0);
+    expect(readiness).not.toHaveTextContent("100% Pass");
+  });
+
+  it("only shows 100% Pass when every CEO checklist item passes", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createAllPassSnapshot()
+    });
+
+    render(<ArchitectMissionControl />);
+
+    const readiness = await screen.findByTestId("architect-ceo-readiness");
+    expect(within(readiness).getByText("100% Pass")).toBeInTheDocument();
+    expect(screen.getByTestId("ceo-readiness-pass-count")).toHaveTextContent("17");
+    expect(screen.getByTestId("ceo-readiness-failed-count")).toHaveTextContent("0");
+    expect(screen.getByTestId("ceo-readiness-needs-review-count")).toHaveTextContent("0");
+    expect(screen.getByTestId("ceo-readiness-critical-blockers")).toHaveTextContent("0");
   });
 
   it("does not render the duplicate body Mission Control Navigation", async () => {
@@ -171,10 +330,15 @@ describe("architect mission control", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Platform Health" });
     expect(within(dialog).getByText("Platform Health")).toBeInTheDocument();
-    expect(within(dialog).getAllByText("Failed")).toHaveLength(2);
-    expect(within(dialog).getByText("Critical workflow evidence needs attention.")).toBeInTheDocument();
-    expect(within(dialog).getByText("Evidence summary")).toBeInTheDocument();
-    expect(within(dialog).getByText("Risk / meaning")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Failed").length).toBeGreaterThanOrEqual(2);
+    expect(within(dialog).getByText("Checklist status")).toBeInTheDocument();
+    expect(within(dialog).getByText("What must be true for Pass")).toBeInTheDocument();
+    expect(within(dialog).getByText("What is currently true")).toBeInTheDocument();
+    expect(within(dialog).getByText("What is missing or failed")).toBeInTheDocument();
+    expect(within(dialog).getByText("Why it matters")).toBeInTheDocument();
+    expect(within(dialog).getByText("Evidence")).toBeInTheDocument();
+    expect(within(dialog).getByText("Next action")).toBeInTheDocument();
+    expect(within(dialog).getByText("Platform Health must report Pass from connected, role-safe evidence. Missing evidence stays Needs Review, and failed evidence stays Failed.")).toBeInTheDocument();
     expect(within(dialog).getByText("No historical data connected yet")).toBeInTheDocument();
     expect(within(dialog).getByRole("link", { name: "Open Lane" })).toHaveAttribute("href", "/architect/technology");
 
