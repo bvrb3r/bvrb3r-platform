@@ -53,6 +53,8 @@ describe("architect layout", () => {
     }));
 
     expect(screen.getByText("Architect session")).toBeInTheDocument();
+    expect(screen.getByText("BVR")).toBeInTheDocument();
+    expect(screen.getByText("Mission Control")).toBeInTheDocument();
     expect(screen.getByText("ops-admin@bvrb3r.app")).toBeInTheDocument();
     expect(screen.getByTestId("architect-shell")).toHaveClass("bvr-screen");
     expect(screen.getByTestId("architect-header-shell")).not.toHaveClass("bvr-screen");

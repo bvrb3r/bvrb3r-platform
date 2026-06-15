@@ -32,13 +32,13 @@ export function ArchitectPrimaryNav() {
             href={item.href}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-[10px] font-semibold uppercase tracking-[0.18em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/45 sm:text-[11px]",
+              "inline-flex min-h-10 shrink-0 items-center gap-2 rounded-[8px] border px-3 text-[10px] font-black uppercase tracking-[0.16em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/45 sm:px-3.5 sm:text-[11px]",
               isActive
-                ? "border-[#7CFF00]/28 bg-[#7CFF00]/10 text-white shadow-[0_14px_32px_rgba(124,255,0,0.1)]"
-                : "border-white/10 bg-black/20 text-white/76 hover:border-[#7CFF00]/20 hover:text-white"
+                ? "border-[#A3FF12]/30 bg-[#A3FF12]/12 text-white shadow-[0_12px_28px_rgba(163,255,18,0.12)]"
+                : "border-white/10 bg-white/[0.035] text-white/72 hover:border-[#A3FF12]/24 hover:bg-white/[0.055] hover:text-white"
             )}
           >
-            <Icon className={cn("h-4 w-4", isActive ? "text-[#d7ffab]" : "text-white/56")} />
+            <Icon className={cn("h-4 w-4", isActive ? "text-[#d7ffab]" : "text-white/54")} />
             <span>{item.label}</span>
           </Link>
         );

@@ -50,7 +50,7 @@ function statusClass(status?: string | null) {
 
 function StatusPill({ status }: { status: string }) {
   return (
-    <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]", statusClass(status))}>
+    <span className={cn("rounded-[8px] border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em]", statusClass(status))}>
       {status}
     </span>
   );
@@ -64,16 +64,16 @@ function severityRank(incident: ArchitectIncident) {
 
 function EvidenceCard({ card }: { card: MissionEvidenceCard }) {
   return (
-    <article className="rounded-lg border border-white/10 bg-black/24 p-4">
+    <article className="min-h-[11rem] rounded-[18px] border border-white/8 bg-black/24 p-4 shadow-[0_18px_42px_rgba(0,0,0,0.20)] transition hover:border-[#A3FF12]/18">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42">{card.department} / {card.workflow}</p>
-          <h3 className="mt-2 text-base font-semibold text-white">{card.label}</h3>
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">{card.department} / {card.workflow}</p>
+          <h3 className="mt-2 text-base font-black tracking-[-0.02em] text-white">{card.label}</h3>
         </div>
         <StatusPill status={card.status} />
       </div>
       {card.metricValue ? (
-        <p className="mt-4 text-3xl font-semibold tracking-tight text-white">{card.metricValue}</p>
+        <p className="mt-4 text-3xl font-black tracking-[-0.04em] text-white">{card.metricValue}</p>
       ) : null}
       <p className="mt-3 text-sm leading-6 text-white/68">{card.summary}</p>
       <ul className="mt-3 space-y-1 text-xs leading-5 text-white/48">
@@ -186,23 +186,23 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
 
 function CompactCeoCard({ card, onAction }: { card: CompactCeoCard; onAction?: () => void }) {
   return (
-    <article className="flex min-h-[8.25rem] flex-col justify-between rounded-lg border border-white/10 bg-black/28 p-3">
+    <article className="flex min-h-[8rem] flex-col justify-between rounded-[18px] border border-white/8 bg-black/24 p-4 shadow-[0_18px_42px_rgba(0,0,0,0.20)] transition hover:border-[#A3FF12]/18 hover:bg-white/[0.035]">
       <div>
         <div className="flex items-start justify-between gap-2">
-          <h3 className="text-sm font-semibold text-white">{card.label}</h3>
+          <h3 className="text-xs font-black uppercase tracking-[0.14em] text-white/58">{card.label}</h3>
           <StatusPill status={card.status} />
         </div>
-        <p className="mt-2 text-2xl font-semibold tracking-tight text-white">{card.value}</p>
-        <p className="mt-1 text-xs leading-5 text-white/56">{card.summary}</p>
+        <p className="mt-3 break-words text-2xl font-black leading-tight tracking-[-0.04em] text-white sm:text-3xl">{card.value}</p>
+        <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/56">{card.summary}</p>
       </div>
       <div className="mt-3 flex items-center gap-2">
         {card.href ? (
-          <Link href={card.href} className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d7ffab] hover:text-white">
+          <Link href={card.href} className="text-[10px] font-black uppercase tracking-[0.16em] text-[#d7ffab] hover:text-white">
             Open lane
           </Link>
         ) : null}
         {card.actionLabel && onAction ? (
-          <Button type="button" variant="secondary" onClick={onAction} className="min-h-8 px-3 text-[10px]">
+          <Button type="button" variant="secondary" onClick={onAction} className="min-h-8 rounded-[8px] px-3 text-[10px] font-black">
             <Clipboard className="h-3.5 w-3.5" />
             {card.actionLabel}
           </Button>
@@ -219,12 +219,12 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
     <section aria-labelledby="ceo-command-center" className="space-y-3" data-testid="architect-ceo-one-screen">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">CEO Command Center</p>
-          <h2 id="ceo-command-center" className="mt-1 text-2xl font-semibold text-white">One-screen platform posture</h2>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">CEO Command Center</p>
+          <h2 id="ceo-command-center" className="mt-1 text-2xl font-black tracking-[-0.04em] text-white">One-screen platform posture</h2>
         </div>
         <p className="text-xs text-white/48">Missing data stays Needs Review. Failed evidence stays Failed.</p>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
         {cards.map((card) => (
           <CompactCeoCard
             key={card.id}
@@ -241,14 +241,14 @@ function DepartmentLaneDetail({ lane }: { lane: MissionDepartmentLane }) {
   return (
     <section aria-labelledby={`${lane.id}-lane-heading`} className="space-y-4">
       <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">{lane.label} Mission Control</p>
-        <h2 id={`${lane.id}-lane-heading`} className="mt-2 text-2xl font-semibold text-white">{lane.purpose}</h2>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">{lane.label} Mission Control</p>
+        <h2 id={`${lane.id}-lane-heading`} className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{lane.purpose}</h2>
       </div>
-      <article id={lane.id === "content_community" ? "content-community" : lane.id} className="rounded-lg border border-white/10 bg-black/25 p-4">
+      <article id={lane.id === "content_community" ? "content-community" : lane.id} className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">{lane.label}</p>
-            <h3 className="mt-2 text-xl font-semibold text-white">Read-only evidence cards</h3>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/40">{lane.label}</p>
+            <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Read-only evidence cards</h3>
           </div>
           <StatusPill status={lane.status} />
         </div>
@@ -304,41 +304,48 @@ export function ArchitectMissionControl({ laneId = "ceo" }: { laneId?: MissionLa
   }
 
   return (
-    <main className="px-2 pb-12 pt-2 sm:px-3 sm:pt-3 lg:px-5" data-testid="architect-mission-control-root">
-      <div className="mx-auto max-w-7xl space-y-4">
-        <section className="rounded-lg border border-white/10 bg-black/35 p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-lg border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
-                <ShieldCheck className="h-4 w-4" />
+    <main className="px-2 pb-8 pt-2 sm:px-3 sm:pt-3 lg:px-5" data-testid="architect-mission-control-root">
+      <div className="mx-auto max-w-7xl space-y-3">
+        <section className="relative overflow-hidden rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl sm:p-5">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.08),transparent_32%)]" />
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 rounded-[8px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#d7ffab]">
+                <ShieldCheck className="h-3.5 w-3.5" />
                 Mission Control
               </div>
-              <h1 className="mt-3 text-3xl font-semibold text-white">BVRB3R Architect Operating System</h1>
+              <h1 className="mt-3 text-3xl font-black leading-none tracking-[-0.045em] text-white sm:text-4xl">BVRB3R Architect Operating System</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-white/60">
                 Evidence to diagnosis to safe repair to Codex packet to deploy verification to production validation.
               </p>
             </div>
-            <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-sm text-white/58">
-              <p>Commit: <span className="font-mono text-white/78">{snapshot?.environment.commitHash ?? "unknown"}</span></p>
-              <p className="mt-1">Deploy: <span className="font-mono text-white/78">{snapshot?.environment.deploymentId ?? "unknown"}</span></p>
+            <div className="grid gap-2 rounded-[18px] border border-white/8 bg-black/24 p-3 text-xs text-white/58 sm:min-w-[18rem]">
+              <div>
+                <p className="font-black uppercase tracking-[0.14em] text-white/36">Commit</p>
+                <p className="mt-1 truncate font-mono text-sm text-white/78">{snapshot?.environment.commitHash ?? "unknown"}</p>
+              </div>
+              <div>
+                <p className="font-black uppercase tracking-[0.14em] text-white/36">Deploy</p>
+                <p className="mt-1 truncate font-mono text-sm text-white/78">{snapshot?.environment.deploymentId ?? "unknown"}</p>
+              </div>
             </div>
           </div>
         </section>
 
         {error ? (
-          <div className="flex items-start gap-2 rounded-lg border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
+          <div className="flex items-start gap-2 rounded-[18px] border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
             <AlertTriangle className="mt-0.5 h-4 w-4" />
             {error}
           </div>
         ) : null}
         {notice ? (
-          <div className="flex items-start gap-2 rounded-lg border border-[#7CFF00]/20 bg-[#7CFF00]/10 p-3 text-sm text-[#d7ffab]">
+          <div className="flex items-start gap-2 rounded-[18px] border border-[#A3FF12]/20 bg-[#A3FF12]/10 p-3 text-sm text-[#d7ffab]">
             <CheckCircle2 className="mt-0.5 h-4 w-4" />
             {notice}
           </div>
         ) : null}
         {loading && !snapshot ? (
-          <Card className="border-white/10 bg-black/25 p-6">
+          <Card className="rounded-[24px] border-white/10 bg-black/25 p-5">
             <p className="text-sm text-white/58">Collecting production evidence.</p>
           </Card>
         ) : null}

@@ -121,6 +121,7 @@ describe("architect mission control", () => {
     expect(screen.getByText("Hive AI")).toBeInTheDocument();
     expect(screen.getByText("Codex Packets")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /copy codex packet/i })).toBeInTheDocument();
+    expect(screen.getByText("Platform Health").closest("article")).toHaveClass("rounded-[18px]", "bg-black/24");
   });
 
   it("does not render the duplicate body Mission Control Navigation", async () => {

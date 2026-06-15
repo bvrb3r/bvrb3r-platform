@@ -8,25 +8,36 @@ export default async function ArchitectLayout({ children }: { children: React.Re
   const user = await getPlatformAdminUser();
 
   return (
-    <div className="bvr-screen overflow-x-clip" data-testid="architect-shell">
-      <div className="px-3 pt-3 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5" data-testid="architect-header-shell">
-        <div className="mx-auto max-w-[88rem]">
-          <GlassCard className="p-3 sm:p-4">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-              <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
-                  <ShieldCheck className="h-4 w-4" />
-                  Architect session
+    <div className="bvr-screen safe-top-pad overflow-x-clip" data-testid="architect-shell">
+      <div className="px-2 pt-2 sm:px-3 sm:pt-3 lg:px-5 lg:pt-4" data-testid="architect-header-shell">
+        <div className="mx-auto max-w-7xl">
+          <GlassCard className="relative overflow-hidden rounded-[28px] p-3 sm:p-4">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.09),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(163,255,18,0.045),transparent_28%)]" />
+            <div className="relative flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] border border-[#A3FF12]/22 bg-[linear-gradient(135deg,rgba(163,255,18,0.18),rgba(8,8,8,0.95))] text-xs font-black tracking-[0.2em] text-[#d7ffab] shadow-[0_18px_42px_rgba(163,255,18,0.14)]">
+                  BVR
                 </div>
-                <div className="mt-3 min-w-0">
-                  <p className="text-lg font-semibold text-white">{user.name}</p>
-                  <p className="mt-1 truncate text-sm text-white/60">{user.email}</p>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-2 rounded-[8px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#d7ffab]">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      Architect session
+                    </span>
+                    <span className="rounded-[8px] border border-white/10 bg-black/24 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/58">
+                      Mission Control
+                    </span>
+                  </div>
+                  <div className="mt-2 min-w-0">
+                    <p className="truncate text-lg font-black tracking-[-0.02em] text-white">{user.name}</p>
+                    <p className="mt-0.5 truncate text-sm text-white/58">{user.email}</p>
+                  </div>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">Executive truth, workflow health, source vault, action boundaries, and Hive AI agents.</p>
                 </div>
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-white/58">BVRB3R Mission Control Navigation for executive truth, workflow health, source vault, action boundaries, and Hive AI agents.</p>
               </div>
 
-              <div className="flex min-w-0 flex-col gap-3 xl:min-w-[31rem] xl:items-end">
-                <div className="w-full xl:max-w-[44rem]">
+              <div className="flex min-w-0 flex-col gap-3 xl:min-w-[34rem] xl:items-end">
+                <div className="w-full xl:max-w-[48rem]">
                   <ArchitectPrimaryNav />
                 </div>
                 <div className="w-full xl:w-auto">
