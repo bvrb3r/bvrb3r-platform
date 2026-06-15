@@ -100,6 +100,7 @@ describe("architect mission control", () => {
     render(<ArchitectMissionControl />);
 
     await waitFor(() => expect(screen.getByText("BVRB3R Architect Operating System")).toBeInTheDocument());
+    expect(screen.getByTestId("architect-mission-control-root").className).not.toMatch(/min-h|h-screen|100svh|items-center|justify-end/);
     expect(screen.getByText("BVRB3R Mission Control Navigation")).toBeInTheDocument();
     expect(screen.getByText("CEO Command Center")).toBeInTheDocument();
     expect(screen.getByText("Core Loop Validators")).toBeInTheDocument();
@@ -111,6 +112,21 @@ describe("architect mission control", () => {
     expect(screen.getByText("The payout-routing ledger was never created or repaired after completion.")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /run safe repair/i }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /copy chatgpt packet/i })).toBeInTheDocument();
+  });
+
+  it("places Mission Control Navigation immediately after the operating header", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createSnapshot()
+    });
+
+    render(<ArchitectMissionControl />);
+
+    const header = await screen.findByText("BVRB3R Architect Operating System");
+    const navigation = screen.getByText("BVRB3R Mission Control Navigation");
+
+    expect(header.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("CEO Command Center")).toBeInTheDocument();
   });
 
   it("renders the official Mission Control lanes with CEO as default", async () => {

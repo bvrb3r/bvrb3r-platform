@@ -52,6 +52,9 @@ describe("architect layout", () => {
 
     expect(screen.getByText("Architect session")).toBeInTheDocument();
     expect(screen.getByText("ops-admin@bvrb3r.app")).toBeInTheDocument();
+    expect(screen.getByTestId("architect-shell")).toHaveClass("bvr-screen");
+    expect(screen.getByTestId("architect-header-shell")).not.toHaveClass("bvr-screen");
+    expect(screen.getByTestId("architect-header-shell").className).not.toMatch(/min-h|h-screen|100svh|items-center/);
     expect(screen.getByRole("navigation", { name: "BVRB3R Mission Control Navigation" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "CEO" })).toHaveAttribute("href", "/architect");
     expect(screen.getByRole("link", { name: "CEO" })).toHaveAttribute("aria-current", "page");

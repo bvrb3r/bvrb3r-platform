@@ -8,11 +8,11 @@ export default async function ArchitectLayout({ children }: { children: React.Re
   const user = await getPlatformAdminUser();
 
   return (
-    <>
-      <div className="bvr-screen overflow-x-clip px-3 pt-3 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5">
+    <div className="bvr-screen overflow-x-clip" data-testid="architect-shell">
+      <div className="px-3 pt-3 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5" data-testid="architect-header-shell">
         <div className="mx-auto max-w-[88rem]">
-          <GlassCard className="p-4 sm:p-5">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <GlassCard className="p-3 sm:p-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
                   <ShieldCheck className="h-4 w-4" />
@@ -38,6 +38,6 @@ export default async function ArchitectLayout({ children }: { children: React.Re
         </div>
       </div>
       {children}
-    </>
+    </div>
   );
 }

@@ -607,17 +607,17 @@ export function ArchitectMissionControl() {
   }
 
   return (
-    <main className="px-2 pb-12 pt-4 sm:px-3 lg:px-5">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <section className="rounded-lg border border-white/10 bg-black/35 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <main className="px-2 pb-12 pt-2 sm:px-3 sm:pt-3 lg:px-5" data-testid="architect-mission-control-root">
+      <div className="mx-auto max-w-7xl space-y-4">
+        <section className="rounded-lg border border-white/10 bg-black/35 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="inline-flex items-center gap-2 rounded-lg border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
                 <ShieldCheck className="h-4 w-4" />
                 Mission Control
               </div>
-              <h1 className="mt-4 text-3xl font-semibold text-white">BVRB3R Architect Operating System</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-white/60">
+              <h1 className="mt-3 text-3xl font-semibold text-white">BVRB3R Architect Operating System</h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-white/60">
                 Evidence to diagnosis to safe repair to Codex packet to deploy verification to production validation.
               </p>
             </div>
