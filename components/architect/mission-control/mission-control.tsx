@@ -190,7 +190,7 @@ function issuePrimaryRepairTarget(card: MissionEvidenceCard, lane: MissionDepart
   }
 
   if (card.id === "finance-payment-health") {
-    return "Payment health validator and appointment/payment/routing evidence reconciliation.";
+    return "Server-side payment routing creation/reconciliation after payment capture and appointment completion.";
   }
 
   if (card.id === "finance-stripe") {

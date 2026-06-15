@@ -25,6 +25,37 @@ const basePromptInput = {
   testsToRun: ["Targeted Architect Mission Control tests"]
 };
 
+const paymentHealthPromptInput = {
+  ...basePromptInput,
+  exactGoal: "Repair Payment Health without mutating money.",
+  exactIssue: "Payment health",
+  affectedFlow: "Payments finance readiness",
+  currentTruth: "Payment health is currently Failed. Payment health uses appointment/payment/routing truth.",
+  evidence: [
+    "appointments.status = completed and appointments.completed_at is populated",
+    "payment.status = captured",
+    "payment_routing_records lookup by appointment_id returned 0 rows",
+    "payment.status=captured + appointment.status=cancelled",
+    "Appointment existence has not been inspected",
+    "Payment existence has not been inspected",
+    "Status history has not been inspected",
+    "Routing state has not been inspected",
+    "Payout release guard has not been inspected",
+    "payment.status = captured"
+  ],
+  rootCauseHypothesis: [
+    "appointments.status = completed and appointments.completed_at is populated",
+    "payment.status = captured",
+    "payment_routing_records lookup by appointment_id returned 0 rows",
+    "payment.status = captured"
+  ].join(" "),
+  primaryRepairTarget: "Server-side payment routing creation/reconciliation after payment capture and appointment completion."
+};
+
+function promptSection(prompt: string, start: string, end: string) {
+  return prompt.split(start)[1].split(end)[0].trim();
+}
+
 describe("architect codex prompt doctrine", () => {
   it("generates V1 doctrine repair prompts with required sections", () => {
     const prompt = buildArchitectCodexRepairPrompt(basePromptInput);
@@ -44,9 +75,16 @@ describe("architect codex prompt doctrine", () => {
     expect(prompt).toContain("Server owns serious business logic.");
     expect(prompt).toContain("UI must not calculate final money.");
     expect(prompt).toContain("Architect prompt generation does not repair the issue by itself.");
-    expect(prompt).toContain("Evidence group - current issue evidence:");
+    expect(prompt).toContain("Evidence groups:");
+    expect(prompt).toContain("Passing evidence:");
+    expect(prompt).toContain("Failed evidence:");
+    expect(prompt).toContain("Missing evidence:");
+    expect(prompt).toContain("Conflicting evidence:");
+    expect(prompt).toContain("Not inspected yet:");
     expect(prompt).toContain("Root-cause hypothesis:");
     expect(prompt).toContain("Primary repair target:");
+    expect(prompt).toContain("First inspection step:");
+    expect(prompt).toContain("Separate conflict path:");
     expect(prompt).toContain("Files / areas to inspect:");
     expect(prompt).toContain("Role and permission rules:");
     expect(prompt).toContain("Data / source-of-truth rules:");
@@ -68,14 +106,45 @@ describe("architect codex prompt doctrine", () => {
     expect(prompt.match(/- duplicate evidence row/g)).toHaveLength(1);
   });
 
-  it("keeps root-cause hypotheses concise", () => {
-    const prompt = buildArchitectCodexRepairPrompt({
-      ...basePromptInput,
-      rootCauseHypothesis: "x".repeat(500)
-    });
+  it("groups Payment Health evidence into passing, failed, conflicting, and not-inspected sections", () => {
+    const prompt = buildArchitectCodexRepairPrompt(paymentHealthPromptInput);
+
+    const passingSection = promptSection(prompt, "Passing evidence:", "Failed evidence:");
+    const failedSection = promptSection(prompt, "Failed evidence:", "Missing evidence:");
+    const conflictSection = promptSection(prompt, "Conflicting evidence:", "Not inspected yet:");
+    const notInspectedSection = promptSection(prompt, "Not inspected yet:", "Root-cause hypothesis:");
+
+    expect(passingSection).toContain("appointments.status = completed and appointments.completed_at is populated");
+    expect(passingSection.match(/payment.status = captured/g)).toHaveLength(1);
+    expect(failedSection).toContain("payment_routing_records lookup by appointment_id returned 0 rows");
+    expect(conflictSection).toContain("payment.status=captured + appointment.status=cancelled");
+    expect(notInspectedSection).toContain("Appointment existence has not been inspected");
+    expect(notInspectedSection).toContain("Payment existence has not been inspected");
+    expect(notInspectedSection).toContain("Status history has not been inspected");
+    expect(notInspectedSection).toContain("Routing state has not been inspected");
+    expect(notInspectedSection).toContain("Payout release guard has not been inspected");
+  });
+
+  it("generates non-truncated diagnosis instead of dumping duplicated raw evidence", () => {
+    const prompt = buildArchitectCodexRepairPrompt(paymentHealthPromptInput);
 
     const rootCauseSection = prompt.split("Root-cause hypothesis:")[1].split("Primary repair target:")[0];
-    expect(rootCauseSection.trim()).toHaveLength(320);
-    expect(rootCauseSection).toContain("...");
+    const sentenceCount = rootCauseSection.split(".").filter((sentence) => sentence.trim()).length;
+
+    expect(sentenceCount).toBeGreaterThanOrEqual(2);
+    expect(sentenceCount).toBeLessThanOrEqual(5);
+    expect(rootCauseSection).not.toContain("...");
+    expect(rootCauseSection).not.toContain("appointments.status = completed");
+    expect(rootCauseSection).not.toContain("payment_routing_records lookup by appointment_id returned 0 rows");
+    expect(rootCauseSection.match(/payment.status = captured/g)).toBeNull();
+    expect(rootCauseSection).toContain("server, Supabase, Stripe, and ledger evidence");
+  });
+
+  it("keeps Payment Health repair direction and conflict path explicit", () => {
+    const prompt = buildArchitectCodexRepairPrompt(paymentHealthPromptInput);
+
+    expect(prompt).toContain("Primary repair target:\nServer-side payment routing creation/reconciliation after payment capture and appointment completion.");
+    expect(prompt).toContain("First inspection step:\nInspect the completed appointment with captured payment and missing routing record. Do not start by editing UI.");
+    expect(prompt).toContain("Separate conflict path:\nCaptured payments attached to cancelled appointments must be investigated separately from completed/captured appointment routing.");
   });
 });
