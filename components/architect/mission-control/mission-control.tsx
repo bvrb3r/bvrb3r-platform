@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import type { Route } from "next";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clipboard, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clipboard, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { buildMissionControlFoundation } from "@/lib/architect/mission-control/foundation";
@@ -89,8 +90,17 @@ type CompactCeoCard = {
   status: MissionControlStatus;
   value: string;
   summary: string;
+  explanation: string;
+  evidence: string[];
+  riskMeaning: string;
+  chartPoints?: CeoChartPoint[];
   href?: Route;
   actionLabel?: string;
+};
+
+type CeoChartPoint = {
+  label: string;
+  value: number;
 };
 
 function findCeoCard(foundation: MissionControlFoundation, id: string) {
@@ -119,21 +129,50 @@ function metricSummary(card: MissionEvidenceCard | undefined) {
   return card?.summary ?? "Missing data remains Needs Review.";
 }
 
+function cardEvidence(...cards: Array<MissionEvidenceCard | undefined>) {
+  const evidence = cards.flatMap((card) => card?.evidence ?? []).filter(Boolean);
+  return evidence.length ? evidence : ["No connected evidence source for this card yet."];
+}
+
+function riskMeaning(label: string, status: MissionControlStatus) {
+  if (status === "Pass") {
+    return `${label} has connected evidence currently reporting Pass. Keep monitoring it as part of the CEO operating posture.`;
+  }
+  if (status === "Failed") {
+    return `${label} has failed evidence. Treat this as active operational risk until the underlying workflow is repaired and revalidated.`;
+  }
+  if (status === "Warning") {
+    return `${label} has warning evidence. It is not blocking by itself, but it needs review before being treated as launch-ready.`;
+  }
+  return `${label} is not fully connected. Do not treat this as healthy until real evidence is wired and verified.`;
+}
+
 function compactCard(input: {
   id: string;
   label: string;
   status?: MissionControlStatus;
   value?: string;
   summary?: string;
+  explanation?: string;
+  evidence?: string[];
+  riskMeaning?: string;
+  chartPoints?: CeoChartPoint[];
   href?: Route;
   actionLabel?: string;
 }): CompactCeoCard {
+  const status = input.status ?? "Needs Review";
+  const summary = input.summary ?? "Missing data remains Needs Review.";
+
   return {
     id: input.id,
     label: input.label,
-    status: input.status ?? "Needs Review",
+    status,
     value: input.value ?? "Not connected",
-    summary: input.summary ?? "Missing data remains Needs Review.",
+    summary,
+    explanation: input.explanation ?? summary,
+    evidence: input.evidence?.length ? input.evidence : ["No connected evidence source for this card yet."],
+    riskMeaning: input.riskMeaning ?? riskMeaning(input.label, status),
+    chartPoints: input.chartPoints,
     href: input.href,
     actionLabel: input.actionLabel
   };
@@ -162,31 +201,82 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
   const unsafeBlocked = unsafeActions.length > 0 && unsafeActions.every((action) => !action.allowed);
   const packetCount = Object.keys(snapshot.packets ?? {}).length;
   const selectedPacket = selectedIncident ? snapshot.packets[selectedIncident.id]?.codexPacket : null;
+  const sourceVaultEvidence = foundation.sourceVault.slice(0, 5).map((source) => `${source.sourceName}: ${source.status}; ${source.ingestionStatus}.`);
+  const actionRegistryEvidence = unsafeActions.length
+    ? unsafeActions.slice(0, 5).map((action) => `${action.label}: ${action.allowed ? "allowed" : "blocked"} (${action.riskClass}).`)
+    : ["No unsafe action registry rows are connected."];
+  const hiveEvidence = foundation.agentRegistry.slice(0, 5).map((agent) => `${agent.name}: ${agent.autonomyLevel}; ${agent.currentStatus}.`);
+  const codexPacketEvidence = selectedIncident
+    ? selectedIncident.evidence.concat(`Selected incident: ${selectedIncident.headline}`)
+    : ["No active incident packet is selected."];
 
   return [
-    compactCard({ id: "platform-health", label: "Platform Health", status: platform?.status, value: platform?.status, summary: metricSummary(platform), href: "/architect/technology" }),
-    compactCard({ id: "money-revenue", label: "Money / App Revenue", status: money?.status, value: metricValue(money), summary: metricSummary(money), href: "/architect/finance" }),
-    compactCard({ id: "total-users", label: "Total Users", status: totalUsers?.status, value: metricValue(totalUsers), summary: metricSummary(totalUsers), href: "/architect/product" }),
-    compactCard({ id: "clients", label: "Clients", status: clients?.status, value: metricValue(clients), summary: metricSummary(clients), href: "/architect/product" }),
-    compactCard({ id: "barbers", label: "Barbers", status: barbers?.status, value: metricValue(barbers), summary: metricSummary(barbers), href: "/architect/operations" }),
-    compactCard({ id: "shop-owners", label: "Shop Owners", status: owners?.status, value: metricValue(owners), summary: metricSummary(owners), href: "/architect/operations" }),
-    compactCard({ id: "bookings", label: "Bookings", status: worstStatus(bookings?.status, todayBookings?.status), value: metricValue(bookings), summary: `Today: ${metricValue(todayBookings)}. ${metricSummary(bookings)}`, href: "/architect/operations" }),
-    compactCard({ id: "payments", label: "Payments", status: payments?.status, value: metricValue(payments), summary: metricSummary(payments), href: "/architect/finance" }),
-    compactCard({ id: "routing-payout", label: "Routing / Payout Readiness", status: worstStatus(routing?.status, payout?.status), value: `${metricValue(routing)} / ${metricValue(payout)}`, summary: "Payment routing and payout readiness stay separated from money mutation.", href: "/architect/finance" }),
-    compactCard({ id: "culture", label: "Culture", status: culture?.status, value: metricValue(culture), summary: metricSummary(culture), href: "/architect/content-community" }),
-    compactCard({ id: "active-supply", label: "Active Shops / Active Barbers", status: worstStatus(shops?.status, activeBarbers?.status), value: `${metricValue(shops)} / ${metricValue(activeBarbers)}`, summary: "Active supply is read from shop and barber evidence.", href: "/architect/operations" }),
-    compactCard({ id: "critical-incidents", label: "Critical Incidents", status: incidents?.status, value: metricValue(incidents), summary: metricSummary(incidents), href: "/architect/technology" }),
-    compactCard({ id: "deployment-regression", label: "Deployment / Regression", status: deployment?.status, value: metricValue(deployment), summary: metricSummary(deployment), href: "/architect/technology" }),
-    compactCard({ id: "source-vault", label: "Source Vault", status: sourceVault?.status, value: `${foundation.sourceVault.length} registered`, summary: "Sources are registered, not ingested.", href: "/architect/technology" }),
-    compactCard({ id: "action-registry", label: "Action Registry", status: unsafeBlocked ? "Pass" : "Failed", value: unsafeBlocked ? "Unsafe blocked" : "Review needed", summary: `${unsafeActions.length} unsafe action(s) blocked by registry.`, href: "/architect/security" }),
-    compactCard({ id: "hive-ai", label: "Hive AI", status: hiveAi?.status, value: `${foundation.agentRegistry.length} agents`, summary: "Hive AI remains Level 0/1 only.", href: "/architect/technology" }),
-    compactCard({ id: "codex-packets", label: "Codex Packets", status: selectedPacket ? "Pass" : "Needs Review", value: `${packetCount} packet(s)`, summary: selectedPacket ? "Codex packet is available for the selected incident." : "No active incident packet is selected.", href: "/architect/technology", actionLabel: selectedPacket ? "Copy Codex Packet" : undefined })
+    compactCard({ id: "platform-health", label: "Platform Health", status: platform?.status, value: platform?.status, summary: metricSummary(platform), evidence: cardEvidence(platform), href: "/architect/technology" }),
+    compactCard({ id: "money-revenue", label: "Money / App Revenue", status: money?.status, value: metricValue(money), summary: metricSummary(money), evidence: cardEvidence(money), href: "/architect/finance" }),
+    compactCard({ id: "total-users", label: "Total Users", status: totalUsers?.status, value: metricValue(totalUsers), summary: metricSummary(totalUsers), evidence: cardEvidence(totalUsers), href: "/architect/product" }),
+    compactCard({ id: "clients", label: "Clients", status: clients?.status, value: metricValue(clients), summary: metricSummary(clients), evidence: cardEvidence(clients), href: "/architect/product" }),
+    compactCard({ id: "barbers", label: "Barbers", status: barbers?.status, value: metricValue(barbers), summary: metricSummary(barbers), evidence: cardEvidence(barbers), href: "/architect/operations" }),
+    compactCard({ id: "shop-owners", label: "Shop Owners", status: owners?.status, value: metricValue(owners), summary: metricSummary(owners), evidence: cardEvidence(owners), href: "/architect/operations" }),
+    compactCard({ id: "bookings", label: "Bookings", status: worstStatus(bookings?.status, todayBookings?.status), value: metricValue(bookings), summary: `Today: ${metricValue(todayBookings)}. ${metricSummary(bookings)}`, evidence: cardEvidence(bookings, todayBookings), href: "/architect/operations" }),
+    compactCard({ id: "payments", label: "Payments", status: payments?.status, value: metricValue(payments), summary: metricSummary(payments), evidence: cardEvidence(payments), href: "/architect/finance" }),
+    compactCard({ id: "routing-payout", label: "Routing / Payout Readiness", status: worstStatus(routing?.status, payout?.status), value: `${metricValue(routing)} / ${metricValue(payout)}`, summary: "Payment routing and payout readiness stay separated from money mutation.", evidence: cardEvidence(routing, payout), href: "/architect/finance" }),
+    compactCard({ id: "culture", label: "Culture", status: culture?.status, value: metricValue(culture), summary: metricSummary(culture), evidence: cardEvidence(culture), href: "/architect/content-community" }),
+    compactCard({ id: "active-supply", label: "Active Shops / Active Barbers", status: worstStatus(shops?.status, activeBarbers?.status), value: `${metricValue(shops)} / ${metricValue(activeBarbers)}`, summary: "Active supply is read from shop and barber evidence.", evidence: cardEvidence(shops, activeBarbers), href: "/architect/operations" }),
+    compactCard({ id: "critical-incidents", label: "Critical Incidents", status: incidents?.status, value: metricValue(incidents), summary: metricSummary(incidents), evidence: cardEvidence(incidents), href: "/architect/technology" }),
+    compactCard({ id: "deployment-regression", label: "Deployment / Regression", status: deployment?.status, value: metricValue(deployment), summary: metricSummary(deployment), evidence: cardEvidence(deployment), href: "/architect/technology" }),
+    compactCard({ id: "source-vault", label: "Source Vault", status: sourceVault?.status, value: `${foundation.sourceVault.length} registered`, summary: "Sources are registered, not ingested.", evidence: sourceVaultEvidence, href: "/architect/technology" }),
+    compactCard({ id: "action-registry", label: "Action Registry", status: unsafeBlocked ? "Pass" : "Failed", value: unsafeBlocked ? "Unsafe blocked" : "Review needed", summary: `${unsafeActions.length} unsafe action(s) blocked by registry.`, evidence: actionRegistryEvidence, href: "/architect/security" }),
+    compactCard({ id: "hive-ai", label: "Hive AI", status: hiveAi?.status, value: `${foundation.agentRegistry.length} agents`, summary: "Hive AI remains Level 0/1 only.", evidence: hiveEvidence, href: "/architect/technology" }),
+    compactCard({ id: "codex-packets", label: "Codex Packets", status: selectedPacket ? "Pass" : "Needs Review", value: `${packetCount} packet(s)`, summary: selectedPacket ? "Codex packet is available for the selected incident." : "No active incident packet is selected.", evidence: codexPacketEvidence, href: "/architect/technology", actionLabel: selectedPacket ? "Copy Codex Packet" : undefined })
   ];
 }
 
-function CompactCeoCard({ card, onAction }: { card: CompactCeoCard; onAction?: () => void }) {
+function CeoHistoricalChart({ points }: { points?: CeoChartPoint[] }) {
+  if (!points?.length) {
+    return (
+      <div className="rounded-[18px] border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm text-white/58">
+        No historical data connected yet
+      </div>
+    );
+  }
+
+  const maxValue = Math.max(...points.map((point) => point.value), 1);
+
   return (
-    <article className="flex min-h-[8rem] flex-col justify-between rounded-[18px] border border-white/8 bg-black/24 p-4 shadow-[0_18px_42px_rgba(0,0,0,0.20)] transition hover:border-[#A3FF12]/18 hover:bg-white/[0.035]">
+    <div className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+      <div className="flex h-32 items-end gap-2">
+        {points.map((point) => (
+          <div key={point.label} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+            <div
+              className="w-full rounded-t-[8px] border border-[#A3FF12]/22 bg-[#A3FF12]/18"
+              style={{ height: `${Math.max(8, (point.value / maxValue) * 100)}%` }}
+            />
+            <span className="truncate text-[10px] font-black uppercase tracking-[0.08em] text-white/44">{point.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function handleCardKeyboard(event: ReactKeyboardEvent<HTMLElement>, onOpenDetail: () => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    onOpenDetail();
+  }
+}
+
+function CompactCeoCard({ card, onAction, onOpenDetail }: { card: CompactCeoCard; onAction?: () => void; onOpenDetail: () => void }) {
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${card.label} detail`}
+      data-testid={`architect-ceo-card-${card.id}`}
+      className="flex min-h-[8rem] cursor-pointer flex-col justify-between rounded-[18px] border border-white/8 bg-black/24 p-4 text-left shadow-[0_18px_42px_rgba(0,0,0,0.20)] transition hover:border-[#A3FF12]/18 hover:bg-white/[0.035] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/55"
+      onClick={onOpenDetail}
+      onKeyDown={(event) => handleCardKeyboard(event, onOpenDetail)}
+    >
       <div>
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-xs font-black uppercase tracking-[0.14em] text-white/58">{card.label}</h3>
@@ -197,12 +287,24 @@ function CompactCeoCard({ card, onAction }: { card: CompactCeoCard; onAction?: (
       </div>
       <div className="mt-3 flex items-center gap-2">
         {card.href ? (
-          <Link href={card.href} className="text-[10px] font-black uppercase tracking-[0.16em] text-[#d7ffab] hover:text-white">
+          <Link
+            href={card.href}
+            className="text-[10px] font-black uppercase tracking-[0.16em] text-[#d7ffab] hover:text-white"
+            onClick={(event) => event.stopPropagation()}
+          >
             Open lane
           </Link>
         ) : null}
         {card.actionLabel && onAction ? (
-          <Button type="button" variant="secondary" onClick={onAction} className="min-h-8 rounded-[8px] px-3 text-[10px] font-black">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={(event) => {
+              event.stopPropagation();
+              onAction();
+            }}
+            className="min-h-8 rounded-[8px] px-3 text-[10px] font-black"
+          >
             <Clipboard className="h-3.5 w-3.5" />
             {card.actionLabel}
           </Button>
@@ -212,8 +314,86 @@ function CompactCeoCard({ card, onAction }: { card: CompactCeoCard; onAction?: (
   );
 }
 
+function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: () => void }) {
+  useEffect(() => {
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/76 px-3 py-4 backdrop-blur-xl sm:items-center sm:px-5" role="dialog" aria-modal="true" aria-labelledby="ceo-card-detail-title" onClick={onClose}>
+      <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#070707] text-white shadow-[0_34px_100px_rgba(0,0,0,0.62)]" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 border-b border-white/8 p-5">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#A3FF12]">CEO Card Detail</p>
+            <h3 id="ceo-card-detail-title" className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{card.label}</h3>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <StatusPill status={card.status} />
+              <span className="rounded-[8px] border border-white/10 bg-black/24 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/54">Read-only</span>
+            </div>
+          </div>
+          <button type="button" aria-label="Close CEO card detail" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-5">
+          <div className="grid gap-3 sm:grid-cols-[0.9fr_1.1fr]">
+            <div className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Main value</p>
+              <p className="mt-3 break-words text-3xl font-black leading-tight tracking-[-0.04em] text-white">{card.value}</p>
+            </div>
+            <div className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Plain-English explanation</p>
+              <p className="mt-3 text-sm leading-6 text-white/70">{card.explanation}</p>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Evidence summary</h4>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-white/62">
+                {card.evidence.slice(0, 6).map((item) => (
+                  <li key={item} className="border-l border-[#A3FF12]/22 pl-3">{item}</li>
+                ))}
+              </ul>
+            </section>
+
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Risk / meaning</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{card.riskMeaning}</p>
+            </section>
+          </div>
+
+          <section className="mt-3">
+            <h4 className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Historical signal</h4>
+            <CeoHistoricalChart points={card.chartPoints} />
+          </section>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-white/8 p-5 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" className="min-h-11 rounded-[8px]" onClick={onClose}>Close</Button>
+          {card.href ? (
+            <Link href={card.href} className="inline-flex min-h-11 items-center justify-center rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black shadow-[0_14px_32px_rgba(163,255,18,0.22)] transition hover:bg-[#d7ffab]">
+              Open Lane
+            </Link>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexPacket }: { foundation: MissionControlFoundation; snapshot: MissionControlSnapshot; selectedIncident: ArchitectIncident | null; onCopyCodexPacket: () => void }) {
   const cards = buildCompactCeoCards(foundation, snapshot, selectedIncident);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const selectedCard = cards.find((card) => card.id === selectedCardId) ?? null;
 
   return (
     <section aria-labelledby="ceo-command-center" className="space-y-3" data-testid="architect-ceo-one-screen">
@@ -229,10 +409,12 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
           <CompactCeoCard
             key={card.id}
             card={card}
+            onOpenDetail={() => setSelectedCardId(card.id)}
             onAction={card.id === "codex-packets" ? onCopyCodexPacket : undefined}
           />
         ))}
       </div>
+      {selectedCard ? <CeoCardDetailModal card={selectedCard} onClose={() => setSelectedCardId(null)} /> : null}
     </section>
   );
 }

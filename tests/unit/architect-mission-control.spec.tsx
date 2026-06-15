@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArchitectMissionControl } from "@/components/architect/mission-control/mission-control";
 import { APPOINTMENT_ID } from "@/tests/unit/architect-debug-test-utils";
@@ -122,6 +122,27 @@ describe("architect mission control", () => {
     expect(screen.getByText("Codex Packets")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /copy codex packet/i })).toBeInTheDocument();
     expect(screen.getByText("Platform Health").closest("article")).toHaveClass("rounded-[18px]", "bg-black/24");
+    [
+      "Platform Health",
+      "Money / App Revenue",
+      "Total Users",
+      "Clients",
+      "Barbers",
+      "Shop Owners",
+      "Bookings",
+      "Payments",
+      "Routing / Payout Readiness",
+      "Culture",
+      "Active Shops / Active Barbers",
+      "Critical Incidents",
+      "Deployment / Regression",
+      "Source Vault",
+      "Action Registry",
+      "Hive AI",
+      "Codex Packets"
+    ].forEach((label) => {
+      expect(screen.getByRole("button", { name: `Open ${label} detail` })).toBeInTheDocument();
+    });
   });
 
   it("does not render the duplicate body Mission Control Navigation", async () => {
@@ -136,6 +157,30 @@ describe("architect mission control", () => {
 
     expect(screen.queryByText("BVRB3R Mission Control Navigation")).not.toBeInTheDocument();
     expect(screen.getByText("CEO Command Center")).toBeInTheDocument();
+  });
+
+  it("opens CEO card detail popups with evidence and lane routing", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createSnapshot()
+    });
+
+    render(<ArchitectMissionControl />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Platform Health detail" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Platform Health" });
+    expect(within(dialog).getByText("Platform Health")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Failed")).toHaveLength(2);
+    expect(within(dialog).getByText("Critical workflow evidence needs attention.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Evidence summary")).toBeInTheDocument();
+    expect(within(dialog).getByText("Risk / meaning")).toBeInTheDocument();
+    expect(within(dialog).getByText("No historical data connected yet")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Open Lane" })).toHaveAttribute("href", "/architect/technology");
+
+    fireEvent.click(within(dialog).getByLabelText("Close CEO card detail"));
+
+    expect(screen.queryByRole("dialog", { name: "Platform Health" })).not.toBeInTheDocument();
   });
 
   it("keeps missing CEO metrics as Needs Review and Not connected", async () => {
