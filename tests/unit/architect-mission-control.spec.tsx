@@ -265,6 +265,24 @@ describe("architect mission control", () => {
     });
   });
 
+  it("shows Officer Cleanup guardrails in the Hive AI detail popup", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createSnapshot()
+    });
+
+    render(<ArchitectMissionControl />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Hive AI detail" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Hive AI");
+    expect(dialog).toHaveTextContent(/Officer Assistant\(s\) registered/);
+    expect(dialog).toHaveTextContent("All Officer Assistants are Level 1 Draft mode with read-only evidence access.");
+    expect(dialog).toHaveTextContent("Officer Assistants do not mutate money, payouts, refunds, routing, roles, team relationships, schema, deployments, or issue status.");
+    expect(dialog).toHaveTextContent("Prompt generation or officer review never marks an issue Pass by itself.");
+  });
+
   it("marks overall readiness Failed when a critical checklist item fails", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,

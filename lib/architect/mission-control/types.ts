@@ -125,10 +125,17 @@ export type AgentAutonomyLevel =
   | "Level 4 Controlled execution"
   | "Level 5 Full system agent";
 
+export type HiveAgentClass =
+  | "Architect Prime"
+  | "Role Manager Agent"
+  | "Workflow Agent"
+  | "Officer Assistant";
+
 export type HiveAgentEntry = {
   id: string;
   name: string;
   department: MissionDepartment | "Architect Prime";
+  agentClass?: HiveAgentClass;
   job: string;
   dataAccess: string;
   actionAccess: string;
@@ -136,6 +143,9 @@ export type HiveAgentEntry = {
   successMetric: string;
   failureRule: string;
   currentStatus: MissionControlStatus;
+  evidencePolicy?: string;
+  mutationBoundary?: string;
+  passRule?: string;
 };
 
 export type CodexFailureClass = {

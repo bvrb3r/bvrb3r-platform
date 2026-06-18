@@ -8,7 +8,7 @@ import { AlertTriangle, CheckCircle2, Clipboard, ShieldCheck, X } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { buildArchitectCodexRepairPrompt } from "@/lib/architect/mission-control/codex-prompt-doctrine";
-import { buildMissionControlFoundation } from "@/lib/architect/mission-control/foundation";
+import { buildMissionControlFoundation, getOfficerCleanupEvidence } from "@/lib/architect/mission-control/foundation";
 import type {
   ArchitectIncident,
   MissionControlFoundation,
@@ -629,7 +629,10 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
   const actionRegistryEvidence = unsafeActions.length
     ? unsafeActions.slice(0, 5).map((action) => `${action.label}: ${action.allowed ? "allowed" : "blocked"} (${action.riskClass}).`)
     : ["No unsafe action registry rows are connected."];
-  const hiveEvidence = foundation.agentRegistry.slice(0, 5).map((agent) => `${agent.name}: ${agent.autonomyLevel}; ${agent.currentStatus}.`);
+  const hiveEvidence = [
+    ...getOfficerCleanupEvidence(foundation.agentRegistry),
+    ...foundation.agentRegistry.slice(0, 3).map((agent) => `${agent.name}: ${agent.agentClass ?? "Agent"}; ${agent.autonomyLevel}; ${agent.currentStatus}.`)
+  ];
   const codexPacketEvidence = selectedIncident
     ? selectedIncident.evidence.concat(`Selected incident: ${selectedIncident.headline}`)
     : ["No active incident packet is selected."];
@@ -650,7 +653,7 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
     compactCard({ id: "deployment-regression", label: "Deployment / Regression", status: deployment?.status, value: metricValue(deployment), summary: metricSummary(deployment), evidence: cardEvidence(deployment), href: "/architect/technology" }),
     compactCard({ id: "source-vault", label: "Source Vault", status: sourceVault?.status, value: `${foundation.sourceVault.length} registered`, summary: "Sources are registered, not ingested.", evidence: sourceVaultEvidence, href: "/architect/technology" }),
     compactCard({ id: "action-registry", label: "Action Registry", status: unsafeBlocked ? "Pass" : "Failed", value: unsafeBlocked ? "Unsafe blocked" : "Review needed", summary: `${unsafeActions.length} unsafe action(s) blocked by registry.`, evidence: actionRegistryEvidence, href: "/architect/security" }),
-    compactCard({ id: "hive-ai", label: "Hive AI", status: hiveAi?.status, value: `${foundation.agentRegistry.length} agents`, summary: "Hive AI remains Level 0/1 only.", evidence: hiveEvidence, href: "/architect/technology" }),
+    compactCard({ id: "hive-ai", label: "Hive AI", status: hiveAi?.status, value: `${foundation.agentRegistry.length} agents`, summary: "Hive AI remains Level 0/1 only; Officer Assistants are evidence-led and non-breaking.", evidence: hiveEvidence, href: "/architect/technology" }),
     compactCard({ id: "codex-packets", label: "Codex Packets", status: selectedPacket ? "Pass" : "Needs Review", value: `${packetCount} packet(s)`, summary: selectedPacket ? "Codex packet is available for the selected incident." : "No active incident packet is selected.", evidence: codexPacketEvidence, href: "/architect/technology", actionLabel: selectedPacket ? "Copy Codex Packet" : undefined })
   ];
 }

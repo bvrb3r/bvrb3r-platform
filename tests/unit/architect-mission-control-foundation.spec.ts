@@ -3,9 +3,12 @@ import {
   ACTION_REGISTRY,
   HIVE_AGENT_REGISTRY,
   MISSION_CONTROL_LANES,
+  OFFICER_ASSISTANT_DEPARTMENTS,
   SOURCE_VAULT_REGISTRY,
   buildMissionControlFoundation,
   classifyArchitectIncident,
+  getOfficerAssistants,
+  getOfficerCleanupEvidence,
   validateCoreLoopState
 } from "@/lib/architect/mission-control/foundation";
 
@@ -175,6 +178,10 @@ describe("architect mission control foundation", () => {
       sourceName: "Architect Super Master Plan",
       ingestionStatus: "registered, not ingested"
     }));
+    expect(SOURCE_VAULT_REGISTRY).toContainEqual(expect.objectContaining({
+      sourceName: "Architect Officer Cleanup",
+      ingestionStatus: "registered, not ingested"
+    }));
     expect(SOURCE_VAULT_REGISTRY.some((source) => source.ingestionStatus === "ingested")).toBe(false);
   });
 
@@ -194,10 +201,34 @@ describe("architect mission control foundation", () => {
   it("keeps Hive AI agents read-only or draft-only in v1", () => {
     expect(HIVE_AGENT_REGISTRY).toContainEqual(expect.objectContaining({
       name: "Architect Prime",
+      agentClass: "Architect Prime",
       autonomyLevel: "Level 0 Read-only"
     }));
     expect(HIVE_AGENT_REGISTRY.filter((agent) => agent.name.toLowerCase().includes("payment") || agent.name.toLowerCase().includes("revenue")).every((agent) =>
       ["Level 0 Read-only", "Level 1 Draft mode"].includes(agent.autonomyLevel)
     )).toBe(true);
+  });
+
+  it("registers Officer Assistants as evidence-led non-breaking operators", () => {
+    const officers = getOfficerAssistants();
+
+    expect(officers).toHaveLength(OFFICER_ASSISTANT_DEPARTMENTS.length);
+    expect(officers.map((officer) => officer.department)).toEqual(OFFICER_ASSISTANT_DEPARTMENTS);
+    expect(officers.every((officer) => officer.agentClass === "Officer Assistant")).toBe(true);
+    expect(officers.every((officer) => officer.autonomyLevel === "Level 1 Draft mode")).toBe(true);
+    expect(officers.every((officer) => officer.actionAccess.includes("Read-only evidence review"))).toBe(true);
+    expect(officers.every((officer) => officer.mutationBoundary === "No app, money, user, team, schema, deployment, or issue-status mutation.")).toBe(true);
+    expect(officers.every((officer) => officer.passRule === "Can only report Pass when source cards already report Pass with connected evidence.")).toBe(true);
+    expect(officers.every((officer) => officer.currentStatus === "Needs Review")).toBe(true);
+  });
+
+  it("summarizes Officer Cleanup evidence without fake Pass claims", () => {
+    expect(getOfficerCleanupEvidence()).toEqual(expect.arrayContaining([
+      expect.stringContaining("Officer Assistant(s) registered"),
+      "All Officer Assistants are Level 1 Draft mode with read-only evidence access.",
+      "Officer Assistants do not mutate money, payouts, refunds, routing, roles, team relationships, schema, deployments, or issue status.",
+      "Missing officer evidence stays Needs Review / Not connected.",
+      "Prompt generation or officer review never marks an issue Pass by itself."
+    ]));
   });
 });

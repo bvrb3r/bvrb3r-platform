@@ -8,12 +8,14 @@ const {
   useArchitectAccountDetailQueryMock,
   useArchitectAccountActionMutationMock,
   useArchitectBarberProfileRepairMutationMock,
+  useArchitectClientPaymentRepairMutationMock,
   useArchitectVerificationActionMutationMock
 } = vi.hoisted(() => ({
   useArchitectAccountDirectoryQueryMock: vi.fn(),
   useArchitectAccountDetailQueryMock: vi.fn(),
   useArchitectAccountActionMutationMock: vi.fn(),
   useArchitectBarberProfileRepairMutationMock: vi.fn(),
+  useArchitectClientPaymentRepairMutationMock: vi.fn(),
   useArchitectVerificationActionMutationMock: vi.fn()
 }));
 
@@ -45,6 +47,7 @@ vi.mock("@/lib/platform-admin/client", () => ({
   useArchitectAccountDetailQuery: useArchitectAccountDetailQueryMock,
   useArchitectAccountActionMutation: useArchitectAccountActionMutationMock,
   useArchitectBarberProfileRepairMutation: useArchitectBarberProfileRepairMutationMock,
+  useArchitectClientPaymentRepairMutation: useArchitectClientPaymentRepairMutationMock,
   useArchitectVerificationActionMutation: useArchitectVerificationActionMutationMock
 }));
 
@@ -250,6 +253,7 @@ describe("architect account workspaces", () => {
     useArchitectAccountDetailQueryMock.mockReset();
     useArchitectAccountActionMutationMock.mockReset();
     useArchitectBarberProfileRepairMutationMock.mockReset();
+    useArchitectClientPaymentRepairMutationMock.mockReset();
     useArchitectVerificationActionMutationMock.mockReset();
 
     useArchitectAccountActionMutationMock.mockReturnValue({
@@ -261,6 +265,10 @@ describe("architect account workspaces", () => {
       mutateAsync: vi.fn()
     });
     useArchitectBarberProfileRepairMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn()
+    });
+    useArchitectClientPaymentRepairMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn()
     });
