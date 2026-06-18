@@ -13,6 +13,7 @@ const config = [
   {
     ignores: [
       ".next/**",
+      ".gradle-user-home/**",
       ".tools/**",
       "android/**",
       "dist/**",

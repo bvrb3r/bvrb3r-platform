@@ -114,10 +114,10 @@ export function TeamWorkspace({
 }) {
   const shopQuery = useShopDashboardQuery();
   const data = shopQuery.data;
-  const appointments = data?.appointments ?? [];
-  const walkIns = data?.walkIns ?? [];
-  const workflowEvents = data?.workflowEvents ?? [];
-  const barbers = data?.barbers ?? [];
+  const appointments = useMemo(() => data?.appointments ?? [], [data?.appointments]);
+  const walkIns = useMemo(() => data?.walkIns ?? [], [data?.walkIns]);
+  const workflowEvents = useMemo(() => data?.workflowEvents ?? [], [data?.workflowEvents]);
+  const barbers = useMemo(() => data?.barbers ?? [], [data?.barbers]);
   const summary = data?.summary;
   const businessDate = summary?.latestDate ?? summary?.businessDate ?? new Date().toISOString().slice(0, 10);
   const isInitialLoading = shopQuery.isLoading && !data;

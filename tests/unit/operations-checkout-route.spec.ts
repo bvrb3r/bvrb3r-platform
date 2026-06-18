@@ -159,7 +159,7 @@ describe("operations checkout route", () => {
           tipAmount: 12,
           paymentMethod: "tap_to_pay"
         })
-      }) as any,
+      }) as Parameters<typeof postCheckout>[0],
       {
         params: Promise.resolve({ appointmentId: "appt-live-1" })
       }
@@ -212,7 +212,7 @@ describe("operations checkout route", () => {
           tipAmount: 12,
           paymentMethod: "tap_to_pay"
         })
-      }) as any,
+      }) as Parameters<typeof postCheckout>[0],
       {
         params: Promise.resolve({ appointmentId: "appt-live-1" })
       }

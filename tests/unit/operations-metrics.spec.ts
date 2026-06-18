@@ -12,7 +12,7 @@ describe("owner operations metrics helpers", () => {
       { id: "other-day", status: "booked", start: "2026-03-27T09:00:00-04:00" }
     ] as Array<{ id: string; status: string; start: string }>;
 
-    const ordered = sortOwnerDashboardAppointments(appointments as any, "2026-03-26");
+    const ordered = sortOwnerDashboardAppointments(appointments as Parameters<typeof sortOwnerDashboardAppointments>[0], "2026-03-26");
 
     expect(ordered.map((appointment) => appointment.id)).toEqual([
       "in-service",
@@ -39,7 +39,7 @@ describe("owner operations metrics helpers", () => {
           status: "booked",
           start: "2026-03-26T11:00:00-04:00"
         }
-      ] as any,
+      ] as Parameters<typeof getBarberCompensationSummary>[1],
       [
         {
           appointmentReference: "appt-1",

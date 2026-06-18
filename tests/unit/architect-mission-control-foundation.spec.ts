@@ -70,6 +70,67 @@ describe("architect mission control foundation", () => {
     });
   });
 
+  it("keeps missing cleanup evidence as Needs Review instead of fake Pass", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
+    const securityLane = foundation.departmentLanes.find((lane) => lane.id === "security");
+
+    expect(foundation.ceoCommandCenter.find((card) => card.id === "ceo-role-drift-health")).toMatchObject({
+      status: "Needs Review",
+      metricValue: "Not connected"
+    });
+    expect(securityLane?.cards.find((card) => card.id === "security-role-drift")).toMatchObject({
+      status: "Needs Review"
+    });
+    expect(securityLane?.cards.find((card) => card.id === "security-rls-disabled")).toMatchObject({
+      status: "Needs Review"
+    });
+    expect(securityLane?.cards.find((card) => card.id === "security-audit")).toMatchObject({
+      status: "Needs Review"
+    });
+  });
+
+  it("surfaces cleanup evidence across officer lanes without mutating production truth", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z", [{
+      id: "ceo-role-drift-health",
+      label: "Role Drift Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      metricValue: "2 drift",
+      summary: "Non-canonical public role evidence exists in profiles.",
+      evidence: ["Non-canonical role values found: platform_admin (2).", "Read-only evidence only; no role mutation was attempted."]
+    }, {
+      id: "ceo-rls-disabled-evidence",
+      label: "RLS Disabled Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      metricValue: "28 disabled",
+      summary: "Public Supabase tables have RLS disabled.",
+      evidence: ["28 public Supabase table(s) have RLS disabled.", "No RLS enablement was attempted."]
+    }, {
+      id: "ceo-audit-log-evidence",
+      label: "Audit Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      metricValue: "0 row(s)",
+      summary: "audit_logs is connected but empty.",
+      evidence: ["audit_logs returned 0 row(s).", "No audit row was inserted."]
+    }]);
+    const securityLane = foundation.departmentLanes.find((lane) => lane.id === "security");
+    const complianceLane = foundation.departmentLanes.find((lane) => lane.id === "compliance");
+    const technologyLane = foundation.departmentLanes.find((lane) => lane.id === "technology");
+
+    expect(securityLane?.status).toBe("Failed");
+    expect(securityLane?.cards.find((card) => card.id === "security-role-drift")).toMatchObject({ status: "Failed" });
+    expect(securityLane?.cards.find((card) => card.id === "security-rls-disabled")).toMatchObject({ status: "Failed" });
+    expect(securityLane?.cards.find((card) => card.id === "security-audit")).toMatchObject({ status: "Failed" });
+    expect(complianceLane?.cards.find((card) => card.id === "compliance-trust-gates")).toMatchObject({ status: "Failed" });
+    expect(technologyLane?.cards.find((card) => card.id === "technology-rls-disabled")).toMatchObject({ status: "Failed" });
+    expect(securityLane?.cards.find((card) => card.id === "security-role-drift")?.evidence.join("\n")).toContain("no role mutation was attempted");
+  });
+
   it("keeps missing validator data as Needs Review instead of Pass", () => {
     const validators = validateCoreLoopState();
 

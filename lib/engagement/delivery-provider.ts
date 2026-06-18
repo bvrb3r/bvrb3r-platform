@@ -1,7 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { isSupabaseEnabled } from "@/lib/config/runtime";
-import { demoNotificationDeliveries } from "@/lib/data/activation";
-import { demoNotificationDeliveryAttempts } from "@/lib/data/mobile";
 import { toNotificationDeliveryRecord } from "@/lib/engagement/delivery";
 import { executeNotificationAttempt } from "@/lib/engagement/live-delivery";
 import { getMobileProvider } from "@/lib/mobile/provider";
@@ -17,13 +15,6 @@ export interface NotificationDeliveryProvider {
   readDeliveries(filters?: { notificationIds?: string[] }): Promise<NotificationDeliveryRecord[]>;
   readAttempts(filters?: { notificationIds?: string[] }): Promise<NotificationDeliveryAttemptRecord[]>;
   syncNotifications(notifications: EngagementNotificationRecord[]): Promise<void>;
-}
-
-let demoDeliveries = [...demoNotificationDeliveries];
-let demoAttempts = [...demoNotificationDeliveryAttempts];
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function toRow(record: NotificationDeliveryRecord) {
@@ -119,18 +110,6 @@ function fromAttemptRow(row: any): NotificationDeliveryAttemptRecord {
 
 function createAttemptId(deliveryId: string, suffix: string) {
   return `attempt-${deliveryId}-${suffix}`;
-}
-
-async function seedSupabase(supabase: SupabaseClient) {
-  const result = await Promise.all([
-    supabase.from("notification_deliveries").upsert(demoNotificationDeliveries.map(toRow), { onConflict: "id" }),
-    supabase.from("notification_delivery_attempts").upsert(demoNotificationDeliveryAttempts.map(toAttemptRow), { onConflict: "id" })
-  ]);
-  for (const write of result) {
-    if (write.error) {
-      throw write.error;
-    }
-  }
 }
 
 async function buildAttempts(notifications: EngagementNotificationRecord[]) {
@@ -337,39 +316,6 @@ async function processNotifications(
   return {
     deliveries: mergedDeliveries,
     attempts: mergedAttempts
-  };
-}
-
-function createDemoProvider(): NotificationDeliveryProvider {
-  return {
-    kind: "demo",
-    async readDeliveries(filters) {
-      const rows = clone(demoDeliveries);
-      if (!filters?.notificationIds?.length) {
-        return rows;
-      }
-
-      const ids = new Set(filters.notificationIds);
-      return rows.filter((record) => ids.has(record.notificationId));
-    },
-    async readAttempts(filters) {
-      const rows = clone(demoAttempts);
-      if (!filters?.notificationIds?.length) {
-        return rows;
-      }
-
-      const ids = new Set(filters.notificationIds);
-      return rows.filter((record) => ids.has(record.notificationId));
-    },
-    async syncNotifications(notifications) {
-      if (!notifications.length) {
-        return;
-      }
-
-      const processed = await processNotifications(demoDeliveries, demoAttempts, notifications);
-      demoDeliveries = processed.deliveries;
-      demoAttempts = processed.attempts;
-    }
   };
 }
 

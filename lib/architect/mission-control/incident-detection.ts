@@ -27,6 +27,10 @@ const MISSION_SYSTEMS: Array<{ key: MissionControlHealthItem["key"]; label: stri
   { key: "payout_eligibility", label: "Payout Eligibility", healthySummary: "Eligible payout state is internally consistent." }
 ];
 
+const CANONICAL_PUBLIC_PROFILE_ROLES = ["client_user", "barber_user", "shop_owner_user"] as const;
+const PROFILE_ROLE_FIELDS = ["role", "primary_onboarding_role", "user_role", "account_role", "profile_role"] as const;
+const KNOWN_RLS_DISABLED_PUBLIC_TABLE_COUNT = 28;
+
 async function selectRows<T extends JsonRecord>(
   supabase: SupabaseClient,
   table: string,
@@ -684,6 +688,107 @@ function sumMoney(rows: JsonRecord[], fields: string[]) {
   }, 0);
 }
 
+function buildRoleDriftMetric(profiles: TableRead) {
+  if (!profiles.connected) {
+    return metricCard(
+      "ceo-role-drift-health",
+      "Role Drift Evidence",
+      "Security",
+      "Needs Review",
+      "Not connected",
+      "Profile role drift cannot be verified because profiles is not connected.",
+      [
+        profiles.errorMessage ?? "profiles table is not connected.",
+        "Read-only evidence only; no role mutation was attempted."
+      ]
+    );
+  }
+
+  const canonicalRoles = new Set<string>(CANONICAL_PUBLIC_PROFILE_ROLES);
+  const driftCounts = new Map<string, number>();
+
+  for (const row of profiles.rows) {
+    for (const field of PROFILE_ROLE_FIELDS) {
+      const value = stringValue(row[field]).trim();
+      if (!value || canonicalRoles.has(value)) {
+        continue;
+      }
+      driftCounts.set(value, (driftCounts.get(value) ?? 0) + 1);
+    }
+  }
+
+  const driftSummary = [...driftCounts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([role, count]) => `${role} (${count})`);
+  const driftCount = [...driftCounts.values()].reduce((total, count) => total + count, 0);
+
+  return metricCard(
+    "ceo-role-drift-health",
+    "Role Drift Evidence",
+    "Security",
+    driftCount > 0 ? "Failed" : "Pass",
+    `${driftCount} drift`,
+    driftCount > 0
+      ? "Non-canonical public role evidence exists in profiles and must remain Failed until role truth is cleaned safely."
+      : "Connected profiles evidence found no non-canonical public role values.",
+    [
+      `${profiles.rows.length} profile row(s) inspected for role drift.`,
+      `Canonical public roles: ${CANONICAL_PUBLIC_PROFILE_ROLES.join(", ")}.`,
+      driftCount > 0 ? `Non-canonical role values found: ${driftSummary.join(", ")}.` : "No non-canonical public role values found.",
+      "Read-only evidence only; no role mutation was attempted."
+    ]
+  );
+}
+
+function buildRlsDisabledEvidenceMetric() {
+  return metricCard(
+    "ceo-rls-disabled-evidence",
+    "RLS Disabled Evidence",
+    "Security",
+    "Failed",
+    `${KNOWN_RLS_DISABLED_PUBLIC_TABLE_COUNT} disabled`,
+    "Safe cleanup evidence reports public Supabase tables with RLS disabled. This must remain Failed until policy work repairs the underlying table protections.",
+    [
+      `Safe cleanup input reports ${KNOWN_RLS_DISABLED_PUBLIC_TABLE_COUNT} public Supabase table(s) have RLS disabled.`,
+      "This pass is read-only for RLS: no RLS enablement, policy creation, migration, or production data mutation was attempted.",
+      "RLS truth must be repaired through an explicit approved security migration before Pass."
+    ]
+  );
+}
+
+function buildAuditEvidenceMetric(auditLogs: TableRead) {
+  if (!auditLogs.connected) {
+    return metricCard(
+      "ceo-audit-log-evidence",
+      "Audit Evidence",
+      "Security",
+      "Needs Review",
+      "Not connected",
+      "Audit trail evidence cannot be verified because audit_logs is not connected.",
+      [
+        auditLogs.errorMessage ?? "audit_logs table is not connected.",
+        "Read-only evidence only; no audit row was inserted."
+      ]
+    );
+  }
+
+  const auditCount = auditLogs.rows.length;
+  return metricCard(
+    "ceo-audit-log-evidence",
+    "Audit Evidence",
+    "Security",
+    auditCount > 0 ? "Pass" : "Failed",
+    `${auditCount} row(s)`,
+    auditCount > 0
+      ? "audit_logs has connected rows for audit trail evidence."
+      : "audit_logs is connected but empty, so audit trail coverage is Failed until canonical audit writes exist.",
+    [
+      `audit_logs returned ${auditCount} row(s).`,
+      "Read-only evidence only; no audit row was inserted."
+    ]
+  );
+}
+
 function countCard(
   id: string,
   label: string,
@@ -712,7 +817,8 @@ async function buildCeoPlatformMetrics(supabase: SupabaseClient, incidents: Arch
     appointments,
     payments,
     routingRows,
-    culturePosts
+    culturePosts,
+    auditLogs
   ] = await Promise.all([
     trySelectRows(supabase, "profiles", { limit: 10000 }),
     trySelectRows(supabase, "clients", { limit: 10000 }),
@@ -721,7 +827,8 @@ async function buildCeoPlatformMetrics(supabase: SupabaseClient, incidents: Arch
     trySelectRows(supabase, "appointments", { limit: 10000 }),
     trySelectRows(supabase, "payments", { limit: 10000 }),
     trySelectRows(supabase, "payment_routing_records", { limit: 10000 }),
-    trySelectRows(supabase, "culture_posts", { limit: 10000 })
+    trySelectRows(supabase, "culture_posts", { limit: 10000 }),
+    trySelectRows(supabase, "audit_logs", { limit: 100 })
   ]);
 
   const today = checkedAt.slice(0, 10);
@@ -767,6 +874,9 @@ async function buildCeoPlatformMetrics(supabase: SupabaseClient, incidents: Arch
     countCard("ceo-active-shops", "Active Shops", "Operations", shops, activeShops.length, "Active shop count is read from shops status evidence."),
     countCard("ceo-active-barbers", "Active Barbers", "Operations", barbers, activeBarbers.length, "Active barber count is read from barber status/bookable evidence."),
     metricCard("ceo-pending-approvals", "Pending Barber/Shop Approvals", "Compliance", barbers.connected || shops.connected ? "Pass" : "Needs Review", barbers.connected || shops.connected ? String(pendingApprovals.length) : "Not connected", "Pending approvals are counted from barber/shop approval status fields.", [`barber rows=${barbers.rows.length}`, `shop rows=${shops.rows.length}`]),
+    buildRoleDriftMetric(profiles),
+    buildRlsDisabledEvidenceMetric(),
+    buildAuditEvidenceMetric(auditLogs),
     metricCard("ceo-critical-incidents", "Critical Incidents", "Incidents", incidents.some((incident) => incident.severity === "critical") ? "Failed" : "Needs Review", String(incidents.filter((incident) => incident.severity === "critical").length), "Absence of critical incidents does not prove full-platform health.", incidents.length ? incidents.map((incident) => incident.headline).slice(0, 4) : ["Automatic incident detector returned no incidents."]),
     metricCard("ceo-regression-deployment-health", "Regression / Deployment Health", "Technology", "Needs Review", "Needs Review", "Deployment and regression truth require CI/deployment evidence beyond this database snapshot.", ["Commit fingerprint is displayed separately."]),
     metricCard("ceo-next-executive-decisions", "Next Executive Decisions", "Executive Decisions", "Needs Review", "Needs Review", "Mission Control surfaces decisions; Phillip remains final executive decision maker.", ["Review Failed and Needs Review cards before release decisions."])
