@@ -352,6 +352,45 @@ export async function detectArchitectMissionIncidents(supabase: SupabaseClient) 
     }
     const appointment = appointments.find((row) => row.id === payment.appointment_id);
     const appointmentStatus = String(appointment?.status ?? "").toLowerCase();
+    if (appointment && ["cancelled", "canceled"].includes(appointmentStatus)) {
+      incidents.push(buildIncident({
+        diagnosisCode: "captured_payment_cancelled_appointment",
+        affectedEntity: `payment ${String(payment.id ?? "unknown")}`,
+        affectedRole: "client",
+        affectedTable: "payments",
+        affectedRoute: "/api/bookings/[id]/cancel",
+        severity: "critical",
+        confidence: "high",
+        recommendedAction: "Investigate refund/reversal posture and keep routing blocked or in manual review. Do not mark payout ready.",
+        canRepair: false,
+        repairType: null,
+        codexRequired: true,
+        targetType: "payment",
+        targetId: String(payment.id ?? ""),
+        headline: "Captured payment is attached to a cancelled appointment.",
+        evidence: [
+          `payment.status=${String(payment.status ?? payment.payment_status ?? "unknown")}`,
+          `appointment.status=${appointmentStatus}`,
+          "captured payment + cancelled appointment must remain blocked/manual_review until refund or reversal truth is resolved"
+        ],
+        analysis: {
+          likelyRootCause: "A cancellation path left captured money attached to a cancelled appointment without a settled refund/reversal posture.",
+          confidence: 91,
+          affectedLayer: "payment routing",
+          failedInvariant: "Cancelled appointments with captured payments must not become payout-ready.",
+          supportingEvidence: [
+            `paymentId=${String(payment.id ?? "unknown")}`,
+            `appointmentId=${String(appointment.id ?? "unknown")}`
+          ],
+          ruledOut: ["payment capture exists"],
+          safeRepairAvailable: false,
+          codexRequired: true,
+          nextBestAction: "Inspect payment, refund, dispute, and routing state; do not start by editing UI."
+        }
+      }));
+      continue;
+    }
+
     if (!appointment || !["confirmed", "completed", "checked_in", "in_service"].includes(appointmentStatus)) {
       incidents.push(buildIncident({
         diagnosisCode: "payment_captured_but_appointment_missing",

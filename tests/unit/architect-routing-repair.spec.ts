@@ -52,7 +52,7 @@ describe("architect routing repair", () => {
         id: "routing-existing",
         appointment_id: APPOINTMENT_ID,
         payment_id: "e681ffde-7a67-4277-96c0-a35519ba4acd",
-        payout_readiness_status: "eligible"
+        payout_readiness_status: "ready"
       }]
     });
 
@@ -62,6 +62,21 @@ describe("architect routing repair", () => {
     expect(result.repaired).toBe(false);
     expect(result.routingFound).toBe(true);
     expect(result.result).toBe("skipped");
+    expect(tables.payment_routing_records).toHaveLength(1);
+  });
+
+  it("does not duplicate routing when repair runs twice", async () => {
+    const tables = createArchitectDebugTables();
+    const supabase = createSupabaseStub(tables) as never;
+
+    const first = await repairMissingPaymentRouting(supabase, ARCHITECT_USER, APPOINTMENT_ID);
+    const second = await repairMissingPaymentRouting(supabase, ARCHITECT_USER, APPOINTMENT_ID);
+
+    expect(first.ok).toBe(true);
+    expect(first.repaired).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(second.repaired).toBe(false);
+    expect(second.result).toBe("skipped");
     expect(tables.payment_routing_records).toHaveLength(1);
   });
 
@@ -91,18 +106,131 @@ describe("architect routing repair", () => {
     });
   });
 
-  it("uses eligible only when production constraints allow eligible", async () => {
+  it("uses current production-legal payout readiness values even if stale constraints mention eligible", async () => {
     const tables = createArchitectDebugTables({
       "information_schema.check_constraints": [{
         constraint_name: "payment_routing_records_payout_readiness_status_check",
-        check_clause: "CHECK ((payout_readiness_status = ANY (ARRAY['pending'::text, 'eligible'::text, 'blocked'::text])))"
+        check_clause: "CHECK ((payout_readiness_status = ANY (ARRAY['not_ready'::text, 'needs_attention'::text, 'eligible'::text, 'ready'::text, 'blocked'::text])))"
       }]
     });
 
     const result = await repairMissingPaymentRouting(createSupabaseStub(tables) as never, ARCHITECT_USER, APPOINTMENT_ID);
 
     expect(result.ok).toBe(true);
-    expect(tables.payment_routing_records[0].payout_readiness_status).toBe("eligible");
+    expect(tables.payment_routing_records[0].payout_readiness_status).toBe("ready");
+    expect(tables.payment_routing_records[0].metadata).toMatchObject({
+      readinessMeaning: "eligible",
+      payoutReadinessDbValue: "ready"
+    });
+  });
+
+  it("uses manual review posture when shop relationship truth is unknown", async () => {
+    const tables = createArchitectDebugTables({
+      appointments: [{
+        ...createArchitectDebugTables().appointments[0],
+        shop_id: "shop-missing-relationship"
+      }],
+      shop_barber_relationships: []
+    });
+
+    const result = await repairMissingPaymentRouting(createSupabaseStub(tables) as never, ARCHITECT_USER, APPOINTMENT_ID);
+
+    expect(result.ok).toBe(true);
+    expect(result.repaired).toBe(true);
+    expect(tables.payment_routing_records).toHaveLength(1);
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      appointment_id: APPOINTMENT_ID,
+      shop_id: "shop-missing-relationship",
+      payout_readiness_status: "needs_attention",
+      money_routing_status: "manual_review",
+      reconciliation_status: "manual_review",
+      eligible_at: null,
+      released_at: null
+    });
+    expect(String(tables.payment_routing_records[0].blocked_reason)).toContain("manual review");
+  });
+
+  it("keeps captured payments on cancelled appointments blocked and in manual review", async () => {
+    const cancelledAppointmentId = "cancelled-captured-appointment";
+    const tables = createArchitectDebugTables({
+      appointments: [{
+        ...createArchitectDebugTables().appointments[0],
+        id: cancelledAppointmentId,
+        status: "cancelled",
+        completed_at: null
+      }],
+      payments: [{
+        ...createArchitectDebugTables().payments[0],
+        id: "payment-cancelled-captured",
+        appointment_id: cancelledAppointmentId,
+        status: "captured",
+        payment_status: "captured"
+      }],
+      appointment_status_history: []
+    });
+
+    const result = await repairMissingPaymentRouting(createSupabaseStub(tables) as never, ARCHITECT_USER, cancelledAppointmentId);
+
+    expect(result.ok).toBe(true);
+    expect(result.repaired).toBe(true);
+    expect(tables.payment_routing_records).toHaveLength(1);
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      appointment_id: cancelledAppointmentId,
+      payment_id: "payment-cancelled-captured",
+      payout_readiness_status: "blocked",
+      money_routing_status: "manual_review",
+      reconciliation_status: "manual_review",
+      eligible_at: null,
+      released_at: null,
+      barber_payout_amount: 0,
+      platform_fee_amount: 0
+    });
+    expect(String(tables.payment_routing_records[0].blocked_reason)).toContain("cancelled appointment");
+  });
+
+  it("updates an existing cancelled captured routing row without duplicating it", async () => {
+    const cancelledAppointmentId = "cancelled-captured-appointment";
+    const tables = createArchitectDebugTables({
+      appointments: [{
+        ...createArchitectDebugTables().appointments[0],
+        id: cancelledAppointmentId,
+        status: "cancelled",
+        completed_at: null
+      }],
+      payments: [{
+        ...createArchitectDebugTables().payments[0],
+        id: "payment-cancelled-captured",
+        appointment_id: cancelledAppointmentId,
+        status: "captured",
+        payment_status: "captured"
+      }],
+      payment_routing_records: [{
+        id: "routing-unsafe-cancelled",
+        appointment_id: cancelledAppointmentId,
+        payment_id: "payment-cancelled-captured",
+        payout_readiness_status: "ready",
+        money_routing_status: "pending",
+        reconciliation_status: "open",
+        eligible_at: "2026-05-16T14:30:00.000Z",
+        released_at: "2026-05-16T15:30:00.000Z"
+      }]
+    });
+
+    const result = await repairMissingPaymentRouting(createSupabaseStub(tables) as never, ARCHITECT_USER, cancelledAppointmentId);
+
+    expect(result.ok).toBe(true);
+    expect(result.repaired).toBe(true);
+    expect(tables.payment_routing_records).toHaveLength(1);
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      id: "routing-unsafe-cancelled",
+      appointment_id: cancelledAppointmentId,
+      payment_id: "payment-cancelled-captured",
+      payout_readiness_status: "blocked",
+      money_routing_status: "manual_review",
+      reconciliation_status: "manual_review",
+      eligible_at: null,
+      released_at: null
+    });
   });
 
   it("rejects non-completed appointments", async () => {

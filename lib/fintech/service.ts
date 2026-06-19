@@ -63,9 +63,11 @@ import { processStripeBillingWebhookEvent } from "@/lib/monetization/service";
 import {
   isPayoutReadinessEligible,
   loadPaymentRoutingConstraintEvidence,
+  moneyRoutingDbValueForManualReview,
   moneyRoutingDbValueForPending,
   payoutReadinessMeaning,
   readinessDbValueForBusinessMeaning,
+  reconciliationDbValueForManualReview,
   reconciliationDbValueForOpen,
   type PaymentRoutingConstraintEvidence
 } from "@/lib/architect/mission-control/schema-constraints";
@@ -910,6 +912,11 @@ function moneyRoutingDbValueForStatus(
   }
 
   return moneyRoutingDbValueForPending(evidence) as MoneyRoutingStatus;
+}
+
+function isCancelledAppointmentStatus(status: unknown) {
+  const normalized = String(status ?? "").toLowerCase();
+  return normalized === "cancelled" || normalized === "canceled";
 }
 
 function reconciliationDbValueForStatus(
@@ -2939,6 +2946,11 @@ export async function syncPaymentRoutingRecord(
   const providerFeeAmount = options?.providerFeeAmount ?? (existingRouting ? numeric(existingRouting.provider_fee_amount) : 0);
   const disputeHold = await hasActiveDisputeHold(supabase, appointment?.reference_code ?? null);
   const posSaleEligibilityForced = Boolean(posSalePaidSuccessful && !disputeHold);
+  const capturedCancelledAppointment = Boolean(
+    appointment
+      && isCancelledAppointmentStatus(appointment.status)
+      && isCompletionPaymentSuccessful(payment)
+  );
   const completionEligibilityForced = Boolean(
     (
       (options?.forceCompletionEligibility && appointment?.status === "completed")
@@ -2983,18 +2995,26 @@ export async function syncPaymentRoutingRecord(
   const membershipBlockedReason = shopId && !membership && payment.payment_type !== "tip"
     ? "No shop compensation assignment is stored for this payment."
     : null;
+  const capturedCancelledReviewReason = capturedCancelledAppointment
+    ? "Captured payment is attached to a cancelled appointment and requires refund or reversal review before routing can pass."
+    : null;
   const blockedReason =
-    membership?.payout_block_reason?.trim()
+    capturedCancelledReviewReason
+    || membership?.payout_block_reason?.trim()
     || membershipBlockedReason
     || subscriptionBlockedReasons[0]
     || calculated.blockedReason;
   const payoutReadinessStatus: FintechPayoutReadinessStatus = completionEligibilityForced
     ? "eligible"
-    : blockedReason
+    : capturedCancelledAppointment
+      ? "blocked"
+      : blockedReason
       ? "blocked"
       : calculated.payoutReadinessStatus;
   const moneyRoutingStatus: MoneyRoutingStatus =
-    paymentStatusForRouting === "refunded"
+    capturedCancelledAppointment
+      ? "manual_review"
+      : paymentStatusForRouting === "refunded"
       ? "refunded"
       : completionEligibilityForced
         ? "pending"
@@ -3002,25 +3022,37 @@ export async function syncPaymentRoutingRecord(
   const constraintEvidence = await loadPaymentRoutingConstraintEvidence(supabase);
   const payoutReadinessDbStatus = readinessDbValueForStatus(constraintEvidence, payoutReadinessStatus);
   const moneyRoutingDbStatus = moneyRoutingDbValueForStatus(constraintEvidence, moneyRoutingStatus);
+  const capturedCancelledMoneyRoutingStatus = capturedCancelledAppointment
+    ? moneyRoutingDbValueForManualReview(constraintEvidence) as MoneyRoutingStatus
+    : moneyRoutingDbStatus;
   const now = new Date().toISOString();
   const reconciliationStatus = reconciliationDbValueForStatus(
     constraintEvidence,
-    options?.reconciliationStatus
+    capturedCancelledAppointment
+      ? reconciliationDbValueForManualReview(constraintEvidence)
+      : options?.reconciliationStatus
       ?? existingRouting?.reconciliation_status
       ?? "open"
   );
-  const nextEligibleAt = completionEligibilityForced || moneyRoutingDbStatus === "ready_for_payout"
+  const nextEligibleAt = capturedCancelledAppointment
+    ? null
+    : completionEligibilityForced || capturedCancelledMoneyRoutingStatus === "ready_for_payout"
     ? existingRouting?.eligible_at ?? now
     : existingRouting?.eligible_at ?? null;
-  const nextHeldAt = disputeHold && moneyRoutingDbStatus === "blocked"
+  const nextHeldAt = (capturedCancelledAppointment || disputeHold) && ["blocked", "manual_review"].includes(capturedCancelledMoneyRoutingStatus)
     ? existingRouting?.held_at ?? now
     : existingRouting?.held_at ?? null;
-  const nextReleasedAt = moneyRoutingDbStatus === "paid_out"
+  const nextReleasedAt = capturedCancelledAppointment
+    ? null
+    : capturedCancelledMoneyRoutingStatus === "paid_out"
     ? existingRouting?.released_at ?? now
     : existingRouting?.released_at ?? null;
-  const nextReversedAt = moneyRoutingDbStatus === "refunded"
+  const nextReversedAt = capturedCancelledMoneyRoutingStatus === "refunded"
     ? existingRouting?.reversed_at ?? now
     : existingRouting?.reversed_at ?? null;
+  const distributablePlatformFeeAmount = capturedCancelledAppointment ? 0 : calculated.platformFeeAmount;
+  const distributableBarberPayoutAmount = capturedCancelledAppointment ? 0 : calculated.barberPayoutAmount;
+  const distributableShopSplitAmount = capturedCancelledAppointment ? 0 : calculated.shopSplitAmount;
 
   const routingPayload = {
     payment_id: payment.id,
@@ -3033,12 +3065,12 @@ export async function syncPaymentRoutingRecord(
     refunded_amount: calculated.refundedAmount,
     provider_fee_amount: calculated.providerFeeAmount,
     provider_net_amount: calculated.providerNetAmount,
-    platform_fee_amount: calculated.platformFeeAmount,
-    barber_payout_amount: calculated.barberPayoutAmount,
-    shop_split_amount: calculated.shopSplitAmount,
+    platform_fee_amount: distributablePlatformFeeAmount,
+    barber_payout_amount: distributableBarberPayoutAmount,
+    shop_split_amount: distributableShopSplitAmount,
     currency: payment.currency.toLowerCase(),
     payout_readiness_status: payoutReadinessDbStatus,
-    money_routing_status: moneyRoutingDbStatus,
+    money_routing_status: capturedCancelledMoneyRoutingStatus,
     blocked_reason: completionEligibilityForced ? null : blockedReason,
     eligible_at: nextEligibleAt,
     held_at: nextHeldAt,
@@ -3060,6 +3092,7 @@ export async function syncPaymentRoutingRecord(
       appointmentStatus: appointment?.status ?? null,
       posSaleId: payment.pos_sale_id ?? null,
       posSaleStatus: posSale?.status ?? null,
+      capturedCancelledAppointment,
       disputeHold,
       subscriptionBlockedReasons,
       barberPayoutGate,

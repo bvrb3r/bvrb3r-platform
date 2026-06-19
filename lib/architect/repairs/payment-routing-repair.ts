@@ -4,9 +4,11 @@ import type { ArchitectActor, ArchitectRepairResult, JsonRecord } from "@/lib/ar
 import {
   DEFAULT_PAYMENT_ROUTING_CONSTRAINTS,
   loadPaymentRoutingConstraintEvidence,
+  moneyRoutingDbValueForManualReview,
   moneyRoutingDbValueForPending,
   paymentRoutingConstraintEvidenceToJson,
   readinessDbValueForBusinessMeaning,
+  reconciliationDbValueForManualReview,
   reconciliationDbValueForOpen
 } from "@/lib/architect/mission-control/schema-constraints";
 import { writeArchitectRepairAudit } from "@/lib/architect/repairs/audit";
@@ -24,6 +26,8 @@ type RoutingRelationshipContext = {
   shopPercent: number | null;
   relationshipId: unknown;
   compensationRuleId: unknown;
+  relationshipKnown: boolean;
+  reviewReason: string | null;
 };
 
 function safeErrorMessage(error: unknown) {
@@ -102,7 +106,9 @@ async function resolveRoutingRelationshipContext(
       barberPercent: null,
       shopPercent: null,
       relationshipId: null,
-      compensationRuleId: null
+      compensationRuleId: null,
+      relationshipKnown: true,
+      reviewReason: null
     };
   }
 
@@ -143,7 +149,11 @@ async function resolveRoutingRelationshipContext(
     barberPercent,
     shopPercent,
     relationshipId: relationship?.id ?? null,
-    compensationRuleId: compensationRule?.id ?? null
+    compensationRuleId: compensationRule?.id ?? null,
+    relationshipKnown: Boolean(relationship),
+    reviewReason: relationship
+      ? null
+      : "Shop relationship truth is missing for this completed captured payment; routing requires manual review."
   };
 }
 
@@ -187,9 +197,16 @@ export function buildPaymentRoutingRepairPayload(input: {
     shopPercent: input.relationshipContext.shopPercent
   });
   const constraintEvidence = input.constraintEvidence ?? DEFAULT_PAYMENT_ROUTING_CONSTRAINTS;
-  const payoutReadinessStatus = readinessDbValueForBusinessMeaning(constraintEvidence, "eligible");
-  const moneyRoutingStatus = moneyRoutingDbValueForPending(constraintEvidence);
-  const reconciliationStatus = reconciliationDbValueForOpen(constraintEvidence);
+  const requiresManualReview = !input.relationshipContext.relationshipKnown;
+  const payoutReadinessStatus = requiresManualReview
+    ? readinessDbValueForBusinessMeaning(constraintEvidence, "needs_attention")
+    : readinessDbValueForBusinessMeaning(constraintEvidence, "eligible");
+  const moneyRoutingStatus = requiresManualReview
+    ? moneyRoutingDbValueForManualReview(constraintEvidence)
+    : moneyRoutingDbValueForPending(constraintEvidence);
+  const reconciliationStatus = requiresManualReview
+    ? reconciliationDbValueForManualReview(constraintEvidence)
+    : reconciliationDbValueForOpen(constraintEvidence);
 
   return {
     payment_id: input.payment.id,
@@ -209,17 +226,18 @@ export function buildPaymentRoutingRepairPayload(input: {
     currency: String(input.payment.currency ?? "usd").toLowerCase(),
     payout_readiness_status: payoutReadinessStatus,
     money_routing_status: moneyRoutingStatus,
-    blocked_reason: null,
+    blocked_reason: input.relationshipContext.reviewReason,
     metadata: {
       repairReason: "missing_routing_record_on_completion",
       source: "architect_payment_routing_repair",
       relationshipType: input.relationshipContext.routingModel,
       relationshipId: input.relationshipContext.relationshipId,
       compensationRuleId: input.relationshipContext.compensationRuleId,
-      readinessMeaning: "eligible",
+      readinessMeaning: requiresManualReview ? "needs_attention" : "eligible",
       payoutReadinessDbValue: payoutReadinessStatus,
       moneyRoutingDbValue: moneyRoutingStatus,
       constraintSource: constraintEvidence.source,
+      manualReviewReason: input.relationshipContext.reviewReason,
       appointmentId: input.appointment.id,
       paymentId: input.payment.id,
       barberId: input.appointment.barber_id,
@@ -230,9 +248,9 @@ export function buildPaymentRoutingRepairPayload(input: {
     processor_charge_id: input.payment.provider_payment_intent_id ?? null,
     processor_balance_transaction_id: null,
     reconciliation_status: reconciliationStatus,
-    eligible_at: now,
+    eligible_at: requiresManualReview ? null : now,
     released_at: null,
-    held_at: null,
+    held_at: requiresManualReview ? now : null,
     reversed_at: null
   };
 }
@@ -253,9 +271,80 @@ export function buildFreelancePaymentRoutingRepairPayload(input: {
       barberPercent: null,
       shopPercent: null,
       relationshipId: null,
-      compensationRuleId: null
+      compensationRuleId: null,
+      relationshipKnown: true,
+      reviewReason: null
     }
   });
+}
+
+export function buildCapturedCancelledPaymentRoutingReviewPayload(input: {
+  appointment: JsonRecord;
+  payment: JsonRecord;
+  nowIso?: string;
+  constraintEvidence?: typeof DEFAULT_PAYMENT_ROUTING_CONSTRAINTS;
+}) {
+  const now = input.nowIso ?? new Date().toISOString();
+  const gross = roundMoney(numberValue(input.payment.amount));
+  const constraintEvidence = input.constraintEvidence ?? DEFAULT_PAYMENT_ROUTING_CONSTRAINTS;
+  const payoutReadinessStatus = readinessDbValueForBusinessMeaning(constraintEvidence, "blocked");
+  const moneyRoutingStatus = moneyRoutingDbValueForManualReview(constraintEvidence);
+  const reconciliationStatus = reconciliationDbValueForManualReview(constraintEvidence);
+  const reviewReason = "Captured payment is attached to a cancelled appointment and requires refund or reversal review before routing can pass.";
+
+  return {
+    payment_id: input.payment.id,
+    appointment_id: input.appointment.id,
+    barber_id: input.appointment.barber_id ?? input.payment.barber_id ?? null,
+    shop_id: input.appointment.shop_id ?? input.payment.shop_id ?? null,
+    membership_id: input.appointment.membership_id ?? null,
+    routing_model: "freelance" as RoutingModel,
+    payout_recipient_type: "barber" as RoutingRecipient,
+    provider_gross_amount: gross,
+    refunded_amount: 0,
+    provider_fee_amount: 0,
+    provider_net_amount: gross,
+    platform_fee_amount: 0,
+    barber_payout_amount: 0,
+    shop_split_amount: 0,
+    currency: String(input.payment.currency ?? "usd").toLowerCase(),
+    payout_readiness_status: payoutReadinessStatus,
+    money_routing_status: moneyRoutingStatus,
+    blocked_reason: reviewReason,
+    metadata: {
+      repairReason: "captured_payment_cancelled_appointment_review",
+      source: "architect_payment_routing_repair",
+      readinessMeaning: "blocked",
+      payoutReadinessDbValue: payoutReadinessStatus,
+      moneyRoutingDbValue: moneyRoutingStatus,
+      constraintSource: constraintEvidence.source,
+      manualReviewReason: reviewReason,
+      appointmentId: input.appointment.id,
+      paymentId: input.payment.id,
+      barberId: input.appointment.barber_id ?? input.payment.barber_id ?? null,
+      clientId: input.appointment.client_id ?? input.payment.client_id ?? null
+    },
+    created_at: now,
+    updated_at: now,
+    processor_charge_id: input.payment.provider_payment_intent_id ?? null,
+    processor_balance_transaction_id: null,
+    reconciliation_status: reconciliationStatus,
+    eligible_at: null,
+    released_at: null,
+    held_at: now,
+    reversed_at: null
+  };
+}
+
+function capturedCancelledRoutingNeedsReview(routing: JsonRecord | null, isCapturedCancelled: boolean) {
+  if (!routing || !isCapturedCancelled) {
+    return false;
+  }
+
+  return String(routing.payout_readiness_status ?? "").toLowerCase() !== "blocked"
+    || String(routing.money_routing_status ?? "").toLowerCase() !== "manual_review"
+    || String(routing.reconciliation_status ?? "").toLowerCase() !== "manual_review"
+    || Boolean(routing.released_at);
 }
 
 export async function repairMissingPaymentRouting(
@@ -274,32 +363,7 @@ export async function repairMissingPaymentRouting(
       throw new Error("Appointment was not found.");
     }
 
-    if (String(appointment.status ?? "").toLowerCase() !== "completed") {
-      return {
-        ok: false,
-        repairType,
-        targetType,
-        targetId: appointmentId,
-        safetyClass,
-        repaired: false,
-        before: { appointment },
-        after: {},
-        result: "failed",
-        auditId: await writeArchitectRepairAudit(supabase, {
-          actor,
-          repairType,
-          targetType,
-          targetId: appointmentId,
-          safetyClass,
-          beforeSnapshot: { appointment },
-          afterSnapshot: null,
-          result: "failed",
-          errorCode: "appointment_not_completed",
-          errorMessageSafe: "Payment routing repair requires a completed appointment."
-        }),
-        error: "Payment routing repair requires a completed appointment."
-      };
-    }
+    const appointmentStatus = String(appointment.status ?? "").toLowerCase();
 
     const paymentsResult = await supabase
       .from("payments")
@@ -318,12 +382,41 @@ export async function repairMissingPaymentRouting(
       throw new Error("No payment row was found for this appointment.");
     }
 
+    const isCapturedCancelled = ["cancelled", "canceled"].includes(appointmentStatus) && isPaymentSuccessful(payment);
+    if (appointmentStatus !== "completed" && !isCapturedCancelled) {
+      return {
+        ok: false,
+        repairType,
+        targetType,
+        targetId: appointmentId,
+        safetyClass,
+        repaired: false,
+        before: { appointment, payment },
+        after: {},
+        result: "failed",
+        auditId: await writeArchitectRepairAudit(supabase, {
+          actor,
+          repairType,
+          targetType,
+          targetId: appointmentId,
+          safetyClass,
+          beforeSnapshot: { appointment, payment },
+          afterSnapshot: null,
+          result: "failed",
+          errorCode: "appointment_not_completed",
+          errorMessageSafe: "Payment routing repair requires a completed appointment, or a captured payment attached to a cancelled appointment for manual-review routing."
+        }),
+        error: "Payment routing repair requires a completed appointment, or a captured payment attached to a cancelled appointment for manual-review routing."
+      };
+    }
+
     if (!isPaymentSuccessful(payment)) {
       throw new Error("Payment is not captured, succeeded, paid, or completed.");
     }
 
     const existingRouting = await maybeSingleBy<JsonRecord>(supabase, "payment_routing_records", "appointment_id", appointment.id);
-    if (existingRouting) {
+    const existingRoutingNeedsReview = capturedCancelledRoutingNeedsReview(existingRouting, isCapturedCancelled);
+    if (existingRouting && !existingRoutingNeedsReview) {
       const auditId = await writeArchitectRepairAudit(supabase, {
         actor,
         repairType,
@@ -351,7 +444,8 @@ export async function repairMissingPaymentRouting(
       };
     }
 
-    const existingPaymentRouting = await maybeSingleBy<JsonRecord>(supabase, "payment_routing_records", "payment_id", payment.id);
+    const existingPaymentRouting = existingRouting
+      ?? await maybeSingleBy<JsonRecord>(supabase, "payment_routing_records", "payment_id", payment.id);
     if (existingPaymentRouting?.appointment_id && existingPaymentRouting.appointment_id !== appointment.id) {
       throw new Error("A routing row already exists for this payment but points at a different appointment.");
     }
@@ -361,7 +455,9 @@ export async function repairMissingPaymentRouting(
       readTableColumns(supabase, "payment_routing_records"),
       resolveRoutingRelationshipContext(supabase, appointment)
     ]);
-    const rawPayload = buildPaymentRoutingRepairPayload({ appointment, payment, relationshipContext, constraintEvidence });
+    const rawPayload = isCapturedCancelled
+      ? buildCapturedCancelledPaymentRoutingReviewPayload({ appointment, payment, constraintEvidence })
+      : buildPaymentRoutingRepairPayload({ appointment, payment, relationshipContext, constraintEvidence });
     const payload = filterPayloadToColumns(rawPayload, routingColumns);
     console.info("[architect-repair] payment_routing_repair_started", {
       appointmentId,
