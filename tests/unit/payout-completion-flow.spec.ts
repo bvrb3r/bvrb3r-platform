@@ -399,11 +399,11 @@ describe("payout completion flow", () => {
     ]));
   });
 
-  it("uses eligible directly when the payment routing constraint allows it", async () => {
+  it("ignores stale eligible constraint values for routing writes", async () => {
     const tables = createTables({
       "information_schema.check_constraints": [{
         constraint_name: "payment_routing_records_payout_readiness_status_check",
-        check_clause: "CHECK ((payout_readiness_status = ANY (ARRAY['not_ready'::text, 'eligible'::text, 'blocked'::text])))"
+        check_clause: "CHECK ((payout_readiness_status = ANY (ARRAY['not_ready'::text, 'needs_attention'::text, 'eligible'::text, 'ready'::text, 'blocked'::text])))"
       }, {
         constraint_name: "payment_routing_records_money_routing_status_check",
         check_clause: "CHECK ((money_routing_status = ANY (ARRAY['pending'::text, 'ready_for_payout'::text, 'blocked'::text, 'refunded'::text])))"
@@ -418,16 +418,55 @@ describe("payout completion flow", () => {
 
     expect(result).toMatchObject({
       status: "eligible",
-      payoutReadinessStatus: "eligible"
+      payoutReadinessStatus: "ready"
     });
     expect(tables.payment_routing_records[0]).toMatchObject({
-      payout_readiness_status: "eligible",
+      payout_readiness_status: "ready",
       money_routing_status: "pending",
       metadata: expect.objectContaining({
         readinessMeaning: "eligible",
-        payoutReadinessDbValue: "eligible"
+        payoutReadinessDbValue: "ready"
       })
     });
+  });
+
+  it("keeps captured payments on cancelled appointments blocked and in manual review", async () => {
+    const tables = createTables({
+      appointments: [{
+        ...createTables().appointments[0],
+        status: "cancelled",
+        completed_at: null
+      }],
+      payments: [{
+        ...createTables().payments[0],
+        status: "captured",
+        payment_status: "captured"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+
+    const routing = await syncPaymentRoutingRecord(supabase as never, PAYMENT_ID);
+    if (!routing) {
+      throw new Error("Expected routing row for captured cancelled payment.");
+    }
+
+    expect(routing).toMatchObject({
+      appointment_id: APPOINTMENT_ID,
+      payment_id: PAYMENT_ID,
+      payout_readiness_status: "blocked",
+      money_routing_status: "manual_review",
+      reconciliation_status: "manual_review",
+      platform_fee_amount: 0,
+      barber_payout_amount: 0,
+      shop_split_amount: 0,
+      eligible_at: null,
+      released_at: null,
+      held_at: expect.any(String)
+    });
+    expect(String(routing.blocked_reason)).toContain("cancelled appointment");
+    expect(tables.platform_events).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ event_type: "payout_eligible" })
+    ]));
   });
 
   it("uses appointment_id to find and update an existing routing repair row", async () => {

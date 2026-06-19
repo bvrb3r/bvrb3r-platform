@@ -25,7 +25,7 @@ const FALLBACK_ALLOWED_VALUES: PaymentRoutingConstraintEvidence["allowedValues"]
   money_routing_status: ["pending", "ready_for_payout", "blocked", "manual_review", "paid_out", "refunded"],
   routing_model: ["freelance", "commission", "booth_rent"],
   payout_recipient_type: ["barber", "shop", "split"],
-  reconciliation_status: ["open", "pending", "unreconciled", "reconciled"]
+  reconciliation_status: ["open", "settled", "partially_reversed", "reversed", "manual_review"]
 };
 
 export const DEFAULT_PAYMENT_ROUTING_CONSTRAINTS: PaymentRoutingConstraintEvidence = {
@@ -53,6 +53,14 @@ function valuesForColumn(rows: JsonRecord[], column: keyof PaymentRoutingConstra
   });
 
   return unique(matches.flatMap((row) => parseQuotedValues(String(row.check_clause ?? row.checkClause ?? ""))));
+}
+
+function productionLegalValues(
+  column: keyof PaymentRoutingConstraintEvidence["allowedValues"],
+  values: string[]
+) {
+  const legal = new Set(FALLBACK_ALLOWED_VALUES[column]);
+  return unique(values.map((value) => value.toLowerCase()).filter((value) => legal.has(value)));
 }
 
 export async function loadPaymentRoutingConstraintEvidence(
@@ -87,21 +95,38 @@ export async function loadPaymentRoutingConstraintEvidence(
     reconciliation_status: valuesForColumn(rows, "reconciliation_status")
   };
 
+  const productionAllowedValues = {
+    payout_readiness_status: productionLegalValues("payout_readiness_status", allowedValues.payout_readiness_status),
+    money_routing_status: productionLegalValues("money_routing_status", allowedValues.money_routing_status),
+    routing_model: productionLegalValues("routing_model", allowedValues.routing_model),
+    payout_recipient_type: productionLegalValues("payout_recipient_type", allowedValues.payout_recipient_type),
+    reconciliation_status: productionLegalValues("reconciliation_status", allowedValues.reconciliation_status)
+  };
+
+  const unsupportedValues = Object.entries(allowedValues)
+    .flatMap(([column, values]) => {
+      const legal = new Set(FALLBACK_ALLOWED_VALUES[column as keyof PaymentRoutingConstraintEvidence["allowedValues"]]);
+      return values
+        .map((value) => value.toLowerCase())
+        .filter((value) => !legal.has(value))
+        .map((value) => `${column}=${value}`);
+    });
+
   const mergedAllowedValues = {
-    payout_readiness_status: allowedValues.payout_readiness_status.length
-      ? allowedValues.payout_readiness_status
+    payout_readiness_status: productionAllowedValues.payout_readiness_status.length
+      ? productionAllowedValues.payout_readiness_status
       : FALLBACK_ALLOWED_VALUES.payout_readiness_status,
-    money_routing_status: allowedValues.money_routing_status.length
-      ? allowedValues.money_routing_status
+    money_routing_status: productionAllowedValues.money_routing_status.length
+      ? productionAllowedValues.money_routing_status
       : FALLBACK_ALLOWED_VALUES.money_routing_status,
-    routing_model: allowedValues.routing_model.length
-      ? allowedValues.routing_model
+    routing_model: productionAllowedValues.routing_model.length
+      ? productionAllowedValues.routing_model
       : FALLBACK_ALLOWED_VALUES.routing_model,
-    payout_recipient_type: allowedValues.payout_recipient_type.length
-      ? allowedValues.payout_recipient_type
+    payout_recipient_type: productionAllowedValues.payout_recipient_type.length
+      ? productionAllowedValues.payout_recipient_type
       : FALLBACK_ALLOWED_VALUES.payout_recipient_type,
-    reconciliation_status: allowedValues.reconciliation_status.length
-      ? allowedValues.reconciliation_status
+    reconciliation_status: productionAllowedValues.reconciliation_status.length
+      ? productionAllowedValues.reconciliation_status
       : FALLBACK_ALLOWED_VALUES.reconciliation_status
   };
 
@@ -113,20 +138,30 @@ export async function loadPaymentRoutingConstraintEvidence(
       checkClause: String(row.check_clause ?? "")
     })),
     allowedValues: mergedAllowedValues,
-    warnings: rows.length ? [] : DEFAULT_PAYMENT_ROUTING_CONSTRAINTS.warnings
+    warnings: [
+      ...(rows.length ? [] : DEFAULT_PAYMENT_ROUTING_CONSTRAINTS.warnings),
+      ...(unsupportedValues.length
+        ? [`Ignoring unsupported payment_routing_records constraint values for repair writes: ${unsupportedValues.join(", ")}.`]
+        : [])
+    ]
   };
 }
 
 export function readinessDbValueForBusinessMeaning(
   evidence: PaymentRoutingConstraintEvidence,
-  meaning: "eligible" | "pending" | "blocked"
+  meaning: "eligible" | "pending" | "blocked" | "needs_attention"
 ) {
   const allowed = evidence.allowedValues.payout_readiness_status.map((value) => value.toLowerCase());
 
   if (meaning === "eligible") {
-    if (allowed.includes("eligible")) return "eligible";
     if (allowed.includes("ready")) return "ready";
     return evidence.allowedValues.payout_readiness_status[0] ?? "ready";
+  }
+
+  if (meaning === "needs_attention") {
+    if (allowed.includes("needs_attention")) return "needs_attention";
+    if (allowed.includes("not_ready")) return "not_ready";
+    return evidence.allowedValues.payout_readiness_status[0] ?? "needs_attention";
   }
 
   if (meaning === "blocked") {
@@ -147,12 +182,25 @@ export function moneyRoutingDbValueForPending(evidence: PaymentRoutingConstraint
   return evidence.allowedValues.money_routing_status[0] ?? "pending";
 }
 
+export function moneyRoutingDbValueForManualReview(evidence: PaymentRoutingConstraintEvidence) {
+  const allowed = evidence.allowedValues.money_routing_status.map((value) => value.toLowerCase());
+  if (allowed.includes("manual_review")) return "manual_review";
+  if (allowed.includes("blocked")) return "blocked";
+  if (allowed.includes("pending")) return "pending";
+  return evidence.allowedValues.money_routing_status[0] ?? "manual_review";
+}
+
 export function reconciliationDbValueForOpen(evidence: PaymentRoutingConstraintEvidence) {
   const allowed = evidence.allowedValues.reconciliation_status.map((value) => value.toLowerCase());
   if (allowed.includes("open")) return "open";
-  if (allowed.includes("pending")) return "pending";
-  if (allowed.includes("unreconciled")) return "unreconciled";
   return evidence.allowedValues.reconciliation_status[0] ?? "open";
+}
+
+export function reconciliationDbValueForManualReview(evidence: PaymentRoutingConstraintEvidence) {
+  const allowed = evidence.allowedValues.reconciliation_status.map((value) => value.toLowerCase());
+  if (allowed.includes("manual_review")) return "manual_review";
+  if (allowed.includes("open")) return "open";
+  return evidence.allowedValues.reconciliation_status[0] ?? "manual_review";
 }
 
 export function payoutReadinessMeaning(value: unknown) {
