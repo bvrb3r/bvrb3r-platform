@@ -16,7 +16,6 @@ import {
   type EngagementActor,
   type RecordEngagementEventInput
 } from "@/lib/engagement/engine";
-import { getEngagementState, setEngagementState } from "@/lib/engagement/state";
 import type {
   BarberFollowRecord,
   EngagementNotificationRecord,
@@ -57,10 +56,6 @@ export interface EngagementProvider {
     }>;
     activeMembership?: boolean;
   }): Promise<void>;
-}
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function stableUuid(seed: string) {
@@ -446,67 +441,6 @@ async function persistDiff(supabase: SupabaseClient, previous: EngagementState, 
 
   await syncNotificationDeliveries(previous, next);
 }
-function createDemoProvider(): EngagementProvider {
-  return {
-    kind: "demo",
-    async readState() {
-      return clone(getEngagementState());
-    },
-    async followBarber(actor, input) {
-      const previous = getEngagementState();
-      const result = followBarberInState(previous, actor, input);
-      setEngagementState(result.state);
-      await syncNotificationDeliveries(previous, result.state);
-      return result;
-    },
-    async unfollowBarber(actor, barberId) {
-      const result = unfollowBarberInState(getEngagementState(), actor, barberId);
-      setEngagementState(result.state);
-      return { unfollowedBarberId: result.unfollowedBarberId };
-    },
-    async createReferralInvite(actor, input) {
-      const previous = getEngagementState();
-      const result = createReferralInviteInState(previous, actor, input);
-      setEngagementState(result.state);
-      await syncNotificationDeliveries(previous, result.state);
-      return result;
-    },
-    async syncReferralAttribution(input) {
-      const previous = getEngagementState();
-      const result = syncReferralAttributionInState(previous, input);
-      setEngagementState(result.state);
-      await syncNotificationDeliveries(previous, result.state);
-      return { referralEvent: result.referralEvent };
-    },
-    async recordReferralBooking(input) {
-      const previous = getEngagementState();
-      const result = recordReferralBookingInState(previous, input);
-      setEngagementState(result.state);
-      await syncNotificationDeliveries(previous, result.state);
-      return { referralEvent: result.referralEvent };
-    },
-    async recordEvent(actor, input) {
-      const previous = getEngagementState();
-      const result = recordEngagementEventInState(previous, actor, input);
-      setEngagementState(result.state);
-      await syncNotificationDeliveries(previous, result.state);
-      return result;
-    },
-    async rewardCompletedBooking(input) {
-      const previous = getEngagementState();
-      const next = processCompletedBookingGrowthInState(previous, {
-        clientId: input.clientId,
-        appointmentId: input.appointmentId,
-        completedAt: input.completedAt,
-        completedBookingHistory: input.completedBookingHistory ?? [],
-        activeMembership: input.activeMembership ?? false
-      }).state;
-      setEngagementState(next);
-      await syncNotificationDeliveries(previous, next);
-    }
-  };
-}
-
 function createEmptyProvider(): EngagementProvider {
   const unavailable = (): never => {
     throw new Error("Engagement data is unavailable because Supabase is not configured.");

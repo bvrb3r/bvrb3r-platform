@@ -116,9 +116,9 @@ function createReferralSupabase(initial?: Partial<ReferralState>) {
       if (table === "referral_codes" || table === "referral_events") {
         const typedTable = table as keyof ReferralState;
         return {
-          select: (_columns: string) => createSelectQuery(typedTable),
+          select: () => createSelectQuery(typedTable),
           insert: (value: Record<string, unknown> | Array<Record<string, unknown>>) => ({
-            select: (_columns: string) => ({
+            select: () => ({
               single: async () => ({
                 data: insertRows(typedTable, value),
                 error: null
@@ -126,7 +126,7 @@ function createReferralSupabase(initial?: Partial<ReferralState>) {
             })
           }),
           upsert: (value: Record<string, unknown> | Array<Record<string, unknown>>) => ({
-            select: (_columns: string) => ({
+            select: () => ({
               single: async () => {
                 const row = Array.isArray(value) ? value[0] : value;
                 const rows = tableRows(typedTable) as Array<Record<string, unknown>>;
@@ -149,7 +149,7 @@ function createReferralSupabase(initial?: Partial<ReferralState>) {
           }),
           update: (patch: Record<string, unknown>) => ({
             eq: (field: string, value: unknown) => ({
-              select: (_columns: string) => ({
+              select: () => ({
                 single: async () => {
                   const rows = tableRows(typedTable) as Array<Record<string, unknown>>;
                   const index = rows.findIndex((candidate) => candidate[field] === value);

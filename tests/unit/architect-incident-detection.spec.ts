@@ -161,9 +161,20 @@ describe("architect mission incident detection", () => {
     const totalUsers = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-total-users");
     const clients = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-clients-total");
     const routing = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-payment-routing-health");
+    const roleDrift = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-role-drift-health");
+    const rlsDisabled = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-rls-disabled-evidence");
+    const auditEvidence = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-audit-log-evidence");
+    const securityLane = snapshot.foundation.departmentLanes.find((lane) => lane.id === "security");
 
     expect(totalUsers).toMatchObject({ label: "Total Users", status: "Pass", metricValue: "3" });
     expect(clients).toMatchObject({ label: "Clients", status: "Pass", metricValue: "1" });
     expect(routing).toMatchObject({ label: "Payment Routing Health", status: "Failed" });
+    expect(roleDrift).toMatchObject({ label: "Role Drift Evidence", status: "Failed" });
+    expect(roleDrift?.evidence.join("\n")).toContain("Read-only evidence only; no role mutation was attempted.");
+    expect(rlsDisabled).toMatchObject({ label: "RLS Disabled Evidence", status: "Failed", metricValue: "28 disabled" });
+    expect(rlsDisabled?.evidence.join("\n")).toContain("no RLS enablement");
+    expect(auditEvidence).toMatchObject({ label: "Audit Evidence", status: "Failed", metricValue: "0 row(s)" });
+    expect(securityLane?.cards.find((card) => card.id === "security-rls-disabled")).toMatchObject({ status: "Failed" });
+    expect(securityLane?.cards.find((card) => card.id === "security-audit")).toMatchObject({ status: "Failed" });
   });
 });

@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createHash } from "node:crypto";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
-import { demoDeepLinks, demoDeviceRegistrations, demoNativePushTokens, demoNotificationDeliveryAttempts, demoPushSubscriptions } from "@/lib/data/mobile";
 import {
   createEmptyMobileState,
   getActiveNativePushTokens,
@@ -19,9 +18,7 @@ import {
   type RevokeNativePushTokenInput,
   type SyncMobileDeviceInput
 } from "@/lib/mobile/engine";
-import { getMobileState, setMobileState } from "@/lib/mobile/state";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getEngagementState, setEngagementState } from "@/lib/engagement/state";
 import type {
   DeepLinkRecord,
   DeviceRegistrationRecord,
@@ -49,54 +46,12 @@ export interface MobileProvider {
   getActiveNativePushTokens(userEmail: string): Promise<NativePushTokenRecord[]>;
 }
 
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function sanitizeIdPart(value: string) {
-  return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();
-}
-
 function stableUuid(seed: string) {
   const hash = createHash("sha1").update(seed).digest("hex");
   const base = hash.slice(0, 32).split("");
   base[12] = "5";
   base[16] = ((parseInt(base[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
   return `${base.slice(0, 8).join("")}-${base.slice(8, 12).join("")}-${base.slice(12, 16).join("")}-${base.slice(16, 20).join("")}-${base.slice(20, 32).join("")}`;
-}
-
-async function hasRows(supabase: SupabaseClient, table: string) {
-  const result = await supabase.from(table).select("*").limit(1);
-  if (result.error) {
-    throw result.error;
-  }
-
-  return (result.data ?? []).length > 0;
-}
-
-function applyPushPreference(actor: MobileActor, pushEnabled: boolean) {
-  const current = getEngagementState();
-  const existing = current.notificationPreferences.find((preference) => preference.userEmail === actor.userEmail);
-  const nextPreference = {
-    id: existing?.id ?? `pref-${sanitizeIdPart(actor.userEmail)}`,
-    userEmail: actor.userEmail,
-    role: actor.role,
-    clientId: actor.clientId,
-    barberId: actor.barberId,
-    inAppEnabled: existing?.inAppEnabled ?? true,
-    smsEnabled: existing?.smsEnabled ?? (actor.role === "client"),
-    emailEnabled: existing?.emailEnabled ?? true,
-    pushEnabled,
-    updatedAt: new Date().toISOString()
-  };
-
-  setEngagementState({
-    ...current,
-    notificationPreferences: [
-      nextPreference,
-      ...current.notificationPreferences.filter((preference) => preference.userEmail !== actor.userEmail)
-    ]
-  });
 }
 
 function toDeviceRow(record: DeviceRegistrationRecord) {
@@ -283,32 +238,6 @@ function fromAttemptRow(row: any): NotificationDeliveryAttemptRecord {
   };
 }
 
-function toAttemptRow(record: NotificationDeliveryAttemptRecord) {
-  return {
-    id: record.id,
-    delivery_reference: record.deliveryId,
-    notification_reference: record.notificationId,
-    channel: record.channel,
-    provider: record.provider,
-    status: record.status,
-    user_email: record.userEmail,
-    destination: record.destination,
-    attempt_number: record.attemptNumber,
-    device_id: record.deviceId ?? null,
-    push_subscription_reference: record.subscriptionId ?? null,
-    deep_link_url: record.deepLinkUrl ?? null,
-    error_message: record.errorMessage ?? null,
-    provider_message_id: record.providerMessageId ?? null,
-    provider_status_code: record.providerStatusCode ?? null,
-    executed_at: record.executedAt ?? null,
-    next_retry_at: record.nextRetryAt ?? null,
-    metadata: record.metadata,
-    provider_metadata: record.providerMetadata ?? {},
-    created_at: record.createdAt,
-    updated_at: record.updatedAt
-  };
-}
-
 function toDeepLinkRow(record: DeepLinkRecord) {
   return {
     id: record.id,
@@ -339,68 +268,6 @@ function fromDeepLinkRow(row: any): DeepLinkRecord {
     metadata: row.metadata ?? {},
     createdAt: row.created_at
   };
-}
-
-async function ensureSupabaseSeeded(supabase: SupabaseClient) {
-  if (await hasRows(supabase, "device_registrations")) {
-    return;
-  }
-
-  const now = new Date().toISOString();
-  const seedWrites = await Promise.all([
-    supabase.from("device_registrations").upsert(demoDeviceRegistrations.map(toDeviceRow), { onConflict: "user_email,device_id" }),
-    supabase.from("push_subscriptions").upsert(demoPushSubscriptions.map(toPushRow), { onConflict: "user_email,device_id" }),
-    supabase.from("native_push_tokens").upsert(demoNativePushTokens.map(toNativeTokenRow), { onConflict: "id" }),
-    supabase.from("notification_delivery_attempts").upsert(demoNotificationDeliveryAttempts.map(toAttemptRow), { onConflict: "id" }),
-    supabase.from("deep_link_events").upsert(demoDeepLinks.map(toDeepLinkRow), { onConflict: "id" }),
-    supabase.from("notification_preferences").upsert([
-      {
-        id: stableUuid(`notification-preference:client:client@bvrb3r.demo`),
-        user_email: "client@bvrb3r.demo",
-        role: "client",
-        client_reference: "client-jordan",
-        barber_reference: null,
-        in_app_enabled: true,
-        sms_enabled: true,
-        email_enabled: true,
-        push_enabled: true,
-        updated_at: now,
-        created_at: now
-      },
-      {
-        id: stableUuid(`notification-preference:commission_barber:wave@bvrb3r.demo`),
-        user_email: "wave@bvrb3r.demo",
-        role: "commission_barber",
-        client_reference: null,
-        barber_reference: "barber-wave",
-        in_app_enabled: true,
-        sms_enabled: false,
-        email_enabled: true,
-        push_enabled: true,
-        updated_at: now,
-        created_at: now
-      },
-      {
-        id: stableUuid(`notification-preference:owner:owner@bvrb3r.demo`),
-        user_email: "owner@bvrb3r.demo",
-        role: "owner",
-        client_reference: null,
-        barber_reference: null,
-        in_app_enabled: true,
-        sms_enabled: false,
-        email_enabled: true,
-        push_enabled: true,
-        updated_at: now,
-        created_at: now
-      }
-    ], { onConflict: "role,user_email" })
-  ]);
-
-  for (const result of seedWrites) {
-    if (result.error) {
-      throw result.error;
-    }
-  }
 }
 
 async function upsertSupabasePreference(supabase: SupabaseClient, actor: MobileActor, pushEnabled: boolean) {
@@ -446,78 +313,6 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<MobileState>
     deliveryAttempts: (attempts.data ?? []).map(fromAttemptRow),
     deepLinks: (deepLinks.data ?? []).map(fromDeepLinkRow)
   });
-}
-
-function createDemoProvider(): MobileProvider {
-  return {
-    kind: "demo",
-    async readState() {
-      return syncMobileStateLifecycle(clone(getMobileState()));
-    },
-    async readAttempts() {
-      return syncMobileStateLifecycle(clone(getMobileState())).deliveryAttempts;
-    },
-    async readNativeTokens() {
-      return syncMobileStateLifecycle(clone(getMobileState())).nativePushTokens;
-    },
-    async getSummary(actor) {
-      return getMobileActivationSummary(getMobileState(), actor);
-    },
-    async syncDeviceActivation(actor, input) {
-      const initialResult = syncDeviceActivation(getMobileState(), actor, input);
-      let nextState = initialResult.state;
-      const shouldRevokeForMissingPermission = !input.subscription
-        && input.capabilities.notificationPermission !== "granted"
-        && input.runtimeMode !== "native_ios"
-        && input.runtimeMode !== "native_android";
-      if (shouldRevokeForMissingPermission) {
-        nextState = revokePushSubscription(nextState, actor, input.deviceId).state;
-      }
-      setMobileState(nextState);
-      applyPushPreference(actor, getActivePushSubscriptions(nextState, actor.userEmail).length > 0 || getActiveNativePushTokens(nextState, actor.userEmail).length > 0);
-      return {
-        summary: getMobileActivationSummary(nextState, actor),
-        device: initialResult.device,
-        subscription: nextState.pushSubscriptions.find((record) => record.userEmail === actor.userEmail && record.deviceId === input.deviceId && record.status === "active")
-      };
-    },
-    async registerNativePushToken(actor, input) {
-      const result = registerNativePushToken(getMobileState(), actor, input);
-      setMobileState(result.state);
-      applyPushPreference(actor, getActivePushSubscriptions(result.state, actor.userEmail).length > 0 || getActiveNativePushTokens(result.state, actor.userEmail).length > 0);
-      return {
-        summary: getMobileActivationSummary(result.state, actor),
-        token: result.token
-      };
-    },
-    async revokeNativePushToken(actor, input) {
-      const result = revokeNativePushToken(getMobileState(), actor, input);
-      setMobileState(result.state);
-      applyPushPreference(actor, getActivePushSubscriptions(result.state, actor.userEmail).length > 0 || getActiveNativePushTokens(result.state, actor.userEmail).length > 0);
-      return {
-        summary: getMobileActivationSummary(result.state, actor)
-      };
-    },
-    async revokePushSubscription(actor, deviceId) {
-      const result = revokePushSubscription(getMobileState(), actor, deviceId);
-      setMobileState(result.state);
-      applyPushPreference(actor, getActivePushSubscriptions(result.state, actor.userEmail).length > 0 || getActiveNativePushTokens(result.state, actor.userEmail).length > 0);
-      return {
-        summary: getMobileActivationSummary(result.state, actor)
-      };
-    },
-    async recordDeepLink(actor, input) {
-      const result = recordDeepLinkOpen(getMobileState(), actor, input);
-      setMobileState(result.state);
-      return result.record;
-    },
-    async getActivePushSubscriptions(userEmail) {
-      return clone(getActivePushSubscriptions(getMobileState(), userEmail));
-    },
-    async getActiveNativePushTokens(userEmail) {
-      return clone(getActiveNativePushTokens(getMobileState(), userEmail));
-    }
-  };
 }
 
 function createEmptyProvider(): MobileProvider {

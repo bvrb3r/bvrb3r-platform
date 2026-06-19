@@ -309,7 +309,7 @@ export function buildMissionControlFoundation(
   ceoPlatformMetrics: MissionEvidenceCard[] = []
 ): MissionControlFoundation {
   const coreLoopValidators = applyIncidentFailures(validateCoreLoopState(), incidents);
-  const departmentLanes = buildDepartmentLanes(coreLoopValidators, incidents);
+  const departmentLanes = buildDepartmentLanes(coreLoopValidators, incidents, ceoPlatformMetrics);
   const ceoCommandCenter = [
     ...buildCeoPlatformMetricCards(ceoPlatformMetrics),
     ...buildCeoCards(coreLoopValidators, incidents, checkedAt)
@@ -347,6 +347,9 @@ function buildCeoPlatformMetricCards(metrics: MissionEvidenceCard[]): MissionEvi
     ["ceo-active-shops", "Active Shops", "Operations", "Active shop count is not connected."],
     ["ceo-active-barbers", "Active Barbers", "Operations", "Active barber count is not connected."],
     ["ceo-pending-approvals", "Pending Barber/Shop Approvals", "Compliance", "Pending approval count is not connected."],
+    ["ceo-role-drift-health", "Role Drift Evidence", "Security", "Profile role drift evidence is not connected."],
+    ["ceo-rls-disabled-evidence", "RLS Disabled Evidence", "Security", "RLS disabled table evidence is not connected."],
+    ["ceo-audit-log-evidence", "Audit Evidence", "Security", "Audit trail evidence is not connected."],
     ["ceo-critical-incidents", "Critical Incidents", "Incidents", "Critical incident count is not connected."],
     ["ceo-regression-deployment-health", "Regression / Deployment Health", "Technology", "Regression and deployment health are not connected."],
     ["ceo-next-executive-decisions", "Next Executive Decisions", "Executive Decisions", "Executive decision queue is not connected."]
@@ -384,7 +387,22 @@ function buildCeoCards(validators: CoreLoopValidator[], incidents: ArchitectInci
   ];
 }
 
-function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: ArchitectIncident[]): MissionDepartmentLane[] {
+function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: ArchitectIncident[], platformEvidence: MissionEvidenceCard[] = []): MissionDepartmentLane[] {
+  const evidenceById = new Map(platformEvidence.map((card) => [card.id, card]));
+  const platformCard = (
+    id: string,
+    label: string,
+    department: MissionEvidenceCard["department"],
+    workflow: string,
+    missingSummary: string
+  ) => evidenceById.get(id) ?? {
+    ...evidenceCard(id, label, department, workflow, "Needs Review", missingSummary, ["Not connected."]),
+    metricValue: "Not connected"
+  };
+  const roleDrift = platformCard("ceo-role-drift-health", "Role Drift Evidence", "Security", "Role Drift", "Profile role drift evidence is not connected.");
+  const rlsDisabled = platformCard("ceo-rls-disabled-evidence", "RLS Disabled Evidence", "Security", "Supabase RLS", "RLS disabled table evidence is not connected.");
+  const auditEvidence = platformCard("ceo-audit-log-evidence", "Audit Evidence", "Security", "Audit", "Audit trail evidence is not connected.");
+
   const laneCards: Record<MissionLaneId, MissionEvidenceCard[]> = {
     ceo: [],
     product: [
@@ -399,6 +417,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("technology-deployments", "Deployments", "Technology", "Deployments", "Needs Review", "Deployment health needs CI/deploy truth.", ["Commit metadata alone is not a Pass."]),
       evidenceCard("technology-build-tests", "Build/test status", "Technology", "Regression", "Needs Review", "Build and test status comes from validation commands.", ["Run targeted tests, typecheck, and build."]),
       evidenceCard("technology-database", "Database health", "Technology", "Database", "Needs Review", "Database health requires schema/read evidence.", ["No database migration is part of v1 foundation."]),
+      evidenceCard("technology-rls-disabled", "RLS disabled tables", "Technology", "Supabase RLS", rlsDisabled.status, rlsDisabled.summary, rlsDisabled.evidence),
       evidenceCard("technology-api", "API health", "Technology", "API", "Needs Review", "API health requires route-specific evidence.", ["Architect APIs remain gated."]),
       evidenceCard("technology-schema", "Schema constraints", "Technology", "Schema", incidents.some((incident) => incident.diagnosisCode === "schema_constraint_mismatch") ? "Failed" : "Needs Review", "Schema constraint evidence is available for payment routing.", ["Constraint checks are read-only."]),
       evidenceCard("technology-coverage", "Regression coverage", "Technology", "Coverage", "Needs Review", "Regression coverage must be explicit.", ["Missing regression test is not a Pass."])
@@ -429,15 +448,17 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
     compliance: [
       evidenceCard("compliance-verification", "Verification", "Compliance", "Verification", "Needs Review", "Verification queues remain existing Architect surfaces.", ["No automatic approval/rejection in v1."]),
       evidenceCard("compliance-review-integrity", "Review integrity", "Compliance", "Reviews", "Needs Review", "Review integrity requires future evidence.", ["No fake trust state."]),
-      evidenceCard("compliance-trust-gates", "Client/barber/shop trust gates", "Compliance", "Trust Gates", "Needs Review", "Trust gates need role-specific evidence.", ["Missing evidence remains Needs Review."]),
+      evidenceCard("compliance-trust-gates", "Client/barber/shop trust gates", "Compliance", "Trust Gates", roleDrift.status, "Trust gates depend on clean public role evidence and must not mutate roles from Architect.", roleDrift.evidence),
       evidenceCard("compliance-consent", "Consent/opt-out readiness", "Compliance", "Consent", "Needs Review", "Consent and opt-out readiness are not mutated by v1.", ["No user notification action is enabled."]),
       evidenceCard("compliance-policy", "Policy visibility", "Compliance", "Policy", "Needs Review", "Policy visibility requires source review.", ["Source Vault is registered, not ingested."])
     ],
     security: [
       evidenceCard("security-role-access", "Role access", "Security", "Access", "Needs Review", "Architect route and API guards exist; broader role audit needs explicit proof.", ["Architect route uses platform-admin guard."]),
+      evidenceCard("security-role-drift", "Profile role drift", "Security", "Role Drift", roleDrift.status, roleDrift.summary, roleDrift.evidence),
+      evidenceCard("security-rls-disabled", "RLS disabled tables", "Security", "Supabase RLS", rlsDisabled.status, rlsDisabled.summary, rlsDisabled.evidence),
       evidenceCard("security-route-protection", "Route protection", "Security", "Route Protection", "Needs Review", "Architect APIs use debug access guard.", ["Public roles are blocked by guard tests."]),
       evidenceCard("security-unsafe-actions", "Unsafe action prevention", "Security", "Action Registry", "Pass", "Unsafe v1 actions are blocked in Action Registry.", ACTION_REGISTRY.filter((action) => action.riskClass === "Unsafe / blocked").map((action) => `${action.label}: blocked`)),
-      evidenceCard("security-audit", "Audit trail coverage", "Security", "Audit", "Needs Review", "Audit trail coverage exists for some repair/validation flows only.", ["Coverage must be loop-specific."]),
+      evidenceCard("security-audit", "Audit trail coverage", "Security", "Audit", auditEvidence.status, auditEvidence.summary, auditEvidence.evidence),
       evidenceCard("security-restrictions", "Account restrictions", "Security", "Restrictions", "Needs Review", "Account restrictions require route-by-route evidence.", ["No role mutation is allowed from v1."])
     ],
     content_community: [
