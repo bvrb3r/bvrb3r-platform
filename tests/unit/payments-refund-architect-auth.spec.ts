@@ -375,6 +375,38 @@ describe("Architect controlled refund authorization bridge", () => {
     ]));
   });
 
+  it("blocks platform_admin controlled refunds with the wrong source before Stripe", async () => {
+    const tables = createTables();
+
+    await expectBlocked(tables, architectRefundInput({ source: "architect_general_refund" }), 403);
+    expect(tables.platform_admin_audit_logs).toHaveLength(1);
+    expect(tables.platform_events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event_type: "payment_refund_failed",
+        payload: expect.objectContaining({
+          actorId: PLATFORM_ADMIN_ID,
+          actorRole: "platform_admin",
+          paymentId: PAYMENT_ID,
+          appointmentId: APPOINTMENT_ID,
+          source: "architect_finance_controlled_refund",
+          amount: 5,
+          reason: REFUND_REASON,
+          result: "failure"
+        })
+      })
+    ]));
+  });
+
+  it("blocks platform_admin controlled refunds with the wrong incident code before Stripe", async () => {
+    const tables = createTables();
+
+    await expectBlocked(tables, architectRefundInput({ incidentCode: "payment_health_general" }), 403);
+    expect(tables.platform_admin_audit_logs).toHaveLength(1);
+    expect(tables.platform_events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event_type: "payment_refund_failed" })
+    ]));
+  });
+
   it("blocks platform_admin controlled refunds for non-cancelled appointments", async () => {
     const tables = createTables({
       appointments: [{ ...createTables().appointments[0], status: "completed" }]
