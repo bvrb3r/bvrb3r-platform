@@ -15,6 +15,8 @@ export const PLATFORM_EVENT_TYPES = [
   "ai_recommendation_suppressed",
   "payment_succeeded",
   "payment_failed",
+  "payment_refunded",
+  "payment_refund_failed",
   "payment_routing_created",
   "routing_repair_required",
   "payout_eligible",

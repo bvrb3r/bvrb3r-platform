@@ -502,6 +502,8 @@ const FINANCE_REQUIRED_TESTS = [
 
 const CONTROLLED_REFUND_CONFIRMATION = "REFUND 5";
 const CONTROLLED_REFUND_REASON = "Cancelled appointment captured booking payment resolution";
+const CONTROLLED_REFUND_SOURCE = "architect_finance_controlled_refund";
+const CONTROLLED_REFUND_INCIDENT_CODE = "cancelled_captured_refund_missing";
 
 const APPROVED_CONTROLLED_REFUND_TARGETS: ControlledRefundTarget[] = [
   {
@@ -1040,7 +1042,10 @@ function ControlledRefundResolutionSection({ card, issue }: { card: MissionEvide
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: target.amount,
-          reason: target.reason
+          reason: target.reason,
+          source: CONTROLLED_REFUND_SOURCE,
+          confirmation: CONTROLLED_REFUND_CONFIRMATION,
+          incidentCode: CONTROLLED_REFUND_INCIDENT_CODE
         })
       });
       const payload = await readJson<ControlledRefundResult>(response);

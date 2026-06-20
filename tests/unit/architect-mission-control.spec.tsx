@@ -597,7 +597,10 @@ describe("architect mission control", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         amount: 5,
-        reason: "Cancelled appointment captured booking payment resolution"
+        reason: "Cancelled appointment captured booking payment resolution",
+        source: "architect_finance_controlled_refund",
+        confirmation: "REFUND 5",
+        incidentCode: "cancelled_captured_refund_missing"
       })
     });
     expect(String(fetchMock.mock.calls[1][0])).not.toContain("stripe");

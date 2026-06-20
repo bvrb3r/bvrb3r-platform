@@ -66,6 +66,8 @@ describe("platform events core", () => {
       "ai_recommendation_suppressed",
       "payment_succeeded",
       "payment_failed",
+      "payment_refunded",
+      "payment_refund_failed",
       "payout_released",
       "dispute_created",
       "dispute_resolved",
