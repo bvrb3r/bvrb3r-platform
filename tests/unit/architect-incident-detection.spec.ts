@@ -75,7 +75,7 @@ describe("architect mission incident detection", () => {
     expect(orphanIncident?.evidence.join("\n")).toContain("payment.appointment_id is empty");
   });
 
-  it("classifies captured payments on cancelled appointments without refunds as Finance blockers", async () => {
+  it("keeps captured cancelled $5 payments with no refund as Finance blockers", async () => {
     const tables = createArchitectDebugTables({
       appointments: [{
         ...createArchitectDebugTables().appointments[0],
@@ -107,8 +107,76 @@ describe("architect mission incident detection", () => {
     expect(conflict?.evidence.join("\n")).toContain("blocked/manual_review");
   });
 
+  it("keeps captured cancelled $5 payments with partial refund evidence as Finance blockers", async () => {
+    const tables = createArchitectDebugTables({
+      appointments: [{
+        ...createArchitectDebugTables().appointments[0],
+        id: "cancelled-partial-refund-appointment",
+        status: "cancelled",
+        completed_at: null
+      }],
+      payments: [{
+        ...createArchitectDebugTables().payments[0],
+        id: "payment-cancelled-partial-refund",
+        appointment_id: "cancelled-partial-refund-appointment",
+        amount: 5,
+        status: "captured",
+        payment_status: "captured"
+      }],
+      refunds: [{
+        id: "refund-partial",
+        payment_id: "payment-cancelled-partial-refund",
+        amount: 1,
+        status: "succeeded",
+        created_at: "2026-06-20T12:00:00.000Z"
+      }],
+      appointment_status_history: []
+    });
 
-  it("does not keep cancelled captured payments blocked after refund evidence exists", async () => {
+    const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
+    const conflict = incidents.find((incident) => incident.diagnosisCode === "cancelled_captured_refund_missing");
+
+    expect(conflict).toMatchObject({
+      targetId: "payment-cancelled-partial-refund",
+      severity: "critical"
+    });
+  });
+
+  it("keeps captured cancelled $5 payments with missing refund amount as Finance blockers", async () => {
+    const tables = createArchitectDebugTables({
+      appointments: [{
+        ...createArchitectDebugTables().appointments[0],
+        id: "cancelled-missing-refund-amount-appointment",
+        status: "cancelled",
+        completed_at: null
+      }],
+      payments: [{
+        ...createArchitectDebugTables().payments[0],
+        id: "payment-cancelled-missing-refund-amount",
+        appointment_id: "cancelled-missing-refund-amount-appointment",
+        amount: 5,
+        status: "captured",
+        payment_status: "captured"
+      }],
+      refunds: [{
+        id: "refund-missing-amount",
+        payment_id: "payment-cancelled-missing-refund-amount",
+        status: "succeeded",
+        created_at: "2026-06-20T12:00:00.000Z"
+      }],
+      appointment_status_history: []
+    });
+
+    const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
+    const conflict = incidents.find((incident) => incident.diagnosisCode === "cancelled_captured_refund_missing");
+
+    expect(conflict).toMatchObject({
+      targetId: "payment-cancelled-missing-refund-amount",
+      severity: "critical"
+    });
+  });
+
+  it("clears captured cancelled $5 blockers after full $5 refund row evidence exists", async () => {
     const tables = createArchitectDebugTables({
       appointments: [{
         ...createArchitectDebugTables().appointments[0],
@@ -136,6 +204,68 @@ describe("architect mission incident detection", () => {
     const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
 
     expect(incidents.some((incident) => incident.diagnosisCode === "cancelled_captured_refund_missing")).toBe(false);
+  });
+
+  it("clears captured cancelled payment blockers when payment status is refunded", async () => {
+    const tables = createArchitectDebugTables({
+      appointments: [{
+        ...createArchitectDebugTables().appointments[0],
+        id: "cancelled-payment-status-refunded-appointment",
+        status: "cancelled",
+        completed_at: null
+      }],
+      payments: [{
+        ...createArchitectDebugTables().payments[0],
+        id: "payment-status-refunded",
+        appointment_id: "cancelled-payment-status-refunded-appointment",
+        amount: 5,
+        status: "refunded",
+        payment_status: "refunded"
+      }],
+      appointment_status_history: []
+    });
+
+    const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
+
+    expect(incidents.some((incident) => incident.diagnosisCode === "cancelled_captured_refund_missing")).toBe(false);
+  });
+
+  it("keeps routing-refunded cancelled payments blocked when routing lacks refund support evidence", async () => {
+    const tables = createArchitectDebugTables({
+      appointments: [{
+        ...createArchitectDebugTables().appointments[0],
+        id: "cancelled-routing-refunded-appointment",
+        status: "cancelled",
+        completed_at: null
+      }],
+      payments: [{
+        ...createArchitectDebugTables().payments[0],
+        id: "payment-routing-refunded-no-support",
+        appointment_id: "cancelled-routing-refunded-appointment",
+        amount: 5,
+        status: "captured",
+        payment_status: "captured"
+      }],
+      payment_routing_records: [{
+        id: "routing-refunded-no-support",
+        payment_id: "payment-routing-refunded-no-support",
+        appointment_id: "cancelled-routing-refunded-appointment",
+        payout_readiness_status: "blocked",
+        money_routing_status: "refunded",
+        reconciliation_status: "reversed",
+        released_at: null,
+        updated_at: "2026-06-20T12:00:00.000Z"
+      }],
+      appointment_status_history: []
+    });
+
+    const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
+    const conflict = incidents.find((incident) => incident.diagnosisCode === "cancelled_captured_refund_missing");
+
+    expect(conflict).toMatchObject({
+      targetId: "payment-routing-refunded-no-support",
+      severity: "critical"
+    });
   });
 
   it("detects paid POS sales with captured payment and missing routing", async () => {
