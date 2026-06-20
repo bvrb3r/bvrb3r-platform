@@ -27,6 +27,40 @@ type ApiError = {
   stage?: string;
 };
 
+type ControlledRefundTarget = {
+  appointmentId: string;
+  paymentId: string;
+  amount: number;
+  reason: string;
+  currentRoutingState: string;
+};
+
+type ControlledRefundResult = {
+  refund?: {
+    id?: string;
+    payment_id?: string;
+    amount?: number;
+    reason?: string | null;
+    provider_refund_id?: string | null;
+    refunded_at?: string;
+  };
+  payment?: {
+    id?: string;
+    paymentStatus?: string;
+    payment_status?: string;
+  };
+  summary?: {
+    refundedAmount?: number;
+  } | null;
+};
+
+type ControlledRefundExecutionState = {
+  status: "idle" | "running" | "success" | "error";
+  message?: string;
+  refundId?: string;
+  paymentStatus?: string;
+};
+
 async function readJson<T>(response: Response) {
   const body = (await response.json().catch(() => ({}))) as T | ApiError;
   if (!response.ok || (typeof body === "object" && body && "ok" in body && body.ok === false)) {
@@ -453,6 +487,60 @@ const FINANCE_REQUIRED_TESTS = [
   "npm run typecheck",
   "npm run build"
 ];
+
+const CONTROLLED_REFUND_CONFIRMATION = "REFUND 5";
+const CONTROLLED_REFUND_REASON = "Cancelled appointment captured booking payment resolution";
+
+const APPROVED_CONTROLLED_REFUND_TARGETS: ControlledRefundTarget[] = [
+  {
+    appointmentId: "168b6424-d4a6-5d04-bfa0-1a2953fc4a38",
+    paymentId: "2d2d2770-50dc-4e9d-9b05-6ea335a1e1bd",
+    amount: 5,
+    reason: CONTROLLED_REFUND_REASON,
+    currentRoutingState: "blocked/manual_review routing, released_at null, payout_executions target count must remain 0"
+  },
+  {
+    appointmentId: "a47109d8-3365-58bf-90eb-011e3b8857c6",
+    paymentId: "9be82cc2-5b5b-43c2-a381-d2c5852651e6",
+    amount: 5,
+    reason: CONTROLLED_REFUND_REASON,
+    currentRoutingState: "blocked/manual_review routing, released_at null, payout_executions target count must remain 0"
+  },
+  {
+    appointmentId: "c4629292-f905-5d88-ba9e-36a33dfa9d0a",
+    paymentId: "0d72dad9-c8e4-465e-a43d-42f3a1523f50",
+    amount: 5,
+    reason: CONTROLLED_REFUND_REASON,
+    currentRoutingState: "blocked/manual_review routing, released_at null, payout_executions target count must remain 0"
+  },
+  {
+    appointmentId: "37cdb825-a65d-5cda-b58d-5b5efaedbfc0",
+    paymentId: "929514f6-8e15-42f2-a9fb-7a9b75d5afda",
+    amount: 5,
+    reason: CONTROLLED_REFUND_REASON,
+    currentRoutingState: "blocked/manual_review routing, released_at null, payout_executions target count must remain 0"
+  }
+];
+
+function shouldShowControlledRefundResolution(card: MissionEvidenceCard, issue: ArchitectIssueDetail) {
+  if (issue.lane.id !== "finance") return false;
+  if (card.id !== "finance-payment-health" && card.id !== "finance-routing") return false;
+  if (issue.status === "Pass") return false;
+
+  const evidenceText = [
+    issue.currentTruth,
+    issue.missingOrFailed,
+    issue.suggestedFixDirection,
+    ...issue.evidenceRows
+  ].join(" ").toLowerCase();
+
+  return (
+    evidenceText.includes("captured")
+    && evidenceText.includes("cancelled")
+    && evidenceText.includes("manual_review")
+    && evidenceText.includes("refund or reversal")
+  );
+}
 
 function findCeoCard(foundation: MissionControlFoundation, id: string) {
   return foundation.ceoCommandCenter.find((card) => card.id === id);
@@ -895,6 +983,150 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
   );
 }
 
+function ControlledRefundResolutionSection({ card, issue }: { card: MissionEvidenceCard; issue: ArchitectIssueDetail }) {
+  const targets = shouldShowControlledRefundResolution(card, issue) ? APPROVED_CONTROLLED_REFUND_TARGETS : [];
+  const [confirmations, setConfirmations] = useState<Record<string, string>>({});
+  const [executionState, setExecutionState] = useState<Record<string, ControlledRefundExecutionState>>({});
+
+  if (!targets.length) return null;
+
+  function updateConfirmation(paymentId: string, value: string) {
+    setConfirmations((current) => ({ ...current, [paymentId]: value }));
+  }
+
+  async function executeRefund(target: ControlledRefundTarget) {
+    setExecutionState((current) => ({
+      ...current,
+      [target.paymentId]: { status: "running", message: "Calling canonical refund route." }
+    }));
+
+    try {
+      const response = await fetch(`/api/payments/${target.paymentId}/refund`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: target.amount,
+          reason: target.reason
+        })
+      });
+      const payload = await readJson<ControlledRefundResult>(response);
+      setExecutionState((current) => ({
+        ...current,
+        [target.paymentId]: {
+          status: "success",
+          message: "Refund route completed. Verify the checklist before moving to another payment.",
+          refundId: payload.refund?.id,
+          paymentStatus: payload.payment?.paymentStatus ?? payload.payment?.payment_status
+        }
+      }));
+    } catch (error) {
+      setExecutionState((current) => ({
+        ...current,
+        [target.paymentId]: {
+          status: "error",
+          message: error instanceof Error ? error.message : "Refund failed. Payment Health remains Failed until evidence changes."
+        }
+      }));
+    }
+  }
+
+  return (
+    <section className="mt-3 rounded-[20px] border border-amber-300/24 bg-amber-300/8 p-4" data-testid="controlled-refund-resolution">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">Controlled refund resolution</h4>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/68">
+            Approved cancelled/captured refund targets only. This calls Stripe through the canonical app refund route and does not release payouts, change appointment lifecycle, or mark Finance Pass.
+          </p>
+        </div>
+        <StatusPill status="Needs Review" />
+      </div>
+      <div className="mt-4 space-y-3">
+        {targets.map((target) => {
+          const confirmation = confirmations[target.paymentId] ?? "";
+          const state = executionState[target.paymentId] ?? { status: "idle" as const };
+          const confirmationMatches = confirmation === CONTROLLED_REFUND_CONFIRMATION;
+          const disabled = !confirmationMatches || state.status === "running" || state.status === "success";
+
+          return (
+            <article key={target.paymentId} className="rounded-[18px] border border-white/10 bg-black/30 p-4" data-testid={`controlled-refund-${target.paymentId}`}>
+              <div className="grid gap-3 text-sm leading-6 text-white/66 md:grid-cols-2">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Appointment ID</p>
+                  <p className="mt-1 break-all font-mono text-xs text-white/78">{target.appointmentId}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Payment ID</p>
+                  <p className="mt-1 break-all font-mono text-xs text-white/78">{target.paymentId}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Amount</p>
+                  <p className="mt-1 font-black text-white">${target.amount.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Current routing state</p>
+                  <p className="mt-1 text-white/68">{target.currentRoutingState}</p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-[14px] border border-white/8 bg-black/22 p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Reason</p>
+                <p className="mt-1 text-sm text-white/72">{target.reason}</p>
+                <p className="mt-3 text-xs leading-5 text-amber-100">
+                  Warning: this will call <span className="font-mono">POST /api/payments/{target.paymentId}/refund</span>. The browser UI does not call Stripe directly and does not run SQL.
+                </p>
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                <label className="block">
+                  <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Type REFUND 5 to enable</span>
+                  <input
+                    aria-label={`Type REFUND 5 for payment ${target.paymentId}`}
+                    className="mt-2 h-11 w-full rounded-[10px] border border-white/10 bg-black/36 px-3 font-mono text-sm text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/42"
+                    value={confirmation}
+                    onChange={(event) => updateConfirmation(target.paymentId, event.target.value)}
+                    placeholder={CONTROLLED_REFUND_CONFIRMATION}
+                    disabled={state.status === "running" || state.status === "success"}
+                  />
+                </label>
+                <Button
+                  type="button"
+                  className="min-h-11 rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black hover:bg-[#d7ffab] disabled:border-white/10 disabled:bg-white/10 disabled:text-white/34"
+                  disabled={disabled}
+                  aria-label={`Refund $5 through canonical route for payment ${target.paymentId}`}
+                  onClick={() => void executeRefund(target)}
+                >
+                  {state.status === "running" ? "Refunding..." : "Refund $5 through canonical route"}
+                </Button>
+              </div>
+              {state.status === "success" ? (
+                <div className="mt-3 rounded-[14px] border border-[#A3FF12]/22 bg-[#A3FF12]/10 p-3 text-sm leading-6 text-[#d7ffab]">
+                  <p className="font-black">Refund success.</p>
+                  <p>Refund ID: {state.refundId ?? "returned response did not include refund ID"}</p>
+                  <p>Updated payment status: {state.paymentStatus ?? "not returned"}</p>
+                </div>
+              ) : null}
+              {state.status === "error" ? (
+                <div className="mt-3 rounded-[14px] border border-rose-400/24 bg-rose-400/10 p-3 text-sm leading-6 text-rose-100">
+                  <p className="font-black">Refund failed.</p>
+                  <p>{state.message}</p>
+                </div>
+              ) : null}
+              <div className="mt-3 rounded-[14px] border border-white/8 bg-black/22 p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Verification checklist after this refund</p>
+                <ul className="mt-2 space-y-1 text-xs leading-5 text-white/56">
+                  <li>Refund record exists.</li>
+                  <li>Payment refunded/refund amount updated.</li>
+                  <li>Routing released_at remains null.</li>
+                  <li>payout_executions remains 0.</li>
+                </ul>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function ArchitectIssueDetailModal({ card, lane, onClose }: { card: MissionEvidenceCard; lane: MissionDepartmentLane; onClose: () => void }) {
   const issue = useMemo(() => buildIssueDetail(card, lane), [card, lane]);
   const [promptState, setPromptState] = useState<"idle" | "building" | "ready">("idle");
@@ -1016,6 +1248,8 @@ function ArchitectIssueDetailModal({ card, lane, onClose }: { card: MissionEvide
               </ul>
             </section>
           </div>
+
+          <ControlledRefundResolutionSection card={card} issue={issue} />
 
           {manualCopyRequired && generatedPrompt ? (
             <div className="mt-3 rounded-[18px] border border-amber-300/20 bg-amber-300/10 p-4">
