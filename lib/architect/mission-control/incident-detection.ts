@@ -120,21 +120,90 @@ function appointmentLabel(appointment: JsonRecord) {
 }
 
 const APPOINTMENT_SCOPED_PAYMENT_TYPES = new Set(["booking", "tip", "add_on"]);
+const FAILED_REFUND_STATUSES = new Set(["failed", "canceled", "cancelled", "void"]);
+const FULL_REFUND_PAYMENT_STATUSES = new Set(["refunded", "reversed"]);
+const ROUTING_REFUND_STATUSES = new Set(["refunded", "reversed"]);
 
 function isAppointmentScopedPayment(payment: JsonRecord) {
   const paymentType = String(payment.payment_type ?? payment.type ?? "").toLowerCase();
   return APPOINTMENT_SCOPED_PAYMENT_TYPES.has(paymentType);
 }
 
+function paymentAmountValue(payment: JsonRecord) {
+  const amount = numberValue(payment.amount ?? payment.total_amount ?? payment.gross_amount);
+  if (amount > 0) return amount;
+  return numberValue(payment.amount_cents ?? payment.total_amount_cents ?? payment.gross_amount_cents) / 100;
+}
+
+function refundAmountValue(refund: JsonRecord) {
+  const amount = numberValue(refund.amount ?? refund.refund_amount ?? refund.amount_refunded ?? refund.refunded_amount);
+  if (amount > 0) return amount;
+  return numberValue(refund.amount_cents ?? refund.refund_amount_cents ?? refund.amount_refunded_cents ?? refund.refunded_amount_cents) / 100;
+}
+
+function isRefundRowUsable(row: JsonRecord) {
+  return !FAILED_REFUND_STATUSES.has(String(row.status ?? row.refund_status ?? "").toLowerCase());
+}
+
+function rowReferencesPayment(row: JsonRecord, paymentId: string) {
+  return [row.payment_id, row.source_payment_id, row.original_payment_id].map(String).includes(paymentId);
+}
+
+function sumUsableRefundAmount(paymentId: string, refundRows: JsonRecord[]) {
+  return refundRows
+    .filter((row) => rowReferencesPayment(row, paymentId) && isRefundRowUsable(row))
+    .reduce((total, row) => total + refundAmountValue(row), 0);
+}
+
+function routingHasRefundSupport(routing: JsonRecord | null, paymentAmount: number) {
+  if (!routing) return false;
+  const routingRefundAmount = numberValue(routing.refund_amount ?? routing.refunded_amount ?? routing.reversal_amount ?? routing.reversed_amount);
+  const routingRefundCents = numberValue(routing.refund_amount_cents ?? routing.refunded_amount_cents ?? routing.reversal_amount_cents ?? routing.reversed_amount_cents) / 100;
+  const amount = routingRefundAmount > 0 ? routingRefundAmount : routingRefundCents;
+  if (paymentAmount > 0 && amount >= paymentAmount) return true;
+
+  return Boolean(
+    routing.refund_id
+      || routing.provider_refund_id
+      || routing.refund_reference
+      || routing.reversal_id
+      || routing.provider_reversal_id
+      || routing.refunded_at
+      || routing.reversed_at
+  );
+}
+
+function hasRefundOrReversalEvidence(payment: JsonRecord, refundRows: JsonRecord[], routing: JsonRecord | null) {
+  const paymentId = String(payment.id ?? "");
+  const paymentStatus = String(payment.status ?? payment.payment_status ?? "").toLowerCase();
+  const refundedAmount = numberValue(payment.refunded_amount ?? payment.amount_refunded);
+  const paymentAmount = paymentAmountValue(payment);
+  const refundAmount = sumUsableRefundAmount(paymentId, refundRows);
+  const routingResolved = ROUTING_REFUND_STATUSES.has(String(routing?.money_routing_status ?? "").toLowerCase())
+    || ROUTING_REFUND_STATUSES.has(String(routing?.reconciliation_status ?? "").toLowerCase());
+
+  return FULL_REFUND_PAYMENT_STATUSES.has(paymentStatus)
+    || (paymentAmount > 0 && refundedAmount >= paymentAmount)
+    || (paymentAmount > 0 && refundAmount >= paymentAmount)
+    || (routingResolved && routingHasRefundSupport(routing, paymentAmount));
+}
+
+function latestByField(rows: JsonRecord[], field: string, value: unknown) {
+  return rows.find((row) => String(row[field] ?? "") === String(value ?? "")) ?? null;
+}
+
 export async function detectArchitectMissionIncidents(supabase: SupabaseClient) {
-  const [appointments, payments, posSales, barbers, services, availabilityRules, audits] = await Promise.all([
+  const [appointments, payments, posSales, barbers, services, availabilityRules, audits, refunds, payoutExecutions, routingRecords] = await Promise.all([
     selectRows<JsonRecord>(supabase, "appointments", { orderColumn: "updated_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "payments", { orderColumn: "created_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "pos_sales", { orderColumn: "updated_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "barbers", { orderColumn: "updated_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "services", { orderColumn: "updated_at", limit: 200, optional: true }),
     selectRows<JsonRecord>(supabase, "availability_rules", { limit: 200, optional: true }),
-    selectRows<JsonRecord>(supabase, "architect_repair_audit_logs", { orderColumn: "created_at", limit: 50, optional: true })
+    selectRows<JsonRecord>(supabase, "architect_repair_audit_logs", { orderColumn: "created_at", limit: 50, optional: true }),
+    selectRows<JsonRecord>(supabase, "refunds", { orderColumn: "created_at", limit: 200, optional: true }),
+    selectRows<JsonRecord>(supabase, "payout_executions", { orderColumn: "created_at", limit: 200, optional: true }),
+    selectRows<JsonRecord>(supabase, "payment_routing_records", { orderColumn: "updated_at", limit: 300, optional: true })
   ]);
 
   const incidents: ArchitectIncident[] = [];
@@ -144,19 +213,13 @@ export async function detectArchitectMissionIncidents(supabase: SupabaseClient) 
     const status = String(appointment.status ?? "").toLowerCase();
     const appointmentPayments = payments.filter((payment) => payment.appointment_id === appointment.id);
     const payment = latest(appointmentPayments);
-    const routingRows = await selectRows<JsonRecord>(supabase, "payment_routing_records", {
-      column: "appointment_id",
-      value: appointment.id,
-      orderColumn: "updated_at",
-      optional: true
-    });
+    const routing = latestByField(routingRecords, "appointment_id", appointment.id);
     const history = await selectRows<JsonRecord>(supabase, "appointment_status_history", {
       column: "appointment_id",
       value: appointment.id,
       orderColumn: "changed_at",
       optional: true
     });
-    const routing = latest(routingRows);
     const capturedPayment = isPaymentSuccessful(payment);
     const recentConstraintFailure = hasRoutingConstraintFailure(audits, appointmentId);
 
@@ -353,44 +416,63 @@ export async function detectArchitectMissionIncidents(supabase: SupabaseClient) 
     const appointment = appointments.find((row) => row.id === payment.appointment_id);
     const appointmentStatus = String(appointment?.status ?? "").toLowerCase();
     if (appointment && ["cancelled", "canceled"].includes(appointmentStatus)) {
+      const routing = latestByField(routingRecords, "appointment_id", appointment.id);
+      if (hasRefundOrReversalEvidence(payment, refunds, routing)) {
+        continue;
+      }
+
+      const paymentId = String(payment.id ?? "");
+      const appointmentId = String(appointment.id ?? "");
+      const routingId = String(routing?.id ?? "");
+      const targetPayoutExecutions = payoutExecutions.filter((row) =>
+        [row.payment_id, row.appointment_id, row.routing_id, row.payment_routing_record_id]
+          .map((value) => String(value ?? ""))
+          .some((value) => value === paymentId || value === appointmentId || (routingId && value === routingId))
+      );
+
       incidents.push(buildIncident({
-        diagnosisCode: "captured_payment_cancelled_appointment",
+        diagnosisCode: "cancelled_captured_refund_missing",
         affectedEntity: `payment ${String(payment.id ?? "unknown")}`,
         affectedRole: "client",
-        affectedTable: "payments",
-        affectedRoute: "/api/bookings/[id]/cancel",
+        affectedTable: "refunds",
+        affectedRoute: "/api/payments/[paymentId]/refund",
         severity: "critical",
         confidence: "high",
-        recommendedAction: "Investigate refund/reversal posture and keep routing blocked or in manual review. Do not mark payout ready.",
+        recommendedAction: "Resolve through the controlled canonical refund route after explicit owner approval; keep routing blocked/manual_review until refund evidence exists.",
         canRepair: false,
         repairType: null,
         codexRequired: true,
         targetType: "payment",
-        targetId: String(payment.id ?? ""),
-        headline: "Captured payment is attached to a cancelled appointment.",
+        targetId: paymentId,
+        headline: "Cancelled appointment has captured payment without refund evidence.",
         evidence: [
-          `payment.status=${String(payment.status ?? payment.payment_status ?? "unknown")}`,
+          `payment.status = ${String(payment.status ?? payment.payment_status ?? "unknown")}`,
           `appointment.status=${appointmentStatus}`,
+          routing ? `payment_routing_records.payout_readiness_status=${String(routing.payout_readiness_status ?? "unknown")}` : "payment_routing_records row is missing for cancelled/captured payment",
+          routing ? `payment_routing_records.money_routing_status=${String(routing.money_routing_status ?? "unknown")}` : "routing money status is unavailable",
+          "refunds lookup by payment_id returned 0 resolved rows",
+          `payout_executions target count=${targetPayoutExecutions.length}`,
           "captured payment + cancelled appointment must remain blocked/manual_review until refund or reversal truth is resolved"
         ],
         analysis: {
-          likelyRootCause: "A cancellation path left captured money attached to a cancelled appointment without a settled refund/reversal posture.",
+          likelyRootCause: "A cancellation path left captured money attached to a cancelled appointment, and no refund/reversal evidence has been recorded yet.",
           confidence: 91,
-          affectedLayer: "payment routing",
-          failedInvariant: "Cancelled appointments with captured payments must not become payout-ready.",
+          affectedLayer: "refund resolution",
+          failedInvariant: "Cancelled appointments with captured payments require refund/reversal evidence before Finance can Pass.",
           supportingEvidence: [
             `paymentId=${String(payment.id ?? "unknown")}`,
-            `appointmentId=${String(appointment.id ?? "unknown")}`
+            `appointmentId=${appointmentId}`,
+            `routingId=${routingId || "missing"}`,
+            `payoutExecutions=${targetPayoutExecutions.length}`
           ],
           ruledOut: ["payment capture exists"],
           safeRepairAvailable: false,
           codexRequired: true,
-          nextBestAction: "Inspect payment, refund, dispute, and routing state; do not start by editing UI."
+          nextBestAction: "Use controlled refund resolution only through POST /api/payments/{paymentId}/refund after authorization. Do not start by editing UI or SQL."
         }
       }));
       continue;
     }
-
     if (!appointment || !["confirmed", "completed", "checked_in", "in_service"].includes(appointmentStatus)) {
       incidents.push(buildIncident({
         diagnosisCode: "payment_captured_but_appointment_missing",
@@ -436,14 +518,7 @@ export async function detectArchitectMissionIncidents(supabase: SupabaseClient) 
     const payment = latest(payments.filter((row) => row.pos_sale_id === posSale.id || row.id === posSale.payment_id));
     if (!isPaymentSuccessful(payment)) continue;
 
-    const routingRows = await selectRows<JsonRecord>(supabase, "payment_routing_records", {
-      column: "pos_sale_id",
-      value: posSale.id,
-      orderColumn: "updated_at",
-      optional: true
-    });
-
-    if (!latest(routingRows)) {
+    if (!latestByField(routingRecords, "pos_sale_id", posSale.id)) {
       const grossAmount = Number(posSale.total_cents ?? 0) / 100;
       incidents.push(buildIncident({
         diagnosisCode: "paid_pos_sale_missing_routing",
@@ -616,12 +691,12 @@ function healthFromIncidents(incidents: ArchitectIncident[], checkedAt: string):
   return MISSION_SYSTEMS.map((system) => {
     const related = incidents.filter((incident) => {
       if (system.key === "routing") return ["completed_but_routing_missing", "routing_exists_but_not_eligible", "schema_constraint_mismatch"].includes(incident.diagnosisCode);
-      if (system.key === "payments") return incident.diagnosisCode.includes("payment");
+      if (system.key === "payments") return incident.diagnosisCode.includes("payment") || incident.diagnosisCode.includes("refund");
       if (system.key === "discovery") return incident.diagnosisCode.startsWith("barber_hidden");
       if (system.key === "barber_calendar") return incident.diagnosisCode.includes("calendar");
       if (system.key === "client_activity") return incident.diagnosisCode.includes("client_activity");
       if (system.key === "schema_health") return incident.diagnosisCode === "schema_constraint_mismatch";
-      if (system.key === "payout_eligibility") return incident.diagnosisCode.includes("routing") || incident.diagnosisCode.includes("payout");
+      if (system.key === "payout_eligibility") return incident.diagnosisCode.includes("routing") || incident.diagnosisCode.includes("payout") || incident.diagnosisCode.includes("refund");
       return false;
     });
 

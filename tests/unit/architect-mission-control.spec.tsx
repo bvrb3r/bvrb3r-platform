@@ -400,6 +400,10 @@ describe("architect mission control", () => {
     await waitFor(() => expect(screen.getByText("Finance Mission Control")).toBeInTheDocument());
     expect(screen.getByText("Finance Mission Control")).toBeInTheDocument();
     expect(screen.getByText("Payment health")).toBeInTheDocument();
+    expect(screen.getByText("Cancelled/captured refund resolution")).toBeInTheDocument();
+    expect(screen.getByText("Repair audit coverage")).toBeInTheDocument();
+    expect(screen.getByTestId("architect-control-plane-boundary")).toHaveTextContent("Architect detects issues before it executes actions.");
+    expect(screen.getByTestId("architect-control-plane-boundary")).toHaveTextContent("missing UI, missing auth, or missing environment evidence as Needs Review / Not connected");
     expect(screen.queryByText("CEO Command Center")).not.toBeInTheDocument();
     expect(screen.queryByText("Product Mission Control")).not.toBeInTheDocument();
   });

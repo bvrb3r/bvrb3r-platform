@@ -77,6 +77,7 @@ export type ArchitectMissionIncidentType =
   | "owner_active_barber_sync_failed"
   | "owner_kpi_mismatch"
   | "payment_routing_missing"
+  | "cancelled_captured_refund_unresolved"
   | "payout_constraint_mismatch"
   | "deployment_pending_or_failed"
   | "regression_test_missing"

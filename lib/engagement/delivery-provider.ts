@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { isSupabaseEnabled, productionSupabaseTruthError, shouldRequireProductionSupabaseTruth } from "@/lib/config/runtime";
 import { toNotificationDeliveryRecord } from "@/lib/engagement/delivery";
 import { executeNotificationAttempt } from "@/lib/engagement/live-delivery";
 import { getMobileProvider } from "@/lib/mobile/provider";
@@ -386,11 +386,17 @@ function createSupabaseProvider(supabase: SupabaseClient): NotificationDeliveryP
 
 export async function getNotificationDeliveryProvider(): Promise<NotificationDeliveryProvider> {
   if (!isSupabaseEnabled()) {
+    if (shouldRequireProductionSupabaseTruth()) {
+      throw productionSupabaseTruthError("Notification delivery provider");
+    }
     return createEmptyProvider();
   }
 
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
+    if (shouldRequireProductionSupabaseTruth()) {
+      throw productionSupabaseTruthError("Notification delivery provider");
+    }
     return createEmptyProvider();
   }
 

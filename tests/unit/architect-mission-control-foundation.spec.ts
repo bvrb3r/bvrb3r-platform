@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ACTION_REGISTRY,
+  AUDIT_COVERAGE_PLAN,
   HIVE_AGENT_REGISTRY,
   MISSION_CONTROL_LANES,
   OFFICER_ASSISTANT_DEPARTMENTS,
@@ -8,6 +9,7 @@ import {
   buildMissionControlFoundation,
   classifyArchitectIncident,
   getOfficerAssistants,
+  getAuditCoveragePlanEvidence,
   getOfficerCleanupEvidence,
   validateCoreLoopState
 } from "@/lib/architect/mission-control/foundation";
@@ -131,6 +133,79 @@ describe("architect mission control foundation", () => {
     expect(securityLane?.cards.find((card) => card.id === "security-role-drift")?.evidence.join("\n")).toContain("no role mutation was attempted");
   });
 
+
+  it("keeps Finance from Pass when production evidence is unavailable", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
+    const financeLane = foundation.departmentLanes.find((lane) => lane.id === "finance");
+
+    expect(financeLane?.status).toBe("Needs Review");
+    expect(financeLane?.cards.find((card) => card.id === "finance-refund-resolution")).toMatchObject({
+      status: "Needs Review",
+      summary: "Refund/reversal evidence must be connected before Finance can Pass."
+    });
+    expect(financeLane?.cards.find((card) => card.id === "finance-repair-audit-coverage")).toMatchObject({
+      status: "Needs Review"
+    });
+  });
+
+  it("keeps Finance failed when cancelled captured refund evidence is missing", () => {
+    const foundation = buildMissionControlFoundation([{
+      id: "cancelled_captured_refund_missing:payment:payment-cancelled",
+      diagnosisCode: "cancelled_captured_refund_missing",
+      missionIncidentType: "cancelled_captured_refund_unresolved",
+      affectedDepartment: "Finance",
+      affectedWorkflow: "Cancelled/Captured Refund Resolution",
+      affectedEntity: "payment payment-cancelled",
+      affectedRole: "client",
+      affectedTable: "refunds",
+      affectedRoute: "/api/payments/[paymentId]/refund",
+      severity: "critical",
+      confidence: "high",
+      createdAt: "2026-06-20T12:00:00.000Z",
+      recommendedAction: "Use canonical refund route after approval.",
+      canRepair: false,
+      repairType: null,
+      codexRequired: true,
+      targetType: "payment",
+      targetId: "payment-cancelled",
+      headline: "Cancelled appointment has captured payment without refund evidence.",
+      evidence: [
+        "payment.status = captured",
+        "appointment.status=cancelled",
+        "refunds lookup by payment_id returned 0 resolved rows",
+        "payout_executions target count=0"
+      ],
+      validationChecklist: ["refund/reversal evidence", "no payout release"],
+      analysis: {
+        likelyRootCause: "No refund evidence exists.",
+        confidence: 91,
+        affectedLayer: "refund resolution",
+        failedInvariant: "Cancelled captured payments require refund evidence.",
+        supportingEvidence: ["paymentId=payment-cancelled"],
+        ruledOut: ["payout released"],
+        safeRepairAvailable: false,
+        codexRequired: true,
+        nextBestAction: "Use controlled refund resolution."
+      },
+      sqlSnippets: []
+    }], "2026-06-20T12:00:00.000Z");
+    const financeLane = foundation.departmentLanes.find((lane) => lane.id === "finance");
+    const refundCard = financeLane?.cards.find((card) => card.id === "finance-refund-resolution");
+
+    expect(financeLane?.status).toBe("Failed");
+    expect(refundCard).toMatchObject({ status: "Failed" });
+    expect(refundCard?.evidence.join("\n")).toContain("refunds lookup by payment_id returned 0 resolved rows");
+  });
+
+  it("documents repair audit coverage without claiming it is implemented", () => {
+    const evidence = getAuditCoveragePlanEvidence();
+
+    expect(AUDIT_COVERAGE_PLAN).toHaveLength(4);
+    expect(evidence.join("\n")).toContain("Repair approvals");
+    expect(evidence.join("\n")).toContain("Repair executions");
+    expect(evidence.join("\n")).toContain("Repair verification");
+    expect(evidence.join("\n")).toContain("Score updates");
+  });
   it("keeps missing validator data as Needs Review instead of Pass", () => {
     const validators = validateCoreLoopState();
 

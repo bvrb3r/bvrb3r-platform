@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { getNotificationDeliveryProvider } from "@/lib/engagement/delivery-provider";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { isSupabaseEnabled, productionSupabaseTruthError, shouldRequireProductionSupabaseTruth } from "@/lib/config/runtime";
 import { demoBarbers, demoClients, demoUsers } from "@/lib/data/demo";
 import {
   createEmptyEngagementState,
@@ -536,24 +536,19 @@ function createSupabaseProvider(supabase: SupabaseClient): EngagementProvider {
 
 export async function getEngagementProvider(): Promise<EngagementProvider> {
   if (!isSupabaseEnabled()) {
+    if (shouldRequireProductionSupabaseTruth()) {
+      throw productionSupabaseTruthError("Engagement provider");
+    }
     return createEmptyProvider();
   }
 
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
+    if (shouldRequireProductionSupabaseTruth()) {
+      throw productionSupabaseTruthError("Engagement provider");
+    }
     return createEmptyProvider();
   }
 
   return createSupabaseProvider(supabase);
 }
-
-
-
-
-
-
-
-
-
-
-

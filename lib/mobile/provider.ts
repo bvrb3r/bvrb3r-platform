@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createHash } from "node:crypto";
-import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { isSupabaseEnabled, productionSupabaseTruthError, shouldRequireProductionSupabaseTruth } from "@/lib/config/runtime";
 import {
   createEmptyMobileState,
   getActiveNativePushTokens,
@@ -508,11 +508,17 @@ function createSupabaseProvider(supabase: SupabaseClient): MobileProvider {
 
 export async function getMobileProvider(): Promise<MobileProvider> {
   if (!isSupabaseEnabled()) {
+    if (shouldRequireProductionSupabaseTruth()) {
+      throw productionSupabaseTruthError("Mobile provider");
+    }
     return createEmptyProvider();
   }
 
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
+    if (shouldRequireProductionSupabaseTruth()) {
+      throw productionSupabaseTruthError("Mobile provider");
+    }
     return createEmptyProvider();
   }
 
