@@ -11,6 +11,9 @@ import { buildArchitectCodexRepairPrompt } from "@/lib/architect/mission-control
 import { buildMissionControlFoundation, getOfficerCleanupEvidence } from "@/lib/architect/mission-control/foundation";
 import type {
   ArchitectIncident,
+  FinanceLogCategory,
+  FinanceLogEntry,
+  FinanceRefundTarget,
   MissionControlFoundation,
   MissionControlSnapshot,
   MissionDepartmentLane,
@@ -27,13 +30,7 @@ type ApiError = {
   stage?: string;
 };
 
-type ControlledRefundTarget = {
-  appointmentId: string;
-  paymentId: string;
-  amount: number;
-  reason: string;
-  currentRoutingState: string;
-};
+type ControlledRefundTarget = FinanceRefundTarget;
 
 type ControlledRefundResult = {
   refund?: {
@@ -406,6 +403,7 @@ const CEO_CHECKLIST_IDS = new Set([
   "shop-owners",
   "bookings",
   "payments",
+  "refund-evidence",
   "routing-payout",
   "culture",
   "active-supply",
@@ -501,59 +499,13 @@ const FINANCE_REQUIRED_TESTS = [
 ];
 
 const CONTROLLED_REFUND_CONFIRMATION = "REFUND 5";
-const CONTROLLED_REFUND_REASON = "Cancelled appointment captured booking payment resolution";
 const CONTROLLED_REFUND_SOURCE = "architect_finance_controlled_refund";
 const CONTROLLED_REFUND_INCIDENT_CODE = "cancelled_captured_refund_missing";
 
-const APPROVED_CONTROLLED_REFUND_TARGETS: ControlledRefundTarget[] = [
-  {
-    appointmentId: "168b6424-d4a6-5d04-bfa0-1a2953fc4a38",
-    paymentId: "2d2d2770-50dc-4e9d-9b05-6ea335a1e1bd",
-    amount: 5,
-    reason: CONTROLLED_REFUND_REASON,
-    currentRoutingState: "blocked/manual_review routing, released_at null, payout_executions target count must remain 0"
-  },
-  {
-    appointmentId: "a47109d8-3365-58bf-90eb-011e3b8857c6",
-    paymentId: "9be82cc2-5b5b-43c2-a381-d2c5852651e6",
-    amount: 5,
-    reason: CONTROLLED_REFUND_REASON,
-    currentRoutingState: "blocked/manual_review routing, released_at null, payout_executions target count must remain 0"
-  },
-  {
-    appointmentId: "c4629292-f905-5d88-ba9e-36a33dfa9d0a",
-    paymentId: "0d72dad9-c8e4-465e-a43d-42f3a1523f50",
-    amount: 5,
-    reason: CONTROLLED_REFUND_REASON,
-    currentRoutingState: "blocked/manual_review routing, released_at null, payout_executions target count must remain 0"
-  },
-  {
-    appointmentId: "37cdb825-a65d-5cda-b58d-5b5efaedbfc0",
-    paymentId: "929514f6-8e15-42f2-a9fb-7a9b75d5afda",
-    amount: 5,
-    reason: CONTROLLED_REFUND_REASON,
-    currentRoutingState: "blocked/manual_review routing, released_at null, payout_executions target count must remain 0"
-  }
-];
-
 function shouldShowControlledRefundResolution(card: MissionEvidenceCard, issue: ArchitectIssueDetail) {
   if (issue.lane.id !== "finance") return false;
-  if (card.id !== "finance-payment-health" && card.id !== "finance-routing" && card.id !== "finance-refund-resolution") return false;
-  if (issue.status === "Pass") return false;
-
-  const evidenceText = [
-    issue.currentTruth,
-    issue.missingOrFailed,
-    issue.suggestedFixDirection,
-    ...issue.evidenceRows
-  ].join(" ").toLowerCase();
-
-  return (
-    evidenceText.includes("captured")
-    && evidenceText.includes("cancelled")
-    && evidenceText.includes("manual_review")
-    && evidenceText.includes("refund or reversal")
-  );
+  if (card.id !== "finance-refund-resolution") return false;
+  return true;
 }
 
 function findCeoCard(foundation: MissionControlFoundation, id: string) {
@@ -714,6 +666,11 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
   const bookings = findCeoCard(foundation, "ceo-total-bookings");
   const todayBookings = findCeoCard(foundation, "ceo-todays-bookings");
   const payments = findCeoCard(foundation, "ceo-payments-captured");
+  const refundCount = findCeoCard(foundation, "ceo-refund-count");
+  const totalRefunded = findCeoCard(foundation, "ceo-total-refunded");
+  const failedRefundAttempts = findCeoCard(foundation, "ceo-failed-refund-attempts");
+  const activeRefundBlockers = findCeoCard(foundation, "ceo-active-refund-blockers");
+  const lastRefundTimestamp = findCeoCard(foundation, "ceo-last-refund-timestamp");
   const routing = findCeoCard(foundation, "ceo-payment-routing-health");
   const payout = findCeoCard(foundation, "ceo-payout-readiness-health");
   const culture = findCeoCard(foundation, "ceo-culture-health");
@@ -738,6 +695,29 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
   const codexPacketEvidence = selectedIncident
     ? selectedIncident.evidence.concat(`Selected incident: ${selectedIncident.headline}`)
     : ["No active incident packet is selected."];
+  const refundMetrics = snapshot.financeEvidence?.refundMetrics ?? null;
+  const refundEvidenceStatus: MissionControlStatus = refundMetrics
+    ? refundMetrics.activeUnresolvedRefundBlockerCount > 0 || refundMetrics.failedRefundAttemptCount > 0
+      ? "Failed"
+      : refundMetrics.refundCount > 0 && refundMetrics.lastRefundTimestamp
+        ? "Pass"
+        : "Needs Review"
+    : worstStatus(refundCount?.status, totalRefunded?.status, failedRefundAttempts?.status, activeRefundBlockers?.status, lastRefundTimestamp?.status);
+  const refundEvidenceValue = refundMetrics
+    ? `${refundMetrics.refundCount} / ${formatRefundMoney(refundMetrics.totalRefundedAmount)}`
+    : `${metricValue(refundCount)} / ${metricValue(totalRefunded)}`;
+  const refundEvidenceSummary = refundMetrics
+    ? `Active refund blockers: ${refundMetrics.activeUnresolvedRefundBlockerCount}. Failed refund attempts: ${refundMetrics.failedRefundAttemptCount}. Last refund: ${refundMetrics.lastRefundTimestamp ?? "Not connected"}.`
+    : `Active blockers: ${metricValue(activeRefundBlockers)}. Failed attempts: ${metricValue(failedRefundAttempts)}. Last refund: ${metricValue(lastRefundTimestamp)}.`;
+  const refundEvidenceRows = refundMetrics
+    ? [
+        `refundCount=${refundMetrics.refundCount}`,
+        `totalRefunded=${formatRefundMoney(refundMetrics.totalRefundedAmount)}`,
+        `failedRefundAttemptCount=${refundMetrics.failedRefundAttemptCount}`,
+        `activeUnresolvedRefundBlockerCount=${refundMetrics.activeUnresolvedRefundBlockerCount}`,
+        `lastRefundTimestamp=${refundMetrics.lastRefundTimestamp ?? "Not connected"}`
+      ]
+    : cardEvidence(refundCount, totalRefunded, failedRefundAttempts, activeRefundBlockers, lastRefundTimestamp);
 
   return [
     compactCard({ id: "platform-health", label: "Platform Health", status: platform?.status, value: platform?.status, summary: metricSummary(platform), evidence: cardEvidence(platform), href: "/architect/technology" }),
@@ -748,6 +728,15 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
     compactCard({ id: "shop-owners", label: "Shop Owners", status: owners?.status, value: metricValue(owners), summary: metricSummary(owners), evidence: cardEvidence(owners), href: "/architect/operations" }),
     compactCard({ id: "bookings", label: "Bookings", status: worstStatus(bookings?.status, todayBookings?.status), value: metricValue(bookings), summary: `Today: ${metricValue(todayBookings)}. ${metricSummary(bookings)}`, evidence: cardEvidence(bookings, todayBookings), href: "/architect/operations" }),
     compactCard({ id: "payments", label: "Payments", status: payments?.status, value: metricValue(payments), summary: metricSummary(payments), evidence: cardEvidence(payments), href: "/architect/finance" }),
+    compactCard({
+      id: "refund-evidence",
+      label: "Refund Evidence",
+      status: refundEvidenceStatus,
+      value: refundEvidenceValue,
+      summary: refundEvidenceSummary,
+      evidence: refundEvidenceRows,
+      href: "/architect/finance"
+    }),
     compactCard({ id: "routing-payout", label: "Routing / Payout Readiness", status: worstStatus(routing?.status, payout?.status), value: `${metricValue(routing)} / ${metricValue(payout)}`, summary: "Payment routing and payout readiness stay separated from money mutation.", evidence: cardEvidence(routing, payout), href: "/architect/finance" }),
     compactCard({ id: "culture", label: "Culture", status: culture?.status, value: metricValue(culture), summary: metricSummary(culture), evidence: cardEvidence(culture), href: "/architect/content-community" }),
     compactCard({ id: "active-supply", label: "Active Shops / Active Barbers", status: worstStatus(shops?.status, activeBarbers?.status), value: `${metricValue(shops)} / ${metricValue(activeBarbers)}`, summary: "Active supply is read from shop and barber evidence.", evidence: cardEvidence(shops, activeBarbers), href: "/architect/operations" }),
@@ -1019,15 +1008,82 @@ function ArchitectControlPlaneBoundary({ lane }: { lane: MissionDepartmentLane }
     </article>
   );
 }
-function ControlledRefundResolutionSection({ card, issue }: { card: MissionEvidenceCard; issue: ArchitectIssueDetail }) {
-  const targets = shouldShowControlledRefundResolution(card, issue) ? APPROVED_CONTROLLED_REFUND_TARGETS : [];
+function formatRefundMoney(value: number) {
+  return value % 1 === 0 ? `$${value.toFixed(0)}` : `$${value.toFixed(2)}`;
+}
+
+function batchRefundConfirmation(targets: ControlledRefundTarget[]) {
+  const total = targets.reduce((sum, target) => sum + target.amount, 0);
+  return `REFUND ALL ${targets.length} FOR ${formatRefundMoney(total)}`;
+}
+
+function ControlledRefundResolutionSection({
+  card,
+  issue,
+  activeTargets,
+  onRefundCompleted
+}: {
+  card: MissionEvidenceCard;
+  issue: ArchitectIssueDetail;
+  activeTargets: ControlledRefundTarget[];
+  onRefundCompleted?: () => Promise<void>;
+}) {
+  const shouldShow = shouldShowControlledRefundResolution(card, issue);
+  const targets = shouldShow ? activeTargets : [];
   const [confirmations, setConfirmations] = useState<Record<string, string>>({});
+  const [batchConfirmation, setBatchConfirmation] = useState("");
+  const [batchState, setBatchState] = useState<ControlledRefundExecutionState>({ status: "idle" });
   const [executionState, setExecutionState] = useState<Record<string, ControlledRefundExecutionState>>({});
 
-  if (!targets.length) return null;
+  if (!shouldShow) return null;
+
+  if (!targets.length) {
+    return (
+      <section className="mt-3 rounded-[20px] border border-[#A3FF12]/22 bg-[#A3FF12]/8 p-4" data-testid="controlled-refund-resolution">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-[#d7ffab]">Controlled refund resolution</h4>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">
+              No active cancelled/captured refund targets. Refund history is available in Finance Logs.
+            </p>
+          </div>
+          <StatusPill status="Pass" />
+        </div>
+      </section>
+    );
+  }
 
   function updateConfirmation(paymentId: string, value: string) {
     setConfirmations((current) => ({ ...current, [paymentId]: value }));
+  }
+
+  async function callRefundRoute(target: ControlledRefundTarget) {
+    const response = await fetch(`/api/payments/${target.paymentId}/refund`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: target.amount,
+        reason: target.reason,
+        source: CONTROLLED_REFUND_SOURCE,
+        confirmation: CONTROLLED_REFUND_CONFIRMATION,
+        incidentCode: CONTROLLED_REFUND_INCIDENT_CODE
+      })
+    });
+    return readJson<ControlledRefundResult>(response);
+  }
+
+  async function executeOneTarget(target: ControlledRefundTarget) {
+    const payload = await callRefundRoute(target);
+    setExecutionState((current) => ({
+      ...current,
+      [target.paymentId]: {
+        status: "success",
+        message: "Refund route completed. Refreshing Finance evidence.",
+        refundId: payload.refund?.id,
+        paymentStatus: payload.payment?.paymentStatus ?? payload.payment?.payment_status
+      }
+    }));
+    return payload;
   }
 
   async function executeRefund(target: ControlledRefundTarget) {
@@ -1037,27 +1093,8 @@ function ControlledRefundResolutionSection({ card, issue }: { card: MissionEvide
     }));
 
     try {
-      const response = await fetch(`/api/payments/${target.paymentId}/refund`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: target.amount,
-          reason: target.reason,
-          source: CONTROLLED_REFUND_SOURCE,
-          confirmation: CONTROLLED_REFUND_CONFIRMATION,
-          incidentCode: CONTROLLED_REFUND_INCIDENT_CODE
-        })
-      });
-      const payload = await readJson<ControlledRefundResult>(response);
-      setExecutionState((current) => ({
-        ...current,
-        [target.paymentId]: {
-          status: "success",
-          message: "Refund route completed. Verify the checklist before moving to another payment.",
-          refundId: payload.refund?.id,
-          paymentStatus: payload.payment?.paymentStatus ?? payload.payment?.payment_status
-        }
-      }));
+      await executeOneTarget(target);
+      await onRefundCompleted?.();
     } catch (error) {
       setExecutionState((current) => ({
         ...current,
@@ -1068,6 +1105,50 @@ function ControlledRefundResolutionSection({ card, issue }: { card: MissionEvide
       }));
     }
   }
+
+  async function executeBatchRefund() {
+    const expectedConfirmation = batchRefundConfirmation(targets);
+    if (batchConfirmation !== expectedConfirmation) return;
+
+    setBatchState({ status: "running", message: "Running controlled refunds sequentially." });
+    let successCount = 0;
+
+    for (const target of targets) {
+      setExecutionState((current) => ({
+        ...current,
+        [target.paymentId]: { status: "running", message: "Calling canonical refund route." }
+      }));
+
+      try {
+        await executeOneTarget(target);
+        successCount += 1;
+      } catch (error) {
+        setExecutionState((current) => ({
+          ...current,
+          [target.paymentId]: {
+            status: "error",
+            message: error instanceof Error ? error.message : "Refund failed. Batch stopped on first failure."
+          }
+        }));
+        setBatchState({
+          status: "error",
+          message: `Batch stopped after ${successCount} successful refund(s). ${error instanceof Error ? error.message : "Refund failed."}`
+        });
+        if (successCount > 0) await onRefundCompleted?.();
+        return;
+      }
+    }
+
+    setBatchState({
+      status: "success",
+      message: `Batch completed ${successCount} sequential refund(s). Refreshing Finance evidence.`
+    });
+    await onRefundCompleted?.();
+  }
+
+  const expectedBatchConfirmation = batchRefundConfirmation(targets);
+  const batchTotal = targets.reduce((sum, target) => sum + target.amount, 0);
+  const batchDisabled = batchConfirmation !== expectedBatchConfirmation || batchState.status === "running";
 
   return (
     <section className="mt-3 rounded-[20px] border border-amber-300/24 bg-amber-300/8 p-4" data-testid="controlled-refund-resolution">
@@ -1080,6 +1161,65 @@ function ControlledRefundResolutionSection({ card, issue }: { card: MissionEvide
         </div>
         <StatusPill status="Needs Review" />
       </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-[14px] border border-white/8 bg-black/24 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Active targets</p>
+          <p data-testid="active-refund-target-count" className="mt-1 text-2xl font-black text-white">{targets.length}</p>
+        </div>
+        <div className="rounded-[14px] border border-white/8 bg-black/24 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Approved total</p>
+          <p className="mt-1 text-2xl font-black text-white">{formatRefundMoney(batchTotal)}</p>
+        </div>
+        <div className="rounded-[14px] border border-white/8 bg-black/24 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Execution mode</p>
+          <p className="mt-2 text-xs font-bold text-white/62">One target at a time. Stop on first failure.</p>
+        </div>
+      </div>
+      {targets.length >= 2 ? (
+        <div className="mt-4 rounded-[18px] border border-white/10 bg-black/30 p-4" data-testid="controlled-batch-refund">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h5 className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">Controlled batch refund</h5>
+              <p className="mt-2 text-sm leading-6 text-white/68">
+                Batch action covers {targets.length} active eligible target(s), total {formatRefundMoney(batchTotal)}. It calls the canonical refund route sequentially and stops on first failure.
+              </p>
+            </div>
+            <StatusPill status="Needs Review" />
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+            <label className="block">
+              <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Type {expectedBatchConfirmation} to enable</span>
+              <input
+                aria-label="Type batch refund confirmation"
+                className="mt-2 h-11 w-full rounded-[10px] border border-white/10 bg-black/36 px-3 font-mono text-sm text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/42"
+                value={batchConfirmation}
+                onChange={(event) => setBatchConfirmation(event.target.value)}
+                placeholder={expectedBatchConfirmation}
+                disabled={batchState.status === "running"}
+              />
+            </label>
+            <Button
+              type="button"
+              className="min-h-11 rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black hover:bg-[#d7ffab] disabled:border-white/10 disabled:bg-white/10 disabled:text-white/34"
+              disabled={batchDisabled}
+              aria-label={`Refund all ${targets.length} active targets through canonical route`}
+              onClick={() => void executeBatchRefund()}
+            >
+              {batchState.status === "running" ? "Refunding sequentially..." : `Refund ${targets.length} targets sequentially`}
+            </Button>
+          </div>
+          {batchState.status === "success" || batchState.status === "error" ? (
+            <div className={cn(
+              "mt-3 rounded-[14px] border p-3 text-sm leading-6",
+              batchState.status === "success"
+                ? "border-[#A3FF12]/22 bg-[#A3FF12]/10 text-[#d7ffab]"
+                : "border-rose-400/24 bg-rose-400/10 text-rose-100"
+            )}>
+              {batchState.message}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="mt-4 space-y-3">
         {targets.map((target) => {
           const confirmation = confirmations[target.paymentId] ?? "";
@@ -1166,7 +1306,21 @@ function ControlledRefundResolutionSection({ card, issue }: { card: MissionEvide
   );
 }
 
-function ArchitectIssueDetailModal({ card, lane, onClose }: { card: MissionEvidenceCard; lane: MissionDepartmentLane; onClose: () => void }) {
+function ArchitectIssueDetailModal({
+  card,
+  lane,
+  activeRefundTargets,
+  onClose,
+  onOpenFinanceLogs,
+  onRefundCompleted
+}: {
+  card: MissionEvidenceCard;
+  lane: MissionDepartmentLane;
+  activeRefundTargets: ControlledRefundTarget[];
+  onClose: () => void;
+  onOpenFinanceLogs: () => void;
+  onRefundCompleted?: () => Promise<void>;
+}) {
   const issue = useMemo(() => buildIssueDetail(card, lane), [card, lane]);
   const [promptState, setPromptState] = useState<"idle" | "building" | "ready">("idle");
   const [generatedPrompt, setGeneratedPrompt] = useState("");
@@ -1215,6 +1369,14 @@ function ArchitectIssueDetailModal({ card, lane, onClose }: { card: MissionEvide
     : promptState === "ready"
       ? "Copy & Paste in Codex"
       : "Generate Codex Prompt";
+  const refundResolutionIssue = card.id === "finance-refund-resolution";
+  const contextualPromptLabel = promptState === "building"
+    ? "Building repair packet..."
+    : promptState === "ready"
+      ? "Copy & Paste in Codex"
+      : refundResolutionIssue
+        ? "Copy Repair Prompt"
+        : "Generate Codex Prompt";
 
   return (
     <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/76 px-3 py-4 backdrop-blur-xl sm:items-center sm:px-5" role="dialog" aria-modal="true" aria-labelledby="architect-issue-detail-title" onClick={onClose}>
@@ -1288,7 +1450,12 @@ function ArchitectIssueDetailModal({ card, lane, onClose }: { card: MissionEvide
             </section>
           </div>
 
-          <ControlledRefundResolutionSection card={card} issue={issue} />
+          <ControlledRefundResolutionSection
+            card={card}
+            issue={issue}
+            activeTargets={activeRefundTargets}
+            onRefundCompleted={onRefundCompleted}
+          />
 
           {manualCopyRequired && generatedPrompt ? (
             <div className="mt-3 rounded-[18px] border border-amber-300/20 bg-amber-300/10 p-4">
@@ -1304,9 +1471,22 @@ function ArchitectIssueDetailModal({ card, lane, onClose }: { card: MissionEvide
 
         <div className="flex flex-col-reverse gap-2 border-t border-white/8 p-5 sm:flex-row sm:justify-end">
           <Button type="button" variant="secondary" className="min-h-11 rounded-[8px]" onClick={onClose}>Close</Button>
-          <Button type="button" className="min-h-11 rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black hover:bg-[#d7ffab]" onClick={() => void handlePromptAction()} disabled={promptState === "building"}>
-            {promptButtonLabel}
-          </Button>
+          {refundResolutionIssue ? (
+            <>
+              {issue.status !== "Pass" ? (
+                <Button type="button" variant="secondary" className="min-h-11 rounded-[8px]" onClick={() => void handlePromptAction()} disabled={promptState === "building"}>
+                  {contextualPromptLabel}
+                </Button>
+              ) : null}
+              <Button type="button" className="min-h-11 rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black hover:bg-[#d7ffab]" onClick={onOpenFinanceLogs}>
+                Open Finance Logs
+              </Button>
+            </>
+          ) : (
+            <Button type="button" className="min-h-11 rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black hover:bg-[#d7ffab]" onClick={() => void handlePromptAction()} disabled={promptState === "building"}>
+              {promptButtonLabel}
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -1344,10 +1524,191 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
   );
 }
 
-function DepartmentLaneDetail({ lane }: { lane: MissionDepartmentLane }) {
+const FINANCE_LOG_FILTERS: Array<{ id: "all" | FinanceLogCategory; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "refund", label: "Refunds" },
+  { id: "failed_refund", label: "Failed refund attempts" },
+  { id: "payout_block", label: "Payout blocks" },
+  { id: "manual_review", label: "Manual review" }
+];
+
+const FINANCE_TIME_FILTERS = ["Today", "Last 7 days", "All time"] as const;
+
+function logMatchesTimeFilter(log: FinanceLogEntry, filter: typeof FINANCE_TIME_FILTERS[number]) {
+  if (filter === "All time") return true;
+  if (!log.timestamp) return false;
+
+  const timestamp = new Date(log.timestamp);
+  if (Number.isNaN(timestamp.getTime())) return false;
+
+  const now = new Date();
+  if (filter === "Today") {
+    return timestamp.toISOString().slice(0, 10) === now.toISOString().slice(0, 10);
+  }
+
+  return now.getTime() - timestamp.getTime() <= 7 * 24 * 60 * 60 * 1000;
+}
+
+function logMatchesSearch(log: FinanceLogEntry, search: string) {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return true;
+
+  return [
+    log.paymentId,
+    log.appointmentId,
+    log.refundId,
+    log.providerRefundId,
+    log.reason
+  ].some((value) => String(value ?? "").toLowerCase().includes(needle));
+}
+
+function FinanceLogsPanel({ logs, metrics }: { logs: FinanceLogEntry[]; metrics: NonNullable<MissionControlSnapshot["financeEvidence"]>["refundMetrics"] }) {
+  const [categoryFilter, setCategoryFilter] = useState<"all" | FinanceLogCategory>("all");
+  const [timeFilter, setTimeFilter] = useState<typeof FINANCE_TIME_FILTERS[number]>("All time");
+  const [search, setSearch] = useState("");
+  const filteredLogs = logs.filter((log) =>
+    (categoryFilter === "all" || log.category === categoryFilter)
+    && logMatchesTimeFilter(log, timeFilter)
+    && logMatchesSearch(log, search)
+  );
+
+  return (
+    <article id="finance-logs" className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5" data-testid="finance-logs">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">Finance Logs</p>
+          <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Refund History</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
+            Searchable refund, failed refund attempt, payout block, and manual-review evidence. This is read-only and does not execute money actions.
+          </p>
+        </div>
+        <StatusPill status={metrics.activeUnresolvedRefundBlockerCount > 0 ? "Failed" : metrics.refundCount > 0 ? "Pass" : "Needs Review"} />
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Refund count</p>
+          <p className="mt-1 text-2xl font-black text-white">{metrics.refundCount}</p>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Total refunded</p>
+          <p className="mt-1 text-2xl font-black text-white">{formatRefundMoney(metrics.totalRefundedAmount)}</p>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Failed attempts</p>
+          <p className="mt-1 text-2xl font-black text-white">{metrics.failedRefundAttemptCount}</p>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Active blockers</p>
+          <p className="mt-1 text-2xl font-black text-white">{metrics.activeUnresolvedRefundBlockerCount}</p>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Last refund</p>
+          <p className="mt-2 break-words font-mono text-xs text-white/68">{metrics.lastRefundTimestamp ?? "Not connected"}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+        <label className="block">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Search by payment, appointment, refund, provider ID, or reason</span>
+          <input
+            aria-label="Search Finance Logs"
+            className="mt-2 h-11 w-full rounded-[10px] border border-white/10 bg-black/36 px-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/42"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search Finance Logs"
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {FINANCE_TIME_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              className={cn(
+                "min-h-10 rounded-[8px] border px-3 text-xs font-black transition",
+                timeFilter === filter
+                  ? "border-[#A3FF12]/42 bg-[#A3FF12] text-black"
+                  : "border-white/10 bg-white/[0.035] text-white/62 hover:border-[#A3FF12]/30"
+              )}
+              onClick={() => setTimeFilter(filter)}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {FINANCE_LOG_FILTERS.map((filter) => (
+          <button
+            key={filter.id}
+            type="button"
+            className={cn(
+              "min-h-10 rounded-[8px] border px-3 text-xs font-black transition",
+              categoryFilter === filter.id
+                ? "border-[#A3FF12]/42 bg-[#A3FF12] text-black"
+                : "border-white/10 bg-white/[0.035] text-white/62 hover:border-[#A3FF12]/30"
+            )}
+            onClick={() => setCategoryFilter(filter.id)}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {filteredLogs.length ? filteredLogs.map((log) => (
+          <article key={log.id} className="rounded-[18px] border border-white/8 bg-black/30 p-4" data-testid={`finance-log-${log.id}`}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">{log.category.replace("_", " ")}</p>
+                <h4 className="mt-1 text-base font-black text-white">{log.resultStatus}</h4>
+              </div>
+              <span className="rounded-[8px] border border-white/10 bg-white/[0.035] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/56">{log.timestamp ?? "No timestamp"}</span>
+            </div>
+            <div className="mt-3 grid gap-3 text-xs leading-5 text-white/62 md:grid-cols-2">
+              <p><span className="font-black text-white/84">Payment:</span> <span className="break-all font-mono">{log.paymentId ?? "Not connected"}</span></p>
+              <p><span className="font-black text-white/84">Appointment:</span> <span className="break-all font-mono">{log.appointmentId ?? "Not connected"}</span></p>
+              <p><span className="font-black text-white/84">Refund:</span> <span className="break-all font-mono">{log.refundId ?? "Not connected"}</span></p>
+              <p><span className="font-black text-white/84">Provider refund:</span> <span className="break-all font-mono">{log.providerRefundId ?? "Not connected"}</span></p>
+              <p><span className="font-black text-white/84">Amount:</span> {log.amount === null ? "Not connected" : formatRefundMoney(log.amount)}</p>
+              <p><span className="font-black text-white/84">Actor:</span> {log.actorRole ?? "unknown"} / <span className="break-all font-mono">{log.actorId ?? "Not connected"}</span></p>
+              <p><span className="font-black text-white/84">Source:</span> {log.source ?? "Not connected"}</p>
+              <p><span className="font-black text-white/84">Routing:</span> {log.routingState ?? "Not connected"}</p>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-white/64">{log.reason ?? log.failureReason ?? "No reason connected."}</p>
+            {log.failureReason ? <p className="mt-2 text-sm leading-6 text-rose-100">{log.failureReason}</p> : null}
+          </article>
+        )) : (
+          <div className="rounded-[18px] border border-dashed border-white/12 bg-white/[0.025] p-4 text-sm text-white/58">
+            No Finance Logs match the current filters.
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function DepartmentLaneDetail({ lane, snapshot, onRefreshSnapshot }: { lane: MissionDepartmentLane; snapshot: MissionControlSnapshot; onRefreshSnapshot: () => Promise<void> }) {
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const selectedIssue = lane.cards.find((card) => card.id === selectedIssueId) ?? null;
   const issueDetailsEnabled = lane.id === "finance";
+  const activeRefundTargets = snapshot.financeEvidence?.activeRefundTargets ?? [];
+  const refundLogs = snapshot.financeEvidence?.refundLogs ?? [];
+  const refundMetrics = snapshot.financeEvidence?.refundMetrics ?? {
+    refundCount: 0,
+    totalRefundedAmount: 0,
+    failedRefundAttemptCount: 0,
+    activeUnresolvedRefundBlockerCount: activeRefundTargets.length,
+    lastRefundTimestamp: null
+  };
+
+  function openFinanceLogs() {
+    setSelectedIssueId(null);
+    window.setTimeout(() => {
+      document.getElementById("finance-logs")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
 
   return (
     <section aria-labelledby={`${lane.id}-lane-heading`} className="space-y-4">
@@ -1374,8 +1735,18 @@ function DepartmentLaneDetail({ lane }: { lane: MissionDepartmentLane }) {
           ))}
         </div>
       </article>
+      {lane.id === "finance" ? (
+        <FinanceLogsPanel logs={refundLogs} metrics={refundMetrics} />
+      ) : null}
       {issueDetailsEnabled && selectedIssue ? (
-        <ArchitectIssueDetailModal card={selectedIssue} lane={lane} onClose={() => setSelectedIssueId(null)} />
+        <ArchitectIssueDetailModal
+          card={selectedIssue}
+          lane={lane}
+          activeRefundTargets={activeRefundTargets}
+          onClose={() => setSelectedIssueId(null)}
+          onOpenFinanceLogs={openFinanceLogs}
+          onRefundCompleted={onRefreshSnapshot}
+        />
       ) : null}
     </section>
   );
@@ -1481,7 +1852,7 @@ export function ArchitectMissionControl({ laneId = "ceo" }: { laneId?: MissionLa
                 onCopyCodexPacket={() => void copyPacket("codexPacket")}
               />
             ) : selectedDepartmentLane ? (
-              <DepartmentLaneDetail lane={selectedDepartmentLane} />
+              <DepartmentLaneDetail lane={selectedDepartmentLane} snapshot={snapshot} onRefreshSnapshot={loadSnapshot} />
             ) : null}
           </>
         ) : null}

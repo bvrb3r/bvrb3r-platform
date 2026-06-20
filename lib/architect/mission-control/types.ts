@@ -173,6 +173,48 @@ export type MissionControlFoundation = {
   codexFailureClasses: CodexFailureClass[];
 };
 
+export type FinanceRefundTarget = {
+  appointmentId: string;
+  paymentId: string;
+  amount: number;
+  reason: string;
+  currentRoutingState: string;
+};
+
+export type FinanceLogCategory = "refund" | "failed_refund" | "payout_block" | "manual_review";
+
+export type FinanceLogEntry = {
+  id: string;
+  category: FinanceLogCategory;
+  paymentId: string | null;
+  appointmentId: string | null;
+  refundId: string | null;
+  providerRefundId: string | null;
+  amount: number | null;
+  reason: string | null;
+  actorId: string | null;
+  actorRole: string | null;
+  source: string | null;
+  timestamp: string | null;
+  resultStatus: string;
+  failureReason: string | null;
+  routingState: string | null;
+};
+
+export type FinanceRefundMetrics = {
+  refundCount: number;
+  totalRefundedAmount: number;
+  failedRefundAttemptCount: number;
+  activeUnresolvedRefundBlockerCount: number;
+  lastRefundTimestamp: string | null;
+};
+
+export type MissionFinanceEvidence = {
+  activeRefundTargets: FinanceRefundTarget[];
+  refundLogs: FinanceLogEntry[];
+  refundMetrics: FinanceRefundMetrics;
+};
+
 export type MissionSeverity = "warning" | "broken" | "critical";
 
 export type MissionControlHealthItem = {
@@ -242,6 +284,7 @@ export type MissionControlSnapshot = {
   selectedIncidentId: string | null;
   packets: Record<string, MissionPacketSet>;
   foundation: MissionControlFoundation;
+  financeEvidence?: MissionFinanceEvidence;
   schemaEvidence: {
     paymentRouting: JsonRecord;
   };

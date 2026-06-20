@@ -8,7 +8,18 @@ import {
   loadPaymentRoutingConstraintEvidence,
   paymentRoutingConstraintEvidenceToJson
 } from "@/lib/architect/mission-control/schema-constraints";
-import type { ArchitectIncident, MissionControlHealthItem, MissionControlSnapshot, MissionControlStatus, MissionEvidenceCard, MissionPacketSet } from "@/lib/architect/mission-control/types";
+import type {
+  ArchitectIncident,
+  FinanceLogEntry,
+  FinanceRefundMetrics,
+  FinanceRefundTarget,
+  MissionControlHealthItem,
+  MissionControlSnapshot,
+  MissionControlStatus,
+  MissionEvidenceCard,
+  MissionFinanceEvidence,
+  MissionPacketSet
+} from "@/lib/architect/mission-control/types";
 import { buildChatGptPacket, buildCodexPacket, buildIncidentPacket } from "@/lib/architect/mission-control/packets";
 import { buildMissionControlFoundation, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
 
@@ -123,6 +134,7 @@ const APPOINTMENT_SCOPED_PAYMENT_TYPES = new Set(["booking", "tip", "add_on"]);
 const FAILED_REFUND_STATUSES = new Set(["failed", "canceled", "cancelled", "void"]);
 const FULL_REFUND_PAYMENT_STATUSES = new Set(["refunded", "reversed"]);
 const ROUTING_REFUND_STATUSES = new Set(["refunded", "reversed"]);
+const CONTROLLED_REFUND_REASON = "Cancelled appointment captured booking payment resolution";
 
 function isAppointmentScopedPayment(payment: JsonRecord) {
   const paymentType = String(payment.payment_type ?? payment.type ?? "").toLowerCase();
@@ -186,6 +198,231 @@ function hasRefundOrReversalEvidence(payment: JsonRecord, refundRows: JsonRecord
     || (paymentAmount > 0 && refundedAmount >= paymentAmount)
     || (paymentAmount > 0 && refundAmount >= paymentAmount)
     || (routingResolved && routingHasRefundSupport(routing, paymentAmount));
+}
+
+function rawString(value: unknown) {
+  return String(value ?? "");
+}
+
+function refundTimestamp(row: JsonRecord) {
+  return rawString(row.refunded_at ?? row.created_at ?? row.updated_at);
+}
+
+function eventPayload(row: JsonRecord) {
+  return (row.payload && typeof row.payload === "object" ? row.payload : {}) as JsonRecord;
+}
+
+function eventRelatedIds(row: JsonRecord) {
+  return (row.related_ids && typeof row.related_ids === "object" ? row.related_ids : {}) as JsonRecord;
+}
+
+function routingStateLabel(routing: JsonRecord | null) {
+  if (!routing) return "routing unavailable";
+  return [
+    stringValue(routing.payout_readiness_status || "unknown"),
+    stringValue(routing.money_routing_status || "unknown"),
+    stringValue(routing.reconciliation_status || "unknown")
+  ].join("/");
+}
+
+function findMatchingRefundEvent(events: JsonRecord[], paymentId: string, refundId: string | null) {
+  return events.find((event) => {
+    const payload = eventPayload(event);
+    const related = eventRelatedIds(event);
+    const eventPaymentId = stringValue(event.entity_id ?? event.payment_id ?? payload.paymentId ?? related.paymentId);
+    const eventRefundId = stringValue(event.refund_id ?? payload.refundId ?? related.refundId);
+    return stringValue(event.event_type) === "payment_refunded"
+      && eventPaymentId === paymentId
+      && (!refundId || eventRefundId === refundId);
+  }) ?? events.find((event) =>
+    stringValue(event.event_type) === "payment_refunded"
+      && stringValue(event.entity_id ?? event.payment_id ?? eventPayload(event).paymentId ?? eventRelatedIds(event).paymentId) === paymentId
+  ) ?? null;
+}
+
+function findMatchingAdminAudit(audits: JsonRecord[], paymentId: string, refundId: string | null) {
+  return audits.find((audit) => {
+    const metadata = (audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {}) as JsonRecord;
+    return stringValue(audit.target_id) === paymentId
+      && (!refundId || stringValue(metadata.refundId) === refundId);
+  }) ?? audits.find((audit) => stringValue(audit.target_id) === paymentId) ?? null;
+}
+
+function buildRefundLog(input: {
+  refund: JsonRecord;
+  payment: JsonRecord | null;
+  appointment: JsonRecord | null;
+  routing: JsonRecord | null;
+  events: JsonRecord[];
+  audits: JsonRecord[];
+}): FinanceLogEntry {
+  const paymentId = stringValue(input.refund.payment_id ?? input.refund.source_payment_id ?? input.payment?.id) || null;
+  const refundId = stringValue(input.refund.id) || null;
+  const event = paymentId ? findMatchingRefundEvent(input.events, paymentId, refundId) : null;
+  const audit = paymentId ? findMatchingAdminAudit(input.audits, paymentId, refundId) : null;
+  const payload = event ? eventPayload(event) : {};
+  const auditMetadata = audit?.metadata && typeof audit.metadata === "object" ? audit.metadata as JsonRecord : {};
+
+  return {
+    id: refundId ? `refund:${refundId}` : `refund:${paymentId ?? "unknown"}:${refundTimestamp(input.refund)}`,
+    category: "refund",
+    paymentId,
+    appointmentId: stringValue(input.refund.appointment_id ?? input.payment?.appointment_id ?? input.appointment?.id ?? payload.appointmentId ?? auditMetadata.appointmentId) || null,
+    refundId,
+    providerRefundId: stringValue(input.refund.provider_refund_id ?? input.refund.stripe_refund_id ?? input.refund.processor_refund_id ?? payload.providerRefundId) || null,
+    amount: refundAmountValue(input.refund) || numberValue(payload.amount),
+    reason: rawString(input.refund.reason ?? input.refund.refund_reason ?? payload.reason ?? auditMetadata.reason) || null,
+    actorId: stringValue(event?.actor_id ?? audit?.actor_user_id ?? payload.actorId ?? auditMetadata.actorId) || null,
+    actorRole: stringValue(event?.actor_role ?? audit?.actor_role ?? payload.actorRole ?? auditMetadata.actorRole) || null,
+    source: stringValue(payload.source ?? auditMetadata.source ?? event?.source ?? input.refund.source) || null,
+    timestamp: refundTimestamp(input.refund) || rawString(event?.occurred_at ?? audit?.created_at) || null,
+    resultStatus: stringValue(input.refund.status ?? input.refund.refund_status ?? payload.result) || "succeeded",
+    failureReason: null,
+    routingState: routingStateLabel(input.routing)
+  };
+}
+
+function buildFailedRefundLog(event: JsonRecord): FinanceLogEntry {
+  const payload = eventPayload(event);
+  const related = eventRelatedIds(event);
+  const paymentId = stringValue(event.entity_id ?? event.payment_id ?? payload.paymentId ?? related.paymentId) || null;
+
+  return {
+    id: `failed-refund:${stringValue(event.id ?? event.idempotency_key ?? paymentId ?? event.occurred_at)}`,
+    category: "failed_refund",
+    paymentId,
+    appointmentId: stringValue(payload.appointmentId ?? related.appointmentId) || null,
+    refundId: stringValue(payload.refundId) || null,
+    providerRefundId: null,
+    amount: numberValue(payload.amount) || null,
+    reason: rawString(payload.reason) || null,
+    actorId: stringValue(event.actor_id ?? payload.actorId) || null,
+    actorRole: stringValue(event.actor_role ?? payload.actorRole) || null,
+    source: stringValue(payload.source ?? related.source ?? event.source) || null,
+    timestamp: rawString(event.occurred_at ?? event.created_at) || null,
+    resultStatus: "failed",
+    failureReason: rawString(payload.safeMessage ?? payload.error ?? event.error_message_safe) || "Refund attempt failed.",
+    routingState: null
+  };
+}
+
+function buildRoutingLog(row: JsonRecord, category: "payout_block" | "manual_review"): FinanceLogEntry {
+  return {
+    id: `${category}:${stringValue(row.id ?? row.payment_id ?? row.appointment_id)}`,
+    category,
+    paymentId: stringValue(row.payment_id) || null,
+    appointmentId: stringValue(row.appointment_id) || null,
+    refundId: stringValue(row.refund_id) || null,
+    providerRefundId: stringValue(row.provider_refund_id) || null,
+    amount: null,
+    reason: rawString(row.blocked_reason) || (category === "payout_block" ? "Payout remains blocked." : "Routing remains in manual review."),
+    actorId: null,
+    actorRole: null,
+    source: "payment_routing_records",
+    timestamp: rawString(row.updated_at ?? row.created_at ?? row.held_at) || null,
+    resultStatus: category === "payout_block" ? "blocked" : "manual_review",
+    failureReason: category === "payout_block" ? rawString(row.blocked_reason) || "Payout readiness is blocked." : null,
+    routingState: routingStateLabel(row)
+  };
+}
+
+function sortLogs(logs: FinanceLogEntry[]) {
+  return [...logs].sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
+}
+
+function buildActiveRefundTargets(
+  incidents: ArchitectIncident[],
+  paymentsById: Map<string, JsonRecord>,
+  appointmentsById: Map<string, JsonRecord>,
+  routingByPaymentId: Map<string, JsonRecord>,
+  routingByAppointmentId: Map<string, JsonRecord>
+): FinanceRefundTarget[] {
+  return incidents
+    .filter((incident) => incident.diagnosisCode === "cancelled_captured_refund_missing")
+    .map((incident) => {
+      const payment = paymentsById.get(incident.targetId);
+      const appointmentId = stringValue(payment?.appointment_id ?? incident.analysis.supportingEvidence.find((item) => item.startsWith("appointmentId="))?.replace("appointmentId=", ""));
+      const appointment = appointmentId ? appointmentsById.get(appointmentId) : null;
+      const routing = (payment ? routingByPaymentId.get(stringValue(payment.id)) : null) ?? (appointmentId ? routingByAppointmentId.get(appointmentId) : null) ?? null;
+      const amount = payment ? paymentAmountValue(payment) : 5;
+
+      if (!payment || amount !== 5) return null;
+
+      return {
+        appointmentId: appointmentId || stringValue(appointment?.id) || "unknown",
+        paymentId: stringValue(payment.id),
+        amount,
+        reason: CONTROLLED_REFUND_REASON,
+        currentRoutingState: `${routingStateLabel(routing)}, released_at ${routing?.released_at ? "set" : "null"}, payout_executions target count must remain 0`
+      } satisfies FinanceRefundTarget;
+    })
+    .filter((target): target is FinanceRefundTarget => Boolean(target));
+}
+
+async function buildFinanceEvidence(supabase: SupabaseClient, incidents: ArchitectIncident[]): Promise<MissionFinanceEvidence> {
+  const [appointments, payments, refunds, payoutExecutions, routingRecords, platformEvents, adminAudits] = await Promise.all([
+    trySelectRows(supabase, "appointments", { limit: 10000 }),
+    trySelectRows(supabase, "payments", { limit: 10000 }),
+    trySelectRows(supabase, "refunds", { orderColumn: "created_at", limit: 10000 }),
+    trySelectRows(supabase, "payout_executions", { orderColumn: "created_at", limit: 10000 }),
+    trySelectRows(supabase, "payment_routing_records", { orderColumn: "updated_at", limit: 10000 }),
+    trySelectRows(supabase, "platform_events", { orderColumn: "occurred_at", limit: 10000 }),
+    trySelectRows(supabase, "platform_admin_audit_logs", { orderColumn: "created_at", limit: 10000 })
+  ]);
+
+  const paymentsById = new Map(payments.rows.map((row) => [stringValue(row.id), row]));
+  const appointmentsById = new Map(appointments.rows.map((row) => [stringValue(row.id), row]));
+  const routingByPaymentId = new Map(routingRecords.rows.filter((row) => row.payment_id).map((row) => [stringValue(row.payment_id), row]));
+  const routingByAppointmentId = new Map(routingRecords.rows.filter((row) => row.appointment_id).map((row) => [stringValue(row.appointment_id), row]));
+  const activeRefundTargets = buildActiveRefundTargets(incidents, paymentsById, appointmentsById, routingByPaymentId, routingByAppointmentId);
+  const refundLogs = refunds.rows.map((refund) => {
+    const payment = paymentsById.get(stringValue(refund.payment_id)) ?? null;
+    const appointment = payment?.appointment_id ? appointmentsById.get(stringValue(payment.appointment_id)) ?? null : null;
+    const routing = (payment ? routingByPaymentId.get(stringValue(payment.id)) : null) ?? (appointment ? routingByAppointmentId.get(stringValue(appointment.id)) : null) ?? null;
+    return buildRefundLog({
+      refund,
+      payment,
+      appointment,
+      routing,
+      events: platformEvents.rows,
+      audits: adminAudits.rows
+    });
+  });
+  const failedRefundLogs = platformEvents.rows
+    .filter((event) => stringValue(event.event_type) === "payment_refund_failed")
+    .map(buildFailedRefundLog);
+  const routingLogs = routingRecords.rows.flatMap((row) => {
+    const logs: FinanceLogEntry[] = [];
+    if (stringValue(row.payout_readiness_status) === "blocked") {
+      logs.push(buildRoutingLog(row, "payout_block"));
+    }
+    if (stringValue(row.money_routing_status) === "manual_review" || stringValue(row.reconciliation_status) === "manual_review") {
+      logs.push(buildRoutingLog(row, "manual_review"));
+    }
+    return logs;
+  });
+  const logs = sortLogs([...refundLogs, ...failedRefundLogs, ...routingLogs]);
+  const successfulRefundLogs = refundLogs.filter((log) => log.amount !== null && !FAILED_REFUND_STATUSES.has(log.resultStatus.toLowerCase()));
+  const lastRefundTimestamp = successfulRefundLogs
+    .map((log) => log.timestamp)
+    .filter((timestamp): timestamp is string => Boolean(timestamp))
+    .sort()
+    .at(-1) ?? null;
+  const refundMetrics: FinanceRefundMetrics = {
+    refundCount: successfulRefundLogs.length,
+    totalRefundedAmount: roundMoney(successfulRefundLogs.reduce((sum, log) => sum + (log.amount ?? 0), 0)),
+    failedRefundAttemptCount: failedRefundLogs.length,
+    activeUnresolvedRefundBlockerCount: activeRefundTargets.length,
+    lastRefundTimestamp
+  };
+
+  void payoutExecutions;
+
+  return {
+    activeRefundTargets,
+    refundLogs: logs,
+    refundMetrics
+  };
 }
 
 function latestByField(rows: JsonRecord[], field: string, value: unknown) {
@@ -922,7 +1159,12 @@ function countCard(
   );
 }
 
-async function buildCeoPlatformMetrics(supabase: SupabaseClient, incidents: ArchitectIncident[], checkedAt: string) {
+async function buildCeoPlatformMetrics(
+  supabase: SupabaseClient,
+  incidents: ArchitectIncident[],
+  checkedAt: string,
+  financeEvidence?: MissionFinanceEvidence
+) {
   const [
     profiles,
     clients,
@@ -970,6 +1212,26 @@ async function buildCeoPlatformMetrics(supabase: SupabaseClient, incidents: Arch
     : routingRows.connected && routingRows.rows.some((row) => ["ready", "eligible"].includes(stringValue(row.payout_readiness_status)))
       ? "Pass"
       : "Needs Review";
+  const refundMetricValues: FinanceRefundMetrics = financeEvidence?.refundMetrics ?? {
+    refundCount: 0,
+    totalRefundedAmount: 0,
+    failedRefundAttemptCount: 0,
+    activeUnresolvedRefundBlockerCount: 0,
+    lastRefundTimestamp: null
+  };
+  const refundMetricsConnected = Boolean(financeEvidence?.refundMetrics);
+  const activeRefundBlockerStatus: MissionControlStatus = refundMetricsConnected
+    ? refundMetricValues.activeUnresolvedRefundBlockerCount > 0
+      ? "Failed"
+      : "Pass"
+    : "Needs Review";
+  const refundHistoryStatus: MissionControlStatus = refundMetricsConnected
+    ? refundMetricValues.activeUnresolvedRefundBlockerCount > 0
+      ? "Failed"
+      : refundMetricValues.refundCount > 0
+        ? "Pass"
+        : "Needs Review"
+    : "Needs Review";
 
   return [
     countCard("ceo-total-users", "Total Users", "Audience", profiles, profileRows.length, "Profiles table is connected and user count is read from production evidence."),
@@ -982,6 +1244,11 @@ async function buildCeoPlatformMetrics(supabase: SupabaseClient, incidents: Arch
     metricCard("ceo-gross-booked-volume", "Gross Booked Volume", "Finance", appointments.connected ? "Pass" : "Needs Review", appointments.connected ? formatMetricMoney(grossBookedVolume) : "Not connected", appointments.connected ? "Gross booked volume is summed from appointment amount fields." : "Gross booked volume source is not connected.", appointments.connected ? ["Fields checked: grand_total, total_amount, price, amount."] : [appointments.errorMessage ?? "Not connected."]),
     metricCard("ceo-platform-fees", "Platform Fees / App Revenue", "Finance", routingRows.connected && routingRows.rows.length ? "Pass" : "Needs Review", routingRows.connected && routingRows.rows.length ? formatMetricMoney(platformFees) : "Not connected", routingRows.connected && routingRows.rows.length ? "Platform fees are summed from routing rows." : "Platform fee truth needs payment routing evidence.", routingRows.connected ? ["Fields checked: platform_fee_amount, application_fee_amount, app_fee_amount."] : [routingRows.errorMessage ?? "Not connected."]),
     countCard("ceo-payments-captured", "Payments Captured", "Finance", payments, capturedPayments.length, "Captured payment count uses successful payment status evidence."),
+    metricCard("ceo-refund-count", "Refund Count", "Finance", refundHistoryStatus, refundMetricsConnected ? String(refundMetricValues.refundCount) : "Not connected", refundMetricsConnected ? "Refund count is read from refund and platform event evidence." : "Refund count is not connected.", refundMetricsConnected ? [`${refundMetricValues.refundCount} refund row(s) connected.`] : ["Refund evidence is not connected."]),
+    metricCard("ceo-total-refunded", "Total Refunded Amount", "Finance", refundHistoryStatus, refundMetricsConnected ? formatMetricMoney(refundMetricValues.totalRefundedAmount) : "Not connected", refundMetricsConnected ? "Total refunded amount is summed from usable refund evidence." : "Refund amount evidence is not connected.", refundMetricsConnected ? [`totalRefunded=${formatMetricMoney(refundMetricValues.totalRefundedAmount)}`] : ["Refund amount evidence is not connected."]),
+    metricCard("ceo-failed-refund-attempts", "Failed Refund Attempts", "Finance", refundMetricsConnected ? (refundMetricValues.failedRefundAttemptCount > 0 ? "Failed" : "Pass") : "Needs Review", refundMetricsConnected ? String(refundMetricValues.failedRefundAttemptCount) : "Not connected", refundMetricsConnected ? "Failed refund attempts are read from platform event evidence." : "Failed refund attempt evidence is not connected.", refundMetricsConnected ? [`payment_refund_failed events=${refundMetricValues.failedRefundAttemptCount}`] : ["Platform event evidence is not connected."]),
+    metricCard("ceo-active-refund-blockers", "Active Refund Blockers", "Finance", activeRefundBlockerStatus, refundMetricsConnected ? String(refundMetricValues.activeUnresolvedRefundBlockerCount) : "Not connected", refundMetricsConnected ? "Active unresolved refund blockers are read from cancelled/captured incident evidence." : "Active refund blocker evidence is not connected.", refundMetricsConnected ? [`activeRefundTargets=${refundMetricValues.activeUnresolvedRefundBlockerCount}`] : ["Cancelled/captured refund target evidence is not connected."]),
+    metricCard("ceo-last-refund-timestamp", "Last Refund Timestamp", "Finance", refundMetricsConnected && refundMetricValues.lastRefundTimestamp ? "Pass" : "Needs Review", refundMetricValues.lastRefundTimestamp ?? "Not connected", refundMetricsConnected && refundMetricValues.lastRefundTimestamp ? "Last refund timestamp is read from refund evidence." : "No connected refund timestamp exists yet.", refundMetricsConnected ? [`lastRefundTimestamp=${refundMetricValues.lastRefundTimestamp ?? "none"}`] : ["Refund timestamp evidence is not connected."]),
     metricCard("ceo-payment-routing-health", "Payment Routing Health", "Finance", routingHealth, routingHealth, financeIncidents.length ? "Finance incident evidence is active." : "Routing health is derived from routing rows and finance incidents.", financeIncidents.length ? financeIncidents.map((incident) => incident.headline) : [`payment_routing_records rows=${routingRows.rows.length}`]),
     metricCard("ceo-payout-readiness-health", "Payout Readiness Health", "Finance", payoutReadiness, payoutReadiness, payoutReadiness === "Pass" ? "At least one routing row is payout-ready." : "Payout readiness cannot be fully verified from current evidence.", routingRows.connected ? routingRows.rows.slice(0, 3).map((row) => `payout_readiness_status=${String(row.payout_readiness_status ?? "unknown")}`) : [routingRows.errorMessage ?? "Not connected."]),
     metricCard("ceo-culture-health", "Culture Health", "Culture", culturePosts.connected && publicCulturePosts.length ? "Pass" : "Needs Review", culturePosts.connected ? `${publicCulturePosts.length} public post(s)` : "Not connected", culturePosts.connected && publicCulturePosts.length ? "Public approved Culture post evidence exists." : "Culture health needs public approved post or clean empty-state evidence.", culturePosts.connected ? [`culture_posts rows=${culturePosts.rows.length}`] : [culturePosts.errorMessage ?? "Not connected."]),
@@ -1012,7 +1279,8 @@ export async function buildMissionControlSnapshot(
     detectArchitectMissionIncidents(supabase),
     loadPaymentRoutingConstraintEvidence(supabase)
   ]);
-  const ceoPlatformMetrics = await buildCeoPlatformMetrics(supabase, incidents, checkedAt);
+  const financeEvidence = await buildFinanceEvidence(supabase, incidents);
+  const ceoPlatformMetrics = await buildCeoPlatformMetrics(supabase, incidents, checkedAt, financeEvidence);
   const health = healthFromIncidents(incidents, checkedAt);
   const packets = Object.fromEntries(incidents.map((incident) => [incident.id, packetSet({ checkedAt, environment }, incident)]));
   const foundation = buildMissionControlFoundation(incidents, checkedAt, ceoPlatformMetrics);
@@ -1026,6 +1294,7 @@ export async function buildMissionControlSnapshot(
     selectedIncidentId: incidents[0]?.id ?? null,
     packets,
     foundation,
+    financeEvidence,
     schemaEvidence: {
       paymentRouting: paymentRoutingConstraintEvidenceToJson(constraintEvidence)
     }
