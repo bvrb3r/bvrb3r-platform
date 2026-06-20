@@ -54,6 +54,8 @@ type QueryResult = { data: Row[] | Row | null; error: Row | null };
 
 const PLATFORM_ADMIN_ID = "11111111-1111-4111-8111-111111111111";
 const OWNER_ID = "22222222-2222-4222-8222-222222222222";
+const MANAGER_ID = "22222222-2222-4222-8222-333333333333";
+const FRONT_DESK_ID = "22222222-2222-4222-8222-444444444444";
 const CLIENT_PROFILE_ID = "33333333-3333-4333-8333-333333333333";
 const BARBER_PROFILE_ID = "44444444-4444-4444-8444-444444444444";
 const CLIENT_ID = "55555555-5555-4555-8555-555555555555";
@@ -64,7 +66,7 @@ const PAYMENT_ID = "99999999-9999-4999-8999-999999999999";
 const ROUTING_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const REFUND_REASON = "Cancelled appointment captured booking payment resolution";
 
-function user(role: UserAccount["role"], id: string): UserAccount {
+function user(role: UserAccount["role"], id: string, overrides: Partial<UserAccount> = {}): UserAccount {
   return {
     id,
     role,
@@ -72,7 +74,8 @@ function user(role: UserAccount["role"], id: string): UserAccount {
     password: "",
     name: role,
     title: role,
-    locationIds: []
+    locationIds: [],
+    ...overrides
   };
 }
 
@@ -105,6 +108,18 @@ function createTables(overrides: Partial<Record<string, Row[]>> = {}) {
         email: "owner@bvrb3r.test",
         full_name: "Owner",
         role: "shop_owner_user"
+      },
+      {
+        id: MANAGER_ID,
+        email: "manager@bvrb3r.test",
+        full_name: "Manager",
+        role: "manager"
+      },
+      {
+        id: FRONT_DESK_ID,
+        email: "frontdesk@bvrb3r.test",
+        full_name: "Front Desk",
+        role: "front_desk"
       },
       {
         id: CLIENT_PROFILE_ID,
@@ -491,19 +506,44 @@ describe("Architect controlled refund authorization bridge", () => {
     ]));
   });
 
-  it("keeps existing owner refund behavior working without Architect source", async () => {
-    const tables = createTables();
-    createSupabaseAdminClientMock.mockReturnValue(createSupabaseStub(tables));
+  it.each([
+    ["shop_owner_user", OWNER_ID, []],
+    ["manager", MANAGER_ID, [SHOP_ID]],
+    ["front_desk", FRONT_DESK_ID, [SHOP_ID]]
+  ] satisfies Array<[UserAccount["role"], string, string[]]>)(
+    "keeps existing %s refund behavior working without Architect source",
+    async (role, id, locationIds) => {
+      const tables = createTables();
+      createSupabaseAdminClientMock.mockReturnValue(createSupabaseStub(tables));
 
-    const result = await refundPayment(user("shop_owner_user", OWNER_ID), {
-      paymentId: PAYMENT_ID,
-      amount: 5,
-      reason: REFUND_REASON
-    });
+      const result = await refundPayment(user(role, id, { locationIds }), {
+        paymentId: PAYMENT_ID,
+        amount: 5,
+        reason: REFUND_REASON
+      });
 
-    expect(stripeRefundCreateMock).toHaveBeenCalledOnce();
-    expect(result.payment.paymentStatus).toBe("refunded");
-    expect(tables.refunds).toHaveLength(1);
+      expect(stripeRefundCreateMock).toHaveBeenCalledOnce();
+      expect(result.payment.paymentStatus).toBe("refunded");
+      expect(tables.refunds).toHaveLength(1);
+      stripeRefundCreateMock.mockClear();
+    }
+  );
+
+  it("blocks manager and front desk when the payment is outside their shop scope", async () => {
+    for (const [role, id] of [
+      ["manager", MANAGER_ID],
+      ["front_desk", FRONT_DESK_ID]
+    ] satisfies Array<[UserAccount["role"], string]>) {
+      const tables = createTables();
+      createSupabaseAdminClientMock.mockReturnValue(createSupabaseStub(tables));
+
+      await expect(refundPayment(user(role, id, { locationIds: ["other-shop"] }), {
+        paymentId: PAYMENT_ID,
+        amount: 5,
+        reason: REFUND_REASON
+      })).rejects.toMatchObject({ status: 403 });
+      expect(stripeRefundCreateMock).not.toHaveBeenCalled();
+    }
   });
 
   it("keeps client and barber refund attempts blocked", async () => {
