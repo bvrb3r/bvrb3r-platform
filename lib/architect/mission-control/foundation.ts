@@ -147,6 +147,28 @@ export const OFFICER_CLEANUP_GUARDRAILS = [
   "Missing officer evidence stays Needs Review / Not connected.",
   "Prompt generation or officer review never marks an issue Pass by itself."
 ];
+export const AUDIT_COVERAGE_PLAN = [
+  {
+    stage: "Repair approvals",
+    requirement: "Every controlled repair or refund approval must write who approved it, exact target ids, reason, amount when money is involved, and timestamp before execution."
+  },
+  {
+    stage: "Repair executions",
+    requirement: "Every execution must write route/function name, request target, result, safe error, and whether any external provider action was called."
+  },
+  {
+    stage: "Repair verification",
+    requirement: "Every verification must write before/after evidence, no-payout-release checks, and whether the blocker cleared or stayed Failed."
+  },
+  {
+    stage: "Score updates",
+    requirement: "Every readiness score change must be traceable to connected evidence, not prompt generation, UI action display, or missing data."
+  }
+];
+
+export function getAuditCoveragePlanEvidence() {
+  return AUDIT_COVERAGE_PLAN.map((item) => `${item.stage}: ${item.requirement}`);
+}
 
 export const HIVE_AGENT_REGISTRY: HiveAgentEntry[] = [
   { id: "architect-prime", name: "Architect Prime", department: "Architect Prime", agentClass: "Architect Prime", job: "Govern the intelligence layer and keep Mission Control evidence-backed.", dataAccess: "Architect registry, incidents, validators, source vault.", actionAccess: "Read-only review and packet drafting.", autonomyLevel: "Level 0 Read-only", successMetric: "No fake Pass states and no unsafe actions.", failureRule: "Escalate when evidence is missing or money/account mutation is requested.", currentStatus: "Needs Review", evidencePolicy: "Aggregate Mission Control evidence without inventing health.", mutationBoundary: "No app, money, account, team, schema, deployment, or issue-status mutation.", passRule: "Pass only after connected validators and tests prove the system is healthy." },
@@ -213,6 +235,7 @@ export const MISSION_INCIDENT_DEFINITIONS: MissionIncidentDefinition[] = [
   incidentDefinition("owner_active_barber_sync_failed", "Operations", "Owner Command Calendar Loop", "Accepted active barber is missing from owner Home read models.", "critical", false, true, ["active relationship", "owner active count", "scoreboard", "shop labels"]),
   incidentDefinition("owner_kpi_mismatch", "Operations", "Owner KPI Aggregation", "Owner shop KPIs do not match active shop-barber truth.", "broken", false, true, ["active relationships only", "pending excluded", "shop-context production only"]),
   incidentDefinition("payment_routing_missing", "Finance", "Payment/Routing Loop", "Completed paid appointment or paid POS sale is missing routing.", "critical", true, true, ["appointment/payment truth", "routing row", "schema constraints", "no payout release"]),
+  incidentDefinition("cancelled_captured_refund_unresolved", "Finance", "Cancelled/Captured Refund Resolution", "Captured payment remains attached to a cancelled appointment without refund or reversal evidence.", "critical", false, true, ["cancelled appointment", "captured payment", "refund/reversal evidence", "routing remains blocked/manual_review", "no payout release"]),
   incidentDefinition("payout_constraint_mismatch", "Finance", "Payout Eligibility", "Routing exists but payout readiness or constraints are inconsistent.", "broken", false, true, ["readiness legal values", "eligible meaning", "released_at remains null"]),
   incidentDefinition("deployment_pending_or_failed", "Technology", "Deployment Health", "Deployment metadata is missing, pending, or failed.", "broken", false, true, ["commit hash", "deployment id", "branch", "build time"]),
   incidentDefinition("regression_test_missing", "Technology", "Regression Coverage", "A production loop lacks a matching regression test.", "warning", false, true, ["test file exists", "fixture covers loop", "validation command documented"]),
@@ -228,6 +251,7 @@ export const CODEX_FAILURE_CLASSES: CodexFailureClass[] = [
   failureClass("owner_active_barber_sync_failed", "Owner active barber sync failure", ["Operations"], ["components/operations/owner-team-workspace.tsx", "lib/operations/shop-team-invites.ts", "lib/booking/platform-service.ts"], ["shop_barber_relationships", "staff_locations", "appointments"], ["profiles.role", "appointment completion logic", "old freelance appointment ownership"], ["accepted relationship count test", "owner scoreboard test", "owner KPI active-only test"], ["npm run typecheck", "targeted owner command calendar tests", "npm run build"]),
   failureClass("owner_kpi_mismatch", "Owner KPI mismatch", ["Operations", "Finance"], ["components/operations/owner-team-workspace.tsx", "lib/booking/platform-service.ts"], ["appointments", "shop_barber_relationships", "payment_routing_records"], ["payout release", "Stripe", "appointment completion"], ["owner KPI aggregation test", "pending invite exclusion test"], ["npm run typecheck", "targeted owner tests", "npm run build"]),
   failureClass("payment_routing_missing", "Payment routing missing", ["Finance", "Technology"], ["lib/architect/repairs/payment-routing-repair.ts", "lib/architect/mission-control/schema-constraints.ts", "app/api/architect/repairs/payment-routing/route.ts"], ["appointments", "payments", "payment_routing_records", "appointment_status_history"], ["booking creation", "Stripe booking charge", "payout release", "client discovery"], ["architect routing repair test", "payment routing incident test", "payout completion regression"], ["npm run typecheck", "targeted Architect routing tests", "npm run build"]),
+  failureClass("cancelled_captured_refund_unresolved", "Cancelled/captured refund unresolved", ["Finance"], ["components/architect/mission-control/mission-control.tsx", "app/api/payments/[paymentId]/refund/route.ts", "lib/payments/service.ts"], ["appointments", "payments", "refunds", "payment_routing_records", "payout_executions", "audit_logs"], ["raw SQL refund mutation", "direct Stripe calls outside canonical route", "payout release", "appointment lifecycle changes", "role/RLS/migration changes"], ["cancelled captured refund blocker incident test", "controlled refund UI guard test", "payment route refund test"], ["npm run typecheck", "targeted Architect Mission Control tests", "targeted payments route tests", "npm run build"]),
   failureClass("payout_constraint_mismatch", "Payout constraint mismatch", ["Finance", "Technology"], ["lib/architect/mission-control/schema-constraints.ts", "lib/architect/repairs/payment-routing-repair.ts"], ["payment_routing_records", "information_schema.check_constraints"], ["payout release", "Stripe payment status", "commission/booth-rent rules"], ["schema constraint debug test", "routing repair constraint test"], ["npm run typecheck", "targeted schema constraint tests", "npm run build"]),
   failureClass("deployment_pending_or_failed", "Deployment mismatch", ["Technology"], ["app/api/architect/mission-control/route.ts", "lib/architect/debug/env.ts"], [], ["application feature UX", "database schema", "payment internals"], ["deployment debug test", "Mission Control status test"], ["npm run typecheck", "targeted Architect deployment tests", "npm run build"]),
   failureClass("regression_test_missing", "Regression missing", ["Technology"], ["tests/unit"], [], ["runtime business logic without evidence", "production data"], ["new targeted regression test"], ["npm run typecheck", "targeted regression test", "npm run build"]),
@@ -402,6 +426,12 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
   const roleDrift = platformCard("ceo-role-drift-health", "Role Drift Evidence", "Security", "Role Drift", "Profile role drift evidence is not connected.");
   const rlsDisabled = platformCard("ceo-rls-disabled-evidence", "RLS Disabled Evidence", "Security", "Supabase RLS", "RLS disabled table evidence is not connected.");
   const auditEvidence = platformCard("ceo-audit-log-evidence", "Audit Evidence", "Security", "Audit", "Audit trail evidence is not connected.");
+  const refundIncidents = incidents.filter((incident) => (incident.missionIncidentType ?? mapDiagnosisToIncidentType(incident.diagnosisCode)) === "cancelled_captured_refund_unresolved");
+  const refundResolutionStatus: MissionControlStatus = refundIncidents.length ? "Failed" : "Needs Review";
+  const refundResolutionEvidence = refundIncidents.length
+    ? refundIncidents.flatMap((incident) => [`${incident.headline} (${incident.targetId})`, ...incident.evidence])
+    : ["No connected refund/reversal evidence bundle has proven cancelled/captured payments are resolved."];
+  const auditPlanEvidence = getAuditCoveragePlanEvidence();
 
   const laneCards: Record<MissionLaneId, MissionEvidenceCard[]> = {
     ceo: [],
@@ -434,8 +464,10 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("finance-payment-health", "Payment health", "Finance", "Payments", validatorStatus(validators, "payment-routing-loop"), "Payment health uses appointment/payment/routing truth.", validatorEvidence(validators, "payment-routing-loop")),
       evidenceCard("finance-stripe", "Stripe status", "Finance", "Stripe", "Needs Review", "Stripe status requires provider truth; v1 does not mutate Stripe.", ["No Stripe/payment internals changed."]),
       evidenceCard("finance-routing", "Routing health", "Finance", "Routing", validatorStatus(validators, "payment-routing-loop"), "Routing health uses payment_routing_records evidence.", validatorEvidence(validators, "payment-routing-loop")),
+      evidenceCard("finance-refund-resolution", "Cancelled/captured refund resolution", "Finance", "Refund Resolution", refundResolutionStatus, refundIncidents.length ? `${refundIncidents.length} cancelled/captured refund blocker(s) require canonical resolution.` : "Refund/reversal evidence must be connected before Finance can Pass.", refundResolutionEvidence),
       evidenceCard("finance-payout", "Payout readiness", "Finance", "Payouts", "Needs Review", "Payout release remains blocked from repair/debug flows.", ["No payout release before completion."]),
       evidenceCard("finance-fees", "Platform fee posture", "Finance", "Fees", "Needs Review", "Fee posture needs routing math evidence.", ["No fake revenue totals."]),
+      evidenceCard("finance-repair-audit-coverage", "Repair audit coverage", "Finance", "Audit", auditEvidence.status, auditEvidence.status === "Pass" ? "Finance repair audit evidence is connected." : "Repair approvals, executions, verification, and score updates require audit evidence before Finance can Pass.", [...auditEvidence.evidence, ...auditPlanEvidence]),
       evidenceCard("finance-future", "Booth rent/commission future readiness", "Finance", "Future Money Models", "Needs Review", "Future money models remain approval-gated.", ["No commission or booth-rent rule mutation."])
     ],
     marketing: [
@@ -459,6 +491,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("security-route-protection", "Route protection", "Security", "Route Protection", "Needs Review", "Architect APIs use debug access guard.", ["Public roles are blocked by guard tests."]),
       evidenceCard("security-unsafe-actions", "Unsafe action prevention", "Security", "Action Registry", "Pass", "Unsafe v1 actions are blocked in Action Registry.", ACTION_REGISTRY.filter((action) => action.riskClass === "Unsafe / blocked").map((action) => `${action.label}: blocked`)),
       evidenceCard("security-audit", "Audit trail coverage", "Security", "Audit", auditEvidence.status, auditEvidence.summary, auditEvidence.evidence),
+      evidenceCard("security-audit-plan", "Repair audit coverage plan", "Security", "Audit", "Needs Review", "Repair approvals, executions, verification, and score updates have a documented audit plan but still need canonical persisted evidence.", auditPlanEvidence),
       evidenceCard("security-restrictions", "Account restrictions", "Security", "Restrictions", "Needs Review", "Account restrictions require route-by-route evidence.", ["No role mutation is allowed from v1."])
     ],
     content_community: [
@@ -489,7 +522,7 @@ function applyIncidentFailures(validators: CoreLoopValidator[], incidents: Archi
       if (validator.id === "barber-calendar-loop") return type === "barber_calendar_missing_appointment";
       if (validator.id === "shop-relationship-loop") return type === "shop_relationship_accept_failed" || type === "owner_active_barber_sync_failed";
       if (validator.id === "owner-command-calendar-loop") return type === "owner_active_barber_sync_failed" || type === "owner_kpi_mismatch";
-      if (validator.id === "payment-routing-loop") return type === "payment_routing_missing" || type === "payout_constraint_mismatch" || type === "schema_constraint_mismatch";
+      if (validator.id === "payment-routing-loop") return type === "payment_routing_missing" || type === "cancelled_captured_refund_unresolved" || type === "payout_constraint_mismatch" || type === "schema_constraint_mismatch";
       return false;
     });
 
@@ -615,6 +648,7 @@ function mapDiagnosisToIncidentType(diagnosisCode: string): ArchitectMissionInci
   if (diagnosisCode.includes("active_barber_sync")) return "owner_active_barber_sync_failed";
   if (diagnosisCode.includes("owner_kpi")) return "owner_kpi_mismatch";
   if (diagnosisCode.includes("schema_constraint")) return "schema_constraint_mismatch";
+  if (diagnosisCode.includes("refund")) return "cancelled_captured_refund_unresolved";
   if (diagnosisCode.includes("payout") || diagnosisCode.includes("not_eligible")) return "payout_constraint_mismatch";
   if (diagnosisCode.includes("routing") || diagnosisCode.includes("payment")) return "payment_routing_missing";
   if (diagnosisCode.includes("deployment")) return "deployment_pending_or_failed";

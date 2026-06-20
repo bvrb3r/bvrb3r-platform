@@ -75,7 +75,7 @@ describe("architect mission incident detection", () => {
     expect(orphanIncident?.evidence.join("\n")).toContain("payment.appointment_id is empty");
   });
 
-  it("classifies captured payments on cancelled appointments as Finance conflicts", async () => {
+  it("classifies captured payments on cancelled appointments without refunds as Finance blockers", async () => {
     const tables = createArchitectDebugTables({
       appointments: [{
         ...createArchitectDebugTables().appointments[0],
@@ -94,7 +94,7 @@ describe("architect mission incident detection", () => {
     });
 
     const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
-    const conflict = incidents.find((incident) => incident.diagnosisCode === "captured_payment_cancelled_appointment");
+    const conflict = incidents.find((incident) => incident.diagnosisCode === "cancelled_captured_refund_missing");
 
     expect(conflict).toMatchObject({
       targetId: "payment-cancelled-captured",
@@ -105,6 +105,37 @@ describe("architect mission incident detection", () => {
     });
     expect(conflict?.evidence.join("\n")).toContain("appointment.status=cancelled");
     expect(conflict?.evidence.join("\n")).toContain("blocked/manual_review");
+  });
+
+
+  it("does not keep cancelled captured payments blocked after refund evidence exists", async () => {
+    const tables = createArchitectDebugTables({
+      appointments: [{
+        ...createArchitectDebugTables().appointments[0],
+        id: "cancelled-refunded-appointment",
+        status: "cancelled",
+        completed_at: null
+      }],
+      payments: [{
+        ...createArchitectDebugTables().payments[0],
+        id: "payment-cancelled-refunded",
+        appointment_id: "cancelled-refunded-appointment",
+        status: "captured",
+        payment_status: "captured"
+      }],
+      refunds: [{
+        id: "refund-cancelled-payment",
+        payment_id: "payment-cancelled-refunded",
+        amount: 5,
+        status: "succeeded",
+        created_at: "2026-06-20T12:00:00.000Z"
+      }],
+      appointment_status_history: []
+    });
+
+    const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
+
+    expect(incidents.some((incident) => incident.diagnosisCode === "cancelled_captured_refund_missing")).toBe(false);
   });
 
   it("detects paid POS sales with captured payment and missing routing", async () => {
@@ -197,6 +228,7 @@ describe("architect mission incident detection", () => {
     const rlsDisabled = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-rls-disabled-evidence");
     const auditEvidence = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-audit-log-evidence");
     const securityLane = snapshot.foundation.departmentLanes.find((lane) => lane.id === "security");
+    const financeLane = snapshot.foundation.departmentLanes.find((lane) => lane.id === "finance");
 
     expect(totalUsers).toMatchObject({ label: "Total Users", status: "Pass", metricValue: "3" });
     expect(clients).toMatchObject({ label: "Clients", status: "Pass", metricValue: "1" });
@@ -208,6 +240,8 @@ describe("architect mission incident detection", () => {
     expect(auditEvidence).toMatchObject({ label: "Audit Evidence", status: "Failed", metricValue: "0 row(s)" });
     expect(securityLane?.cards.find((card) => card.id === "security-rls-disabled")).toMatchObject({ status: "Failed" });
     expect(securityLane?.cards.find((card) => card.id === "security-audit")).toMatchObject({ status: "Failed" });
+    expect(securityLane?.cards.find((card) => card.id === "security-audit-plan")?.evidence.join("\\n")).toContain("Repair approvals");
+    expect(financeLane?.cards.find((card) => card.id === "finance-repair-audit-coverage")).toMatchObject({ status: "Failed" });
   });
 
   it("keeps Finance failed when captured cancelled appointments are unresolved", async () => {
@@ -240,9 +274,11 @@ describe("architect mission incident detection", () => {
 
     const snapshot = await buildMissionControlSnapshot(createSupabaseStub(tables) as never, ARCHITECT_USER);
     const routing = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-payment-routing-health");
-    const incident = snapshot.incidents.find((item) => item.diagnosisCode === "captured_payment_cancelled_appointment");
+    const financeLane = snapshot.foundation.departmentLanes.find((lane) => lane.id === "finance");
+    const incident = snapshot.incidents.find((item) => item.diagnosisCode === "cancelled_captured_refund_missing");
 
     expect(incident).toBeTruthy();
     expect(routing).toMatchObject({ label: "Payment Routing Health", status: "Failed" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-refund-resolution")).toMatchObject({ status: "Failed" });
   });
 });

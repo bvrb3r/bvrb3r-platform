@@ -65,6 +65,15 @@ export function isSupabaseEnabled() {
 export function isDemoMode() {
   return !isSupabaseEnabled();
 }
+export function shouldRequireProductionSupabaseTruth() {
+  return process.env.VERCEL_ENV === "production"
+    || process.env.BVRB3R_REQUIRE_PRODUCTION_TRUTH === "true"
+    || process.env.NEXT_PUBLIC_REQUIRE_PRODUCTION_TRUTH === "true";
+}
+
+export function productionSupabaseTruthError(scope: string) {
+  return new Error(`${scope} requires connected Supabase truth in production. Demo or empty fallback is blocked.`);
+}
 
 export function hasWebPushExecutionConfig() {
   return hasConfiguredValue(runtimeConfig.webPushPublicKey)

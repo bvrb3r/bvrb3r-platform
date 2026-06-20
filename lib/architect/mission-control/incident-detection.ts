@@ -125,16 +125,37 @@ function isAppointmentScopedPayment(payment: JsonRecord) {
   const paymentType = String(payment.payment_type ?? payment.type ?? "").toLowerCase();
   return APPOINTMENT_SCOPED_PAYMENT_TYPES.has(paymentType);
 }
+function hasRefundOrReversalEvidence(payment: JsonRecord, refundRows: JsonRecord[], routing: JsonRecord | null) {
+  const paymentId = String(payment.id ?? "");
+  const paymentStatus = String(payment.status ?? payment.payment_status ?? "").toLowerCase();
+  const refundStatus = String(payment.refund_status ?? payment.refund_state ?? "").toLowerCase();
+  const refundedAmount = numberValue(payment.refunded_amount ?? payment.amount_refunded);
+  const paymentAmount = numberValue(payment.amount);
+  const matchingRefund = refundRows.some((row) =>
+    [row.payment_id, row.source_payment_id, row.original_payment_id].map(String).includes(paymentId)
+      && !["failed", "canceled", "cancelled", "void"].includes(String(row.status ?? row.refund_status ?? "").toLowerCase())
+  );
+  const routingResolved = ["refunded", "reversed", "partially_reversed"].includes(String(routing?.money_routing_status ?? "").toLowerCase())
+    || ["reversed", "partially_reversed"].includes(String(routing?.reconciliation_status ?? "").toLowerCase());
+
+  return matchingRefund
+    || ["refunded", "partially_refunded", "reversed"].includes(paymentStatus)
+    || ["refunded", "partially_refunded", "succeeded", "complete", "completed"].includes(refundStatus)
+    || (paymentAmount > 0 && refundedAmount >= paymentAmount)
+    || routingResolved;
+}
 
 export async function detectArchitectMissionIncidents(supabase: SupabaseClient) {
-  const [appointments, payments, posSales, barbers, services, availabilityRules, audits] = await Promise.all([
+  const [appointments, payments, posSales, barbers, services, availabilityRules, audits, refunds, payoutExecutions] = await Promise.all([
     selectRows<JsonRecord>(supabase, "appointments", { orderColumn: "updated_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "payments", { orderColumn: "created_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "pos_sales", { orderColumn: "updated_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "barbers", { orderColumn: "updated_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "services", { orderColumn: "updated_at", limit: 200, optional: true }),
     selectRows<JsonRecord>(supabase, "availability_rules", { limit: 200, optional: true }),
-    selectRows<JsonRecord>(supabase, "architect_repair_audit_logs", { orderColumn: "created_at", limit: 50, optional: true })
+    selectRows<JsonRecord>(supabase, "architect_repair_audit_logs", { orderColumn: "created_at", limit: 50, optional: true }),
+    selectRows<JsonRecord>(supabase, "refunds", { orderColumn: "created_at", limit: 200, optional: true }),
+    selectRows<JsonRecord>(supabase, "payout_executions", { orderColumn: "created_at", limit: 200, optional: true })
   ]);
 
   const incidents: ArchitectIncident[] = [];
@@ -353,44 +374,69 @@ export async function detectArchitectMissionIncidents(supabase: SupabaseClient) 
     const appointment = appointments.find((row) => row.id === payment.appointment_id);
     const appointmentStatus = String(appointment?.status ?? "").toLowerCase();
     if (appointment && ["cancelled", "canceled"].includes(appointmentStatus)) {
+      const routingRows = await selectRows<JsonRecord>(supabase, "payment_routing_records", {
+        column: "appointment_id",
+        value: appointment.id,
+        orderColumn: "updated_at",
+        optional: true
+      });
+      const routing = latest(routingRows);
+      if (hasRefundOrReversalEvidence(payment, refunds, routing)) {
+        continue;
+      }
+
+      const paymentId = String(payment.id ?? "");
+      const appointmentId = String(appointment.id ?? "");
+      const routingId = String(routing?.id ?? "");
+      const targetPayoutExecutions = payoutExecutions.filter((row) =>
+        [row.payment_id, row.appointment_id, row.routing_id, row.payment_routing_record_id]
+          .map((value) => String(value ?? ""))
+          .some((value) => value === paymentId || value === appointmentId || (routingId && value === routingId))
+      );
+
       incidents.push(buildIncident({
-        diagnosisCode: "captured_payment_cancelled_appointment",
+        diagnosisCode: "cancelled_captured_refund_missing",
         affectedEntity: `payment ${String(payment.id ?? "unknown")}`,
         affectedRole: "client",
-        affectedTable: "payments",
-        affectedRoute: "/api/bookings/[id]/cancel",
+        affectedTable: "refunds",
+        affectedRoute: "/api/payments/[paymentId]/refund",
         severity: "critical",
         confidence: "high",
-        recommendedAction: "Investigate refund/reversal posture and keep routing blocked or in manual review. Do not mark payout ready.",
+        recommendedAction: "Resolve through the controlled canonical refund route after explicit owner approval; keep routing blocked/manual_review until refund evidence exists.",
         canRepair: false,
         repairType: null,
         codexRequired: true,
         targetType: "payment",
-        targetId: String(payment.id ?? ""),
-        headline: "Captured payment is attached to a cancelled appointment.",
+        targetId: paymentId,
+        headline: "Cancelled appointment has captured payment without refund evidence.",
         evidence: [
-          `payment.status=${String(payment.status ?? payment.payment_status ?? "unknown")}`,
+          `payment.status = ${String(payment.status ?? payment.payment_status ?? "unknown")}`,
           `appointment.status=${appointmentStatus}`,
+          routing ? `payment_routing_records.payout_readiness_status=${String(routing.payout_readiness_status ?? "unknown")}` : "payment_routing_records row is missing for cancelled/captured payment",
+          routing ? `payment_routing_records.money_routing_status=${String(routing.money_routing_status ?? "unknown")}` : "routing money status is unavailable",
+          "refunds lookup by payment_id returned 0 resolved rows",
+          `payout_executions target count=${targetPayoutExecutions.length}`,
           "captured payment + cancelled appointment must remain blocked/manual_review until refund or reversal truth is resolved"
         ],
         analysis: {
-          likelyRootCause: "A cancellation path left captured money attached to a cancelled appointment without a settled refund/reversal posture.",
+          likelyRootCause: "A cancellation path left captured money attached to a cancelled appointment, and no refund/reversal evidence has been recorded yet.",
           confidence: 91,
-          affectedLayer: "payment routing",
-          failedInvariant: "Cancelled appointments with captured payments must not become payout-ready.",
+          affectedLayer: "refund resolution",
+          failedInvariant: "Cancelled appointments with captured payments require refund/reversal evidence before Finance can Pass.",
           supportingEvidence: [
             `paymentId=${String(payment.id ?? "unknown")}`,
-            `appointmentId=${String(appointment.id ?? "unknown")}`
+            `appointmentId=${appointmentId}`,
+            `routingId=${routingId || "missing"}`,
+            `payoutExecutions=${targetPayoutExecutions.length}`
           ],
           ruledOut: ["payment capture exists"],
           safeRepairAvailable: false,
           codexRequired: true,
-          nextBestAction: "Inspect payment, refund, dispute, and routing state; do not start by editing UI."
+          nextBestAction: "Use controlled refund resolution only through POST /api/payments/{paymentId}/refund after authorization. Do not start by editing UI or SQL."
         }
       }));
       continue;
     }
-
     if (!appointment || !["confirmed", "completed", "checked_in", "in_service"].includes(appointmentStatus)) {
       incidents.push(buildIncident({
         diagnosisCode: "payment_captured_but_appointment_missing",
@@ -616,12 +662,12 @@ function healthFromIncidents(incidents: ArchitectIncident[], checkedAt: string):
   return MISSION_SYSTEMS.map((system) => {
     const related = incidents.filter((incident) => {
       if (system.key === "routing") return ["completed_but_routing_missing", "routing_exists_but_not_eligible", "schema_constraint_mismatch"].includes(incident.diagnosisCode);
-      if (system.key === "payments") return incident.diagnosisCode.includes("payment");
+      if (system.key === "payments") return incident.diagnosisCode.includes("payment") || incident.diagnosisCode.includes("refund");
       if (system.key === "discovery") return incident.diagnosisCode.startsWith("barber_hidden");
       if (system.key === "barber_calendar") return incident.diagnosisCode.includes("calendar");
       if (system.key === "client_activity") return incident.diagnosisCode.includes("client_activity");
       if (system.key === "schema_health") return incident.diagnosisCode === "schema_constraint_mismatch";
-      if (system.key === "payout_eligibility") return incident.diagnosisCode.includes("routing") || incident.diagnosisCode.includes("payout");
+      if (system.key === "payout_eligibility") return incident.diagnosisCode.includes("routing") || incident.diagnosisCode.includes("payout") || incident.diagnosisCode.includes("refund");
       return false;
     });
 

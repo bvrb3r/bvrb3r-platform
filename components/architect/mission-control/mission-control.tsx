@@ -171,6 +171,10 @@ function issuePassRequirement(card: MissionEvidenceCard, lane: MissionDepartment
     return "Payout readiness must be based on completed service, captured payment, routing, status history, and policy truth. Architect must not release payouts.";
   }
 
+  if (card.id === "finance-refund-resolution") {
+    return "Cancelled appointments with captured payments must have refund or reversal evidence, blocked/manual_review routing, released_at null, and payout_executions count 0 before Finance can Pass.";
+  }
+
   if (card.id === "finance-fees") {
     return "Platform fee posture must be backed by routing math evidence and cannot be inferred from UI totals.";
   }
@@ -211,6 +215,10 @@ function issueSuggestedFixDirection(card: MissionEvidenceCard, lane: MissionDepa
     return "Inspect payout readiness derivation and guards. Keep payout release blocked until completion, routing, and policy evidence pass.";
   }
 
+  if (card.id === "finance-refund-resolution") {
+    return "Inspect the cancelled appointment, captured payment, routing row, refund evidence, and payout execution evidence. Resolve only through the canonical refund route after authorization.";
+  }
+
   if (card.id === "finance-fees") {
     return "Inspect routing math and platform-fee source fields. Add tests that prevent UI-derived revenue or fake totals.";
   }
@@ -237,6 +245,10 @@ function issuePrimaryRepairTarget(card: MissionEvidenceCard, lane: MissionDepart
 
   if (card.id === "finance-payout") {
     return "Payout readiness derivation and release-blocking guard evidence.";
+  }
+
+  if (card.id === "finance-refund-resolution") {
+    return "Canonical refund/reversal evidence for cancelled appointments that still have captured payments.";
   }
 
   if (card.id === "finance-fees") {
@@ -524,7 +536,7 @@ const APPROVED_CONTROLLED_REFUND_TARGETS: ControlledRefundTarget[] = [
 
 function shouldShowControlledRefundResolution(card: MissionEvidenceCard, issue: ArchitectIssueDetail) {
   if (issue.lane.id !== "finance") return false;
-  if (card.id !== "finance-payment-health" && card.id !== "finance-routing") return false;
+  if (card.id !== "finance-payment-health" && card.id !== "finance-routing" && card.id !== "finance-refund-resolution") return false;
   if (issue.status === "Pass") return false;
 
   const evidenceText = [
@@ -983,6 +995,28 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
   );
 }
 
+
+function ArchitectControlPlaneBoundary({ lane }: { lane: MissionDepartmentLane }) {
+  return (
+    <article className="rounded-[22px] border border-[#A3FF12]/14 bg-[#A3FF12]/6 p-4" data-testid="architect-control-plane-boundary">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d7ffab]">Control-plane boundary</p>
+          <h3 className="mt-2 text-lg font-black tracking-[-0.03em] text-white">Architect detects issues before it executes actions.</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/64">
+            {lane.label} cards are evidence-first issue detectors. Controlled repair actions are separate, gated, auth-bound, and must keep missing UI, missing auth, or missing environment evidence as Needs Review / Not connected.
+          </p>
+        </div>
+        <StatusPill status="Needs Review" />
+      </div>
+      <div className="mt-3 grid gap-2 text-xs leading-5 text-white/56 md:grid-cols-3">
+        <p><span className="font-black text-white/78">Detector:</span> reads evidence, explains risk, and generates Codex packets.</p>
+        <p><span className="font-black text-white/78">Repair console:</span> requires explicit authorization, confirmation, canonical routes, and verification.</p>
+        <p><span className="font-black text-white/78">Blocked:</span> missing UI/auth/env keeps the issue open; it does not become Pass.</p>
+      </div>
+    </article>
+  );
+}
 function ControlledRefundResolutionSection({ card, issue }: { card: MissionEvidenceCard; issue: ArchitectIssueDetail }) {
   const targets = shouldShowControlledRefundResolution(card, issue) ? APPROVED_CONTROLLED_REFUND_TARGETS : [];
   const [confirmations, setConfirmations] = useState<Record<string, string>>({});
@@ -1316,6 +1350,7 @@ function DepartmentLaneDetail({ lane }: { lane: MissionDepartmentLane }) {
         <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">{lane.label} Mission Control</p>
         <h2 id={`${lane.id}-lane-heading`} className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{lane.purpose}</h2>
       </div>
+      <ArchitectControlPlaneBoundary lane={lane} />
       <article id={lane.id === "content_community" ? "content-community" : lane.id} className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>

@@ -101,6 +101,25 @@ describe("pre-open real-only platform state", () => {
     vi.resetModules();
   });
 
+
+  it("blocks empty provider fallback when production Supabase truth is required", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "demo");
+    vi.stubEnv("VERCEL_ENV", "production");
+
+    const { getEngagementProvider } = await import("@/lib/engagement/provider");
+    const { getNotificationDeliveryProvider } = await import("@/lib/engagement/delivery-provider");
+    const { getMobileProvider } = await import("@/lib/mobile/provider");
+
+    await expect(getEngagementProvider()).rejects.toThrow("Engagement provider requires connected Supabase truth in production");
+    await expect(getNotificationDeliveryProvider()).rejects.toThrow("Notification delivery provider requires connected Supabase truth in production");
+    await expect(getMobileProvider()).rejects.toThrow("Mobile provider requires connected Supabase truth in production");
+
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
   it("prevents customer-facing surfaces from importing demo business fixtures", () => {
     const root = process.cwd();
     const customerFacingFiles = [
@@ -112,7 +131,6 @@ describe("pre-open real-only platform state", () => {
       "components/operations/team-workspace.tsx",
       "components/operations/owner-settings-workspace.tsx",
       "components/operations/staff-profile-workspace.tsx",
-      "components/engagement/owner-intelligence-panel.tsx",
       "app/api/engagement/barber/summary/route.ts"
     ];
 
