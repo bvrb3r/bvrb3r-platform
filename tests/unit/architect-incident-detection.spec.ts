@@ -406,9 +406,105 @@ describe("architect mission incident detection", () => {
     const routing = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-payment-routing-health");
     const financeLane = snapshot.foundation.departmentLanes.find((lane) => lane.id === "finance");
     const incident = snapshot.incidents.find((item) => item.diagnosisCode === "cancelled_captured_refund_missing");
+    const financeEvidence = snapshot.financeEvidence;
 
+    expect(financeEvidence).toBeDefined();
     expect(incident).toBeTruthy();
     expect(routing).toMatchObject({ label: "Payment Routing Health", status: "Failed" });
     expect(financeLane?.cards.find((card) => card.id === "finance-refund-resolution")).toMatchObject({ status: "Failed" });
+    expect(financeEvidence?.activeRefundTargets).toHaveLength(1);
+    expect(financeEvidence?.activeRefundTargets[0]).toMatchObject({
+      appointmentId: "cancelled-captured-appointment",
+      paymentId: "payment-cancelled-captured",
+      amount: 5
+    });
+    expect(financeEvidence?.refundMetrics).toMatchObject({
+      refundCount: 0,
+      totalRefundedAmount: 0,
+      activeUnresolvedRefundBlockerCount: 1
+    });
+  });
+
+  it("moves fully refunded cancelled captured payments into Finance refund history", async () => {
+    const tables = createArchitectDebugTables({
+      appointments: [{
+        ...createArchitectDebugTables().appointments[0],
+        id: "cancelled-refunded-appointment",
+        status: "cancelled",
+        completed_at: null
+      }],
+      payments: [{
+        ...createArchitectDebugTables().payments[0],
+        id: "payment-cancelled-refunded",
+        appointment_id: "cancelled-refunded-appointment",
+        amount: 5,
+        status: "refunded",
+        payment_status: "refunded"
+      }],
+      refunds: [{
+        id: "refund-cancelled-payment",
+        payment_id: "payment-cancelled-refunded",
+        amount: 5,
+        status: "succeeded",
+        provider_refund_id: "re_cancelled_payment",
+        reason: "Cancelled appointment captured booking payment resolution",
+        created_at: "2026-06-20T12:00:00.000Z"
+      }],
+      platform_events: [{
+        id: "event-refund-success",
+        event_type: "payment_refunded",
+        actor_id: "platform-admin-1",
+        actor_role: "platform_admin",
+        source: "architect_finance_controlled_refund",
+        payment_id: "payment-cancelled-refunded",
+        appointment_id: "cancelled-refunded-appointment",
+        payload: {
+          refundId: "refund-cancelled-payment",
+          providerRefundId: "re_cancelled_payment",
+          amount: 5,
+          reason: "Cancelled appointment captured booking payment resolution",
+          result: "success"
+        },
+        occurred_at: "2026-06-20T12:00:01.000Z"
+      }],
+      payment_routing_records: [{
+        id: "routing-cancelled-refunded",
+        payment_id: "payment-cancelled-refunded",
+        appointment_id: "cancelled-refunded-appointment",
+        payout_readiness_status: "blocked",
+        money_routing_status: "manual_review",
+        reconciliation_status: "manual_review",
+        released_at: null,
+        updated_at: "2026-06-20T12:00:00.000Z"
+      }],
+      appointment_status_history: []
+    });
+
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(tables) as never, ARCHITECT_USER);
+    const financeEvidence = snapshot.financeEvidence;
+    const refundLog = financeEvidence?.refundLogs.find((log) => log.refundId === "refund-cancelled-payment");
+
+    expect(financeEvidence).toBeDefined();
+    expect(snapshot.incidents.some((item) => item.diagnosisCode === "cancelled_captured_refund_missing")).toBe(false);
+    expect(financeEvidence?.activeRefundTargets).toHaveLength(0);
+    expect(financeEvidence?.refundMetrics).toMatchObject({
+      refundCount: 1,
+      totalRefundedAmount: 5,
+      activeUnresolvedRefundBlockerCount: 0,
+      lastRefundTimestamp: "2026-06-20T12:00:00.000Z"
+    });
+    expect(refundLog).toMatchObject({
+      category: "refund",
+      paymentId: "payment-cancelled-refunded",
+      appointmentId: "cancelled-refunded-appointment",
+      refundId: "refund-cancelled-payment",
+      providerRefundId: "re_cancelled_payment",
+      amount: 5,
+      reason: "Cancelled appointment captured booking payment resolution",
+      actorId: "platform-admin-1",
+      actorRole: "platform_admin",
+      source: "architect_finance_controlled_refund",
+      resultStatus: "succeeded"
+    });
   });
 });

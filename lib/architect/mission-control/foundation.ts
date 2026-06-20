@@ -427,10 +427,27 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
   const rlsDisabled = platformCard("ceo-rls-disabled-evidence", "RLS Disabled Evidence", "Security", "Supabase RLS", "RLS disabled table evidence is not connected.");
   const auditEvidence = platformCard("ceo-audit-log-evidence", "Audit Evidence", "Security", "Audit", "Audit trail evidence is not connected.");
   const refundIncidents = incidents.filter((incident) => (incident.missionIncidentType ?? mapDiagnosisToIncidentType(incident.diagnosisCode)) === "cancelled_captured_refund_unresolved");
-  const refundResolutionStatus: MissionControlStatus = refundIncidents.length ? "Failed" : "Needs Review";
+  const activeRefundBlockers = evidenceById.get("ceo-active-refund-blockers");
+  const refundCount = evidenceById.get("ceo-refund-count");
+  const totalRefunded = evidenceById.get("ceo-total-refunded");
+  const failedRefundAttempts = evidenceById.get("ceo-failed-refund-attempts");
+  const lastRefundTimestamp = evidenceById.get("ceo-last-refund-timestamp");
+  const refundResolutionStatus: MissionControlStatus = refundIncidents.length
+    ? "Failed"
+    : activeRefundBlockers?.status === "Pass" && refundCount?.status === "Pass"
+      ? "Pass"
+      : "Needs Review";
   const refundResolutionEvidence = refundIncidents.length
     ? refundIncidents.flatMap((incident) => [`${incident.headline} (${incident.targetId})`, ...incident.evidence])
-    : ["No connected refund/reversal evidence bundle has proven cancelled/captured payments are resolved."];
+    : activeRefundBlockers && refundCount
+      ? [
+        ...activeRefundBlockers.evidence,
+        ...refundCount.evidence,
+        ...(totalRefunded?.evidence ?? []),
+        ...(lastRefundTimestamp?.evidence ?? []),
+        "No active cancelled/captured refund blocker incident is currently detected."
+      ]
+      : ["No connected refund/reversal evidence bundle has proven cancelled/captured payments are resolved."];
   const auditPlanEvidence = getAuditCoveragePlanEvidence();
 
   const laneCards: Record<MissionLaneId, MissionEvidenceCard[]> = {
@@ -464,7 +481,24 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("finance-payment-health", "Payment health", "Finance", "Payments", validatorStatus(validators, "payment-routing-loop"), "Payment health uses appointment/payment/routing truth.", validatorEvidence(validators, "payment-routing-loop")),
       evidenceCard("finance-stripe", "Stripe status", "Finance", "Stripe", "Needs Review", "Stripe status requires provider truth; v1 does not mutate Stripe.", ["No Stripe/payment internals changed."]),
       evidenceCard("finance-routing", "Routing health", "Finance", "Routing", validatorStatus(validators, "payment-routing-loop"), "Routing health uses payment_routing_records evidence.", validatorEvidence(validators, "payment-routing-loop")),
-      evidenceCard("finance-refund-resolution", "Cancelled/captured refund resolution", "Finance", "Refund Resolution", refundResolutionStatus, refundIncidents.length ? `${refundIncidents.length} cancelled/captured refund blocker(s) require canonical resolution.` : "Refund/reversal evidence must be connected before Finance can Pass.", refundResolutionEvidence),
+      evidenceCard(
+        "finance-refund-resolution",
+        "Cancelled/captured refund resolution",
+        "Finance",
+        "Refund Resolution",
+        refundResolutionStatus,
+        refundIncidents.length
+          ? `${refundIncidents.length} cancelled/captured refund blocker(s) require canonical resolution.`
+          : refundResolutionStatus === "Pass"
+            ? "No active cancelled/captured refund targets. Refund history is available in Finance Logs."
+            : "Refund/reversal evidence must be connected before Finance can Pass.",
+        refundResolutionEvidence
+      ),
+      evidenceCard("finance-refund-count", "Refund count", "Finance", "Refund Logs", refundCount?.status ?? "Needs Review", refundCount?.summary ?? "Refund count is not connected.", refundCount?.evidence ?? ["Refund count evidence is not connected."]),
+      evidenceCard("finance-refund-total", "Total refunded amount", "Finance", "Refund Logs", totalRefunded?.status ?? "Needs Review", totalRefunded?.summary ?? "Refund amount evidence is not connected.", totalRefunded?.evidence ?? ["Refund amount evidence is not connected."]),
+      evidenceCard("finance-failed-refund-attempts", "Failed refund attempts", "Finance", "Refund Logs", failedRefundAttempts?.status ?? "Needs Review", failedRefundAttempts?.summary ?? "Failed refund attempt evidence is not connected.", failedRefundAttempts?.evidence ?? ["Failed refund attempt evidence is not connected."]),
+      evidenceCard("finance-active-refund-blockers", "Active unresolved refund blockers", "Finance", "Refund Logs", activeRefundBlockers?.status ?? "Needs Review", activeRefundBlockers?.summary ?? "Active refund blocker evidence is not connected.", activeRefundBlockers?.evidence ?? ["Active refund blocker evidence is not connected."]),
+      evidenceCard("finance-last-refund-timestamp", "Last refund timestamp", "Finance", "Refund Logs", lastRefundTimestamp?.status ?? "Needs Review", lastRefundTimestamp?.summary ?? "Last refund timestamp is not connected.", lastRefundTimestamp?.evidence ?? ["Last refund timestamp evidence is not connected."]),
       evidenceCard("finance-payout", "Payout readiness", "Finance", "Payouts", "Needs Review", "Payout release remains blocked from repair/debug flows.", ["No payout release before completion."]),
       evidenceCard("finance-fees", "Platform fee posture", "Finance", "Fees", "Needs Review", "Fee posture needs routing math evidence.", ["No fake revenue totals."]),
       evidenceCard("finance-repair-audit-coverage", "Repair audit coverage", "Finance", "Audit", auditEvidence.status, auditEvidence.status === "Pass" ? "Finance repair audit evidence is connected." : "Repair approvals, executions, verification, and score updates require audit evidence before Finance can Pass.", [...auditEvidence.evidence, ...auditPlanEvidence]),
