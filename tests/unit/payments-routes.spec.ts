@@ -349,6 +349,56 @@ describe("phase 9 payment routes", () => {
     expect(response.status).toBe(400);
   });
 
+  it("passes Architect controlled refund metadata through the canonical route", async () => {
+    const user = resolveDemoUser("architect@bvrb3r.demo");
+    getSessionUserMock.mockResolvedValue(user);
+    refundPaymentMock.mockResolvedValue({
+      payment: {
+        id: "pay-1",
+        appointmentId: "appt-1",
+        amount: 5,
+        currency: "usd",
+        provider: "stripe",
+        paymentStatus: "refunded",
+        paymentType: "booking",
+        paidAt: "2026-03-19T18:12:00.000Z",
+        createdAt: "2026-03-19T18:10:00.000Z"
+      },
+      refund: {
+        id: "refund-1",
+        payment_id: "pay-1",
+        amount: 5,
+        reason: "Cancelled appointment captured booking payment resolution",
+        provider_refund_id: "re_test_1",
+        refunded_at: "2026-06-20T10:00:00.000Z"
+      },
+      summary: null
+    });
+
+    const response = await postRefundPayment(new NextRequest("https://bvrb3r.demo/api/payments/pay-1/refund", {
+      method: "POST",
+      body: JSON.stringify({
+        amount: 5,
+        reason: "Cancelled appointment captured booking payment resolution",
+        source: "architect_finance_controlled_refund",
+        confirmation: "REFUND 5",
+        incidentCode: "cancelled_captured_refund_missing"
+      })
+    }), {
+      params: Promise.resolve({ paymentId: "pay-1" })
+    });
+
+    expect(response.status).toBe(200);
+    expect(refundPaymentMock).toHaveBeenCalledWith(user, {
+      paymentId: "pay-1",
+      amount: 5,
+      reason: "Cancelled appointment captured booking payment resolution",
+      source: "architect_finance_controlled_refund",
+      confirmation: "REFUND 5",
+      incidentCode: "cancelled_captured_refund_missing"
+    });
+  });
+
   it("propagates refund access errors cleanly", async () => {
     getSessionUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
     refundPaymentMock.mockRejectedValue(new PaymentServiceError("Only owner, manager, or front desk can manage this payment action.", 403));

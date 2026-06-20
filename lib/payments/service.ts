@@ -156,6 +156,7 @@ type RefundRow = {
   reason: string | null;
   provider_refund_id: string | null;
   refunded_at: string;
+  status?: string | null;
 };
 
 type TipRow = {
@@ -197,6 +198,17 @@ type PayoutExecutionSummaryRow = {
   reversed_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type ControlledRefundRoutingRow = {
+  id: string;
+  payment_id: string;
+  appointment_id: string | null;
+  payout_readiness_status: PaymentRoutingSummaryRow["payout_readiness_status"];
+  money_routing_status: PaymentRoutingSummaryRow["money_routing_status"];
+  reconciliation_status: PaymentRoutingSummaryRow["reconciliation_status"];
+  released_at: string | null;
+  refunded_amount?: number | string | null;
 };
 
 type PaymentActorContext = {
@@ -394,6 +406,11 @@ function roundCurrency(amount: number) {
 
 const DEFAULT_PAYOUT_THRESHOLD = 25;
 const BOOKING_PAYMENT_REQUIRES_ACTION_MESSAGE = "Payment needs additional confirmation. Please use another card or re-add this card.";
+const ARCHITECT_CONTROLLED_REFUND_SOURCE = "architect_finance_controlled_refund";
+const ARCHITECT_CONTROLLED_REFUND_CONFIRMATION = "REFUND 5";
+const ARCHITECT_CONTROLLED_REFUND_INCIDENT_CODE = "cancelled_captured_refund_missing";
+const ARCHITECT_CONTROLLED_REFUND_REASON = "Cancelled appointment captured booking payment resolution";
+const ARCHITECT_CONTROLLED_REFUND_AMOUNT = 5;
 
 function uniqueStrings(values: Array<string | null | undefined>) {
   return [...new Set(values.map((value) => value?.trim()).filter(Boolean) as string[])];
@@ -2098,6 +2115,300 @@ function assertShopAccess(role: UserAccount["role"], locationIds: string[], shop
   }
 }
 
+function isArchitectControlledRefundInput(input: {
+  source?: string;
+  incidentCode?: string;
+}) {
+  return input.source === ARCHITECT_CONTROLLED_REFUND_SOURCE
+    || input.incidentCode === ARCHITECT_CONTROLLED_REFUND_INCIDENT_CODE;
+}
+
+function isCancelledAppointmentStatus(status: string | null | undefined) {
+  const normalized = String(status ?? "").toLowerCase();
+  return normalized === "cancelled" || normalized === "canceled";
+}
+
+function isResolvedRefundRow(refund: RefundRow) {
+  const status = String(refund.status ?? "").toLowerCase();
+  return status !== "failed" && status !== "cancelled" && status !== "canceled";
+}
+
+function sumResolvedRefundAmount(refunds: RefundRow[]) {
+  return roundCurrency(refunds.filter(isResolvedRefundRow).reduce((sum, refund) => sum + numeric(refund.amount), 0));
+}
+
+function hasFullRefundOrReversalEvidence(
+  payment: PaymentRow,
+  refunds: RefundRow[],
+  routing?: ControlledRefundRoutingRow | null
+) {
+  const amount = numeric(payment.amount);
+  const resolvedRefundAmount = sumResolvedRefundAmount(refunds);
+  const routingRefundedAmount = numeric(routing?.refunded_amount);
+  const paymentStatusRefunded = payment.payment_status === "refunded";
+  const refundRowsCoverPayment = amount > 0 && resolvedRefundAmount >= amount;
+  const routingHasSupportedReversal =
+    Boolean(routing)
+    && (routing?.money_routing_status === "refunded" || routing?.reconciliation_status === "reversed")
+    && amount > 0
+    && (routingRefundedAmount >= amount || refundRowsCoverPayment || paymentStatusRefunded);
+
+  return paymentStatusRefunded || refundRowsCoverPayment || routingHasSupportedReversal;
+}
+
+async function loadControlledRefundRouting(
+  supabase: SupabaseClient,
+  payment: PaymentRow,
+  appointment: AppointmentRow | null
+) {
+  const byPayment = await supabase
+    .from("payment_routing_records")
+    .select("id, payment_id, appointment_id, payout_readiness_status, money_routing_status, reconciliation_status, released_at, refunded_amount")
+    .eq("payment_id", payment.id)
+    .maybeSingle();
+
+  if (byPayment.error) {
+    throw new PaymentServiceError("Unable to inspect payment routing before refund.", 500);
+  }
+
+  if (byPayment.data) {
+    return byPayment.data as ControlledRefundRoutingRow;
+  }
+
+  if (!appointment) {
+    return null;
+  }
+
+  const byAppointment = await supabase
+    .from("payment_routing_records")
+    .select("id, payment_id, appointment_id, payout_readiness_status, money_routing_status, reconciliation_status, released_at, refunded_amount")
+    .eq("appointment_id", appointment.id)
+    .maybeSingle();
+
+  if (byAppointment.error) {
+    throw new PaymentServiceError("Unable to inspect appointment routing before refund.", 500);
+  }
+
+  return (byAppointment.data as ControlledRefundRoutingRow | null) ?? null;
+}
+
+async function selectControlledRefundPayoutExecutions(
+  supabase: SupabaseClient,
+  column: "payment_id" | "appointment_id" | "routing_record_id",
+  value: string | null | undefined
+) {
+  if (!value?.trim()) {
+    return [];
+  }
+
+  const result = await supabase
+    .from("payout_executions")
+    .select("id, payment_id, appointment_id, routing_record_id, execution_status")
+    .eq(column, value);
+
+  if (result.error) {
+    throw new PaymentServiceError("Unable to inspect payout execution evidence before refund.", 500);
+  }
+
+  return (result.data ?? []) as Array<Record<string, unknown>>;
+}
+
+async function countControlledRefundPayoutExecutions(
+  supabase: SupabaseClient,
+  payment: PaymentRow,
+  appointment: AppointmentRow | null,
+  routing: ControlledRefundRoutingRow
+) {
+  const rows = [
+    ...await selectControlledRefundPayoutExecutions(supabase, "payment_id", payment.id),
+    ...await selectControlledRefundPayoutExecutions(supabase, "appointment_id", appointment?.id),
+    ...await selectControlledRefundPayoutExecutions(supabase, "routing_record_id", routing.id)
+  ];
+
+  return new Set(rows.map((row) => String(row.id))).size;
+}
+
+async function recordArchitectControlledRefundAudit(
+  supabase: SupabaseClient,
+  input: {
+    actor: PaymentActorContext;
+    payment: PaymentRow;
+    appointment: AppointmentRow | null;
+    amount: number;
+    reason?: string | null;
+    result: "success" | "failure";
+    safeMessage?: string | null;
+    refundId?: string | null;
+    payoutExecutionCount?: number | null;
+  }
+) {
+  const createdAt = new Date().toISOString();
+  const metadata = {
+    actorId: input.actor.profile.id,
+    actorRole: input.actor.role,
+    paymentId: input.payment.id,
+    appointmentId: input.appointment?.id ?? input.payment.appointment_id,
+    source: ARCHITECT_CONTROLLED_REFUND_SOURCE,
+    incidentCode: ARCHITECT_CONTROLLED_REFUND_INCIDENT_CODE,
+    reason: input.reason ?? null,
+    amount: roundCurrency(input.amount),
+    result: input.result,
+    safeMessage: input.safeMessage ?? null,
+    refundId: input.refundId ?? null,
+    noPayoutReleaseOccurred: true,
+    payoutExecutionCount: input.payoutExecutionCount ?? null
+  };
+
+  const auditInsert = await supabase.from("platform_admin_audit_logs").insert({
+    actor_user_id: input.actor.profile.id,
+    actor_role: input.actor.role,
+    action_class: "finance_controlled_refund",
+    action_type: "architect_cancelled_captured_refund",
+    target_type: "payment",
+    target_id: input.payment.id,
+    note: input.result === "success"
+      ? "Architect controlled refund completed through canonical refund route."
+      : "Architect controlled refund blocked before mutation.",
+    before_summary: `payment_status=${input.payment.payment_status}; appointment_status=${input.appointment?.status ?? "missing"}`,
+    after_summary: input.result === "success"
+      ? "Canonical refund route returned success; payout release was not executed."
+      : input.safeMessage ?? "Controlled refund blocked by safety invariant.",
+    metadata,
+    created_at: createdAt
+  });
+
+  if (auditInsert.error) {
+    console.error("[payments] architect controlled refund audit failed", {
+      paymentId: input.payment.id,
+      message: auditInsert.error.message ?? null
+    });
+  }
+
+  await recordPlatformEvent(supabase, {
+    eventType: input.result === "success" ? "payment_refunded" : "payment_refund_failed",
+    entityType: "payment",
+    entityId: input.payment.id,
+    actorId: input.actor.profile.id,
+    actorRole: input.actor.role,
+    source: "api",
+    relatedIds: {
+      paymentId: input.payment.id,
+      appointmentId: input.appointment?.id ?? input.payment.appointment_id,
+      source: ARCHITECT_CONTROLLED_REFUND_SOURCE
+    },
+    payload: metadata,
+    idempotencyKey: buildPlatformEventIdempotencyKey([
+      ARCHITECT_CONTROLLED_REFUND_SOURCE,
+      input.result,
+      input.payment.id,
+      input.refundId ?? input.safeMessage ?? "attempt"
+    ]),
+    occurredAt: createdAt
+  });
+}
+
+async function assertArchitectControlledRefundAccess(input: {
+  supabase: SupabaseClient;
+  actor: PaymentActorContext;
+  payment: PaymentRow;
+  appointment: AppointmentRow | null;
+  refunds: RefundRow[];
+  amount: number;
+  reason?: string;
+  confirmation?: string;
+  source?: string;
+  incidentCode?: string;
+}) {
+  if (input.actor.role !== "platform_admin") {
+    throw new PaymentServiceError("Only platform_admin can use the Architect controlled refund bridge.", 403);
+  }
+
+  if (
+    input.source !== ARCHITECT_CONTROLLED_REFUND_SOURCE
+    || input.incidentCode !== ARCHITECT_CONTROLLED_REFUND_INCIDENT_CODE
+  ) {
+    throw new PaymentServiceError("Architect controlled refund source is required.", 403);
+  }
+
+  if (input.confirmation !== ARCHITECT_CONTROLLED_REFUND_CONFIRMATION) {
+    throw new PaymentServiceError("Type REFUND 5 to authorize this controlled refund.", 403);
+  }
+
+  if (roundCurrency(input.amount) !== ARCHITECT_CONTROLLED_REFUND_AMOUNT) {
+    throw new PaymentServiceError("Architect controlled refunds are limited to the approved $5 amount.", 409);
+  }
+
+  if ((input.reason?.trim() ?? "") !== ARCHITECT_CONTROLLED_REFUND_REASON) {
+    throw new PaymentServiceError("Architect controlled refund reason does not match the approved resolution.", 409);
+  }
+
+  if (!(input.payment.payment_status === "captured" || input.payment.payment_status === "partially_refunded")) {
+    throw new PaymentServiceError("Only captured or partially refunded booking payments can use controlled refund resolution.", 409);
+  }
+
+  if (input.payment.payment_type !== "booking") {
+    throw new PaymentServiceError("Only booking payments can use controlled refund resolution.", 409);
+  }
+
+  if (!input.appointment) {
+    throw new PaymentServiceError("Controlled refund resolution requires an appointment.", 409);
+  }
+
+  if (!isCancelledAppointmentStatus(input.appointment.status)) {
+    throw new PaymentServiceError("Controlled refund resolution only applies to cancelled appointments.", 409);
+  }
+
+  const routing = await loadControlledRefundRouting(input.supabase, input.payment, input.appointment);
+  if (!routing) {
+    throw new PaymentServiceError("Controlled refund resolution requires a payment routing record.", 409);
+  }
+
+  if (
+    (routing.money_routing_status === "refunded" || routing.reconciliation_status === "reversed")
+    && !hasFullRefundOrReversalEvidence(input.payment, input.refunds, routing)
+  ) {
+    throw new PaymentServiceError("Routing reports refund or reversal without supporting refund evidence.", 409);
+  }
+
+  if (hasFullRefundOrReversalEvidence(input.payment, input.refunds, routing)) {
+    throw new PaymentServiceError("This payment already has full refund or reversal evidence.", 409);
+  }
+
+  const nextRefundedTotal = sumResolvedRefundAmount(input.refunds) + roundCurrency(input.amount);
+  if (nextRefundedTotal > numeric(input.payment.amount)) {
+    throw new PaymentServiceError("Controlled refund would exceed the captured payment amount.", 409);
+  }
+
+  if (routing.payout_readiness_status !== "blocked") {
+    throw new PaymentServiceError("Controlled refund requires blocked payout readiness.", 409);
+  }
+
+  if (routing.money_routing_status !== "manual_review") {
+    throw new PaymentServiceError("Controlled refund requires manual_review money routing.", 409);
+  }
+
+  if (routing.reconciliation_status !== "manual_review") {
+    throw new PaymentServiceError("Controlled refund requires manual_review reconciliation.", 409);
+  }
+
+  if (routing.released_at) {
+    throw new PaymentServiceError("Controlled refund is blocked because routing was already released.", 409);
+  }
+
+  const payoutExecutionCount = await countControlledRefundPayoutExecutions(
+    input.supabase,
+    input.payment,
+    input.appointment,
+    routing
+  );
+
+  if (payoutExecutionCount > 0) {
+    throw new PaymentServiceError("Controlled refund is blocked because payout execution evidence exists.", 409);
+  }
+
+  return { routing, payoutExecutionCount };
+}
+
 async function ensureLegacyBillingCustomer(
   supabase: SupabaseClient,
   actor: PaymentActorContext,
@@ -3499,14 +3810,17 @@ export async function refundPayment(user: UserAccount, input: {
   paymentId: string;
   amount: number;
   reason?: string;
+  source?: string;
+  confirmation?: string;
+  incidentCode?: string;
 }) {
   const supabase = getSupabaseOrThrow();
   const actor = await resolvePaymentActor(user, supabase);
   const payment = await loadPaymentOrThrow(supabase, input.paymentId);
   const appointment = payment.appointment_id ? await loadAppointmentOrThrow(supabase, payment.appointment_id) : null;
-  assertShopAccess(actor.role, actor.locationIds, payment.shop_id ?? appointment?.shop_id ?? null, appointment?.location_id);
+  const architectControlledRefund = isArchitectControlledRefundInput(input);
 
-  if (!(payment.payment_status === "captured" || payment.payment_status === "partially_refunded")) {
+  if (!architectControlledRefund && !(payment.payment_status === "captured" || payment.payment_status === "partially_refunded")) {
     throw new PaymentServiceError("Only captured payments can be refunded.", 409);
   }
 
@@ -3519,8 +3833,44 @@ export async function refundPayment(user: UserAccount, input: {
     throw new PaymentServiceError("Unable to load existing refunds for this payment.", 500);
   }
 
+  const existingRefunds = (refundsResult.data ?? []) as RefundRow[];
+  let controlledRefundContext: {
+    routing: ControlledRefundRoutingRow;
+    payoutExecutionCount: number;
+  } | null = null;
+
+  if (architectControlledRefund) {
+    try {
+      controlledRefundContext = await assertArchitectControlledRefundAccess({
+        supabase,
+        actor,
+        payment,
+        appointment,
+        refunds: existingRefunds,
+        amount: input.amount,
+        reason: input.reason,
+        confirmation: input.confirmation,
+        source: input.source,
+        incidentCode: input.incidentCode
+      });
+    } catch (error) {
+      await recordArchitectControlledRefundAudit(supabase, {
+        actor,
+        payment,
+        appointment,
+        amount: input.amount,
+        reason: input.reason,
+        result: "failure",
+        safeMessage: error instanceof Error ? error.message : "Controlled refund blocked by safety invariant."
+      });
+      throw error;
+    }
+  } else {
+    assertShopAccess(actor.role, actor.locationIds, payment.shop_id ?? appointment?.shop_id ?? null, appointment?.location_id);
+  }
+
   const nextRefundedTotal =
-    ((refundsResult.data ?? []) as RefundRow[]).reduce((sum, refund) => sum + numeric(refund.amount), 0)
+    existingRefunds.reduce((sum, refund) => sum + numeric(refund.amount), 0)
     + roundCurrency(input.amount);
   const refundOutcome = resolveRefundOutcome(numeric(payment.amount), nextRefundedTotal);
   const refundedAt = new Date().toISOString();
@@ -3649,6 +3999,19 @@ export async function refundPayment(user: UserAccount, input: {
     if (statusInsert.error) {
       throw new PaymentServiceError("Unable to log the appointment refund history entry.", 500);
     }
+  }
+
+  if (architectControlledRefund && controlledRefundContext) {
+    await recordArchitectControlledRefundAudit(supabase, {
+      actor,
+      payment: paymentUpdate.data as PaymentRow,
+      appointment,
+      amount: input.amount,
+      reason: input.reason,
+      result: "success",
+      refundId: (refundInsert.data as RefundRow).id,
+      payoutExecutionCount: controlledRefundContext.payoutExecutionCount
+    });
   }
 
   return {

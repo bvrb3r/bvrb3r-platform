@@ -5,7 +5,10 @@ import { PaymentServiceError, refundPayment } from "@/lib/payments/service";
 
 const refundSchema = z.object({
   amount: z.number().positive(),
-  reason: z.string().trim().optional()
+  reason: z.string().trim().optional(),
+  source: z.string().trim().optional(),
+  confirmation: z.string().trim().optional(),
+  incidentCode: z.string().trim().optional()
 });
 
 function toErrorResponse(error: unknown) {
@@ -32,7 +35,10 @@ export async function POST(
     const payload = await refundPayment(user, {
       paymentId,
       amount: parsed.data.amount,
-      reason: parsed.data.reason
+      reason: parsed.data.reason,
+      source: parsed.data.source,
+      confirmation: parsed.data.confirmation,
+      incidentCode: parsed.data.incidentCode
     });
     return NextResponse.json(payload);
   } catch (error) {
