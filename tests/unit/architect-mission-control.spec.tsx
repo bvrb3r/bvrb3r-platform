@@ -5,6 +5,8 @@ import { APPOINTMENT_ID } from "@/tests/unit/architect-debug-test-utils";
 
 const fetchMock = vi.fn();
 const clipboardWriteTextMock = vi.fn();
+const APPROVED_REFUND_PAYMENT_ID = "2d2d2770-50dc-4e9d-9b05-6ea335a1e1bd";
+const APPROVED_REFUND_APPOINTMENT_ID = "168b6424-d4a6-5d04-bfa0-1a2953fc4a38";
 
 function createSnapshot() {
   const incidentId = `completed_but_routing_missing:appointment:${APPOINTMENT_ID}`;
@@ -53,6 +55,7 @@ function createSnapshot() {
         "appointments.completed_at is populated",
         "payment.status=captured",
         "appointment.status=cancelled",
+        "captured payment + cancelled appointment must remain blocked/manual_review until refund or reversal truth is resolved",
         "payment_routing_records lookup by appointment_id returned 0 rows",
         "No recent routing repair constraint failure was found."
       ],
@@ -501,6 +504,128 @@ describe("architect mission control", () => {
     expect(copiedPrompt).toContain("Do not stage unrelated dirty files.");
     expect(within(dialog).getAllByText("Failed").length).toBeGreaterThan(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows controlled refund actions only for approved cancelled captured Finance issues", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createSnapshot()
+    });
+
+    render(<ArchitectMissionControl laneId="finance" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Payment health issue detail" }));
+
+    const paymentDialog = screen.getByRole("dialog", { name: "Payment health" });
+    expect(within(paymentDialog).getByTestId("controlled-refund-resolution")).toBeInTheDocument();
+    expect(within(paymentDialog).getByText("Controlled refund resolution")).toBeInTheDocument();
+    expect(within(paymentDialog).getByText(APPROVED_REFUND_APPOINTMENT_ID)).toBeInTheDocument();
+    expect(within(paymentDialog).getByText(APPROVED_REFUND_PAYMENT_ID)).toBeInTheDocument();
+    expect(within(paymentDialog).getAllByRole("button", { name: /Refund \$5 through canonical route for payment/ })).toHaveLength(4);
+
+    fireEvent.click(within(paymentDialog).getByLabelText("Close issue detail"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Stripe status issue detail" }));
+
+    const stripeDialog = screen.getByRole("dialog", { name: "Stripe status" });
+    expect(within(stripeDialog).queryByTestId("controlled-refund-resolution")).not.toBeInTheDocument();
+    expect(within(stripeDialog).queryByRole("button", { name: /Refund \$5 through canonical route/ })).not.toBeInTheDocument();
+  });
+
+  it("requires exact typed confirmation before calling the canonical refund route", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => createSnapshot()
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          refund: {
+            id: "refund-approved-1",
+            payment_id: APPROVED_REFUND_PAYMENT_ID,
+            amount: 5,
+            reason: "Cancelled appointment captured booking payment resolution",
+            provider_refund_id: "re_stripe_1",
+            refunded_at: "2026-06-20T02:00:00.000Z"
+          },
+          payment: {
+            id: APPROVED_REFUND_PAYMENT_ID,
+            paymentStatus: "refunded"
+          },
+          summary: {
+            refundedAmount: 5
+          }
+        })
+      });
+
+    render(<ArchitectMissionControl laneId="finance" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Payment health issue detail" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Payment health" });
+    const target = within(dialog).getByTestId(`controlled-refund-${APPROVED_REFUND_PAYMENT_ID}`);
+    const refundButton = within(target).getByRole("button", { name: `Refund $5 through canonical route for payment ${APPROVED_REFUND_PAYMENT_ID}` });
+
+    expect(refundButton).toBeDisabled();
+
+    fireEvent.change(within(target).getByLabelText(`Type REFUND 5 for payment ${APPROVED_REFUND_PAYMENT_ID}`), {
+      target: { value: "refund 5" }
+    });
+    expect(refundButton).toBeDisabled();
+
+    fireEvent.change(within(target).getByLabelText(`Type REFUND 5 for payment ${APPROVED_REFUND_PAYMENT_ID}`), {
+      target: { value: "REFUND 5" }
+    });
+    expect(refundButton).toBeEnabled();
+
+    fireEvent.click(refundButton);
+
+    await waitFor(() => expect(within(target).getByText("Refund success.")).toBeInTheDocument());
+    expect(within(target).getByText("Refund ID: refund-approved-1")).toBeInTheDocument();
+    expect(within(target).getByText("Updated payment status: refunded")).toBeInTheDocument();
+    expect(within(target).getByText("Refund record exists.")).toBeInTheDocument();
+    expect(within(target).getByText("Routing released_at remains null.")).toBeInTheDocument();
+    expect(within(target).getByText("payout_executions remains 0.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe(`/api/payments/${APPROVED_REFUND_PAYMENT_ID}/refund`);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: 5,
+        reason: "Cancelled appointment captured booking payment resolution"
+      })
+    });
+    expect(String(fetchMock.mock.calls[1][0])).not.toContain("stripe");
+  });
+
+  it("handles refund 403 responses without changing the Finance issue status", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => createSnapshot()
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: async () => ({ error: "Only owner, manager, or front desk can manage this payment action." })
+      });
+
+    render(<ArchitectMissionControl laneId="finance" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Payment health issue detail" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Payment health" });
+    const target = within(dialog).getByTestId(`controlled-refund-${APPROVED_REFUND_PAYMENT_ID}`);
+    fireEvent.change(within(target).getByLabelText(`Type REFUND 5 for payment ${APPROVED_REFUND_PAYMENT_ID}`), {
+      target: { value: "REFUND 5" }
+    });
+    fireEvent.click(within(target).getByRole("button", { name: `Refund $5 through canonical route for payment ${APPROVED_REFUND_PAYMENT_ID}` }));
+
+    await waitFor(() => expect(within(target).getByText("Refund failed.")).toBeInTheDocument());
+    expect(within(target).getByText(/owner, manager, or front desk/i)).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Failed").length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("shows a manual copy textarea when Codex prompt clipboard copy fails", async () => {
