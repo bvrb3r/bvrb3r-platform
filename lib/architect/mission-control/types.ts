@@ -229,6 +229,31 @@ export type V1RuntimeProofMatrix = {
   needsReviewGroupCount: number;
 };
 
+export type DeploymentRegressionEvidenceStatus = MissionControlStatus | "Not Connected";
+
+export type DeploymentRegressionEvidence = {
+  status: DeploymentRegressionEvidenceStatus;
+  expectedMainCommit: string | null;
+  runtimeCommit: string | null;
+  deploymentId: string | null;
+  deploymentEnvironment: string | null;
+  deploymentTarget: string | null;
+  deploymentUrl: string | null;
+  deploymentState: string | null;
+  commitEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  deploymentEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  buildEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  lintEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  typecheckEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  testEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  regressionEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  lastValidatedAt: string | null;
+  evidenceSource: string;
+  staleOrMissingState: string[];
+  failingState: string[];
+  nextRepairLane: MissionLaneId;
+};
+
 export type AuditSpineStatus = MissionControlStatus | "Not Connected";
 
 export type AuditSpineStageKey = "approval" | "execution" | "verification" | "scoreImpact";
@@ -290,6 +315,7 @@ export type MissionControlFoundation = {
   coreLoopValidators: CoreLoopValidator[];
   readinessBreakdown?: MissionReadinessBreakdown;
   v1RuntimeProofMatrix?: V1RuntimeProofMatrix;
+  deploymentRegression?: DeploymentRegressionEvidence;
   auditSpine?: AuditSpineModel;
   incidentTypes: MissionIncidentDefinition[];
   sourceVault: SourceVaultEntry[];
@@ -400,9 +426,13 @@ export type MissionControlSnapshot = {
   environment: {
     appEnv: string;
     commitHash: string | null;
+    expectedMainCommit?: string | null;
     deploymentId: string | null;
+    deploymentUrl?: string | null;
+    deploymentStatus?: string | null;
     branch: string | null;
     buildTime: string | null;
+    lastValidatedAt?: string | null;
   };
   health: MissionControlHealthItem[];
   incidents: ArchitectIncident[];

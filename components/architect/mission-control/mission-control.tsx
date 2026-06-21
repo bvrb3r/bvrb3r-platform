@@ -14,6 +14,7 @@ import type {
   AuditSpineModel,
   AuditSpineRecord,
   AuditSpineStatus,
+  DeploymentRegressionEvidence,
   FinanceLogCategory,
   FinanceLogEntry,
   FinanceRefundTarget,
@@ -960,6 +961,86 @@ function V1RuntimeProofPanel({ groups }: { groups: V1RuntimeProofGroup[] }) {
   );
 }
 
+function DeploymentRegressionEvidencePanel({ evidence }: { evidence?: DeploymentRegressionEvidence }) {
+  const displayEvidence = evidence ?? {
+    status: "Not Connected",
+    expectedMainCommit: null,
+    runtimeCommit: null,
+    deploymentId: null,
+    deploymentEnvironment: null,
+    deploymentTarget: null,
+    deploymentUrl: null,
+    deploymentState: null,
+    commitEvidenceStatus: "Not Connected",
+    deploymentEvidenceStatus: "Not Connected",
+    buildEvidenceStatus: "Not Connected",
+    lintEvidenceStatus: "Not Connected",
+    typecheckEvidenceStatus: "Not Connected",
+    testEvidenceStatus: "Not Connected",
+    regressionEvidenceStatus: "Not Connected",
+    lastValidatedAt: null,
+    evidenceSource: "Deployment/regression evidence model is not connected.",
+    staleOrMissingState: ["Deployment/regression evidence model is not connected."],
+    failingState: [],
+    nextRepairLane: "technology"
+  } satisfies DeploymentRegressionEvidence;
+  const proofRows = [
+    ["Production commit", displayEvidence.runtimeCommit ?? "Not connected"],
+    ["Expected main commit", displayEvidence.expectedMainCommit ?? "Not connected"],
+    ["Deployment ID", displayEvidence.deploymentId ?? "Not connected"],
+    ["Deployment status", displayEvidence.deploymentState ?? displayEvidence.deploymentEvidenceStatus],
+    ["Deployment URL", displayEvidence.deploymentUrl ?? "Not connected"],
+    ["Build evidence", displayEvidence.buildEvidenceStatus],
+    ["Lint evidence", displayEvidence.lintEvidenceStatus],
+    ["Typecheck evidence", displayEvidence.typecheckEvidenceStatus],
+    ["Test evidence", displayEvidence.testEvidenceStatus],
+    ["Evidence source", displayEvidence.evidenceSource],
+    ["Next repair lane", displayEvidence.nextRepairLane]
+  ] as const;
+
+  return (
+    <article
+      data-testid="deployment-regression-evidence"
+      className="rounded-[22px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.24)] sm:p-5"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Deployment / Regression Evidence</p>
+          <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Production proof connector</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
+            Read-only deployment proof compares expected main commit, runtime commit, deployment metadata, and validation evidence. Missing build, lint, typecheck, or test proof stays Needs Review.
+          </p>
+        </div>
+        <StatusPill status={displayEvidence.status} />
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {proofRows.map(([label, value]) => (
+          <div key={label} className="rounded-[16px] border border-white/8 bg-black/26 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">{label}</p>
+            <p className="mt-2 break-words font-mono text-xs leading-5 text-white/76">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Missing validation gaps</p>
+          <p data-testid="deployment-regression-missing-gaps" className="mt-2 text-sm leading-6 text-white/62">
+            {displayEvidence.staleOrMissingState.length ? displayEvidence.staleOrMissingState.join(" ") : "No missing deployment/regression proof reported."}
+          </p>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Commit mismatch / failed evidence</p>
+          <p data-testid="deployment-regression-failed-gaps" className="mt-2 text-sm leading-6 text-white/62">
+            {displayEvidence.failingState.length ? displayEvidence.failingState.join(" ") : "No failed deployment/regression proof reported."}
+          </p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function AuditSpineStageSummary({ label, status }: { label: string; status: AuditSpineStatus }) {
   return (
     <div className="rounded-[14px] border border-white/8 bg-black/24 p-3" data-testid={`audit-spine-stage-${label.toLowerCase().replace(/\s+/g, "-")}`}>
@@ -1711,6 +1792,7 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
       </div>
       <CeoReadinessCard readiness={readiness} />
       <V1RuntimeProofPanel groups={runtimeProofMatrix.groups} />
+      <DeploymentRegressionEvidencePanel evidence={foundation.deploymentRegression} />
       <AuditSpinePanel auditSpine={foundation.auditSpine} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
         {cards.map((card) => (

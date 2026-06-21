@@ -21,7 +21,7 @@ import type {
   MissionPacketSet
 } from "@/lib/architect/mission-control/types";
 import { buildChatGptPacket, buildCodexPacket, buildIncidentPacket } from "@/lib/architect/mission-control/packets";
-import { buildMissionControlFoundation, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
+import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -1272,8 +1272,22 @@ export async function buildMissionControlSnapshot(
   const checkedAt = new Date().toISOString();
   const environment = {
     ...readArchitectDebugEnvironment(),
+    expectedMainCommit: process.env.BVRB3R_EXPECTED_MAIN_COMMIT
+      ?? process.env.NEXT_PUBLIC_EXPECTED_MAIN_COMMIT
+      ?? null,
+    deploymentUrl: process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NEXT_PUBLIC_VERCEL_URL
+        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+        : null,
+    deploymentStatus: process.env.BVRB3R_DEPLOYMENT_STATUS
+      ?? process.env.NEXT_PUBLIC_DEPLOYMENT_STATUS
+      ?? null,
     branch: process.env.VERCEL_GIT_COMMIT_REF ?? process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF ?? null,
-    buildTime: process.env.NEXT_PUBLIC_BUILD_TIME ?? process.env.BUILD_TIME ?? null
+    buildTime: process.env.NEXT_PUBLIC_BUILD_TIME ?? process.env.BUILD_TIME ?? null,
+    lastValidatedAt: process.env.BVRB3R_LAST_VALIDATED_AT
+      ?? process.env.NEXT_PUBLIC_LAST_VALIDATED_AT
+      ?? null
   };
   const [incidents, constraintEvidence] = await Promise.all([
     detectArchitectMissionIncidents(supabase),
@@ -1283,7 +1297,22 @@ export async function buildMissionControlSnapshot(
   const ceoPlatformMetrics = await buildCeoPlatformMetrics(supabase, incidents, checkedAt, financeEvidence);
   const health = healthFromIncidents(incidents, checkedAt);
   const packets = Object.fromEntries(incidents.map((incident) => [incident.id, packetSet({ checkedAt, environment }, incident)]));
-  const foundation = buildMissionControlFoundation(incidents, checkedAt, ceoPlatformMetrics);
+  const deploymentRegression = buildDeploymentRegressionEvidence({
+    expectedMainCommit: environment.expectedMainCommit,
+    runtimeCommit: environment.commitHash,
+    deploymentId: environment.deploymentId,
+    deploymentEnvironment: environment.appEnv,
+    deploymentTarget: environment.appEnv,
+    deploymentUrl: environment.deploymentUrl,
+    deploymentState: environment.deploymentStatus,
+    buildEvidenceStatus: process.env.BVRB3R_BUILD_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_BUILD_EVIDENCE_STATUS ?? null,
+    lintEvidenceStatus: process.env.BVRB3R_LINT_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_LINT_EVIDENCE_STATUS ?? null,
+    typecheckEvidenceStatus: process.env.BVRB3R_TYPECHECK_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_TYPECHECK_EVIDENCE_STATUS ?? null,
+    testEvidenceStatus: process.env.BVRB3R_TEST_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_TEST_EVIDENCE_STATUS ?? null,
+    lastValidatedAt: environment.lastValidatedAt,
+    evidenceSource: "Vercel runtime environment variables and explicit BVRB3R validation status metadata"
+  });
+  const foundation = buildMissionControlFoundation(incidents, checkedAt, ceoPlatformMetrics, deploymentRegression);
 
   return {
     ok: true,

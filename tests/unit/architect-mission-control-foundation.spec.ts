@@ -7,6 +7,7 @@ import {
   OFFICER_ASSISTANT_DEPARTMENTS,
   SOURCE_VAULT_REGISTRY,
   buildMissionControlFoundation,
+  buildDeploymentRegressionEvidence,
   buildAuditSpineModel,
   buildMissionReadinessBreakdown,
   buildV1RuntimeProofMatrix,
@@ -497,6 +498,135 @@ describe("architect mission control foundation", () => {
       "v1-runtime-proof-barber_loop",
       "v1-runtime-proof-shop_owner_loop"
     ]));
+  });
+
+  it("keeps missing deployment evidence from faking Deployment loop Pass", () => {
+    const deploymentEvidence = buildDeploymentRegressionEvidence();
+    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], deploymentEvidence);
+    const deploymentGroup = foundation.v1RuntimeProofMatrix?.groups.find((group) => group.id === "deployment_loop");
+    const commitProof = deploymentGroup?.rows.find((row) => row.id === "technology-current-commit");
+
+    expect(deploymentEvidence.status).toBe("Not Connected");
+    expect(deploymentEvidence.staleOrMissingState).toEqual(expect.arrayContaining([
+      "Runtime production commit evidence is not connected.",
+      "Vercel deployment ID evidence is not connected.",
+      "Build validation evidence is missing or not passing.",
+      "Test validation evidence is missing or not passing."
+    ]));
+    expect(deploymentGroup?.status).toBe("Needs Review");
+    expect(commitProof).toMatchObject({
+      status: "Needs Review",
+      proofConnected: false,
+      staleOrMissingProof: true
+    });
+  });
+
+  it("keeps runtime commit evidence Needs Review when expected main commit is missing", () => {
+    const deploymentEvidence = buildDeploymentRegressionEvidence({
+      runtimeCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      deploymentId: "dpl_ready",
+      deploymentState: "READY"
+    });
+    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], deploymentEvidence);
+    const commitProof = foundation.v1RuntimeProofMatrix?.rows.find((row) => row.id === "technology-current-commit");
+
+    expect(deploymentEvidence.commitEvidenceStatus).toBe("Needs Review");
+    expect(commitProof).toMatchObject({
+      status: "Needs Review",
+      proofConnected: false
+    });
+    expect(commitProof?.evidenceRows.join("\n")).toContain("Expected main commit evidence is not connected.");
+  });
+
+  it("forces Failed when production runtime commit differs from expected main commit", () => {
+    const deploymentEvidence = buildDeploymentRegressionEvidence({
+      expectedMainCommit: "expected-main",
+      runtimeCommit: "different-runtime",
+      deploymentId: "dpl_ready",
+      deploymentState: "READY",
+      buildEvidenceStatus: "pass",
+      lintEvidenceStatus: "pass",
+      typecheckEvidenceStatus: "pass",
+      testEvidenceStatus: "pass"
+    });
+    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], deploymentEvidence);
+    const deploymentGroup = foundation.v1RuntimeProofMatrix?.groups.find((group) => group.id === "deployment_loop");
+    const commitProof = deploymentGroup?.rows.find((row) => row.id === "technology-current-commit");
+
+    expect(deploymentEvidence.status).toBe("Failed");
+    expect(deploymentEvidence.failingState.join("\n")).toContain("does not match expected main commit");
+    expect(commitProof).toMatchObject({ status: "Failed", proofConnected: true });
+    expect(deploymentGroup?.status).toBe("Failed");
+    expect(foundation.readinessBreakdown?.overallStatus).toBe("Failed");
+  });
+
+  it("lets READY deployment plus matching commit improve deployment proof while missing validation remains Needs Review", () => {
+    const deploymentEvidence = buildDeploymentRegressionEvidence({
+      expectedMainCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      runtimeCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      deploymentId: "dpl_ready",
+      deploymentState: "READY",
+      deploymentEnvironment: "production",
+      deploymentTarget: "production",
+      deploymentUrl: "https://www.bvrb3r.app"
+    });
+    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], deploymentEvidence);
+    const commitProof = foundation.v1RuntimeProofMatrix?.rows.find((row) => row.id === "technology-current-commit");
+    const deployProof = foundation.v1RuntimeProofMatrix?.rows.find((row) => row.id === "technology-current-deploy");
+    const regressionProof = foundation.v1RuntimeProofMatrix?.rows.find((row) => row.id === "technology-build-test-proof");
+
+    expect(deploymentEvidence.commitEvidenceStatus).toBe("Pass");
+    expect(deploymentEvidence.deploymentEvidenceStatus).toBe("Pass");
+    expect(deploymentEvidence.regressionEvidenceStatus).toBe("Not Connected");
+    expect(deploymentEvidence.status).toBe("Needs Review");
+    expect(commitProof).toMatchObject({ status: "Pass", proofConnected: true });
+    expect(deployProof).toMatchObject({ status: "Pass", proofConnected: true });
+    expect(regressionProof).toMatchObject({ status: "Needs Review", proofConnected: false });
+  });
+
+  it("forces Failed from explicit build or test validation failure", () => {
+    const deploymentEvidence = buildDeploymentRegressionEvidence({
+      expectedMainCommit: "c8c2b1f",
+      runtimeCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      deploymentId: "dpl_ready",
+      deploymentState: "READY",
+      buildEvidenceStatus: "failed",
+      lintEvidenceStatus: "pass",
+      typecheckEvidenceStatus: "pass",
+      testEvidenceStatus: "pass",
+      lastValidatedAt: "2026-06-21T12:00:00.000Z"
+    });
+    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], deploymentEvidence);
+    const regressionProof = foundation.v1RuntimeProofMatrix?.rows.find((row) => row.id === "technology-build-test-proof");
+
+    expect(deploymentEvidence.status).toBe("Failed");
+    expect(deploymentEvidence.failingState).toContain("Build validation evidence is Failed.");
+    expect(regressionProof).toMatchObject({ status: "Failed", proofConnected: true });
+  });
+
+  it("passes deployment regression evidence only when commit, deploy status, and all validation proof pass", () => {
+    const deploymentEvidence = buildDeploymentRegressionEvidence({
+      expectedMainCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      runtimeCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      deploymentId: "dpl_ready",
+      deploymentState: "READY",
+      deploymentEnvironment: "production",
+      deploymentTarget: "production",
+      deploymentUrl: "https://www.bvrb3r.app",
+      buildEvidenceStatus: "pass",
+      lintEvidenceStatus: "pass",
+      typecheckEvidenceStatus: "pass",
+      testEvidenceStatus: "pass",
+      lastValidatedAt: "2026-06-21T12:00:00.000Z"
+    });
+    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], deploymentEvidence);
+    const deploymentCard = foundation.ceoCommandCenter.find((card) => card.id === "ceo-regression-deployment-health");
+    const regressionCard = foundation.departmentLanes.find((lane) => lane.id === "technology")?.cards.find((card) => card.id === "technology-build-tests");
+
+    expect(deploymentEvidence.status).toBe("Pass");
+    expect(deploymentEvidence.regressionEvidenceStatus).toBe("Pass");
+    expect(deploymentCard).toMatchObject({ status: "Pass", metricValue: "Pass" });
+    expect(regressionCard).toMatchObject({ status: "Pass" });
   });
 
 

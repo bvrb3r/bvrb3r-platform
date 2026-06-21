@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArchitectMissionControl } from "@/components/architect/mission-control/mission-control";
+import { buildDeploymentRegressionEvidence, buildMissionControlFoundation } from "@/lib/architect/mission-control/foundation";
 import { APPOINTMENT_ID } from "@/tests/unit/architect-debug-test-utils";
 
 const fetchMock = vi.fn();
@@ -415,6 +416,15 @@ describe("architect mission control", () => {
     expect(screen.getByText("Foundation Blockers Before AI")).toBeInTheDocument();
     expect(screen.getByText("V1 Runtime Proof")).toBeInTheDocument();
     expect(screen.getByText("Role and operating-loop proof matrix")).toBeInTheDocument();
+    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Deployment / Regression Evidence");
+    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Production commit");
+    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Expected main commit");
+    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Deployment ID");
+    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Build evidence");
+    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Lint evidence");
+    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Typecheck evidence");
+    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Test evidence");
+    expect(screen.getByTestId("deployment-regression-missing-gaps")).toHaveTextContent("Expected main commit evidence is not connected.");
     expect(screen.getByText("Audit Spine")).toBeInTheDocument();
     expect(screen.getByText("Controlled repair evidence stages")).toBeInTheDocument();
     expect(screen.getByTestId("audit-spine")).toHaveTextContent("Approval");
@@ -474,6 +484,41 @@ describe("architect mission control", () => {
     ].forEach((label) => {
       expect(screen.getByRole("button", { name: `Open ${label} detail` })).toBeInTheDocument();
     });
+  });
+
+  it("renders connected deployment and regression proof fields on the CEO dashboard", async () => {
+    const deploymentRegression = buildDeploymentRegressionEvidence({
+      expectedMainCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      runtimeCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      deploymentId: "dpl_ready",
+      deploymentState: "READY",
+      deploymentEnvironment: "production",
+      deploymentTarget: "production",
+      deploymentUrl: "https://www.bvrb3r.app",
+      buildEvidenceStatus: "pass",
+      lintEvidenceStatus: "pass",
+      typecheckEvidenceStatus: "pass",
+      testEvidenceStatus: "pass",
+      lastValidatedAt: "2026-06-21T12:00:00.000Z"
+    });
+    const snapshot = {
+      ...createNoIncidentSnapshot(),
+      foundation: buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], deploymentRegression)
+    };
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => snapshot
+    });
+
+    render(<ArchitectMissionControl />);
+
+    const panel = await screen.findByTestId("deployment-regression-evidence");
+    expect(panel).toHaveTextContent("c8c2b1f04978bd42970ba16787bdb7965adb099d");
+    expect(panel).toHaveTextContent("dpl_ready");
+    expect(panel).toHaveTextContent("READY");
+    expect(panel).toHaveTextContent("Pass");
+    expect(panel).toHaveTextContent("https://www.bvrb3r.app");
+    expect(screen.getByTestId("v1-proof-group-deployment_loop")).toHaveTextContent("Deployment loop");
   });
 
   it("shows Officer Cleanup guardrails in the Hive AI detail popup", async () => {
