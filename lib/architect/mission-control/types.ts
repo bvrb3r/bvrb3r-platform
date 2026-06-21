@@ -182,6 +182,53 @@ export type MissionReadinessBreakdown = {
   futureParkedItems: MissionEvidenceCard[];
 };
 
+export type V1RuntimeProofGroupId =
+  | "client_loop"
+  | "barber_loop"
+  | "shop_owner_loop"
+  | "money_loop"
+  | "security_loop"
+  | "deployment_loop"
+  | "audit_loop";
+
+export type V1RuntimeProofRow = {
+  id: string;
+  label: string;
+  lane: MissionDepartment;
+  roleAffected: "Client" | "Barber" | "Shop Owner" | "Architect" | "Platform";
+  proofGroup: V1RuntimeProofGroupId;
+  requiredProofSource: string;
+  currentEvidenceSource: string;
+  status: MissionControlStatus;
+  statusRule: string;
+  passRequirement: string;
+  failureMeaning: string;
+  nextRepairLane: MissionLaneId;
+  proofConnected: boolean;
+  staleOrMissingProof: boolean;
+  evidenceRows: string[];
+};
+
+export type V1RuntimeProofGroup = {
+  id: V1RuntimeProofGroupId;
+  label: string;
+  lane: MissionDepartment;
+  status: MissionControlStatus;
+  proofConnected: boolean;
+  failingEvidenceCount: number;
+  staleOrMissingProofCount: number;
+  nextRepairLane: MissionLaneId;
+  rows: V1RuntimeProofRow[];
+};
+
+export type V1RuntimeProofMatrix = {
+  groups: V1RuntimeProofGroup[];
+  rows: V1RuntimeProofRow[];
+  allGroupsPass: boolean;
+  failingGroupCount: number;
+  needsReviewGroupCount: number;
+};
+
 export type MissionControlFoundation = {
   navigationLanes: MissionControlLane[];
   defaultLaneId: MissionLaneId;
@@ -189,6 +236,7 @@ export type MissionControlFoundation = {
   departmentLanes: MissionDepartmentLane[];
   coreLoopValidators: CoreLoopValidator[];
   readinessBreakdown?: MissionReadinessBreakdown;
+  v1RuntimeProofMatrix?: V1RuntimeProofMatrix;
   incidentTypes: MissionIncidentDefinition[];
   sourceVault: SourceVaultEntry[];
   actionRegistry: ActionRegistryEntry[];

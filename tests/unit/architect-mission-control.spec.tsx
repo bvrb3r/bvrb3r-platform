@@ -238,6 +238,55 @@ function createAllPassEvidenceCard(id: string, label: string, metricValue = "1")
   };
 }
 
+function createAllPassRuntimeProofMatrix() {
+  const groupDefinitions = [
+    { id: "client_loop", label: "Client loop", lane: "Product", nextRepairLane: "product" },
+    { id: "barber_loop", label: "Barber loop", lane: "Operations", nextRepairLane: "operations" },
+    { id: "shop_owner_loop", label: "Shop Owner loop", lane: "Operations", nextRepairLane: "operations" },
+    { id: "money_loop", label: "Money loop", lane: "Finance", nextRepairLane: "finance" },
+    { id: "security_loop", label: "Security loop", lane: "Security", nextRepairLane: "security" },
+    { id: "deployment_loop", label: "Deployment loop", lane: "Technology", nextRepairLane: "technology" },
+    { id: "audit_loop", label: "Audit loop", lane: "Compliance", nextRepairLane: "compliance" }
+  ] as const;
+  const groups = groupDefinitions.map((group) => {
+    const row = {
+      id: `${group.id}-proof`,
+      label: `${group.label} proof`,
+      lane: group.lane,
+      roleAffected: "Platform",
+      proofGroup: group.id,
+      requiredProofSource: "Connected V1 evidence",
+      currentEvidenceSource: "All-pass test evidence",
+      status: "Pass",
+      statusRule: "Pass only from connected evidence.",
+      passRequirement: `${group.label} must pass.`,
+      failureMeaning: `${group.label} would block V1 readiness.`,
+      nextRepairLane: group.nextRepairLane,
+      proofConnected: true,
+      staleOrMissingProof: false,
+      evidenceRows: [`${group.label} runtime proof passed.`]
+    };
+
+    return {
+      ...group,
+      status: "Pass",
+      proofConnected: true,
+      failingEvidenceCount: 0,
+      staleOrMissingProofCount: 0,
+      rows: [row]
+    };
+  });
+  const rows = groups.flatMap((group) => group.rows);
+
+  return {
+    groups,
+    rows,
+    allGroupsPass: true,
+    failingGroupCount: 0,
+    needsReviewGroupCount: 0
+  };
+}
+
 function createAllPassSnapshot() {
   const snapshot = createSnapshot();
   const incidentId = "packet_ready:regression:all-pass";
@@ -248,6 +297,8 @@ function createAllPassSnapshot() {
     headline: "Regression packet is available.",
     evidence: ["packet generated", "validation checklist available"]
   };
+
+  const v1RuntimeProofMatrix = createAllPassRuntimeProofMatrix();
 
   return {
     ...snapshot,
@@ -290,6 +341,7 @@ function createAllPassSnapshot() {
       ],
       departmentLanes: [],
       coreLoopValidators: [],
+      v1RuntimeProofMatrix,
       incidentTypes: [],
       sourceVault: [{
         id: "architect-super-master-plan",
@@ -361,6 +413,16 @@ describe("architect mission control", () => {
     expect(screen.getByText("Current Release Blockers")).toBeInTheDocument();
     expect(screen.getByText("Evidence Gaps")).toBeInTheDocument();
     expect(screen.getByText("Foundation Blockers Before AI")).toBeInTheDocument();
+    expect(screen.getByText("V1 Runtime Proof")).toBeInTheDocument();
+    expect(screen.getByText("Role and operating-loop proof matrix")).toBeInTheDocument();
+    expect(screen.getByTestId("v1-proof-group-client_loop")).toHaveTextContent("Client loop");
+    expect(screen.getByTestId("v1-proof-connected-client_loop")).toHaveTextContent("no");
+    expect(screen.getByTestId("v1-proof-group-barber_loop")).toHaveTextContent("Barber loop");
+    expect(screen.getByTestId("v1-proof-group-shop_owner_loop")).toHaveTextContent("Shop Owner loop");
+    expect(screen.getByTestId("v1-proof-group-money_loop")).toHaveTextContent("Money loop");
+    expect(screen.getByTestId("v1-proof-group-security_loop")).toHaveTextContent("Security loop");
+    expect(screen.getByTestId("v1-proof-group-deployment_loop")).toHaveTextContent("Deployment loop");
+    expect(screen.getByTestId("v1-proof-group-audit_loop")).toHaveTextContent("Audit loop");
     expect(screen.getByText("Overall status")).toBeInTheDocument();
     expect(screen.getByTestId("architect-ceo-card-platform-health")).toBeInTheDocument();
     expect(screen.getByText("Money / App Revenue")).toBeInTheDocument();
@@ -465,7 +527,7 @@ describe("architect mission control", () => {
 
     const readiness = await screen.findByTestId("architect-ceo-readiness");
     expect(within(readiness).getByText("100% Pass")).toBeInTheDocument();
-    expect(screen.getByTestId("ceo-readiness-pass-count")).toHaveTextContent("18");
+    expect(screen.getByTestId("ceo-readiness-pass-count")).toHaveTextContent("28");
     expect(screen.getByTestId("ceo-readiness-failed-count")).toHaveTextContent("0");
     expect(screen.getByTestId("ceo-readiness-needs-review-count")).toHaveTextContent("0");
     expect(screen.getByTestId("ceo-readiness-critical-blockers")).toHaveTextContent("0");
