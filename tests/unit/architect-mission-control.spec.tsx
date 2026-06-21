@@ -625,6 +625,32 @@ describe("architect mission control", () => {
     expect(inventory).not.toHaveTextContent("Enable RLS");
   });
 
+  it("renders the Role Truth Inventory as a read-only migration plan", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createNoIncidentSnapshot()
+    });
+
+    render(<ArchitectMissionControl laneId="compliance" />);
+
+    const inventory = await screen.findByTestId("role-truth-inventory");
+    expect(inventory).toHaveTextContent("Role Truth Inventory");
+    expect(inventory).toHaveTextContent("Read-only account role migration plan");
+    expect(inventory).toHaveTextContent("Plan only - no role changes applied.");
+    expect(inventory).toHaveTextContent("Canonical account roles");
+    expect(inventory).toHaveTextContent("Business relationships");
+    expect(inventory).toHaveTextContent("Staff permissions");
+    expect(inventory).toHaveTextContent("Legacy/drift count");
+    expect(inventory).toHaveTextContent("V1 critical drift");
+    expect(inventory).toHaveTextContent("Account role misuse");
+    expect(inventory).toHaveTextContent("client_user");
+    expect(inventory).toHaveTextContent("platform_admin");
+    expect(inventory).toHaveTextContent("commission_barber");
+    expect(inventory).toHaveTextContent("front_desk");
+    expect(inventory).not.toHaveTextContent("Normalize roles");
+    expect(inventory).not.toHaveTextContent("Run migration");
+  });
+
   it("opens CEO card detail popups with evidence and lane routing", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,

@@ -25,6 +25,7 @@ import type {
   MissionEvidenceCard,
   MissionControlStatus,
   MissionLaneId,
+  RoleTruthInventory,
   RlsSecurityInventory,
   V1RuntimeProofGroup
 } from "@/lib/architect/mission-control/types";
@@ -2081,6 +2082,112 @@ function RlsSecurityInventoryPanel({ inventory }: { inventory?: RlsSecurityInven
   );
 }
 
+function RoleTruthRowCard({ row }: { row: RoleTruthInventory["rows"][number] }) {
+  return (
+    <article className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="font-mono text-xs text-white/45">{row.currentRoleValue}</p>
+          <h4 className="mt-1 text-sm font-black text-white">{row.normalizedDisplayLabel}</h4>
+        </div>
+        <StatusPill status={row.currentStatus} />
+      </div>
+      <div className="mt-3 grid gap-2 text-xs leading-5 text-white/58 sm:grid-cols-3">
+        <p><span className="font-black text-white/82">Classification:</span> {row.canonicalClassification}</p>
+        <p><span className="font-black text-white/82">Destination:</span> {row.expectedCanonicalDestination}</p>
+        <p><span className="font-black text-white/82">Risk:</span> {row.securityRisk}</p>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-white/58">{row.failureMeaning}</p>
+      <p className="mt-2 text-xs leading-5 text-white/45">{row.suggestedMigrationPath}</p>
+    </article>
+  );
+}
+
+function RoleTruthInventoryPanel({ inventory }: { inventory?: RoleTruthInventory }) {
+  if (!inventory) {
+    return (
+      <article className="rounded-[24px] border border-amber-300/15 bg-amber-300/8 p-4 text-sm text-amber-100 sm:p-5" data-testid="role-truth-inventory">
+        Role Truth Inventory is not connected. Missing role evidence remains Needs Review.
+      </article>
+    );
+  }
+
+  const summary = inventory.summary;
+
+  return (
+    <article className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5" data-testid="role-truth-inventory">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">Role Truth Inventory</p>
+          <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Read-only account role migration plan</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
+            Plan only - no role changes applied. Primary account roles, platform admin, business relationships, staff permissions, legacy drift, and unknown values are separated before any migration is approved.
+          </p>
+        </div>
+        <StatusPill status={inventory.status} />
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ["Roles inventoried", summary.totalRoleValuesInventoried],
+          ["Canonical account roles", summary.canonicalAccountRoleCount],
+          ["Platform admin roles", summary.platformAdminRoleCount],
+          ["Business relationships", summary.businessRelationshipCount],
+          ["Staff permissions", summary.staffPermissionCount],
+          ["Legacy/drift count", summary.legacyOrDriftCount],
+          ["Unknown roles", summary.unknownCount],
+          ["Migration required", summary.migrationRequiredCount],
+          ["V1 critical drift", summary.v1CriticalDriftCount],
+          ["Account role misuse", summary.accountRoleMisuseCount],
+          ["Highest risk", summary.highestRiskLevel],
+          ["Next repair lane", summary.nextRepairLane]
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-[16px] border border-white/8 bg-white/[0.025] p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">{label}</p>
+            <p className="mt-1 text-2xl font-black text-white">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-[16px] border border-white/8 bg-white/[0.025] p-3 text-xs leading-5 text-white/58">
+        <p><span className="font-black text-white/82">Evidence source:</span> {inventory.evidenceSource}</p>
+        <p><span className="font-black text-white/82">Next repair lane:</span> {inventory.nextRepairLane}</p>
+      </div>
+
+      <div className="mt-5 space-y-5">
+        <section>
+          <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-100">Critical drift / account-role misuse</h4>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {inventory.v1CriticalDriftRoles.length ? inventory.v1CriticalDriftRoles.map((row) => (
+              <RoleTruthRowCard key={row.id} row={row} />
+            )) : (
+              <div className="rounded-[16px] border border-dashed border-white/12 bg-white/[0.025] p-3 text-sm text-white/58">No critical role drift rows are connected.</div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">Business relationships and staff permissions</h4>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {[...inventory.businessRelationshipRoles, ...inventory.staffPermissionRoles].slice(0, 10).map((row) => (
+              <RoleTruthRowCard key={row.id} row={row} />
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/50">Canonical roles and unknown posture</h4>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {[...inventory.canonicalAccountRoles, ...inventory.platformAdminRoles, ...inventory.unknownRoles].map((row) => (
+              <RoleTruthRowCard key={row.id} row={row} />
+            ))}
+          </div>
+        </section>
+      </div>
+    </article>
+  );
+}
+
 function DepartmentLaneDetail({
   lane,
   snapshot,
@@ -2142,6 +2249,9 @@ function DepartmentLaneDetail({
       ) : null}
       {lane.id === "security" ? (
         <RlsSecurityInventoryPanel inventory={foundation.rlsSecurityInventory} />
+      ) : null}
+      {lane.id === "security" || lane.id === "compliance" ? (
+        <RoleTruthInventoryPanel inventory={foundation.roleTruthInventory} />
       ) : null}
       {issueDetailsEnabled && selectedIssue ? (
         <ArchitectIssueDetailModal

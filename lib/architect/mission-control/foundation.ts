@@ -23,6 +23,10 @@ import type {
   MissionLaneId,
   MissionReadinessBreakdown,
   MissionSeverity,
+  RoleTruthInventory,
+  RoleTruthInventoryRow,
+  RoleTruthRiskLevel,
+  RoleTruthInventoryStatus,
   RlsRiskLevel,
   RlsSecurityInventory,
   RlsSecurityInventoryRow,
@@ -124,8 +128,10 @@ const V1_CRITICAL_CARD_IDS = new Set([
   "finance-repair-audit-coverage",
   "audit-spine-coverage",
   "compliance-trust-gates",
+  "compliance-role-truth-inventory",
   "security-role-access",
   "security-role-drift",
+  "security-role-truth-inventory",
   "security-rls-inventory",
   "security-rls-disabled",
   "security-route-protection",
@@ -210,9 +216,354 @@ type RlsSecurityInventoryInput = {
   evidenceSource?: string;
 };
 
+type RoleTruthInventoryRowInput = Omit<
+  RoleTruthInventoryRow,
+  "currentStatus" | "failureMeaning" | "migrationRequired" | "staleOrMissingEvidenceState"
+> & Partial<Pick<RoleTruthInventoryRow, "currentStatus" | "failureMeaning" | "migrationRequired" | "staleOrMissingEvidenceState">>;
+
+type RoleTruthInventoryInput = {
+  rows?: RoleTruthInventoryRowInput[];
+  evidenceSource?: string;
+};
+
 const DEFAULT_RLS_DISABLED_PUBLIC_TABLE_COUNT = 28;
 
 const DEFAULT_RLS_EVIDENCE_SOURCE = "Safe cleanup evidence, Supabase public schema inventory plan, and repo-known V1 table map";
+
+const DEFAULT_ROLE_TRUTH_EVIDENCE_SOURCE = "Repo-known auth role helpers, route guards, seed files, and Architect cleanup role-drift evidence";
+
+const DEFAULT_ROLE_TRUTH_INVENTORY_ROWS: RoleTruthInventoryRowInput[] = [
+  {
+    id: "role-client-user",
+    currentRoleValue: "client_user",
+    normalizedDisplayLabel: "Client user",
+    canonicalClassification: "public_account_role",
+    expectedCanonicalDestination: "profiles.role = client_user",
+    currentUsageLocations: ["lib/auth/roles.ts", "app/api/onboarding/_shared.ts", "mobile/native role schemas"],
+    affectedRoleOrLane: "Client / Product",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "low",
+    securityRisk: "low",
+    suggestedMigrationPath: "Keep as canonical public account role.",
+    rollbackNote: "No migration needed for canonical rows.",
+    nextRepairLane: "security",
+    evidenceSource: "MASTER_TRUTH_ACCOUNT_ROLES includes client_user.",
+    accountRoleMisuse: false
+  },
+  {
+    id: "role-barber-user",
+    currentRoleValue: "barber_user",
+    normalizedDisplayLabel: "Barber user",
+    canonicalClassification: "public_account_role",
+    expectedCanonicalDestination: "profiles.role = barber_user",
+    currentUsageLocations: ["lib/auth/roles.ts", "app/api/onboarding/_shared.ts", "barber route guards"],
+    affectedRoleOrLane: "Barber / Operations",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "low",
+    securityRisk: "low",
+    suggestedMigrationPath: "Keep as canonical public account role; model commission/booth rent through relationship tables.",
+    rollbackNote: "No migration needed for canonical rows.",
+    nextRepairLane: "security",
+    evidenceSource: "MASTER_TRUTH_ACCOUNT_ROLES includes barber_user.",
+    accountRoleMisuse: false
+  },
+  {
+    id: "role-shop-owner-user",
+    currentRoleValue: "shop_owner_user",
+    normalizedDisplayLabel: "Shop owner user",
+    canonicalClassification: "public_account_role",
+    expectedCanonicalDestination: "profiles.role = shop_owner_user",
+    currentUsageLocations: ["lib/auth/roles.ts", "app/api/onboarding/_shared.ts", "owner route guards"],
+    affectedRoleOrLane: "Shop Owner / Operations",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "low",
+    securityRisk: "low",
+    suggestedMigrationPath: "Keep as canonical public account role; model owner permissions through shop/team relationship tables.",
+    rollbackNote: "No migration needed for canonical rows.",
+    nextRepairLane: "security",
+    evidenceSource: "MASTER_TRUTH_ACCOUNT_ROLES includes shop_owner_user.",
+    accountRoleMisuse: false
+  },
+  {
+    id: "role-platform-admin",
+    currentRoleValue: "platform_admin",
+    normalizedDisplayLabel: "Platform admin",
+    canonicalClassification: "internal_platform_role",
+    expectedCanonicalDestination: "profiles.role = platform_admin for gated Architect accounts only",
+    currentUsageLocations: ["Architect route guards", "controlled refund authorization bridge", "platform event actor role"],
+    affectedRoleOrLane: "Architect / Security",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "medium",
+    securityRisk: "critical",
+    suggestedMigrationPath: "Keep gated to internal Architect accounts; never expose to public role selection.",
+    rollbackNote: "If an account is incorrectly promoted, revert through an approved role repair after audit.",
+    nextRepairLane: "security",
+    evidenceSource: "Architect-only surfaces use platform_admin as internal role.",
+    accountRoleMisuse: false
+  },
+  {
+    id: "role-client-legacy",
+    currentRoleValue: "client",
+    normalizedDisplayLabel: "Legacy client",
+    canonicalClassification: "legacy_or_drift",
+    expectedCanonicalDestination: "client_user",
+    currentUsageLocations: ["lib/auth/roles.ts LEGACY_CLIENT_ACCOUNT_ROLES", "supabase/seed.staging-minimal.sql", "app/api/payments/deposit/route.ts", "app/api/client/reviews/route.ts"],
+    affectedRoleOrLane: "Client / Compliance",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "high",
+    securityRisk: "high",
+    suggestedMigrationPath: "Plan a reviewed migration from profiles.role client to client_user after route guards and tests accept canonical roles.",
+    rollbackNote: "Keep a pre-migration role count snapshot so affected rows can be restored if a canonical guard regression appears.",
+    nextRepairLane: "compliance",
+    evidenceSource: "Legacy client role is accepted in auth helpers and appears in route checks/seeds.",
+    accountRoleMisuse: true
+  },
+  {
+    id: "role-barber-legacy",
+    currentRoleValue: "barber",
+    normalizedDisplayLabel: "Legacy barber",
+    canonicalClassification: "legacy_or_drift",
+    expectedCanonicalDestination: "barber_user",
+    currentUsageLocations: ["lib/auth/roles.ts LEGACY_BARBER_ACCOUNT_ROLES", "barber appointment actorRole strings", "Culture role schemas"],
+    affectedRoleOrLane: "Barber / Operations",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "high",
+    securityRisk: "high",
+    suggestedMigrationPath: "Plan a reviewed migration from primary account role barber to barber_user; keep display/workflow role labels separate.",
+    rollbackNote: "Rollback requires restoring the pre-migration profiles.role snapshot only, not business relationship rows.",
+    nextRepairLane: "compliance",
+    evidenceSource: "Legacy barber role is accepted by isBarberAccountRole.",
+    accountRoleMisuse: true
+  },
+  {
+    id: "role-shop-owner-legacy",
+    currentRoleValue: "shop_owner",
+    normalizedDisplayLabel: "Legacy shop owner",
+    canonicalClassification: "legacy_or_drift",
+    expectedCanonicalDestination: "shop_owner_user",
+    currentUsageLocations: ["lib/auth/roles.ts LEGACY_SHOP_OWNER_ACCOUNT_ROLES", "onboarding role schemas", "Architect account tests"],
+    affectedRoleOrLane: "Shop Owner / Compliance",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "high",
+    securityRisk: "high",
+    suggestedMigrationPath: "Plan a reviewed migration from primary account role shop_owner to shop_owner_user; preserve onboarding lane labels separately.",
+    rollbackNote: "Rollback uses pre-migration profiles.role counts and account ids.",
+    nextRepairLane: "compliance",
+    evidenceSource: "shop_owner is still accepted as a legacy owner account role.",
+    accountRoleMisuse: true
+  },
+  {
+    id: "role-owner-permission",
+    currentRoleValue: "owner",
+    normalizedDisplayLabel: "Owner permission",
+    canonicalClassification: "staff_permission",
+    expectedCanonicalDestination: "shop_owner_user account role plus shop/team owner permission",
+    currentUsageLocations: ["lib/auth/roles.ts LEGACY_SHOP_OWNER_ACCOUNT_ROLES", "app/api/points/cashout/*", "app/api/owner/activation/route.ts", "supabase/seed.sql user_roles"],
+    affectedRoleOrLane: "Shop Owner / Security",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "high",
+    securityRisk: "critical",
+    suggestedMigrationPath: "Move account identity to shop_owner_user and keep owner as shop/team permission or relationship state.",
+    rollbackNote: "Rollback must not delete shop/team relationship rows; only restore affected primary role values if approved.",
+    nextRepairLane: "security",
+    evidenceSource: "owner is used as both legacy account role and shop permission in route guards.",
+    accountRoleMisuse: true
+  },
+  {
+    id: "role-manager-permission",
+    currentRoleValue: "manager",
+    normalizedDisplayLabel: "Manager permission",
+    canonicalClassification: "staff_permission",
+    expectedCanonicalDestination: "staff/team permission scoped by shop/location",
+    currentUsageLocations: ["app/api/points/cashout/*", "app/api/engagement/*", "supabase/seed.sql user_roles"],
+    affectedRoleOrLane: "Shop Owner / Security",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "medium",
+    securityRisk: "high",
+    suggestedMigrationPath: "Keep manager as staff permission only; never use it as profiles.role.",
+    rollbackNote: "If staff permission migration fails, restore staff membership rows without changing public account roles.",
+    nextRepairLane: "security",
+    evidenceSource: "manager appears in server route guards as staff authority.",
+    accountRoleMisuse: true
+  },
+  {
+    id: "role-front-desk-permission",
+    currentRoleValue: "front_desk",
+    normalizedDisplayLabel: "Front desk permission",
+    canonicalClassification: "staff_permission",
+    expectedCanonicalDestination: "staff/team permission scoped by shop/location",
+    currentUsageLocations: ["app/api/engagement/*", "app/api/mobile/*", "supabase/seed.sql user_roles"],
+    affectedRoleOrLane: "Shop Owner / Security",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "medium",
+    securityRisk: "high",
+    suggestedMigrationPath: "Keep front_desk as staff permission only; never use it as profiles.role.",
+    rollbackNote: "Rollback staff permissions separately from account role cleanup.",
+    nextRepairLane: "security",
+    evidenceSource: "front_desk appears in server route guards and seed staff roles.",
+    accountRoleMisuse: true
+  },
+  {
+    id: "role-staff-permission",
+    currentRoleValue: "staff",
+    normalizedDisplayLabel: "Staff permission",
+    canonicalClassification: "staff_permission",
+    expectedCanonicalDestination: "staff/team permission scoped by shop/location",
+    currentUsageLocations: ["staff_locations", "team relationship logic", "shop relationship copy"],
+    affectedRoleOrLane: "Shop Owner / Security",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "medium",
+    securityRisk: "high",
+    suggestedMigrationPath: "Represent staff through staff/team tables, not profiles.role.",
+    rollbackNote: "Rollback only staff membership records if needed; do not alter canonical account role rows.",
+    nextRepairLane: "security",
+    evidenceSource: "staff concept appears in staff_locations/team relationship surfaces.",
+    accountRoleMisuse: false,
+    currentStatus: "Needs Review"
+  },
+  {
+    id: "role-commission-barber-relationship",
+    currentRoleValue: "commission_barber",
+    normalizedDisplayLabel: "Commission barber relationship",
+    canonicalClassification: "business_relationship",
+    expectedCanonicalDestination: "barber_user account role plus commission relationship/service terms",
+    currentUsageLocations: ["lib/auth/roles.ts LEGACY_BARBER_ACCOUNT_ROLES", "supabase/seed.sql user_roles"],
+    affectedRoleOrLane: "Barber / Finance",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "high",
+    securityRisk: "high",
+    suggestedMigrationPath: "Move primary account identity to barber_user and preserve commission terms in shop relationship/money configuration.",
+    rollbackNote: "Rollback primary role separately from commission relationship terms.",
+    nextRepairLane: "compliance",
+    evidenceSource: "commission_barber is accepted as a legacy barber account role and appears in seed user_roles.",
+    accountRoleMisuse: true
+  },
+  {
+    id: "role-booth-rent-barber-relationship",
+    currentRoleValue: "booth_rent_barber",
+    normalizedDisplayLabel: "Booth rent barber relationship",
+    canonicalClassification: "business_relationship",
+    expectedCanonicalDestination: "barber_user account role plus booth-rent relationship/service terms",
+    currentUsageLocations: ["lib/auth/roles.ts LEGACY_BARBER_ACCOUNT_ROLES", "supabase/seed.sql user_roles", "supabase/seed.staging-minimal.sql"],
+    affectedRoleOrLane: "Barber / Finance",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "high",
+    securityRisk: "high",
+    suggestedMigrationPath: "Move primary account identity to barber_user and preserve booth rent terms in shop relationship/money configuration.",
+    rollbackNote: "Rollback primary role separately from booth-rent relationship terms.",
+    nextRepairLane: "compliance",
+    evidenceSource: "booth_rent_barber is accepted as a legacy barber account role and appears in seed data.",
+    accountRoleMisuse: true
+  },
+  {
+    id: "role-invited-barber-relationship",
+    currentRoleValue: "invited barber",
+    normalizedDisplayLabel: "Invited barber state",
+    canonicalClassification: "business_relationship",
+    expectedCanonicalDestination: "shop_barber_relationships status / invitation state",
+    currentUsageLocations: ["shop relationship modal", "owner Add Barbers workflow", "shop_barber_relationships"],
+    affectedRoleOrLane: "Shop Owner / Operations",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "medium",
+    securityRisk: "medium",
+    suggestedMigrationPath: "Keep as relationship status only; never store as profiles.role.",
+    rollbackNote: "Relationship status rollback should not mutate account role.",
+    nextRepairLane: "operations",
+    evidenceSource: "Shop relationship flow treats invitations as relationship state.",
+    accountRoleMisuse: false,
+    currentStatus: "Needs Review"
+  },
+  {
+    id: "role-pending-invite-relationship",
+    currentRoleValue: "pending invite",
+    normalizedDisplayLabel: "Pending invite state",
+    canonicalClassification: "business_relationship",
+    expectedCanonicalDestination: "shop_barber_relationships pending status",
+    currentUsageLocations: ["owner team relationship queue", "barber shop relationship modal"],
+    affectedRoleOrLane: "Shop Owner / Operations",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "medium",
+    securityRisk: "medium",
+    suggestedMigrationPath: "Keep pending invite as relationship state excluded from active barber KPI math.",
+    rollbackNote: "Rollback pending invite state without changing profiles.role.",
+    nextRepairLane: "operations",
+    evidenceSource: "Owner active-barber sync treats pending invites separately from active relationships.",
+    accountRoleMisuse: false,
+    currentStatus: "Needs Review"
+  },
+  {
+    id: "role-shop-member-relationship",
+    currentRoleValue: "shop member",
+    normalizedDisplayLabel: "Shop member relationship",
+    canonicalClassification: "business_relationship",
+    expectedCanonicalDestination: "shop membership / active shop relationship row",
+    currentUsageLocations: ["staff_locations", "shop_barber_relationships", "owner team workspace"],
+    affectedRoleOrLane: "Shop Owner / Operations",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "medium",
+    securityRisk: "medium",
+    suggestedMigrationPath: "Keep shop member as derived relationship membership, not account identity.",
+    rollbackNote: "Rollback membership rows independently from primary account role.",
+    nextRepairLane: "operations",
+    evidenceSource: "Owner Home active barber sync reads relationship state.",
+    accountRoleMisuse: false,
+    currentStatus: "Needs Review"
+  },
+  {
+    id: "role-team-member-relationship",
+    currentRoleValue: "team member",
+    normalizedDisplayLabel: "Team member relationship",
+    canonicalClassification: "business_relationship",
+    expectedCanonicalDestination: "team/staff relationship row with scoped permissions",
+    currentUsageLocations: ["owner team workspace", "staff_locations", "team relationship queue"],
+    affectedRoleOrLane: "Shop Owner / Operations",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "medium",
+    securityRisk: "medium",
+    suggestedMigrationPath: "Keep team member as relationship/permission row, not public account role.",
+    rollbackNote: "Rollback team membership without mutating user account role.",
+    nextRepairLane: "operations",
+    evidenceSource: "Team relationship surfaces separate membership from account identity.",
+    accountRoleMisuse: false,
+    currentStatus: "Needs Review"
+  },
+  {
+    id: "role-unknown",
+    currentRoleValue: "unknown",
+    normalizedDisplayLabel: "Unknown role value",
+    canonicalClassification: "unknown",
+    expectedCanonicalDestination: "Needs inspection before mapping",
+    currentUsageLocations: ["production role audit not connected"],
+    affectedRoleOrLane: "Security / Compliance",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "high",
+    securityRisk: "critical",
+    suggestedMigrationPath: "Connect production role distinct-value audit before normalizing any unknown value.",
+    rollbackNote: "Do not mutate unknown values until exact production rows and intended destination are reviewed.",
+    nextRepairLane: "security",
+    evidenceSource: "Production distinct profile role evidence is not connected.",
+    accountRoleMisuse: true,
+    currentStatus: "Needs Review"
+  }
+];
 
 const DEFAULT_RLS_SECURITY_INVENTORY_ROWS: RlsSecurityInventoryRowInput[] = [
   {
@@ -1372,13 +1723,15 @@ export function buildMissionControlFoundation(
   checkedAt = new Date().toISOString(),
   ceoPlatformMetrics: MissionEvidenceCard[] = [],
   deploymentRegression = buildDeploymentRegressionEvidence(),
-  rlsSecurityInventory = buildRlsSecurityInventory()
+  rlsSecurityInventory = buildRlsSecurityInventory(),
+  roleTruthInventory = buildRoleTruthInventory()
 ): MissionControlFoundation {
   const coreLoopValidators = scopeEvidenceCards(applyIncidentFailures(validateCoreLoopState(), incidents));
   const platformEvidence = mergeEvidenceCards(
     ceoPlatformMetrics,
     buildDeploymentRegressionEvidenceCards(deploymentRegression),
-    buildRlsSecurityInventoryEvidenceCards(rlsSecurityInventory)
+    buildRlsSecurityInventoryEvidenceCards(rlsSecurityInventory),
+    buildRoleTruthInventoryEvidenceCards(roleTruthInventory)
   );
   const baseDepartmentLanes = buildDepartmentLanes(coreLoopValidators, incidents, platformEvidence);
   const ceoCommandCenter = [
@@ -1412,6 +1765,7 @@ export function buildMissionControlFoundation(
     deploymentRegression,
     auditSpine,
     rlsSecurityInventory,
+    roleTruthInventory,
     incidentTypes: MISSION_INCIDENT_DEFINITIONS,
     sourceVault: SOURCE_VAULT_REGISTRY,
     actionRegistry: ACTION_REGISTRY,
@@ -1981,6 +2335,199 @@ function buildRlsSecurityInventoryEvidenceCards(inventory: RlsSecurityInventory)
   ];
 }
 
+export function buildRoleTruthInventory(input: RoleTruthInventoryInput = {}): RoleTruthInventory {
+  const rows = (input.rows ?? DEFAULT_ROLE_TRUTH_INVENTORY_ROWS).map(buildRoleTruthInventoryRow);
+  const failedRows = rows.filter((row) => row.currentStatus === "Failed" && !row.futureParked);
+  const needsReviewRows = rows.filter((row) => (row.currentStatus === "Needs Review" || row.currentStatus === "Not Connected") && !row.futureParked);
+  const v1CriticalDriftRoles = rows.filter((row) =>
+    row.v1Required
+    && !row.futureParked
+    && row.currentStatus === "Failed"
+    && (row.canonicalClassification === "legacy_or_drift" || row.accountRoleMisuse)
+  );
+  const status: RoleTruthInventoryStatus = failedRows.length
+    ? "Failed"
+    : needsReviewRows.length
+      ? "Needs Review"
+      : rows.length && rows.every((row) => row.currentStatus === "Parked")
+        ? "Parked"
+        : "Pass";
+  const summary = {
+    totalRoleValuesInventoried: rows.length,
+    canonicalAccountRoleCount: rows.filter((row) => row.canonicalClassification === "public_account_role").length,
+    platformAdminRoleCount: rows.filter((row) => row.canonicalClassification === "internal_platform_role").length,
+    businessRelationshipCount: rows.filter((row) => row.canonicalClassification === "business_relationship").length,
+    staffPermissionCount: rows.filter((row) => row.canonicalClassification === "staff_permission").length,
+    legacyOrDriftCount: rows.filter((row) => row.canonicalClassification === "legacy_or_drift").length,
+    unknownCount: rows.filter((row) => row.canonicalClassification === "unknown").length,
+    migrationRequiredCount: rows.filter((row) => row.migrationRequired === "yes").length,
+    v1CriticalDriftCount: v1CriticalDriftRoles.length,
+    accountRoleMisuseCount: rows.filter((row) => row.accountRoleMisuse && row.v1Required && !row.futureParked).length,
+    highestRiskLevel: highestRoleTruthRiskLevel(rows),
+    nextRepairLane: firstRoleTruthRepairLane(rows) ?? "security"
+  };
+
+  return {
+    status,
+    summary,
+    rows,
+    canonicalAccountRoles: rows.filter((row) => row.canonicalClassification === "public_account_role"),
+    platformAdminRoles: rows.filter((row) => row.canonicalClassification === "internal_platform_role"),
+    businessRelationshipRoles: rows.filter((row) => row.canonicalClassification === "business_relationship"),
+    staffPermissionRoles: rows.filter((row) => row.canonicalClassification === "staff_permission"),
+    legacyOrDriftRoles: rows.filter((row) => row.canonicalClassification === "legacy_or_drift"),
+    unknownRoles: rows.filter((row) => row.canonicalClassification === "unknown"),
+    migrationRequiredRoles: rows.filter((row) => row.migrationRequired === "yes"),
+    v1CriticalDriftRoles,
+    evidenceSource: input.evidenceSource ?? DEFAULT_ROLE_TRUTH_EVIDENCE_SOURCE,
+    nextRepairLane: summary.nextRepairLane
+  };
+}
+
+function buildRoleTruthInventoryRow(input: RoleTruthInventoryRowInput): RoleTruthInventoryRow {
+  const currentStatus = input.currentStatus ?? inferRoleTruthInventoryRowStatus(input);
+  const migrationRequired = input.migrationRequired ?? inferRoleTruthMigrationRequirement(input, currentStatus);
+  const staleOrMissingEvidenceState = input.staleOrMissingEvidenceState ?? roleTruthStaleOrMissingEvidence(input, currentStatus);
+
+  return {
+    ...input,
+    currentStatus,
+    migrationRequired,
+    staleOrMissingEvidenceState,
+    failureMeaning: input.failureMeaning ?? roleTruthFailureMeaning(input, currentStatus)
+  };
+}
+
+function inferRoleTruthInventoryRowStatus(row: RoleTruthInventoryRowInput): RoleTruthInventoryStatus {
+  if (row.futureParked) return "Parked";
+  if (row.canonicalClassification === "unknown") return "Needs Review";
+  if (row.accountRoleMisuse || row.canonicalClassification === "legacy_or_drift") return "Failed";
+  if (row.canonicalClassification === "business_relationship" || row.canonicalClassification === "staff_permission") return "Needs Review";
+  return "Pass";
+}
+
+function inferRoleTruthMigrationRequirement(row: RoleTruthInventoryRowInput, status: RoleTruthInventoryStatus): RoleTruthInventoryRow["migrationRequired"] {
+  if (row.futureParked) return "no";
+  if (row.accountRoleMisuse || row.canonicalClassification === "legacy_or_drift") return "yes";
+  if (row.canonicalClassification === "unknown" || status === "Needs Review" || status === "Not Connected") return "unknown";
+  return "no";
+}
+
+function roleTruthStaleOrMissingEvidence(row: RoleTruthInventoryRowInput, status: RoleTruthInventoryStatus) {
+  if (status === "Pass") return [];
+  if (status === "Parked") return ["Future/parked role concept; excluded from V1 readiness until promoted."];
+  const missing = [];
+  if (row.canonicalClassification === "unknown") missing.push("Production distinct role value evidence is not connected.");
+  if (row.accountRoleMisuse) missing.push("Role value is currently used or accepted as account identity but belongs in relationship/permission truth.");
+  if (row.canonicalClassification === "business_relationship") missing.push("Business relationship proof must be connected before this can be treated as clean.");
+  if (row.canonicalClassification === "staff_permission") missing.push("Staff permission proof must be connected before this can be treated as clean.");
+  if (row.canonicalClassification === "legacy_or_drift") missing.push("Legacy primary account role drift requires an approved migration plan.");
+  return missing.length ? missing : ["Role truth evidence is incomplete."];
+}
+
+function roleTruthFailureMeaning(row: RoleTruthInventoryRowInput, status: RoleTruthInventoryStatus) {
+  if (status === "Failed") {
+    return `${row.currentRoleValue} cannot be treated as V1-clean account-role truth because it is legacy drift or account-role misuse.`;
+  }
+  if (status === "Needs Review" || status === "Not Connected") {
+    return `${row.currentRoleValue} cannot be marked Pass until production usage and source-of-truth evidence are connected.`;
+  }
+  if (status === "Parked") {
+    return `${row.currentRoleValue} is parked/future scope and does not affect V1 readiness.`;
+  }
+  return `${row.currentRoleValue} is canonical for the current role truth inventory row.`;
+}
+
+function highestRoleTruthRiskLevel(rows: RoleTruthInventoryRow[]): RoleTruthRiskLevel {
+  const activeRows = rows.filter((row) => !row.futureParked && row.currentStatus !== "Parked");
+  if (activeRows.some((row) => row.securityRisk === "critical" || row.userImpactRisk === "critical")) return "critical";
+  if (activeRows.some((row) => row.securityRisk === "high" || row.userImpactRisk === "high")) return "high";
+  if (activeRows.some((row) => row.securityRisk === "medium" || row.userImpactRisk === "medium")) return "medium";
+  if (activeRows.some((row) => row.securityRisk === "low" || row.userImpactRisk === "low")) return "low";
+  return "unknown";
+}
+
+function firstRoleTruthRepairLane(rows: RoleTruthInventoryRow[]): MissionLaneId | null {
+  return rows.find((row) => row.currentStatus === "Failed")?.nextRepairLane
+    ?? rows.find((row) => row.currentStatus === "Needs Review" || row.currentStatus === "Not Connected")?.nextRepairLane
+    ?? null;
+}
+
+function roleTruthInventoryStatusToMissionStatus(status: RoleTruthInventoryStatus): MissionControlStatus {
+  if (status === "Pass") return "Pass";
+  if (status === "Failed") return "Failed";
+  if (status === "Warning") return "Warning";
+  return "Needs Review";
+}
+
+function buildRoleTruthInventoryEvidenceCards(inventory: RoleTruthInventory): MissionEvidenceCard[] {
+  const summary = inventory.summary;
+  const inventoryStatus = roleTruthInventoryStatusToMissionStatus(inventory.status);
+  const driftEvidence = [
+    `${summary.v1CriticalDriftCount} V1 critical role drift or account-role misuse value(s).`,
+    `${summary.accountRoleMisuseCount} value(s) are relationship/permission concepts currently treated as account role risk.`,
+    `${summary.legacyOrDriftCount} legacy/drift role value(s) inventoried.`,
+    `${summary.unknownCount} unknown role posture value(s) need production evidence.`,
+    `highestRiskLevel=${summary.highestRiskLevel}.`,
+    `evidenceSource=${inventory.evidenceSource}.`,
+    "Read-only evidence only; no role mutation was attempted.",
+    "Read-only plan only; no role mutation, normalization, migration, SQL write, or production data change was attempted."
+  ];
+  const inventoryEvidence = [
+    `totalRoleValuesInventoried=${summary.totalRoleValuesInventoried}.`,
+    `canonicalAccountRoleCount=${summary.canonicalAccountRoleCount}.`,
+    `platformAdminRoleCount=${summary.platformAdminRoleCount}.`,
+    `businessRelationshipCount=${summary.businessRelationshipCount}.`,
+    `staffPermissionCount=${summary.staffPermissionCount}.`,
+    `migrationRequiredCount=${summary.migrationRequiredCount}.`,
+    ...inventory.rows.slice(0, 10).map((row) => `${row.currentRoleValue}: classification=${row.canonicalClassification}; destination=${row.expectedCanonicalDestination}; status=${row.currentStatus}; misuse=${row.accountRoleMisuse ? "yes" : "no"}.`)
+  ];
+
+  return [
+    {
+      ...evidenceCard(
+        "ceo-role-drift-health",
+        "Role Drift Evidence",
+        "CEO",
+        "Security",
+        summary.v1CriticalDriftCount > 0 ? "Failed" : inventoryStatus,
+        summary.v1CriticalDriftCount > 0
+          ? "Primary account role drift and relationship/permission misuse remain release-blocking."
+          : "No V1 critical role drift is connected, but unknown role posture can still block Pass.",
+        driftEvidence
+      ),
+      metricValue: `${summary.v1CriticalDriftCount} critical drift`
+    },
+    {
+      ...evidenceCard(
+        "security-role-truth-inventory",
+        "Role Truth Inventory",
+        "Security",
+        "Role Truth",
+        inventoryStatus,
+        "Read-only role truth plan separates public account roles, platform admin, business relationships, staff permissions, legacy drift, and unknown values.",
+        inventoryEvidence
+      ),
+      metricValue: `${summary.totalRoleValuesInventoried} inventoried`
+    },
+    {
+      ...evidenceCard(
+        "compliance-role-truth-inventory",
+        "Role Truth Migration Plan",
+        "Compliance",
+        "Role Truth",
+        inventoryStatus,
+        "Compliance role truth requires a migration plan before role normalization can be approved.",
+        [
+          ...driftEvidence,
+          ...inventory.migrationRequiredRoles.slice(0, 8).map((row) => `${row.currentRoleValue} -> ${row.expectedCanonicalDestination}; rollback=${row.rollbackNote}`)
+        ]
+      ),
+      metricValue: `${summary.migrationRequiredCount} migration review`
+    }
+  ];
+}
+
 function isMissingProofEvidence(item: string) {
   const value = item.toLowerCase();
   return value.includes("not connected")
@@ -2454,6 +3001,8 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
     metricValue: "Not connected"
   });
   const roleDrift = platformCard("ceo-role-drift-health", "Role Drift Evidence", "Security", "Role Drift", "Profile role drift evidence is not connected.");
+  const roleTruth = platformCard("security-role-truth-inventory", "Role Truth Inventory", "Security", "Role Truth", "Role truth inventory is not connected.");
+  const complianceRoleTruth = platformCard("compliance-role-truth-inventory", "Role Truth Migration Plan", "Compliance", "Role Truth", "Role truth migration plan is not connected.");
   const rlsDisabled = platformCard("ceo-rls-disabled-evidence", "RLS Disabled Evidence", "Security", "Supabase RLS", "RLS disabled table evidence is not connected.");
   const rlsInventory = platformCard("security-rls-inventory", "RLS Security Inventory", "Security", "Supabase RLS", "RLS inventory evidence is not connected.");
   const auditEvidence = platformCard("ceo-audit-log-evidence", "Audit Evidence", "Security", "Audit", "Audit trail evidence is not connected.");
@@ -2549,12 +3098,14 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("compliance-verification", "Verification", "Compliance", "Verification", "Needs Review", "Verification queues remain existing Architect surfaces.", ["No automatic approval/rejection in v1."]),
       evidenceCard("compliance-review-integrity", "Review integrity", "Compliance", "Reviews", "Needs Review", "Review integrity requires future evidence.", ["No fake trust state."]),
       evidenceCard("compliance-trust-gates", "Client/barber/shop trust gates", "Compliance", "Trust Gates", roleDrift.status, "Trust gates depend on clean public role evidence and must not mutate roles from Architect.", roleDrift.evidence),
+      complianceRoleTruth,
       evidenceCard("compliance-consent", "Consent/opt-out readiness", "Compliance", "Consent", "Needs Review", "Consent and opt-out readiness are not mutated by v1.", ["No user notification action is enabled."]),
       evidenceCard("compliance-policy", "Policy visibility", "Compliance", "Policy", "Needs Review", "Policy visibility requires source review.", ["Source Vault is registered, not ingested."])
     ],
     security: [
       evidenceCard("security-role-access", "Role access", "Security", "Access", "Needs Review", "Architect route and API guards exist; broader role audit needs explicit proof.", ["Architect route uses platform-admin guard."]),
       evidenceCard("security-role-drift", "Profile role drift", "Security", "Role Drift", roleDrift.status, roleDrift.summary, roleDrift.evidence),
+      roleTruth,
       rlsInventory,
       evidenceCard("security-rls-disabled", "RLS disabled tables", "Security", "Supabase RLS", rlsDisabled.status, rlsDisabled.summary, rlsDisabled.evidence),
       evidenceCard("security-route-protection", "Route protection", "Security", "Route Protection", "Needs Review", "Architect APIs use debug access guard.", ["Public roles are blocked by guard tests."]),
