@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readDeploymentRuntimeEvidence } from "@/lib/architect/mission-control/deployment-evidence";
+import { readDeploymentRuntimeEvidence } from "@/lib/architect/mission-control/deployment-evidence.server";
 import { buildDeploymentRegressionEvidence } from "@/lib/architect/mission-control/foundation";
 
 export async function GET() {
@@ -39,6 +39,7 @@ export async function GET() {
       validationTimestamp: evidence.validationTimestamp,
       proofConnected: runtimeEvidence.validationProofConnected,
       proofFilePresent: runtimeEvidence.validationProofFilePresent,
+      proofFileState: runtimeEvidence.validationProofFileState,
       missingProof: evidence.staleOrMissingState.filter((row) => row.toLowerCase().includes("validation")),
       failedProof: evidence.failingState.filter((row) => row.toLowerCase().includes("validation"))
     }

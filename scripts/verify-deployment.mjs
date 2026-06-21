@@ -12,7 +12,11 @@ const commands = [
   {
     label: "targeted regression tests",
     command:
-      "npx vitest run tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts"
+      "npx vitest run tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts",
+    env: {
+      NODE_ENV: "test",
+      VITEST: "true"
+    }
   }
 ];
 
@@ -31,7 +35,7 @@ for (const item of commands) {
     cwd: root,
     shell: true,
     stdio: "inherit",
-    env: process.env
+    env: { ...process.env, ...item.env }
   });
 
   if (result.status !== 0) {

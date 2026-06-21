@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireArchitectDebugAccess } from "@/lib/architect/debug/guards";
+import { readDeploymentRuntimeEvidence } from "@/lib/architect/mission-control/deployment-evidence.server";
 import { buildMissionControlSnapshot } from "@/lib/architect/mission-control/incident-detection";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -18,7 +19,8 @@ export async function GET() {
   }
 
   try {
-    return NextResponse.json(await buildMissionControlSnapshot(supabase, access.actor));
+    const deploymentRuntimeEvidence = await readDeploymentRuntimeEvidence();
+    return NextResponse.json(await buildMissionControlSnapshot(supabase, access.actor, deploymentRuntimeEvidence));
   } catch (error) {
     return NextResponse.json({
       ok: false,
