@@ -8,6 +8,7 @@ import {
   SOURCE_VAULT_REGISTRY,
   buildMissionControlFoundation,
   buildMissionReadinessBreakdown,
+  buildV1RuntimeProofMatrix,
   classifyArchitectIncident,
   getOfficerAssistants,
   getAuditCoveragePlanEvidence,
@@ -333,6 +334,168 @@ describe("architect mission control foundation", () => {
     expect(allPass.futureParkedCount).toBe(1);
     expect(failed.overallStatus).toBe("Failed");
     expect(failed.v1ReadinessPercent).toBe(0);
+  });
+
+  it("keeps missing client proof as Needs Review instead of fake Pass", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
+    const clientGroup = foundation.v1RuntimeProofMatrix?.groups.find((group) => group.id === "client_loop");
+
+    expect(clientGroup).toMatchObject({
+      label: "Client loop",
+      status: "Needs Review",
+      proofConnected: false
+    });
+    expect(clientGroup?.rows.find((row) => row.id === "client-account-exists")).toMatchObject({
+      status: "Needs Review",
+      proofConnected: false,
+      staleOrMissingProof: true
+    });
+  });
+
+  it("keeps missing barber calendar proof as Needs Review", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
+    const barberGroup = foundation.v1RuntimeProofMatrix?.groups.find((group) => group.id === "barber_loop");
+    const calendarProof = barberGroup?.rows.find((row) => row.id === "barber-calendar-visibility");
+
+    expect(barberGroup?.status).toBe("Needs Review");
+    expect(calendarProof).toMatchObject({
+      status: "Needs Review",
+      currentEvidenceSource: "barber-calendar-loop validator",
+      proofConnected: false
+    });
+  });
+
+  it("keeps missing owner team proof as Needs Review", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
+    const ownerGroup = foundation.v1RuntimeProofMatrix?.groups.find((group) => group.id === "shop_owner_loop");
+    const teamProof = ownerGroup?.rows.find((row) => row.id === "owner-team-relationship-proof");
+
+    expect(ownerGroup?.status).toBe("Needs Review");
+    expect(teamProof).toMatchObject({
+      status: "Needs Review",
+      currentEvidenceSource: "shop-relationship-loop validator",
+      proofConnected: false
+    });
+  });
+
+  it("allows Finance refund evidence to Pass while audit proof remains Failed", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z", [{
+      id: "ceo-active-refund-blockers",
+      label: "Active Refund Blockers",
+      department: "CEO",
+      workflow: "Refund Logs",
+      status: "Pass",
+      metricValue: "0",
+      summary: "No active refund blockers.",
+      evidence: ["activeUnresolvedRefundBlockerCount=0"]
+    }, {
+      id: "ceo-refund-count",
+      label: "Refund Count",
+      department: "CEO",
+      workflow: "Refund Logs",
+      status: "Pass",
+      metricValue: "4",
+      summary: "Four refund rows are connected.",
+      evidence: ["refundCount=4"]
+    }, {
+      id: "ceo-total-refunded",
+      label: "Total Refunded Amount",
+      department: "CEO",
+      workflow: "Refund Logs",
+      status: "Pass",
+      metricValue: "$20",
+      summary: "Total refunded amount is connected.",
+      evidence: ["totalRefunded=$20"]
+    }, {
+      id: "ceo-last-refund-timestamp",
+      label: "Last Refund Timestamp",
+      department: "CEO",
+      workflow: "Refund Logs",
+      status: "Pass",
+      metricValue: "2026-06-20T02:00:00.000Z",
+      summary: "Last refund timestamp is connected.",
+      evidence: ["lastRefundTimestamp=2026-06-20T02:00:00.000Z"]
+    }, {
+      id: "ceo-audit-log-evidence",
+      label: "Audit Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      metricValue: "0 row(s)",
+      summary: "audit_logs returned 0 row(s).",
+      evidence: ["audit_logs returned 0 row(s).", "No audit row was inserted."]
+    }]);
+    const moneyGroup = foundation.v1RuntimeProofMatrix?.groups.find((group) => group.id === "money_loop");
+    const refundProof = moneyGroup?.rows.find((row) => row.id === "finance-refund-evidence");
+    const auditProof = moneyGroup?.rows.find((row) => row.id === "finance-audit-coverage-proof");
+
+    expect(refundProof).toMatchObject({ status: "Pass", proofConnected: true });
+    expect(auditProof).toMatchObject({ status: "Failed", proofConnected: true });
+    expect(moneyGroup?.status).toBe("Failed");
+  });
+
+  it("forces Security loop Failed from RLS or role drift evidence", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z", [{
+      id: "ceo-role-drift-health",
+      label: "Role Drift Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      metricValue: "2 drift",
+      summary: "Role drift exists.",
+      evidence: ["Non-canonical role values found: owner (2)."]
+    }, {
+      id: "ceo-rls-disabled-evidence",
+      label: "RLS Disabled Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      metricValue: "28 disabled",
+      summary: "RLS disabled.",
+      evidence: ["28 public Supabase table(s) have RLS disabled."]
+    }]);
+    const securityGroup = foundation.v1RuntimeProofMatrix?.groups.find((group) => group.id === "security_loop");
+
+    expect(securityGroup?.status).toBe("Failed");
+    expect(securityGroup?.rows.find((row) => row.id === "security-role-drift")).toMatchObject({ status: "Failed" });
+    expect(securityGroup?.rows.find((row) => row.id === "security-rls-disabled")).toMatchObject({ status: "Failed" });
+  });
+
+  it("keeps parked and future cards out of V1 runtime proof", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
+    const rowIds = foundation.v1RuntimeProofMatrix?.rows.map((row) => row.id) ?? [];
+
+    expect(rowIds).not.toContain("operations-kiosk");
+    expect(rowIds).not.toContain("marketing-referrals");
+    expect(rowIds).not.toContain("marketing-campaigns");
+    expect(rowIds).not.toContain("hive-ai");
+  });
+
+  it("prevents V1 readiness from reaching 100 until all runtime proof groups pass", () => {
+    const passingCards = [{
+      id: "overall-platform-status",
+      label: "Overall platform status",
+      department: "CEO" as const,
+      workflow: "Global Health",
+      status: "Pass" as const,
+      summary: "CEO card passed.",
+      evidence: ["CEO summary is passing."],
+      scope: "v1_required" as const,
+      criticality: "critical" as const,
+      blocksCurrentRelease: true,
+      evidenceRequiredForPass: "CEO platform status must be connected."
+    }];
+    const missingRuntimeProof = buildV1RuntimeProofMatrix(passingCards);
+    const breakdown = buildMissionReadinessBreakdown(passingCards, [], [], missingRuntimeProof);
+
+    expect(missingRuntimeProof.allGroupsPass).toBe(false);
+    expect(breakdown.overallStatus).toBe("Needs Review");
+    expect(breakdown.v1ReadinessPercent).toBeLessThan(100);
+    expect(breakdown.currentReleaseBlockers.map((card) => card.id)).toEqual(expect.arrayContaining([
+      "v1-runtime-proof-client_loop",
+      "v1-runtime-proof-barber_loop",
+      "v1-runtime-proof-shop_owner_loop"
+    ]));
   });
 
 

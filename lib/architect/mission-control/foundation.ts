@@ -15,7 +15,11 @@ import type {
   MissionLaneId,
   MissionReadinessBreakdown,
   MissionSeverity,
-  SourceVaultEntry
+  SourceVaultEntry,
+  V1RuntimeProofGroup,
+  V1RuntimeProofGroupId,
+  V1RuntimeProofMatrix,
+  V1RuntimeProofRow
 } from "@/lib/architect/mission-control/types";
 
 type BooleanCheck = {
@@ -146,6 +150,608 @@ const PARKED_CARD_IDS = new Set([
   "community-creators",
   "community-signals"
 ]);
+
+type RuntimeProofDefinition = {
+  id: string;
+  label: string;
+  lane: MissionDepartment;
+  roleAffected: V1RuntimeProofRow["roleAffected"];
+  proofGroup: V1RuntimeProofGroupId;
+  requiredProofSource: string;
+  currentEvidenceSource: string;
+  sourceCardId: string;
+  statusRule: string;
+  passRequirement: string;
+  failureMeaning: string;
+  nextRepairLane: MissionLaneId;
+};
+
+const V1_RUNTIME_PROOF_GROUPS: Array<Pick<V1RuntimeProofGroup, "id" | "label" | "lane" | "nextRepairLane">> = [
+  { id: "client_loop", label: "Client loop", lane: "Product", nextRepairLane: "product" },
+  { id: "barber_loop", label: "Barber loop", lane: "Operations", nextRepairLane: "operations" },
+  { id: "shop_owner_loop", label: "Shop Owner loop", lane: "Operations", nextRepairLane: "operations" },
+  { id: "money_loop", label: "Money loop", lane: "Finance", nextRepairLane: "finance" },
+  { id: "security_loop", label: "Security loop", lane: "Security", nextRepairLane: "security" },
+  { id: "deployment_loop", label: "Deployment loop", lane: "Technology", nextRepairLane: "technology" },
+  { id: "audit_loop", label: "Audit loop", lane: "Compliance", nextRepairLane: "compliance" }
+];
+
+const V1_RUNTIME_PROOF_DEFINITIONS: RuntimeProofDefinition[] = [
+  {
+    id: "client-account-exists",
+    label: "client account exists",
+    lane: "Product",
+    roleAffected: "Client",
+    proofGroup: "client_loop",
+    requiredProofSource: "profiles/client profile count",
+    currentEvidenceSource: "CEO Clients metric",
+    sourceCardId: "ceo-clients-total",
+    statusRule: "Pass only when connected client account evidence exists.",
+    passRequirement: "At least one canonical client_user profile is counted from production evidence.",
+    failureMeaning: "Architect cannot prove clients exist or are counted with canonical role truth.",
+    nextRepairLane: "product"
+  },
+  {
+    id: "client-booking-path",
+    label: "client can reach booking path",
+    lane: "Product",
+    roleAffected: "Client",
+    proofGroup: "client_loop",
+    requiredProofSource: "Culture-to-booking validator",
+    currentEvidenceSource: "culture-to-booking-loop validator",
+    sourceCardId: "culture-to-booking-loop",
+    statusRule: "Missing booking-path proof stays Needs Review.",
+    passRequirement: "Culture/booking CTA, attribution acceptance, booking creation, calendar sync, and regression evidence all pass.",
+    failureMeaning: "Client booking entry may be broken or unverified.",
+    nextRepairLane: "product"
+  },
+  {
+    id: "client-selected-barber-resolution",
+    label: "selected barber resolution proof",
+    lane: "Product",
+    roleAffected: "Client",
+    proofGroup: "client_loop",
+    requiredProofSource: "Booking availability validator",
+    currentEvidenceSource: "booking-availability-loop validator",
+    sourceCardId: "booking-availability-loop",
+    statusRule: "Barber resolution must be explicit; missing proof is not Pass.",
+    passRequirement: "Selected barber resolves from canonical barber id/profile evidence.",
+    failureMeaning: "Booking may point availability at the wrong barber.",
+    nextRepairLane: "product"
+  },
+  {
+    id: "client-selected-service-resolution",
+    label: "selected service resolution proof",
+    lane: "Product",
+    roleAffected: "Client",
+    proofGroup: "client_loop",
+    requiredProofSource: "Booking availability validator",
+    currentEvidenceSource: "booking-availability-loop validator",
+    sourceCardId: "booking-availability-loop",
+    statusRule: "Service resolution must be explicit; missing proof is not Pass.",
+    passRequirement: "Selected service resolves from active/bookable service evidence.",
+    failureMeaning: "Booking may generate invalid availability or review state.",
+    nextRepairLane: "product"
+  },
+  {
+    id: "client-canonical-location-proof",
+    label: "canonical location proof",
+    lane: "Product",
+    roleAffected: "Client",
+    proofGroup: "client_loop",
+    requiredProofSource: "Booking availability validator",
+    currentEvidenceSource: "booking-availability-loop validator",
+    sourceCardId: "booking-availability-loop",
+    statusRule: "Canonical location proof must be connected after Culture entry.",
+    passRequirement: "Booking availability uses the barber/service canonical location instead of a generic shop fallback.",
+    failureMeaning: "Availability can show no slots despite real barber hours.",
+    nextRepairLane: "product"
+  },
+  {
+    id: "client-availability-slots",
+    label: "availability slot generation proof",
+    lane: "Product",
+    roleAffected: "Client",
+    proofGroup: "client_loop",
+    requiredProofSource: "Canonical availability validator",
+    currentEvidenceSource: "booking-availability-loop validator",
+    sourceCardId: "booking-availability-loop",
+    statusRule: "Availability proof must come from canonical slot engine evidence.",
+    passRequirement: "Valid barber/service/date/location inputs generate real selectable slots.",
+    failureMeaning: "Client cannot reliably select date/time.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "client-appointment-creation-proof",
+    label: "appointment creation proof",
+    lane: "Operations",
+    roleAffected: "Client",
+    proofGroup: "client_loop",
+    requiredProofSource: "Culture-to-booking validator",
+    currentEvidenceSource: "culture-to-booking-loop validator",
+    sourceCardId: "culture-to-booking-loop",
+    statusRule: "No appointment-creation proof means Needs Review.",
+    passRequirement: "Booking confirmation creates exactly one appointment and calendar evidence sees it.",
+    failureMeaning: "Client booking may not create reliable appointment truth.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "client-payment-refund-safety",
+    label: "payment/refund safety proof",
+    lane: "Finance",
+    roleAffected: "Client",
+    proofGroup: "client_loop",
+    requiredProofSource: "Payment routing validator and refund evidence",
+    currentEvidenceSource: "payment-routing-loop validator",
+    sourceCardId: "payment-routing-loop",
+    statusRule: "Payment/refund safety cannot Pass without server money evidence.",
+    passRequirement: "Payment, routing, refund, and no-payout-before-completion evidence pass.",
+    failureMeaning: "Client money trust can be unsafe or unverified.",
+    nextRepairLane: "finance"
+  },
+  {
+    id: "barber-profile-exists",
+    label: "barber profile exists",
+    lane: "Operations",
+    roleAffected: "Barber",
+    proofGroup: "barber_loop",
+    requiredProofSource: "barber profile count",
+    currentEvidenceSource: "CEO Barbers metric",
+    sourceCardId: "ceo-barbers-total",
+    statusRule: "Pass only from connected barber profile evidence.",
+    passRequirement: "At least one canonical barber_user/barber profile is counted.",
+    failureMeaning: "Architect cannot prove barber supply exists.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "barber-active-state-proof",
+    label: "barber active state proof",
+    lane: "Operations",
+    roleAffected: "Barber",
+    proofGroup: "barber_loop",
+    requiredProofSource: "active barber read model",
+    currentEvidenceSource: "CEO Active Barbers metric",
+    sourceCardId: "ceo-active-barbers",
+    statusRule: "Active barber proof requires connected supply evidence.",
+    passRequirement: "Active barber count is read from canonical active relationship/profile evidence.",
+    failureMeaning: "Barber activity may be invisible to owner/shop operations.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "barber-calendar-visibility",
+    label: "barber calendar visibility proof",
+    lane: "Operations",
+    roleAffected: "Barber",
+    proofGroup: "barber_loop",
+    requiredProofSource: "Barber calendar validator",
+    currentEvidenceSource: "barber-calendar-loop validator",
+    sourceCardId: "barber-calendar-loop",
+    statusRule: "Missing barber calendar proof keeps Barber loop Needs Review.",
+    passRequirement: "Appointment appears on the barber command calendar.",
+    failureMeaning: "Barber may not see appointments after booking.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "barber-appointment-visibility",
+    label: "appointment visibility proof",
+    lane: "Operations",
+    roleAffected: "Barber",
+    proofGroup: "barber_loop",
+    requiredProofSource: "Barber calendar validator",
+    currentEvidenceSource: "barber-calendar-loop validator",
+    sourceCardId: "barber-calendar-loop",
+    statusRule: "Appointment visibility must be explicitly proven.",
+    passRequirement: "Barber can see their own appointment details in the command calendar.",
+    failureMeaning: "Service preparation and calendar sync may be broken.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "barber-completion-action",
+    label: "service completion action proof",
+    lane: "Operations",
+    roleAffected: "Barber",
+    proofGroup: "barber_loop",
+    requiredProofSource: "Barber calendar validator",
+    currentEvidenceSource: "barber-calendar-loop validator",
+    sourceCardId: "barber-calendar-loop",
+    statusRule: "Completion action proof must separate barber and owner permissions.",
+    passRequirement: "Barber sees Complete Service for own appointment and owner does not.",
+    failureMeaning: "Service completion permission boundary may be unsafe.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "barber-checkout-payment-visibility",
+    label: "checkout/payment visibility proof",
+    lane: "Finance",
+    roleAffected: "Barber",
+    proofGroup: "barber_loop",
+    requiredProofSource: "Payment health evidence",
+    currentEvidenceSource: "finance-payment-health card",
+    sourceCardId: "finance-payment-health",
+    statusRule: "Checkout/payment visibility must follow server payment evidence.",
+    passRequirement: "Payment health passes without UI-derived money truth.",
+    failureMeaning: "Barber money posture may be inaccurate or unsafe.",
+    nextRepairLane: "finance"
+  },
+  {
+    id: "owner-account-exists",
+    label: "shop owner account exists",
+    lane: "Operations",
+    roleAffected: "Shop Owner",
+    proofGroup: "shop_owner_loop",
+    requiredProofSource: "shop_owner profile count",
+    currentEvidenceSource: "CEO Shop Owners metric",
+    sourceCardId: "ceo-shop-owners-total",
+    statusRule: "Pass only from canonical shop_owner_user evidence.",
+    passRequirement: "At least one canonical shop_owner_user profile is counted.",
+    failureMeaning: "Architect cannot prove owner accounts exist.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "owner-shop-exists",
+    label: "shop exists",
+    lane: "Operations",
+    roleAffected: "Shop Owner",
+    proofGroup: "shop_owner_loop",
+    requiredProofSource: "active shop evidence",
+    currentEvidenceSource: "CEO Active Shops metric",
+    sourceCardId: "ceo-active-shops",
+    statusRule: "Shop existence must come from connected shop evidence.",
+    passRequirement: "Active shop count is connected and passing.",
+    failureMeaning: "Owner command cannot be tied to shop floor truth.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "owner-team-relationship-proof",
+    label: "team relationship proof",
+    lane: "Operations",
+    roleAffected: "Shop Owner",
+    proofGroup: "shop_owner_loop",
+    requiredProofSource: "Shop relationship validator",
+    currentEvidenceSource: "shop-relationship-loop validator",
+    sourceCardId: "shop-relationship-loop",
+    statusRule: "Missing owner team proof keeps Owner loop Needs Review.",
+    passRequirement: "Owner invite, barber acceptance, active owner Home sync, scoreboard, and role preservation all pass.",
+    failureMeaning: "Owner may not see accepted barbers as active team.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "owner-active-barber-source-proof",
+    label: "active barber source proof",
+    lane: "Operations",
+    roleAffected: "Shop Owner",
+    proofGroup: "shop_owner_loop",
+    requiredProofSource: "Owner command calendar validator",
+    currentEvidenceSource: "owner-command-calendar-loop validator",
+    sourceCardId: "owner-command-calendar-loop",
+    statusRule: "Active barber math must be relationship-backed.",
+    passRequirement: "Active barbers are counted from active relationships only.",
+    failureMeaning: "Owner KPIs may count the wrong barbers.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "owner-pending-invite-exclusion",
+    label: "pending invite exclusion proof",
+    lane: "Operations",
+    roleAffected: "Shop Owner",
+    proofGroup: "shop_owner_loop",
+    requiredProofSource: "Shop relationship validator",
+    currentEvidenceSource: "shop-relationship-loop validator",
+    sourceCardId: "shop-relationship-loop",
+    statusRule: "Pending invite exclusion must be explicit.",
+    passRequirement: "Pending invites are excluded from active counts and KPIs.",
+    failureMeaning: "Owner Home may overstate active staff.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "owner-calendar-team-schedule",
+    label: "owner calendar/team schedule proof",
+    lane: "Operations",
+    roleAffected: "Shop Owner",
+    proofGroup: "shop_owner_loop",
+    requiredProofSource: "Owner command calendar validator",
+    currentEvidenceSource: "owner-command-calendar-loop validator",
+    sourceCardId: "owner-command-calendar-loop",
+    statusRule: "Owner schedule proof must be shop-wide and active-team scoped.",
+    passRequirement: "Owner timeline is shop-wide and excludes owner-only Complete Service.",
+    failureMeaning: "Owner command calendar may be incomplete or over-permissive.",
+    nextRepairLane: "operations"
+  },
+  {
+    id: "owner-shop-money-visibility",
+    label: "shop money visibility proof",
+    lane: "Finance",
+    roleAffected: "Shop Owner",
+    proofGroup: "shop_owner_loop",
+    requiredProofSource: "Finance fee/routing evidence",
+    currentEvidenceSource: "finance-fees card",
+    sourceCardId: "finance-fees",
+    statusRule: "Shop money visibility cannot Pass without routing math evidence.",
+    passRequirement: "Shop production and fee posture are source-backed and not UI-derived.",
+    failureMeaning: "Owner money surface may show unsupported totals.",
+    nextRepairLane: "finance"
+  },
+  {
+    id: "finance-payment-records",
+    label: "payment records proof",
+    lane: "Finance",
+    roleAffected: "Platform",
+    proofGroup: "money_loop",
+    requiredProofSource: "payments table/read model",
+    currentEvidenceSource: "finance-payment-health card",
+    sourceCardId: "finance-payment-health",
+    statusRule: "Payment records proof follows server/Supabase evidence.",
+    passRequirement: "Payment existence and status truth pass.",
+    failureMeaning: "Money posture cannot be trusted.",
+    nextRepairLane: "finance"
+  },
+  {
+    id: "finance-routing-records",
+    label: "routing records proof",
+    lane: "Finance",
+    roleAffected: "Platform",
+    proofGroup: "money_loop",
+    requiredProofSource: "payment_routing_records",
+    currentEvidenceSource: "finance-routing card",
+    sourceCardId: "finance-routing",
+    statusRule: "Routing proof must be ledger-backed.",
+    passRequirement: "Routing records exist or expose clear safe failure state.",
+    failureMeaning: "Payout and reconciliation readiness are unsafe.",
+    nextRepairLane: "finance"
+  },
+  {
+    id: "finance-refund-evidence",
+    label: "refund evidence proof",
+    lane: "Finance",
+    roleAffected: "Platform",
+    proofGroup: "money_loop",
+    requiredProofSource: "refunds/platform events/payment status",
+    currentEvidenceSource: "finance-refund-resolution card",
+    sourceCardId: "finance-refund-resolution",
+    statusRule: "Finance refund evidence can Pass independently while audit remains Failed.",
+    passRequirement: "No active cancelled/captured refund targets remain and refund history is connected.",
+    failureMeaning: "Cancelled/captured money may remain unresolved.",
+    nextRepairLane: "finance"
+  },
+  {
+    id: "finance-payout-execution-proof",
+    label: "payout execution proof",
+    lane: "Finance",
+    roleAffected: "Platform",
+    proofGroup: "money_loop",
+    requiredProofSource: "payout_executions/payment routing guards",
+    currentEvidenceSource: "finance-payout card",
+    sourceCardId: "finance-payout",
+    statusRule: "Payout execution proof must show no unsafe release.",
+    passRequirement: "Payout release remains blocked until legal readiness evidence passes.",
+    failureMeaning: "Money could be released before completion/readiness.",
+    nextRepairLane: "finance"
+  },
+  {
+    id: "finance-fee-posture",
+    label: "fee posture proof",
+    lane: "Finance",
+    roleAffected: "Platform",
+    proofGroup: "money_loop",
+    requiredProofSource: "routing math/server fee evidence",
+    currentEvidenceSource: "finance-fees card",
+    sourceCardId: "finance-fees",
+    statusRule: "Fee posture cannot be inferred from UI memory.",
+    passRequirement: "Fee math is server-owned and evidence-backed.",
+    failureMeaning: "Revenue/fee posture can be overstated or wrong.",
+    nextRepairLane: "finance"
+  },
+  {
+    id: "finance-audit-coverage-proof",
+    label: "audit coverage proof",
+    lane: "Finance",
+    roleAffected: "Architect",
+    proofGroup: "money_loop",
+    requiredProofSource: "repair/audit/platform event evidence",
+    currentEvidenceSource: "finance-repair-audit-coverage card",
+    sourceCardId: "finance-repair-audit-coverage",
+    statusRule: "Refund rows alone cannot fake full audit coverage.",
+    passRequirement: "Controlled repair approvals, executions, verification, and score updates are audit-backed.",
+    failureMeaning: "Finance can improve but cannot fully Pass without audit spine evidence.",
+    nextRepairLane: "finance"
+  },
+  {
+    id: "technology-current-commit",
+    label: "current commit proof",
+    lane: "Technology",
+    roleAffected: "Platform",
+    proofGroup: "deployment_loop",
+    requiredProofSource: "deployment environment fingerprint",
+    currentEvidenceSource: "deployment-regression card",
+    sourceCardId: "ceo-regression-deployment-health",
+    statusRule: "Commit proof must be connected to deployed environment truth.",
+    passRequirement: "Current production commit evidence is connected and passing.",
+    failureMeaning: "Architect cannot prove which code is running.",
+    nextRepairLane: "technology"
+  },
+  {
+    id: "technology-current-deploy",
+    label: "current deploy proof",
+    lane: "Technology",
+    roleAffected: "Platform",
+    proofGroup: "deployment_loop",
+    requiredProofSource: "Vercel deployment id/status",
+    currentEvidenceSource: "technology-deployments card",
+    sourceCardId: "technology-deployments",
+    statusRule: "Deployment proof stays Needs Review without Vercel status evidence.",
+    passRequirement: "Production deployment id and READY status are connected.",
+    failureMeaning: "Architect cannot prove production is on the expected deploy.",
+    nextRepairLane: "technology"
+  },
+  {
+    id: "technology-vercel-status",
+    label: "Vercel/deployment status proof",
+    lane: "Technology",
+    roleAffected: "Platform",
+    proofGroup: "deployment_loop",
+    requiredProofSource: "Vercel check/deployment status",
+    currentEvidenceSource: "deployment-health card",
+    sourceCardId: "deployment-health",
+    statusRule: "Missing Vercel proof is not Pass.",
+    passRequirement: "Vercel production deployment status is READY/success.",
+    failureMeaning: "Release readiness could be stale or failed.",
+    nextRepairLane: "technology"
+  },
+  {
+    id: "technology-build-test-proof",
+    label: "build/test proof",
+    lane: "Technology",
+    roleAffected: "Platform",
+    proofGroup: "deployment_loop",
+    requiredProofSource: "lint/typecheck/test/build evidence",
+    currentEvidenceSource: "technology-build-tests card",
+    sourceCardId: "technology-build-tests",
+    statusRule: "Build/test proof requires explicit validation evidence.",
+    passRequirement: "Targeted tests, lint, typecheck, and build are connected and passing.",
+    failureMeaning: "Release health may not match the code in production.",
+    nextRepairLane: "technology"
+  },
+  {
+    id: "technology-schema-rls-proof",
+    label: "schema/RLS proof",
+    lane: "Technology",
+    roleAffected: "Platform",
+    proofGroup: "deployment_loop",
+    requiredProofSource: "Supabase schema/RLS evidence",
+    currentEvidenceSource: "technology-rls-disabled card",
+    sourceCardId: "technology-rls-disabled",
+    statusRule: "RLS disabled evidence forces Technology loop Failed.",
+    passRequirement: "No release-blocking public RLS disabled evidence remains.",
+    failureMeaning: "Database access posture is unsafe for V1.",
+    nextRepairLane: "technology"
+  },
+  {
+    id: "technology-api-route-proof",
+    label: "API route proof",
+    lane: "Technology",
+    roleAffected: "Platform",
+    proofGroup: "deployment_loop",
+    requiredProofSource: "API route tests/runtime evidence",
+    currentEvidenceSource: "technology-api card",
+    sourceCardId: "technology-api",
+    statusRule: "API route proof remains Needs Review until connected.",
+    passRequirement: "Architect and V1 loop APIs are tested and runtime-safe.",
+    failureMeaning: "Core loops may fail behind working UI.",
+    nextRepairLane: "technology"
+  },
+  {
+    id: "security-route-protection",
+    label: "route protection proof",
+    lane: "Security",
+    roleAffected: "Platform",
+    proofGroup: "security_loop",
+    requiredProofSource: "route/API guard tests",
+    currentEvidenceSource: "security-route-protection card",
+    sourceCardId: "security-route-protection",
+    statusRule: "Route protection proof must be explicit.",
+    passRequirement: "Public roles cannot access Architect/internal surfaces.",
+    failureMeaning: "Internal controls could leak to public users.",
+    nextRepairLane: "security"
+  },
+  {
+    id: "security-role-drift",
+    label: "role drift proof",
+    lane: "Security",
+    roleAffected: "Platform",
+    proofGroup: "security_loop",
+    requiredProofSource: "profiles role audit",
+    currentEvidenceSource: "security-role-drift card",
+    sourceCardId: "security-role-drift",
+    statusRule: "Role drift Failed forces Security and Compliance Failed.",
+    passRequirement: "Public profile roles contain only approved canonical roles.",
+    failureMeaning: "Role gates and trust/compliance logic can misclassify users.",
+    nextRepairLane: "security"
+  },
+  {
+    id: "security-rls-disabled",
+    label: "RLS disabled table proof",
+    lane: "Security",
+    roleAffected: "Platform",
+    proofGroup: "security_loop",
+    requiredProofSource: "Supabase RLS audit",
+    currentEvidenceSource: "security-rls-disabled card",
+    sourceCardId: "security-rls-disabled",
+    statusRule: "Security RLS Failed forces Security loop Failed.",
+    passRequirement: "No release-blocking public table remains without RLS.",
+    failureMeaning: "Production data access safety is not proven.",
+    nextRepairLane: "security"
+  },
+  {
+    id: "security-audit-trail",
+    label: "audit trail proof",
+    lane: "Security",
+    roleAffected: "Architect",
+    proofGroup: "security_loop",
+    requiredProofSource: "audit logs/platform events",
+    currentEvidenceSource: "security-audit card",
+    sourceCardId: "security-audit",
+    statusRule: "Audit trail evidence must be persisted, not UI memory.",
+    passRequirement: "Security audit trail coverage is connected and passing.",
+    failureMeaning: "Controlled actions cannot be traced.",
+    nextRepairLane: "security"
+  },
+  {
+    id: "compliance-policy-consent",
+    label: "policy/consent proof",
+    lane: "Compliance",
+    roleAffected: "Platform",
+    proofGroup: "security_loop",
+    requiredProofSource: "policy/consent evidence",
+    currentEvidenceSource: "compliance-policy card",
+    sourceCardId: "compliance-policy",
+    statusRule: "Policy proof remains Needs Review until source evidence is connected.",
+    passRequirement: "Policy visibility and consent/opt-out readiness are source-backed.",
+    failureMeaning: "Trust gates cannot be considered fully release-ready.",
+    nextRepairLane: "compliance"
+  },
+  {
+    id: "audit-repair-coverage",
+    label: "repair audit coverage proof",
+    lane: "Compliance",
+    roleAffected: "Architect",
+    proofGroup: "audit_loop",
+    requiredProofSource: "controlled repair audit logs/platform events",
+    currentEvidenceSource: "finance-repair-audit-coverage card",
+    sourceCardId: "finance-repair-audit-coverage",
+    statusRule: "Audit loop fails until repair audit coverage is connected.",
+    passRequirement: "Repair approvals, executions, verification, and score updates have persisted evidence.",
+    failureMeaning: "Mission Control cannot prove controlled repairs were authorized and verified.",
+    nextRepairLane: "finance"
+  },
+  {
+    id: "audit-security-trail",
+    label: "security audit trail proof",
+    lane: "Security",
+    roleAffected: "Architect",
+    proofGroup: "audit_loop",
+    requiredProofSource: "audit_logs/platform_admin_audit_logs/platform_events",
+    currentEvidenceSource: "security-audit card",
+    sourceCardId: "security-audit",
+    statusRule: "Audit rows must be persisted; empty audit_logs is Failed.",
+    passRequirement: "Security audit source contains real persisted rows for controlled actions.",
+    failureMeaning: "Architect cannot trace sensitive repair or control-plane behavior.",
+    nextRepairLane: "security"
+  },
+  {
+    id: "audit-refund-route-evidence",
+    label: "refund route execution proof",
+    lane: "Finance",
+    roleAffected: "Architect",
+    proofGroup: "audit_loop",
+    requiredProofSource: "refund logs/platform events",
+    currentEvidenceSource: "finance-refund-resolution card",
+    sourceCardId: "finance-refund-resolution",
+    statusRule: "Refund execution proof can Pass only from canonical refund/log evidence.",
+    passRequirement: "Finance Logs contain full refund evidence and no active blockers.",
+    failureMeaning: "Refund workflow completion cannot be proven.",
+    nextRepairLane: "finance"
+  }
+];
 
 function readinessMetadataForCard(card: Pick<MissionEvidenceCard, "id" | "label" | "workflow" | "department">): ReadinessMetadata {
   if (PARKED_CARD_IDS.has(card.id)) {
@@ -470,7 +1076,8 @@ export function buildMissionControlFoundation(
     ...buildCeoCards(coreLoopValidators, incidents, checkedAt)
   ];
   const scopedCeoCommandCenter = scopeEvidenceCards(ceoCommandCenter);
-  const readinessBreakdown = buildMissionReadinessBreakdown(scopedCeoCommandCenter, departmentLanes, coreLoopValidators);
+  const v1RuntimeProofMatrix = buildV1RuntimeProofMatrix(scopedCeoCommandCenter, departmentLanes, coreLoopValidators);
+  const readinessBreakdown = buildMissionReadinessBreakdown(scopedCeoCommandCenter, departmentLanes, coreLoopValidators, v1RuntimeProofMatrix);
 
   return {
     navigationLanes: MISSION_CONTROL_LANES,
@@ -479,6 +1086,7 @@ export function buildMissionControlFoundation(
     departmentLanes,
     coreLoopValidators,
     readinessBreakdown,
+    v1RuntimeProofMatrix,
     incidentTypes: MISSION_INCIDENT_DEFINITIONS,
     sourceVault: SOURCE_VAULT_REGISTRY,
     actionRegistry: ACTION_REGISTRY,
@@ -490,12 +1098,15 @@ export function buildMissionControlFoundation(
 export function buildMissionReadinessBreakdown(
   ceoCommandCenter: MissionEvidenceCard[] = [],
   departmentLanes: MissionDepartmentLane[] = [],
-  coreLoopValidators: CoreLoopValidator[] = []
+  coreLoopValidators: CoreLoopValidator[] = [],
+  v1RuntimeProofMatrix?: V1RuntimeProofMatrix
 ): MissionReadinessBreakdown {
+  const runtimeProofCards = v1RuntimeProofMatrix?.groups.map(runtimeProofGroupEvidenceCard) ?? [];
   const cards = [
     ...scopeEvidenceCards(ceoCommandCenter),
     ...departmentLanes.flatMap((lane) => scopeEvidenceCards(lane.cards)),
-    ...scopeEvidenceCards(coreLoopValidators)
+    ...scopeEvidenceCards(coreLoopValidators),
+    ...runtimeProofCards
   ];
   const v1Required = cards.filter((card) => card.scope === "v1_required");
   const passCards = v1Required.filter((card) => card.status === "Pass");
@@ -531,6 +1142,122 @@ export function buildMissionReadinessBreakdown(
     nextFoundationBlockers,
     futureParkedItems
   };
+}
+
+export function buildV1RuntimeProofMatrix(
+  ceoCommandCenter: MissionEvidenceCard[] = [],
+  departmentLanes: MissionDepartmentLane[] = [],
+  coreLoopValidators: CoreLoopValidator[] = []
+): V1RuntimeProofMatrix {
+  const evidenceById = new Map<string, MissionEvidenceCard>();
+
+  for (const card of [
+    ...scopeEvidenceCards(ceoCommandCenter),
+    ...departmentLanes.flatMap((lane) => scopeEvidenceCards(lane.cards)),
+    ...scopeEvidenceCards(coreLoopValidators)
+  ]) {
+    evidenceById.set(card.id, card);
+  }
+
+  const rows = V1_RUNTIME_PROOF_DEFINITIONS.map((definition) => buildRuntimeProofRow(definition, evidenceById));
+  const groups = V1_RUNTIME_PROOF_GROUPS.map((groupDefinition) => {
+    const groupRows = rows.filter((row) => row.proofGroup === groupDefinition.id);
+    return buildRuntimeProofGroup(groupDefinition, groupRows);
+  });
+
+  return {
+    groups,
+    rows,
+    allGroupsPass: groups.length > 0 && groups.every((group) => group.status === "Pass"),
+    failingGroupCount: groups.filter((group) => group.status === "Failed").length,
+    needsReviewGroupCount: groups.filter((group) => group.status !== "Pass" && group.status !== "Failed").length
+  };
+}
+
+function buildRuntimeProofRow(
+  definition: RuntimeProofDefinition,
+  evidenceById: Map<string, MissionEvidenceCard>
+): V1RuntimeProofRow {
+  const sourceCard = evidenceById.get(definition.sourceCardId);
+  const evidenceRows = sourceCard?.evidence?.length
+    ? sourceCard.evidence
+    : [`${definition.currentEvidenceSource} is not connected.`];
+  const proofConnected = Boolean(sourceCard) && sourceCard?.status !== "Needs Review" && !evidenceRows.some(isMissingProofEvidence);
+  const staleOrMissingProof = !sourceCard || !proofConnected || evidenceRows.some(isMissingProofEvidence);
+
+  return {
+    id: definition.id,
+    label: definition.label,
+    lane: definition.lane,
+    roleAffected: definition.roleAffected,
+    proofGroup: definition.proofGroup,
+    requiredProofSource: definition.requiredProofSource,
+    currentEvidenceSource: definition.currentEvidenceSource,
+    status: sourceCard?.status ?? "Needs Review",
+    statusRule: definition.statusRule,
+    passRequirement: definition.passRequirement,
+    failureMeaning: definition.failureMeaning,
+    nextRepairLane: definition.nextRepairLane,
+    proofConnected,
+    staleOrMissingProof,
+    evidenceRows
+  };
+}
+
+function buildRuntimeProofGroup(
+  groupDefinition: Pick<V1RuntimeProofGroup, "id" | "label" | "lane" | "nextRepairLane">,
+  rows: V1RuntimeProofRow[]
+): V1RuntimeProofGroup {
+  const status = aggregateRuntimeProofStatus(rows);
+  const firstRepairRow = rows.find((row) => row.status === "Failed")
+    ?? rows.find((row) => row.status !== "Pass")
+    ?? rows[0];
+
+  return {
+    id: groupDefinition.id,
+    label: groupDefinition.label,
+    lane: groupDefinition.lane,
+    status,
+    proofConnected: rows.length > 0 && rows.every((row) => row.proofConnected),
+    failingEvidenceCount: rows.filter((row) => row.status === "Failed").length,
+    staleOrMissingProofCount: rows.filter((row) => row.staleOrMissingProof).length,
+    nextRepairLane: firstRepairRow?.nextRepairLane ?? groupDefinition.nextRepairLane,
+    rows
+  };
+}
+
+function aggregateRuntimeProofStatus(rows: V1RuntimeProofRow[]): MissionControlStatus {
+  if (!rows.length) return "Needs Review";
+  if (rows.some((row) => row.status === "Failed")) return "Failed";
+  if (rows.some((row) => row.status !== "Pass")) return "Needs Review";
+  return "Pass";
+}
+
+function runtimeProofGroupEvidenceCard(group: V1RuntimeProofGroup): MissionEvidenceCard {
+  return scopeEvidenceCard({
+    id: `v1-runtime-proof-${group.id}`,
+    label: `${group.label} runtime proof`,
+    department: group.lane,
+    workflow: "V1 Runtime Proof",
+    status: group.status,
+    summary: group.status === "Pass"
+      ? `${group.label} has connected runtime proof for V1.`
+      : `${group.label} has ${group.failingEvidenceCount} failed and ${group.staleOrMissingProofCount} stale/missing proof row(s).`,
+    evidence: group.rows.map((row) => `${row.label}: ${row.status}; connected=${row.proofConnected ? "yes" : "no"}; source=${row.currentEvidenceSource}.`),
+    scope: "v1_required",
+    criticality: "critical",
+    blocksCurrentRelease: true,
+    evidenceRequiredForPass: `${group.label} runtime proof must have every row Pass from connected evidence before V1 readiness can reach 100%.`
+  });
+}
+
+function isMissingProofEvidence(item: string) {
+  const value = item.toLowerCase();
+  return value.includes("not connected")
+    || value.includes("has not been inspected")
+    || value.includes("is not connected")
+    || value.includes("missing test evidence")
+    || value.includes("missing deployment data");
 }
 
 function buildCeoPlatformMetricCards(metrics: MissionEvidenceCard[]): MissionEvidenceCard[] {

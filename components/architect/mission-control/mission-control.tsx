@@ -8,7 +8,7 @@ import { AlertTriangle, CheckCircle2, Clipboard, ShieldCheck, X } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { buildArchitectCodexRepairPrompt } from "@/lib/architect/mission-control/codex-prompt-doctrine";
-import { buildMissionControlFoundation, getOfficerCleanupEvidence } from "@/lib/architect/mission-control/foundation";
+import { buildMissionControlFoundation, buildMissionReadinessBreakdown, buildV1RuntimeProofMatrix, getOfficerCleanupEvidence } from "@/lib/architect/mission-control/foundation";
 import type {
   ArchitectIncident,
   FinanceLogCategory,
@@ -20,7 +20,8 @@ import type {
   MissionDepartmentLane,
   MissionEvidenceCard,
   MissionControlStatus,
-  MissionLaneId
+  MissionLaneId,
+  V1RuntimeProofGroup
 } from "@/lib/architect/mission-control/types";
 import { cn } from "@/lib/utils";
 
@@ -633,38 +634,6 @@ function compactCard(input: {
   };
 }
 
-function buildCeoReadiness(cards: CompactCeoCard[]): CeoReadinessSummary {
-  const passCount = cards.filter((card) => card.status === "Pass").length;
-  const failedCount = cards.filter((card) => card.status === "Failed").length;
-  const needsReviewCount = cards.filter((card) => card.status !== "Pass" && card.status !== "Failed").length;
-  const criticalBlockers = cards.filter((card) => card.critical && card.status === "Failed");
-  const missingRequiredEvidence = cards.filter((card) => card.critical && card.status !== "Pass" && card.status !== "Failed");
-  const totalCount = cards.length;
-  const readinessPercent = totalCount ? Math.round((passCount / totalCount) * 100) : 0;
-  const overallStatus: MissionControlStatus = criticalBlockers.length
-    ? "Failed"
-    : missingRequiredEvidence.length
-      ? "Needs Review"
-      : totalCount > 0 && passCount === totalCount
-        ? "Pass"
-        : "Needs Review";
-
-  return {
-    overallStatus,
-    passCount,
-    failedCount,
-    needsReviewCount,
-    totalCount,
-    readinessPercent,
-    futureParkedCount: 0,
-    criticalBlockers,
-    missingRequiredEvidence,
-    currentReleaseBlockers: [...criticalBlockers, ...missingRequiredEvidence],
-    evidenceGaps: missingRequiredEvidence,
-    nextFoundationBlockers: []
-  };
-}
-
 function readinessFromFoundationBreakdown(breakdown: MissionReadinessBreakdown): CeoReadinessSummary {
   return {
     overallStatus: breakdown.overallStatus,
@@ -928,6 +897,61 @@ function CeoReadinessCard({ readiness }: { readiness: CeoReadinessSummary }) {
             {foundationBlockerLabels.length ? foundationBlockerLabels.join(", ") : "No v2/v3 foundation blockers are release-scoped yet."}
           </p>
         </div>
+      </div>
+    </article>
+  );
+}
+
+function V1RuntimeProofPanel({ groups }: { groups: V1RuntimeProofGroup[] }) {
+  const visibleGroups = groups.length ? groups : [];
+
+  return (
+    <article
+      data-testid="v1-runtime-proof"
+      className="rounded-[22px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.24)] sm:p-5"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">V1 Runtime Proof</p>
+          <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Role and operating-loop proof matrix</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
+            Read-only proof rows show whether the current V1 Client, Barber, Shop Owner, Money, Security, Deployment, and Audit loops are connected, failing, or still missing evidence.
+          </p>
+        </div>
+        <span className="rounded-[8px] border border-white/10 bg-white/[0.035] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/58">
+          {visibleGroups.length} loop(s)
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+        {visibleGroups.map((group) => (
+          <section key={group.id} className="rounded-[16px] border border-white/8 bg-black/26 p-3" data-testid={`v1-proof-group-${group.id}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">{group.lane}</p>
+                <h4 className="mt-1 text-sm font-black text-white">{group.label}</h4>
+              </div>
+              <StatusPill status={group.status} />
+            </div>
+            <dl className="mt-3 space-y-2 text-xs leading-5 text-white/58">
+              <div>
+                <dt className="font-black uppercase tracking-[0.12em] text-white/34">Proof connected</dt>
+                <dd data-testid={`v1-proof-connected-${group.id}`} className="text-white/76">{group.proofConnected ? "yes" : "no"}</dd>
+              </div>
+              <div>
+                <dt className="font-black uppercase tracking-[0.12em] text-white/34">Failing evidence</dt>
+                <dd data-testid={`v1-proof-failing-count-${group.id}`} className="text-white/76">{group.failingEvidenceCount}</dd>
+              </div>
+              <div>
+                <dt className="font-black uppercase tracking-[0.12em] text-white/34">Next repair lane</dt>
+                <dd className="text-white/76">{group.nextRepairLane.replace("_", " ")}</dd>
+              </div>
+            </dl>
+            <Link href={`/architect/${group.nextRepairLane === "ceo" ? "ceo" : group.nextRepairLane}` as Route} className="mt-3 inline-flex text-[10px] font-black uppercase tracking-[0.16em] text-[#d7ffab] hover:text-white">
+              Open lane
+            </Link>
+          </section>
+        ))}
       </div>
     </article>
   );
@@ -1541,9 +1565,13 @@ function ArchitectIssueDetailModal({
 
 function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexPacket }: { foundation: MissionControlFoundation; snapshot: MissionControlSnapshot; selectedIncident: ArchitectIncident | null; onCopyCodexPacket: () => void }) {
   const cards = buildCompactCeoCards(foundation, snapshot, selectedIncident);
+  const runtimeProofMatrix = useMemo(
+    () => foundation.v1RuntimeProofMatrix ?? buildV1RuntimeProofMatrix(foundation.ceoCommandCenter, foundation.departmentLanes, foundation.coreLoopValidators),
+    [foundation]
+  );
   const readiness = foundation.readinessBreakdown
     ? readinessFromFoundationBreakdown(foundation.readinessBreakdown)
-    : buildCeoReadiness(cards);
+    : readinessFromFoundationBreakdown(buildMissionReadinessBreakdown(foundation.ceoCommandCenter, foundation.departmentLanes, foundation.coreLoopValidators, runtimeProofMatrix));
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const selectedCard = cards.find((card) => card.id === selectedCardId) ?? null;
 
@@ -1557,6 +1585,7 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
         <p className="text-xs text-white/48">Missing data stays Needs Review. Failed evidence stays Failed.</p>
       </div>
       <CeoReadinessCard readiness={readiness} />
+      <V1RuntimeProofPanel groups={runtimeProofMatrix.groups} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
         {cards.map((card) => (
           <CompactCeoCard
