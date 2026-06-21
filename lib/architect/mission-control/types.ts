@@ -103,14 +103,124 @@ export type MissionIncidentDefinition = {
   validationChecklist: string[];
 };
 
+export type SourceVaultSourceType =
+  | "pdf"
+  | "docx"
+  | "text"
+  | "image"
+  | "design"
+  | "code"
+  | "external_reference"
+  | "private_reference"
+  | "unknown";
+
+export type SourceVaultPrivacyClass = "public" | "internal" | "confidential" | "restricted" | "unknown";
+
+export type SourceVaultRoleLaneRelevance =
+  | "client"
+  | "barber"
+  | "shop_owner"
+  | "architect"
+  | "finance"
+  | "security"
+  | "compliance"
+  | "technology"
+  | "operations"
+  | "marketing"
+  | "content_community"
+  | "hive_ai_future";
+
+export type SourceVaultScope = "v1_required" | "v2_infrastructure" | "v3_future" | "parked";
+
+export type SourceVaultIngestionStatus =
+  | "registered"
+  | "missing"
+  | "needs_review"
+  | "ingested_metadata_only"
+  | "private_source_required"
+  | "parked_future";
+
+export type SourceVaultEvidenceStatus = MissionControlStatus | "Not Connected" | "Parked";
+
+export type SourceVaultRiskLevel = "low" | "medium" | "high" | "critical" | "unknown";
+
+export type SourceVaultCategory =
+  | "Client doctrine"
+  | "Barber doctrine"
+  | "Shop Owner doctrine"
+  | "Architect doctrine"
+  | "Money Flow doctrine"
+  | "Security / Compliance doctrine"
+  | "Build doctrine"
+  | "AI / Hive future doctrine"
+  | "Design doctrine"
+  | "Operations doctrine"
+  | "Content / Community doctrine";
+
 export type SourceVaultEntry = {
   id: string;
   sourceName: string;
-  category: string;
+  category: SourceVaultCategory;
+  sourceType: SourceVaultSourceType;
+  privacyClass: SourceVaultPrivacyClass;
+  roleLaneRelevance: SourceVaultRoleLaneRelevance[];
+  versionDate: string;
+  storageLocation: string;
+  contentHash: string;
   purpose: string;
   linkedSystemArea: string;
-  status: "Active" | "Needs Review" | "Missing";
-  ingestionStatus: "registered, not ingested" | "ingested" | "missing";
+  status: "Active" | "Needs Review" | "Missing" | "Parked";
+  ingestionStatus: SourceVaultIngestionStatus;
+  summary: string;
+  topicTags: string[];
+  scope: SourceVaultScope;
+  linkedArchitectCardIds: string[];
+  evidenceStatus: SourceVaultEvidenceStatus;
+  failureMeaning: string;
+  nextRepairLane: MissionLaneId;
+  staleOrMissingEvidenceState: string[];
+  critical: boolean;
+  rawContentCommitted: boolean;
+};
+
+export type SourceVaultCategorySummary = {
+  category: SourceVaultCategory;
+  total: number;
+  v1RequiredCount: number;
+  missingRequiredCount: number;
+  needsReviewCount: number;
+  parkedFutureCount: number;
+  highestRiskLevel: SourceVaultRiskLevel;
+  status: SourceVaultEvidenceStatus;
+};
+
+export type SourceVaultSummary = {
+  totalSourcesRegistered: number;
+  ingestedMetadataCount: number;
+  missingRequiredSourceCount: number;
+  privateSourceRequiredCount: number;
+  needsReviewCount: number;
+  parkedFutureSourceCount: number;
+  v1RequiredSourceCount: number;
+  v1RequiredMissingCount: number;
+  linkedArchitectCardsCount: number;
+  highestRiskLevel: SourceVaultRiskLevel;
+  nextRepairLane: MissionLaneId;
+};
+
+export type SourceVaultInventory = {
+  status: SourceVaultEvidenceStatus;
+  summary: SourceVaultSummary;
+  categories: SourceVaultCategorySummary[];
+  entries: SourceVaultEntry[];
+  v1RequiredSources: SourceVaultEntry[];
+  missingRequiredSources: SourceVaultEntry[];
+  privateSourceRequiredSources: SourceVaultEntry[];
+  needsReviewSources: SourceVaultEntry[];
+  parkedFutureSources: SourceVaultEntry[];
+  linkedArchitectCardIds: string[];
+  evidenceSource: string;
+  privacyWarning: string;
 };
 
 export type ArchitectActionRiskClass = "Safe read-only" | "Safe low-risk" | "Needs approval" | "Unsafe / blocked";
@@ -437,6 +547,7 @@ export type MissionControlFoundation = {
   auditSpine?: AuditSpineModel;
   rlsSecurityInventory?: RlsSecurityInventory;
   roleTruthInventory?: RoleTruthInventory;
+  sourceVaultInventory?: SourceVaultInventory;
   incidentTypes: MissionIncidentDefinition[];
   sourceVault: SourceVaultEntry[];
   actionRegistry: ActionRegistryEntry[];

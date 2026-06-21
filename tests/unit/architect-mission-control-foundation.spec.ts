@@ -5,7 +5,9 @@ import {
   HIVE_AGENT_REGISTRY,
   MISSION_CONTROL_LANES,
   OFFICER_ASSISTANT_DEPARTMENTS,
+  SOURCE_VAULT_CATEGORIES,
   SOURCE_VAULT_REGISTRY,
+  buildSourceVaultInventory,
   buildMissionControlFoundation,
   buildDeploymentRegressionEvidence,
   buildAuditSpineModel,
@@ -1289,16 +1291,87 @@ describe("architect mission control foundation", () => {
     });
   });
 
-  it("renders Source Vault as registered without claiming ingestion", () => {
+  it("registers Source Vault categories as metadata without committing private source contents", () => {
+    expect(SOURCE_VAULT_REGISTRY.map((source) => source.category)).toEqual(expect.arrayContaining(SOURCE_VAULT_CATEGORIES));
     expect(SOURCE_VAULT_REGISTRY).toContainEqual(expect.objectContaining({
+      id: "v1-master-build-template",
+      sourceName: "BVRB3R V1 Master Build Template",
+      ingestionStatus: "ingested_metadata_only",
+      rawContentCommitted: false
+    }));
+    expect(SOURCE_VAULT_REGISTRY).toContainEqual(expect.objectContaining({
+      id: "architect-doctrine",
       sourceName: "Architect Super Master Plan",
-      ingestionStatus: "registered, not ingested"
+      ingestionStatus: "ingested_metadata_only",
+      rawContentCommitted: false
     }));
-    expect(SOURCE_VAULT_REGISTRY).toContainEqual(expect.objectContaining({
-      sourceName: "Architect Officer Cleanup",
-      ingestionStatus: "registered, not ingested"
-    }));
-    expect(SOURCE_VAULT_REGISTRY.some((source) => source.ingestionStatus === "ingested")).toBe(false);
+    expect(SOURCE_VAULT_REGISTRY.every((source) => source.rawContentCommitted === false)).toBe(true);
+    expect(SOURCE_VAULT_REGISTRY.some((source) => String(source.ingestionStatus) === "ingested")).toBe(false);
+    expect(SOURCE_VAULT_REGISTRY.filter((source) =>
+      ["confidential", "restricted"].includes(source.privacyClass)
+    ).every((source) => !source.summary.toLowerCase().includes("full pdf"))).toBe(true);
+  });
+
+  it("keeps missing required Source Vault sources blocking V1 readiness", () => {
+    const inventory = buildSourceVaultInventory();
+    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], undefined, undefined, undefined, inventory);
+
+    expect(inventory.status).toBe("Failed");
+    expect(inventory.summary.v1RequiredSourceCount).toBeGreaterThan(0);
+    expect(inventory.summary.v1RequiredMissingCount).toBeGreaterThan(0);
+    expect(inventory.summary.missingRequiredSourceCount).toBeGreaterThan(0);
+    expect(inventory.summary.highestRiskLevel).toBe("critical");
+    expect(foundation.readinessBreakdown?.overallStatus).toBe("Failed");
+    expect(foundation.readinessBreakdown?.v1ReadinessPercent).toBeLessThan(100);
+    expect(foundation.readinessBreakdown?.currentReleaseBlockers.map((card) => card.id)).toEqual(expect.arrayContaining([
+      "source-vault-status",
+      "technology-source-vault-readiness"
+    ]));
+  });
+
+  it("does not let placeholder or private-source-required metadata fake Source Vault Pass", () => {
+    const inventory = buildSourceVaultInventory();
+    const clientDoctrine = inventory.entries.find((source) => source.id === "client-doctrine");
+    const shopOwnerDoctrine = inventory.entries.find((source) => source.id === "shop-owner-doctrine");
+    const technologyReadiness = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], undefined, undefined, undefined, inventory)
+      .ceoCommandCenter.find((card) => card.id === "source-vault-status");
+
+    expect(clientDoctrine).toMatchObject({
+      ingestionStatus: "private_source_required",
+      evidenceStatus: "Needs Review",
+      rawContentCommitted: false
+    });
+    expect(shopOwnerDoctrine).toMatchObject({
+      ingestionStatus: "missing",
+      evidenceStatus: "Failed"
+    });
+    expect(technologyReadiness).toMatchObject({ status: "Failed" });
+  });
+
+  it("parks Hive AI source doctrine outside the V1 Source Vault blocker set", () => {
+    const inventory = buildSourceVaultInventory();
+    const hiveSource = inventory.entries.find((source) => source.id === "hive-ai-future-doctrine");
+
+    expect(hiveSource).toMatchObject({
+      scope: "v3_future",
+      ingestionStatus: "parked_future",
+      evidenceStatus: "Parked",
+      critical: false
+    });
+    expect(inventory.missingRequiredSources.map((source) => source.id)).not.toContain("hive-ai-future-doctrine");
+    expect(inventory.summary.parkedFutureSourceCount).toBeGreaterThan(0);
+  });
+
+  it("counts linked Architect cards without treating private files as ingested", () => {
+    const inventory = buildSourceVaultInventory();
+
+    expect(inventory.summary.linkedArchitectCardsCount).toBeGreaterThan(0);
+    expect(inventory.entries.flatMap((source) => source.linkedArchitectCardIds)).toEqual(expect.arrayContaining([
+      "source-vault-status",
+      "technology-source-vault-readiness"
+    ]));
+    expect(inventory.entries.every((source) => source.storageLocation.startsWith("private://source-vault/"))).toBe(true);
+    expect(inventory.evidenceSource).toContain("private documents remain outside the public repository");
   });
 
   it("blocks unsafe actions in the Action Registry", () => {
