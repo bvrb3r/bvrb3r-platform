@@ -20,6 +20,7 @@ import type {
   DeploymentRegressionEvidence,
   FinanceLogCategory,
   FinanceLogEntry,
+  FinanceRoutingEvidenceSummary,
   FinanceRefundTarget,
   MissionControlFoundation,
   MissionReadinessBreakdown,
@@ -2471,6 +2472,54 @@ function logMatchesSearch(log: FinanceLogEntry, search: string) {
   ].some((value) => String(value ?? "").toLowerCase().includes(needle));
 }
 
+function FinanceRoutingEvidencePanel({ summary }: { summary: FinanceRoutingEvidenceSummary }) {
+  const metrics: Array<[string, string | number]> = [
+    ["Inspected booking payment rows", summary.inspectedBookingPaymentRows],
+    ["Rows with routing", summary.rowsWithRouting],
+    ["Completed/captured missing routing", summary.completedCapturedMissingRoutingCount],
+    ["Cancelled/captured missing routing", summary.cancelledCapturedMissingRoutingCount],
+    ["Cancelled/refunded targets safe", summary.cancelledRefundedSafeRowCount],
+    ["Target payout executions", summary.targetPayoutExecutionCount],
+    ["Stale target count", summary.staleTargetCount],
+    ["Proposed inserts", summary.proposedInsertCount],
+    ["Proposed updates", summary.proposedUpdateCount],
+    ["Broader payout execution review", summary.broaderPayoutExecutionReviewCount],
+    ["Repair route available", summary.repairRouteAvailable ? "yes" : "no"],
+    ["Repair route safe to call", summary.repairRouteSafeToCall ? "yes" : "no"]
+  ];
+
+  return (
+    <article className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5" data-testid="finance-routing-evidence-summary">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">Finance Routing Evidence</p>
+          <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">
+            {summary.repairNeeded ? "Routing repair target detected" : "Routing repair not required"}
+          </h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">{summary.reason}</p>
+        </div>
+        <StatusPill status={summary.status} />
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {metrics.map(([label, value]) => (
+          <div key={label} className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">{label}</p>
+            <p className="mt-1 break-words text-2xl font-black text-white">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-[16px] border border-white/8 bg-white/[0.025] p-3 text-xs leading-5 text-white/58">
+        <p><span className="font-black text-white/82">Evidence source:</span> {summary.evidenceSource}</p>
+        <p><span className="font-black text-white/82">No repair required:</span> {summary.repairNeeded ? "no" : "yes"}</p>
+        <p><span className="font-black text-white/82">Evidence current:</span> {summary.evidenceCurrent ? "yes" : "no"}</p>
+        <p><span className="font-black text-white/82">Safety:</span> This section is read-only. It does not call the Architect payment-routing repair route, Stripe, refunds, payouts, SQL mutations, roles, RLS, migrations, or AI.</p>
+      </div>
+    </article>
+  );
+}
+
 function FinanceLogsPanel({ logs, metrics }: { logs: FinanceLogEntry[]; metrics: NonNullable<MissionControlSnapshot["financeEvidence"]>["refundMetrics"] }) {
   const [categoryFilter, setCategoryFilter] = useState<"all" | FinanceLogCategory>("all");
   const [timeFilter, setTimeFilter] = useState<typeof FINANCE_TIME_FILTERS[number]>("All time");
@@ -2942,6 +2991,7 @@ function DepartmentLaneDetail({
   const issueDetailsEnabled = lane.id === "finance";
   const activeRefundTargets = snapshot.financeEvidence?.activeRefundTargets ?? [];
   const refundLogs = snapshot.financeEvidence?.refundLogs ?? [];
+  const routingSummary = snapshot.financeEvidence?.routingSummary ?? null;
   const refundMetrics = snapshot.financeEvidence?.refundMetrics ?? {
     refundCount: 0,
     totalRefundedAmount: 0,
@@ -2984,7 +3034,10 @@ function DepartmentLaneDetail({
         </div>
       </article>
       {lane.id === "finance" ? (
-        <FinanceLogsPanel logs={refundLogs} metrics={refundMetrics} />
+        <>
+          {routingSummary ? <FinanceRoutingEvidencePanel summary={routingSummary} /> : null}
+          <FinanceLogsPanel logs={refundLogs} metrics={refundMetrics} />
+        </>
       ) : null}
       {runtimeProofGroups.length ? (
         <V1RuntimeProofPanel groups={runtimeProofGroups} />

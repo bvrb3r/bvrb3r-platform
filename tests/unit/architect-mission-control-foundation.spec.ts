@@ -562,6 +562,44 @@ describe("architect mission control foundation", () => {
     ]));
   });
 
+  it("lets routing evidence pass without hiding separate Finance blockers", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [{
+      id: "ceo-payment-routing-health",
+      label: "Payment Routing Health",
+      department: "CEO",
+      workflow: "Finance",
+      status: "Pass",
+      metricValue: "No repair required",
+      summary: "Routing repair not required. Current production evidence has safe routing/refund posture for the payment-routing repair target classes.",
+      evidence: [
+        "completedCapturedMissingRouting=0",
+        "cancelledCapturedMissingRouting=0",
+        "targetPayoutExecutionCount=0",
+        "proposedInsertCount=0",
+        "proposedUpdateCount=0",
+        "repairNeeded=no"
+      ]
+    }, {
+      id: "ceo-audit-log-evidence",
+      label: "Audit Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      metricValue: "0 row(s)",
+      summary: "audit_logs returned 0 row(s).",
+      evidence: ["audit_logs returned 0 row(s)."]
+    }]);
+    const financeLane = foundation.departmentLanes.find((lane) => lane.id === "finance");
+
+    expect(financeLane?.cards.find((card) => card.id === "finance-routing")).toMatchObject({
+      status: "Pass",
+      summary: "Routing repair not required. Current production evidence has safe routing/refund posture for the payment-routing repair target classes."
+    });
+    expect(financeLane?.cards.find((card) => card.id === "finance-repair-audit-coverage")).toMatchObject({ status: "Failed" });
+    expect(financeLane?.status).toBe("Failed");
+    expect(foundation.readinessBreakdown?.overallStatus).toBe("Failed");
+  });
+
   it("parks future scaffolding without reducing the V1 readiness denominator", () => {
     const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
     const parkedIds = foundation.readinessBreakdown?.futureParkedItems.map((card) => card.id) ?? [];

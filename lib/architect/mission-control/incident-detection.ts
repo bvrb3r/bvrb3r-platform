@@ -10,6 +10,7 @@ import {
 } from "@/lib/architect/mission-control/schema-constraints";
 import type {
   ArchitectIncident,
+  FinanceRoutingEvidenceSummary,
   FinanceLogEntry,
   FinanceRefundMetrics,
   FinanceRefundTarget,
@@ -135,6 +136,13 @@ const FAILED_REFUND_STATUSES = new Set(["failed", "canceled", "cancelled", "void
 const FULL_REFUND_PAYMENT_STATUSES = new Set(["refunded", "reversed"]);
 const ROUTING_REFUND_STATUSES = new Set(["refunded", "reversed"]);
 const CONTROLLED_REFUND_REASON = "Cancelled appointment captured booking payment resolution";
+const LEGAL_ROUTING_VALUES = {
+  payout_readiness_status: new Set(["not_ready", "needs_attention", "ready", "blocked"]),
+  money_routing_status: new Set(["pending", "ready_for_payout", "blocked", "manual_review", "paid_out", "refunded"]),
+  routing_model: new Set(["freelance", "commission", "booth_rent"]),
+  payout_recipient_type: new Set(["barber", "shop", "split"]),
+  reconciliation_status: new Set(["open", "settled", "partially_reversed", "reversed", "manual_review"])
+};
 
 function isAppointmentScopedPayment(payment: JsonRecord) {
   const paymentType = String(payment.payment_type ?? payment.type ?? "").toLowerCase();
@@ -330,6 +338,233 @@ function sortLogs(logs: FinanceLogEntry[]) {
   return [...logs].sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
 }
 
+function paymentRoutingFor(
+  payment: JsonRecord,
+  appointment: JsonRecord | null,
+  routingByPaymentId: Map<string, JsonRecord>,
+  routingByAppointmentId: Map<string, JsonRecord>
+) {
+  return routingByPaymentId.get(stringValue(payment.id))
+    ?? (appointment ? routingByAppointmentId.get(stringValue(appointment.id)) : undefined)
+    ?? null;
+}
+
+function routingRowsFor(
+  payment: JsonRecord,
+  appointment: JsonRecord | null,
+  routingRecords: JsonRecord[]
+) {
+  const paymentId = stringValue(payment.id);
+  const appointmentId = appointment ? stringValue(appointment.id) : stringValue(payment.appointment_id);
+  return routingRecords.filter((row) =>
+    stringValue(row.payment_id) === paymentId
+      || (appointmentId && stringValue(row.appointment_id) === appointmentId)
+  );
+}
+
+function payoutExecutionsFor(payment: JsonRecord, appointment: JsonRecord | null, routing: JsonRecord | null, payoutExecutions: JsonRecord[]) {
+  const paymentId = stringValue(payment.id);
+  const appointmentId = appointment ? stringValue(appointment.id) : stringValue(payment.appointment_id);
+  const routingId = routing ? stringValue(routing.id) : "";
+
+  return payoutExecutions.filter((row) =>
+    [row.payment_id, row.appointment_id, row.routing_id, row.routing_record_id, row.payment_routing_record_id]
+      .map((value) => stringValue(value))
+      .some((value) => value === paymentId || (appointmentId && value === appointmentId) || (routingId && value === routingId))
+  );
+}
+
+function isBookingPayment(payment: JsonRecord) {
+  return String(payment.payment_type ?? payment.type ?? "").toLowerCase() === "booking";
+}
+
+function isCapturedLikePayment(payment: JsonRecord) {
+  const status = String(payment.status ?? payment.payment_status ?? "").toLowerCase();
+  return ["captured", "succeeded", "paid", "completed", "partially_refunded"].includes(status);
+}
+
+function isRefundedLikePayment(payment: JsonRecord) {
+  const status = String(payment.status ?? payment.payment_status ?? "").toLowerCase();
+  return ["refunded", "reversed"].includes(status);
+}
+
+function hasIllegalRoutingStatusValue(routing: JsonRecord | null) {
+  if (!routing) return false;
+
+  return !LEGAL_ROUTING_VALUES.payout_readiness_status.has(stringValue(routing.payout_readiness_status))
+    || !LEGAL_ROUTING_VALUES.money_routing_status.has(stringValue(routing.money_routing_status))
+    || !LEGAL_ROUTING_VALUES.routing_model.has(stringValue(routing.routing_model))
+    || !LEGAL_ROUTING_VALUES.payout_recipient_type.has(stringValue(routing.payout_recipient_type))
+    || !LEGAL_ROUTING_VALUES.reconciliation_status.has(stringValue(routing.reconciliation_status));
+}
+
+function isCancelledRefundedSafeTarget(input: {
+  payment: JsonRecord;
+  appointment: JsonRecord;
+  routing: JsonRecord | null;
+  refunds: JsonRecord[];
+  payoutExecutionCount: number;
+}) {
+  return ["cancelled", "canceled"].includes(stringValue(input.appointment.status))
+    && isRefundedLikePayment(input.payment)
+    && Boolean(input.routing)
+    && hasRefundOrReversalEvidence(input.payment, input.refunds, input.routing)
+    && !input.routing?.released_at
+    && input.payoutExecutionCount === 0
+    && !hasIllegalRoutingStatusValue(input.routing);
+}
+
+function buildFinanceRoutingEvidenceSummary(input: {
+  appointments: TableRead;
+  payments: TableRead;
+  refunds: TableRead;
+  payoutExecutions: TableRead;
+  routingRecords: TableRead;
+  routingByPaymentId: Map<string, JsonRecord>;
+  routingByAppointmentId: Map<string, JsonRecord>;
+}): FinanceRoutingEvidenceSummary {
+  const evidenceCurrent = input.appointments.connected
+    && input.payments.connected
+    && input.refunds.connected
+    && input.payoutExecutions.connected
+    && input.routingRecords.connected;
+  if (!evidenceCurrent) {
+    return {
+      status: "Needs Review",
+      inspectedBookingPaymentRows: 0,
+      rowsWithRouting: 0,
+      completedCapturedMissingRoutingCount: 0,
+      cancelledCapturedMissingRoutingCount: 0,
+      cancelledRefundedSafeRowCount: 0,
+      targetPayoutExecutionCount: 0,
+      broaderPayoutExecutionReviewCount: 0,
+      staleTargetCount: 0,
+      proposedInsertCount: 0,
+      proposedUpdateCount: 0,
+      repairNeeded: false,
+      repairRouteAvailable: true,
+      repairRouteSafeToCall: false,
+      illegalStatusValueCount: 0,
+      duplicateUnsafeRoutingCount: 0,
+      releasedTargetRoutingCount: 0,
+      evidenceCurrent: false,
+      reason: "Finance routing aggregate cannot be computed because one or more required evidence tables are not connected.",
+      evidenceSource: "appointments/payments/refunds/payout_executions/payment_routing_records"
+    };
+  }
+
+  const appointmentsById = new Map(input.appointments.rows.map((row) => [stringValue(row.id), row]));
+  const scopedPayments = input.payments.rows.filter((payment) => {
+    if (!isBookingPayment(payment)) return false;
+    if (!payment.appointment_id) return false;
+    return isCapturedLikePayment(payment) || isRefundedLikePayment(payment);
+  });
+
+  let rowsWithRouting = 0;
+  let completedCapturedMissingRoutingCount = 0;
+  let cancelledCapturedMissingRoutingCount = 0;
+  let cancelledRefundedSafeRowCount = 0;
+  let targetPayoutExecutionCount = 0;
+  let broaderPayoutExecutionReviewCount = 0;
+  let illegalStatusValueCount = 0;
+  let duplicateUnsafeRoutingCount = 0;
+  let releasedTargetRoutingCount = 0;
+  let proposedInsertCount = 0;
+  let proposedUpdateCount = 0;
+
+  for (const payment of scopedPayments) {
+    const appointment = appointmentsById.get(stringValue(payment.appointment_id)) ?? null;
+    const appointmentStatus = stringValue(appointment?.status);
+    const routing = paymentRoutingFor(payment, appointment, input.routingByPaymentId, input.routingByAppointmentId);
+    const allRoutingRows = routingRowsFor(payment, appointment, input.routingRecords.rows);
+    const payoutExecutionCount = payoutExecutionsFor(payment, appointment, routing, input.payoutExecutions.rows).length;
+    const isCompletedCaptured = appointmentStatus === "completed" && isPaymentSuccessful(payment);
+    const isCancelledCaptured = ["cancelled", "canceled"].includes(appointmentStatus) && isCapturedLikePayment(payment) && !isRefundedLikePayment(payment);
+
+    if (routing) rowsWithRouting += 1;
+    if (routing && hasIllegalRoutingStatusValue(routing)) illegalStatusValueCount += 1;
+    if (allRoutingRows.length > 1) duplicateUnsafeRoutingCount += allRoutingRows.length - 1;
+
+    if (isCompletedCaptured && !routing) {
+      completedCapturedMissingRoutingCount += 1;
+      proposedInsertCount += 1;
+      targetPayoutExecutionCount += payoutExecutionCount;
+      continue;
+    }
+
+    if (isCancelledCaptured) {
+      const hasRefundEvidence = hasRefundOrReversalEvidence(payment, input.refunds.rows, routing);
+      if (!routing) {
+        cancelledCapturedMissingRoutingCount += 1;
+        proposedInsertCount += 1;
+        targetPayoutExecutionCount += payoutExecutionCount;
+        continue;
+      }
+      if (!hasRefundEvidence || hasIllegalRoutingStatusValue(routing) || routing.released_at) {
+        proposedUpdateCount += 1;
+        targetPayoutExecutionCount += payoutExecutionCount;
+        if (routing.released_at) releasedTargetRoutingCount += 1;
+        continue;
+      }
+    }
+
+    if (appointment && isCancelledRefundedSafeTarget({
+      payment,
+      appointment,
+      routing,
+      refunds: input.refunds.rows,
+      payoutExecutionCount
+    })) {
+      cancelledRefundedSafeRowCount += 1;
+      continue;
+    }
+
+    if (payoutExecutionCount > 0) broaderPayoutExecutionReviewCount += payoutExecutionCount;
+  }
+
+  const staleTargetCount = 0;
+  const repairNeeded = proposedInsertCount > 0 || proposedUpdateCount > 0;
+  const hasFailure = completedCapturedMissingRoutingCount > 0
+    || cancelledCapturedMissingRoutingCount > 0
+    || illegalStatusValueCount > 0
+    || duplicateUnsafeRoutingCount > 0
+    || releasedTargetRoutingCount > 0
+    || targetPayoutExecutionCount > 0;
+  const status: MissionControlStatus = hasFailure
+    ? "Failed"
+    : repairNeeded
+      ? "Failed"
+      : "Pass";
+  const reason = repairNeeded
+    ? "Current evidence still has payment-routing repair targets; repair route remains gated and should only be called after approval."
+    : broaderPayoutExecutionReviewCount > 0
+      ? "Routing repair not required. Broader payout executions exist outside stale repair targets and remain a separate Finance review item."
+      : "Routing repair not required. Current production evidence has safe routing/refund posture for the payment-routing repair target classes.";
+
+  return {
+    status,
+    inspectedBookingPaymentRows: scopedPayments.length,
+    rowsWithRouting,
+    completedCapturedMissingRoutingCount,
+    cancelledCapturedMissingRoutingCount,
+    cancelledRefundedSafeRowCount,
+    targetPayoutExecutionCount,
+    broaderPayoutExecutionReviewCount,
+    staleTargetCount,
+    proposedInsertCount,
+    proposedUpdateCount,
+    repairNeeded,
+    repairRouteAvailable: true,
+    repairRouteSafeToCall: repairNeeded,
+    illegalStatusValueCount,
+    duplicateUnsafeRoutingCount,
+    releasedTargetRoutingCount,
+    evidenceCurrent,
+    reason,
+    evidenceSource: "appointments/payments/refunds/payout_executions/payment_routing_records"
+  };
+}
+
 function buildActiveRefundTargets(
   incidents: ArchitectIncident[],
   paymentsById: Map<string, JsonRecord>,
@@ -374,6 +609,15 @@ async function buildFinanceEvidence(supabase: SupabaseClient, incidents: Archite
   const appointmentsById = new Map(appointments.rows.map((row) => [stringValue(row.id), row]));
   const routingByPaymentId = new Map(routingRecords.rows.filter((row) => row.payment_id).map((row) => [stringValue(row.payment_id), row]));
   const routingByAppointmentId = new Map(routingRecords.rows.filter((row) => row.appointment_id).map((row) => [stringValue(row.appointment_id), row]));
+  const routingSummary = buildFinanceRoutingEvidenceSummary({
+    appointments,
+    payments,
+    refunds,
+    payoutExecutions,
+    routingRecords,
+    routingByPaymentId,
+    routingByAppointmentId
+  });
   const activeRefundTargets = buildActiveRefundTargets(incidents, paymentsById, appointmentsById, routingByPaymentId, routingByAppointmentId);
   const refundLogs = refunds.rows.map((refund) => {
     const payment = paymentsById.get(stringValue(refund.payment_id)) ?? null;
@@ -416,12 +660,11 @@ async function buildFinanceEvidence(supabase: SupabaseClient, incidents: Archite
     lastRefundTimestamp
   };
 
-  void payoutExecutions;
-
   return {
     activeRefundTargets,
     refundLogs: logs,
-    refundMetrics
+    refundMetrics,
+    routingSummary
   };
 }
 
@@ -1159,6 +1402,30 @@ function countCard(
   );
 }
 
+function financeRoutingEvidenceRows(summary: FinanceRoutingEvidenceSummary) {
+  return [
+    `inspectedBookingPaymentRows=${summary.inspectedBookingPaymentRows}`,
+    `rowsWithRouting=${summary.rowsWithRouting}`,
+    `completedCapturedMissingRouting=${summary.completedCapturedMissingRoutingCount}`,
+    `cancelledCapturedMissingRouting=${summary.cancelledCapturedMissingRoutingCount}`,
+    `cancelledRefundedSafeRows=${summary.cancelledRefundedSafeRowCount}`,
+    `targetPayoutExecutionCount=${summary.targetPayoutExecutionCount}`,
+    `broaderPayoutExecutionReviewCount=${summary.broaderPayoutExecutionReviewCount}`,
+    `staleTargetCount=${summary.staleTargetCount}`,
+    `proposedInsertCount=${summary.proposedInsertCount}`,
+    `proposedUpdateCount=${summary.proposedUpdateCount}`,
+    `repairNeeded=${summary.repairNeeded ? "yes" : "no"}`,
+    `repairRouteAvailable=${summary.repairRouteAvailable ? "yes" : "no"}`,
+    `repairRouteSafeToCall=${summary.repairRouteSafeToCall ? "yes" : "no"}`,
+    `illegalStatusValueCount=${summary.illegalStatusValueCount}`,
+    `duplicateUnsafeRoutingCount=${summary.duplicateUnsafeRoutingCount}`,
+    `releasedTargetRoutingCount=${summary.releasedTargetRoutingCount}`,
+    `evidenceCurrent=${summary.evidenceCurrent ? "yes" : "no"}`,
+    `evidenceSource=${summary.evidenceSource}`,
+    summary.reason
+  ];
+}
+
 async function buildCeoPlatformMetrics(
   supabase: SupabaseClient,
   incidents: ArchitectIncident[],
@@ -1206,7 +1473,9 @@ async function buildCeoPlatformMetrics(
   const pendingApprovals = [...barbers.rows, ...shops.rows].filter(isPendingApproval);
   const grossBookedVolume = sumMoney(appointments.rows, ["grand_total", "total_amount", "price", "amount"]);
   const platformFees = sumMoney(routingRows.rows, ["platform_fee_amount", "application_fee_amount", "app_fee_amount"]);
-  const routingHealth: MissionControlStatus = financeIncidents.length ? "Failed" : routingRows.connected && routingRows.rows.length ? "Pass" : "Needs Review";
+  const routingSummary = financeEvidence?.routingSummary;
+  const routingHealth: MissionControlStatus = routingSummary?.status
+    ?? (financeIncidents.length ? "Failed" : routingRows.connected && routingRows.rows.length ? "Pass" : "Needs Review");
   const payoutReadiness: MissionControlStatus = financeIncidents.length
     ? "Failed"
     : routingRows.connected && routingRows.rows.some((row) => ["ready", "eligible"].includes(stringValue(row.payout_readiness_status)))
@@ -1249,7 +1518,25 @@ async function buildCeoPlatformMetrics(
     metricCard("ceo-failed-refund-attempts", "Failed Refund Attempts", "Finance", refundMetricsConnected ? (refundMetricValues.failedRefundAttemptCount > 0 ? "Failed" : "Pass") : "Needs Review", refundMetricsConnected ? String(refundMetricValues.failedRefundAttemptCount) : "Not connected", refundMetricsConnected ? "Failed refund attempts are read from platform event evidence." : "Failed refund attempt evidence is not connected.", refundMetricsConnected ? [`payment_refund_failed events=${refundMetricValues.failedRefundAttemptCount}`] : ["Platform event evidence is not connected."]),
     metricCard("ceo-active-refund-blockers", "Active Refund Blockers", "Finance", activeRefundBlockerStatus, refundMetricsConnected ? String(refundMetricValues.activeUnresolvedRefundBlockerCount) : "Not connected", refundMetricsConnected ? "Active unresolved refund blockers are read from cancelled/captured incident evidence." : "Active refund blocker evidence is not connected.", refundMetricsConnected ? [`activeRefundTargets=${refundMetricValues.activeUnresolvedRefundBlockerCount}`] : ["Cancelled/captured refund target evidence is not connected."]),
     metricCard("ceo-last-refund-timestamp", "Last Refund Timestamp", "Finance", refundMetricsConnected && refundMetricValues.lastRefundTimestamp ? "Pass" : "Needs Review", refundMetricValues.lastRefundTimestamp ?? "Not connected", refundMetricsConnected && refundMetricValues.lastRefundTimestamp ? "Last refund timestamp is read from refund evidence." : "No connected refund timestamp exists yet.", refundMetricsConnected ? [`lastRefundTimestamp=${refundMetricValues.lastRefundTimestamp ?? "none"}`] : ["Refund timestamp evidence is not connected."]),
-    metricCard("ceo-payment-routing-health", "Payment Routing Health", "Finance", routingHealth, routingHealth, financeIncidents.length ? "Finance incident evidence is active." : "Routing health is derived from routing rows and finance incidents.", financeIncidents.length ? financeIncidents.map((incident) => incident.headline) : [`payment_routing_records rows=${routingRows.rows.length}`]),
+    metricCard(
+      "ceo-payment-routing-health",
+      "Payment Routing Health",
+      "Finance",
+      routingHealth,
+      routingSummary
+        ? routingSummary.repairNeeded ? "Repair needed" : "No repair required"
+        : routingHealth,
+      routingSummary
+        ? routingSummary.reason
+        : financeIncidents.length
+          ? "Finance incident evidence is active."
+          : "Routing health is derived from routing rows and finance incidents.",
+      routingSummary
+        ? financeRoutingEvidenceRows(routingSummary)
+        : financeIncidents.length
+          ? financeIncidents.map((incident) => incident.headline)
+          : [`payment_routing_records rows=${routingRows.rows.length}`]
+    ),
     metricCard("ceo-payout-readiness-health", "Payout Readiness Health", "Finance", payoutReadiness, payoutReadiness, payoutReadiness === "Pass" ? "At least one routing row is payout-ready." : "Payout readiness cannot be fully verified from current evidence.", routingRows.connected ? routingRows.rows.slice(0, 3).map((row) => `payout_readiness_status=${String(row.payout_readiness_status ?? "unknown")}`) : [routingRows.errorMessage ?? "Not connected."]),
     metricCard("ceo-culture-health", "Culture Health", "Culture", culturePosts.connected && publicCulturePosts.length ? "Pass" : "Needs Review", culturePosts.connected ? `${publicCulturePosts.length} public post(s)` : "Not connected", culturePosts.connected && publicCulturePosts.length ? "Public approved Culture post evidence exists." : "Culture health needs public approved post or clean empty-state evidence.", culturePosts.connected ? [`culture_posts rows=${culturePosts.rows.length}`] : [culturePosts.errorMessage ?? "Not connected."]),
     countCard("ceo-active-shops", "Active Shops", "Operations", shops, activeShops.length, "Active shop count is read from shops status evidence."),

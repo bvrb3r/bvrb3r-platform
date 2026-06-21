@@ -507,4 +507,123 @@ describe("architect mission incident detection", () => {
       resultStatus: "succeeded"
     });
   });
+
+  it("marks resolved routing/refund evidence as no-repair-required without promoting all Finance blockers", async () => {
+    const base = createArchitectDebugTables();
+    const completedAppointment = base.appointments[0];
+    const completedPayment = base.payments[0];
+    const cancelledAppointment = {
+      ...completedAppointment,
+      id: "cancelled-refunded-routing-safe-appointment",
+      status: "cancelled",
+      completed_at: null,
+      updated_at: "2026-06-20T12:00:00.000Z"
+    };
+    const cancelledPayment = {
+      ...completedPayment,
+      id: "cancelled-refunded-routing-safe-payment",
+      appointment_id: cancelledAppointment.id,
+      status: "refunded",
+      payment_status: "refunded",
+      created_at: "2026-06-20T11:55:00.000Z"
+    };
+    const tables = createArchitectDebugTables({
+      appointments: [completedAppointment, cancelledAppointment],
+      payments: [completedPayment, cancelledPayment],
+      refunds: [{
+        id: "refund-safe-cancelled",
+        payment_id: cancelledPayment.id,
+        amount: 5,
+        status: "succeeded",
+        provider_refund_id: "re_safe_cancelled",
+        reason: "Cancelled appointment captured booking payment resolution",
+        created_at: "2026-06-20T12:00:00.000Z"
+      }],
+      payment_routing_records: [{
+        id: "routing-completed-safe",
+        payment_id: completedPayment.id,
+        appointment_id: completedAppointment.id,
+        routing_model: "freelance",
+        payout_recipient_type: "barber",
+        provider_gross_amount: 5,
+        refunded_amount: 0,
+        platform_fee_amount: 0.25,
+        barber_payout_amount: 4.75,
+        shop_split_amount: 0,
+        payout_readiness_status: "ready",
+        money_routing_status: "pending",
+        reconciliation_status: "open",
+        released_at: null,
+        updated_at: "2026-06-20T12:00:00.000Z"
+      }, {
+        id: "routing-cancelled-refunded-safe",
+        payment_id: cancelledPayment.id,
+        appointment_id: cancelledAppointment.id,
+        routing_model: "freelance",
+        payout_recipient_type: "barber",
+        provider_gross_amount: 5,
+        refunded_amount: 5,
+        platform_fee_amount: 0,
+        barber_payout_amount: 0,
+        shop_split_amount: 0,
+        payout_readiness_status: "ready",
+        money_routing_status: "refunded",
+        reconciliation_status: "open",
+        released_at: null,
+        held_at: "2026-06-20T12:00:00.000Z",
+        updated_at: "2026-06-20T12:00:00.000Z"
+      }],
+      payout_executions: []
+    });
+
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(tables) as never, ARCHITECT_USER);
+    const routingSummary = snapshot.financeEvidence?.routingSummary;
+    const routingCard = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-payment-routing-health");
+    const financeLane = snapshot.foundation.departmentLanes.find((lane) => lane.id === "finance");
+
+    expect(snapshot.incidents.some((incident) => incident.diagnosisCode === "completed_but_routing_missing")).toBe(false);
+    expect(snapshot.incidents.some((incident) => incident.diagnosisCode === "cancelled_captured_refund_missing")).toBe(false);
+    expect(routingSummary).toMatchObject({
+      status: "Pass",
+      inspectedBookingPaymentRows: 2,
+      rowsWithRouting: 2,
+      completedCapturedMissingRoutingCount: 0,
+      cancelledCapturedMissingRoutingCount: 0,
+      cancelledRefundedSafeRowCount: 1,
+      targetPayoutExecutionCount: 0,
+      proposedInsertCount: 0,
+      proposedUpdateCount: 0,
+      repairNeeded: false,
+      repairRouteAvailable: true,
+      repairRouteSafeToCall: false
+    });
+    expect(routingCard).toMatchObject({
+      status: "Pass",
+      metricValue: "No repair required"
+    });
+    expect(routingCard?.evidence.join("\n")).toContain("completedCapturedMissingRouting=0");
+    expect(routingCard?.evidence.join("\n")).toContain("cancelledCapturedMissingRouting=0");
+    expect(routingCard?.evidence.join("\n")).toContain("proposedInsertCount=0");
+    expect(routingCard?.evidence.join("\n")).toContain("proposedUpdateCount=0");
+    expect(financeLane?.cards.find((card) => card.id === "finance-routing")).toMatchObject({ status: "Pass" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-repair-audit-coverage")).toMatchObject({ status: "Failed" });
+    expect(financeLane?.status).toBe("Failed");
+  });
+
+  it("keeps missing routing evidence as a repair-needed failure", async () => {
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(createArchitectDebugTables()) as never, ARCHITECT_USER);
+    const routingSummary = snapshot.financeEvidence?.routingSummary;
+
+    expect(routingSummary).toMatchObject({
+      status: "Failed",
+      completedCapturedMissingRoutingCount: 1,
+      proposedInsertCount: 1,
+      repairNeeded: true,
+      repairRouteSafeToCall: true
+    });
+    expect(snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-payment-routing-health")).toMatchObject({
+      status: "Failed",
+      metricValue: "Repair needed"
+    });
+  });
 });
