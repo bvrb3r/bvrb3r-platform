@@ -475,6 +475,68 @@ describe("architect mission control", () => {
     });
   });
 
+  it("renders CEO card state semantics for Parked, Idle, Blocked, and Green Queue buckets", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createNoIncidentSnapshot()
+    });
+
+    render(<ArchitectMissionControl />);
+
+    expect(await screen.findByTestId("ceo-green-queue")).toBeInTheDocument();
+    expect(screen.getByTestId("architect-ceo-card-hive-ai")).toHaveTextContent("Parked");
+    expect(screen.getByTestId("architect-ceo-card-hive-ai")).toHaveTextContent("parked future");
+    expect(screen.getByTestId("architect-ceo-card-codex-packets")).toHaveTextContent("Idle");
+    expect(screen.getByTestId("architect-ceo-card-codex-packets")).toHaveTextContent("idle no action");
+    expect(screen.getByTestId("architect-ceo-card-source-vault")).toHaveTextContent("Blocked");
+    expect(screen.getByTestId("architect-ceo-card-critical-incidents")).toHaveTextContent("Pass");
+
+    expect(screen.getByTestId("ceo-green-queue-already_green")).toHaveTextContent("Already Green");
+    expect(screen.getByTestId("ceo-green-queue-parked_idle")).toHaveTextContent("Parked / Idle by design");
+    expect(screen.getByTestId("ceo-green-queue-needs_proof")).toHaveTextContent("Needs Proof");
+    expect(screen.getByTestId("ceo-green-queue-needs_repair")).toHaveTextContent("Needs Repair");
+    expect(screen.getByTestId("ceo-green-queue-blocked")).toHaveTextContent("Blocked / Approval Required");
+    expect(screen.getByTestId("ceo-green-queue-item-hive-ai")).toHaveTextContent("Technology");
+    expect(screen.getByTestId("ceo-green-queue-item-codex-packets")).toHaveTextContent("Technology");
+    expect(screen.getByTestId("ceo-green-queue-item-source-vault")).toHaveTextContent("Open Officer");
+    expect(within(screen.getByTestId("ceo-green-queue-item-source-vault")).getByRole("link", { name: "Open Officer" })).toHaveAttribute("href", "/architect/technology");
+  });
+
+  it("marks Codex Packets Needs Review when a selected incident is missing a packet", async () => {
+    const snapshot = createSnapshot();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...snapshot,
+        packets: {}
+      })
+    });
+
+    render(<ArchitectMissionControl />);
+
+    const card = await screen.findByTestId("architect-ceo-card-codex-packets");
+    expect(card).toHaveTextContent("Needs Review");
+    expect(card).toHaveTextContent("needs proof");
+    expect(screen.getByTestId("ceo-green-queue-needs_proof")).toHaveTextContent("Codex Packets");
+  });
+
+  it("keeps Critical Incidents as Needs Review when zero incidents have no scan proof", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...createNoIncidentSnapshot(),
+        checkedAt: ""
+      })
+    });
+
+    render(<ArchitectMissionControl />);
+
+    const card = await screen.findByTestId("architect-ceo-card-critical-incidents");
+    expect(card).toHaveTextContent("Needs Review");
+    expect(card).toHaveTextContent("needs proof");
+    expect(card).not.toHaveTextContent("Pass");
+  });
+
   it("renders connected deployment and regression proof fields in the Technology officer lane", async () => {
     const deploymentRegression = buildDeploymentRegressionEvidence({
       expectedMainCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",

@@ -14,6 +14,32 @@ export type MissionSystemKey =
 
 export type MissionControlStatus = "Pass" | "Warning" | "Failed" | "Needs Review";
 
+export type CeoCardStateStatus = MissionControlStatus | "Parked" | "Idle" | "Blocked";
+
+export type CeoCardStateType =
+  | "pass_evidence"
+  | "needs_proof"
+  | "failed_evidence"
+  | "parked_future"
+  | "idle_no_action"
+  | "blocked_requires_repair";
+
+export type CeoCardStateSemantics = {
+  cardId: string;
+  label: string;
+  officerOwner: MissionDepartment;
+  currentStatus: CeoCardStateStatus;
+  intendedStateType: CeoCardStateType;
+  reason: string;
+  evidenceSource: string;
+  missingProofCount: number;
+  failedProofCount: number;
+  v1Blocking: boolean;
+  requiredAction: string;
+  nextOfficerLane: MissionLaneId;
+  openLaneTarget: string;
+};
+
 export type ArchitectReadinessScope = "v1_required" | "v2_infrastructure" | "v3_future" | "parked";
 
 export type ArchitectReadinessCriticality = "critical" | "important" | "informational";
