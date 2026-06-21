@@ -7,6 +7,7 @@ import {
   OFFICER_ASSISTANT_DEPARTMENTS,
   SOURCE_VAULT_REGISTRY,
   buildMissionControlFoundation,
+  buildMissionReadinessBreakdown,
   classifyArchitectIncident,
   getOfficerAssistants,
   getAuditCoveragePlanEvidence,
@@ -131,6 +132,207 @@ describe("architect mission control foundation", () => {
     expect(complianceLane?.cards.find((card) => card.id === "compliance-trust-gates")).toMatchObject({ status: "Failed" });
     expect(technologyLane?.cards.find((card) => card.id === "technology-rls-disabled")).toMatchObject({ status: "Failed" });
     expect(securityLane?.cards.find((card) => card.id === "security-role-drift")?.evidence.join("\n")).toContain("no role mutation was attempted");
+  });
+
+  it("scopes every Architect evidence card for version-aware readiness", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
+    const cards = [
+      ...foundation.ceoCommandCenter,
+      ...foundation.departmentLanes.flatMap((lane) => lane.cards),
+      ...foundation.coreLoopValidators
+    ];
+
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) {
+      expect(card.scope).toMatch(/v1_required|v2_infrastructure|v3_future|parked/);
+      expect(card.criticality).toMatch(/critical|important|informational/);
+      expect(typeof card.blocksCurrentRelease).toBe("boolean");
+      expect(card.evidenceRequiredForPass).toEqual(expect.any(String));
+      expect(card.evidenceRequiredForPass?.length).toBeGreaterThan(20);
+    }
+  });
+
+  it("forces CEO readiness Failed when child required Security RLS evidence fails", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z", [{
+      id: "ceo-rls-disabled-evidence",
+      label: "RLS Disabled Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      metricValue: "28 disabled",
+      summary: "Public Supabase tables have RLS disabled.",
+      evidence: ["28 public Supabase table(s) have RLS disabled.", "No RLS enablement was attempted."]
+    }]);
+
+    expect(foundation.readinessBreakdown?.overallStatus).toBe("Failed");
+    expect(foundation.readinessBreakdown?.currentReleaseBlockers.map((card) => card.id)).toEqual(expect.arrayContaining([
+      "ceo-rls-disabled-evidence",
+      "security-rls-disabled",
+      "technology-rls-disabled"
+    ]));
+  });
+
+  it("does not let all-pass CEO cards hide failed child required cards", () => {
+    const ceoCards = [{
+      id: "overall-platform-status",
+      label: "Overall platform status",
+      department: "CEO" as const,
+      workflow: "Global Health",
+      status: "Pass" as const,
+      summary: "CEO card passed.",
+      evidence: ["CEO summary is passing."],
+      scope: "v1_required" as const,
+      criticality: "critical" as const,
+      blocksCurrentRelease: true,
+      evidenceRequiredForPass: "CEO platform status must be connected."
+    }];
+    const securityLane = {
+      id: "security" as const,
+      label: "Security" as const,
+      purpose: "Security evidence.",
+      status: "Failed" as const,
+      cards: [{
+        id: "security-rls-disabled",
+        label: "RLS disabled tables",
+        department: "Security" as const,
+        workflow: "Supabase RLS",
+        status: "Failed" as const,
+        summary: "RLS disabled evidence failed.",
+        evidence: ["28 public Supabase table(s) have RLS disabled."],
+        scope: "v1_required" as const,
+        criticality: "critical" as const,
+        blocksCurrentRelease: true,
+        evidenceRequiredForPass: "No V1 public table may remain RLS-disabled."
+      }]
+    };
+    const breakdown = buildMissionReadinessBreakdown(ceoCards, [securityLane]);
+
+    expect(breakdown.overallStatus).toBe("Failed");
+    expect(breakdown.v1RequiredFailedCount).toBe(1);
+    expect(breakdown.currentReleaseBlockers.map((card) => card.id)).toContain("security-rls-disabled");
+  });
+
+  it("forces CEO readiness Failed when Finance repair audit coverage fails", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z", [{
+      id: "ceo-audit-log-evidence",
+      label: "Audit Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      metricValue: "0 row(s)",
+      summary: "audit_logs returned 0 row(s).",
+      evidence: ["audit_logs returned 0 row(s).", "No audit row was inserted."]
+    }]);
+
+    expect(foundation.readinessBreakdown?.overallStatus).toBe("Failed");
+    expect(foundation.readinessBreakdown?.currentReleaseBlockers.map((card) => card.id)).toEqual(expect.arrayContaining([
+      "finance-repair-audit-coverage",
+      "security-audit"
+    ]));
+  });
+
+  it("parks future scaffolding without reducing the V1 readiness denominator", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
+    const parkedIds = foundation.readinessBreakdown?.futureParkedItems.map((card) => card.id) ?? [];
+    const v1Ids = [
+      ...foundation.ceoCommandCenter,
+      ...foundation.departmentLanes.flatMap((lane) => lane.cards),
+      ...foundation.coreLoopValidators
+    ].filter((card) => card.scope === "v1_required").map((card) => card.id);
+
+    expect(parkedIds).toEqual(expect.arrayContaining([
+      "operations-kiosk",
+      "marketing-referrals",
+      "marketing-campaigns",
+      "agent-status"
+    ]));
+    expect(v1Ids).not.toContain("operations-kiosk");
+    expect(v1Ids).not.toContain("marketing-referrals");
+    expect(v1Ids).not.toContain("marketing-campaigns");
+    expect(v1Ids).not.toContain("agent-status");
+  });
+
+  it("lowers V1 readiness for Needs Review required cards but not parked cards", () => {
+    const breakdown = buildMissionReadinessBreakdown([{
+      id: "operations-appointments",
+      label: "Appointments",
+      department: "Operations" as const,
+      workflow: "Appointments",
+      status: "Pass" as const,
+      summary: "Appointments pass.",
+      evidence: ["Appointment loop verified."],
+      scope: "v1_required" as const,
+      criticality: "critical" as const,
+      blocksCurrentRelease: true,
+      evidenceRequiredForPass: "Appointment loop must pass."
+    }, {
+      id: "finance-repair-audit-coverage",
+      label: "Repair audit coverage",
+      department: "Finance" as const,
+      workflow: "Audit",
+      status: "Needs Review" as const,
+      summary: "Audit evidence needs review.",
+      evidence: ["Audit trail evidence is not complete."],
+      scope: "v1_required" as const,
+      criticality: "critical" as const,
+      blocksCurrentRelease: true,
+      evidenceRequiredForPass: "Repair audit coverage must be connected."
+    }, {
+      id: "marketing-referrals",
+      label: "Referral readiness",
+      department: "Marketing" as const,
+      workflow: "Referrals",
+      status: "Needs Review" as const,
+      summary: "Future parked.",
+      evidence: ["Referral automation is not enabled."],
+      scope: "parked" as const,
+      criticality: "informational" as const,
+      blocksCurrentRelease: false,
+      evidenceRequiredForPass: "Referral readiness is parked outside V1."
+    }]);
+
+    expect(breakdown.overallStatus).toBe("Needs Review");
+    expect(breakdown.v1RequiredTotalCount).toBe(2);
+    expect(breakdown.v1RequiredPassCount).toBe(1);
+    expect(breakdown.v1ReadinessPercent).toBe(50);
+    expect(breakdown.futureParkedCount).toBe(1);
+  });
+
+  it("reaches 100 V1 readiness only when all v1_required cards pass", () => {
+    const passingCards = [{
+      id: "security-rls-disabled",
+      label: "RLS disabled tables",
+      department: "Security" as const,
+      workflow: "Supabase RLS",
+      status: "Pass" as const,
+      summary: "RLS evidence is clean.",
+      evidence: ["No public RLS-disabled tables are present."],
+      scope: "v1_required" as const,
+      criticality: "critical" as const,
+      blocksCurrentRelease: true,
+      evidenceRequiredForPass: "No V1 public table may remain RLS-disabled."
+    }, {
+      id: "marketing-campaigns",
+      label: "Campaign tracking future readiness",
+      department: "Marketing" as const,
+      workflow: "Campaigns",
+      status: "Needs Review" as const,
+      summary: "Future parked.",
+      evidence: ["No fake campaign tracking."],
+      scope: "parked" as const,
+      criticality: "informational" as const,
+      blocksCurrentRelease: false,
+      evidenceRequiredForPass: "Campaign tracking is parked outside V1."
+    }];
+    const allPass = buildMissionReadinessBreakdown(passingCards);
+    const failed = buildMissionReadinessBreakdown([{ ...passingCards[0], status: "Failed" as const }, passingCards[1]]);
+
+    expect(allPass.overallStatus).toBe("Pass");
+    expect(allPass.v1ReadinessPercent).toBe(100);
+    expect(allPass.v1RequiredTotalCount).toBe(1);
+    expect(allPass.futureParkedCount).toBe(1);
+    expect(failed.overallStatus).toBe("Failed");
+    expect(failed.v1ReadinessPercent).toBe(0);
   });
 
 

@@ -13,6 +13,7 @@ import type {
   MissionEvidenceCard,
   MissionIncidentDefinition,
   MissionLaneId,
+  MissionReadinessBreakdown,
   MissionSeverity,
   SourceVaultEntry
 } from "@/lib/architect/mission-control/types";
@@ -76,6 +77,136 @@ type CoreLoopFixture = {
     noPayoutBeforeCompletion?: boolean;
   };
 };
+
+type ReadinessMetadata = Pick<MissionEvidenceCard, "scope" | "criticality" | "blocksCurrentRelease" | "evidenceRequiredForPass">;
+
+const V1_CRITICAL_CARD_IDS = new Set([
+  "overall-platform-status",
+  "booking-posture",
+  "role-health",
+  "ceo-payment-routing-health",
+  "ceo-payout-readiness-health",
+  "ceo-role-drift-health",
+  "ceo-rls-disabled-evidence",
+  "ceo-audit-log-evidence",
+  "culture-to-booking-loop",
+  "booking-availability-loop",
+  "barber-calendar-loop",
+  "shop-relationship-loop",
+  "owner-command-calendar-loop",
+  "payment-routing-loop",
+  "product-booking-ux",
+  "operations-appointments",
+  "operations-calendars",
+  "operations-relationships",
+  "operations-command-calendars",
+  "operations-completion",
+  "finance-payment-health",
+  "finance-routing",
+  "finance-refund-resolution",
+  "finance-payout",
+  "finance-repair-audit-coverage",
+  "compliance-trust-gates",
+  "security-role-access",
+  "security-role-drift",
+  "security-rls-disabled",
+  "security-route-protection",
+  "security-unsafe-actions",
+  "security-audit",
+  "technology-rls-disabled"
+]);
+
+const V2_INFRASTRUCTURE_CARD_IDS = new Set([
+  "source-vault-status",
+  "deployment-health",
+  "regression-status",
+  "deployment-regression",
+  "technology-deployments",
+  "technology-build-tests",
+  "technology-database",
+  "technology-api",
+  "technology-schema",
+  "technology-coverage",
+  "security-audit-plan",
+  "compliance-policy"
+]);
+
+const V3_FUTURE_CARD_IDS = new Set([
+  "agent-status",
+  "hive-ai"
+]);
+
+const PARKED_CARD_IDS = new Set([
+  "operations-kiosk",
+  "finance-future",
+  "marketing-referrals",
+  "marketing-campaigns",
+  "compliance-consent",
+  "community-moderation",
+  "community-creators",
+  "community-signals"
+]);
+
+function readinessMetadataForCard(card: Pick<MissionEvidenceCard, "id" | "label" | "workflow" | "department">): ReadinessMetadata {
+  if (PARKED_CARD_IDS.has(card.id)) {
+    return {
+      scope: "parked",
+      criticality: "informational",
+      blocksCurrentRelease: false,
+      evidenceRequiredForPass: `${card.label} is parked for a later release and must not be counted as V1 Pass until a real owner, source, and validator exist.`
+    };
+  }
+
+  if (V3_FUTURE_CARD_IDS.has(card.id)) {
+    return {
+      scope: "v3_future",
+      criticality: "informational",
+      blocksCurrentRelease: false,
+      evidenceRequiredForPass: `${card.label} is future AI/workforce scaffolding. It requires a clean evidence foundation before it can become release-blocking.`
+    };
+  }
+
+  if (V2_INFRASTRUCTURE_CARD_IDS.has(card.id)) {
+    return {
+      scope: "v2_infrastructure",
+      criticality: "important",
+      blocksCurrentRelease: false,
+      evidenceRequiredForPass: `${card.label} needs connected infrastructure evidence before it can be treated as implemented. It does not block V1 readiness unless explicitly promoted.`
+    };
+  }
+
+  if (V1_CRITICAL_CARD_IDS.has(card.id)) {
+    return {
+      scope: "v1_required",
+      criticality: "critical",
+      blocksCurrentRelease: true,
+      evidenceRequiredForPass: `${card.label} must report Pass from connected V1 evidence before the current release can be considered healthy.`
+    };
+  }
+
+  return {
+    scope: "v1_required",
+    criticality: "important",
+    blocksCurrentRelease: true,
+    evidenceRequiredForPass: `${card.label} must report Pass from connected V1 evidence. Missing data remains Needs Review and failed data remains Failed.`
+  };
+}
+
+function scopeEvidenceCard<T extends MissionEvidenceCard>(card: T): T {
+  const metadata = readinessMetadataForCard(card);
+
+  return {
+    ...card,
+    scope: card.scope ?? metadata.scope,
+    criticality: card.criticality ?? metadata.criticality,
+    blocksCurrentRelease: card.blocksCurrentRelease ?? metadata.blocksCurrentRelease,
+    evidenceRequiredForPass: card.evidenceRequiredForPass ?? metadata.evidenceRequiredForPass
+  };
+}
+
+function scopeEvidenceCards<T extends MissionEvidenceCard>(cards: T[]): T[] {
+  return cards.map(scopeEvidenceCard);
+}
 
 export const MISSION_CONTROL_LANES: MissionControlLane[] = [
   { id: "ceo", label: "CEO", href: "/architect/ceo", purpose: "Global platform truth, risks, and executive decisions." },
@@ -332,24 +463,73 @@ export function buildMissionControlFoundation(
   checkedAt = new Date().toISOString(),
   ceoPlatformMetrics: MissionEvidenceCard[] = []
 ): MissionControlFoundation {
-  const coreLoopValidators = applyIncidentFailures(validateCoreLoopState(), incidents);
+  const coreLoopValidators = scopeEvidenceCards(applyIncidentFailures(validateCoreLoopState(), incidents));
   const departmentLanes = buildDepartmentLanes(coreLoopValidators, incidents, ceoPlatformMetrics);
   const ceoCommandCenter = [
     ...buildCeoPlatformMetricCards(ceoPlatformMetrics),
     ...buildCeoCards(coreLoopValidators, incidents, checkedAt)
   ];
+  const scopedCeoCommandCenter = scopeEvidenceCards(ceoCommandCenter);
+  const readinessBreakdown = buildMissionReadinessBreakdown(scopedCeoCommandCenter, departmentLanes, coreLoopValidators);
 
   return {
     navigationLanes: MISSION_CONTROL_LANES,
     defaultLaneId: "ceo",
-    ceoCommandCenter,
+    ceoCommandCenter: scopedCeoCommandCenter,
     departmentLanes,
     coreLoopValidators,
+    readinessBreakdown,
     incidentTypes: MISSION_INCIDENT_DEFINITIONS,
     sourceVault: SOURCE_VAULT_REGISTRY,
     actionRegistry: ACTION_REGISTRY,
     agentRegistry: HIVE_AGENT_REGISTRY,
     codexFailureClasses: CODEX_FAILURE_CLASSES
+  };
+}
+
+export function buildMissionReadinessBreakdown(
+  ceoCommandCenter: MissionEvidenceCard[] = [],
+  departmentLanes: MissionDepartmentLane[] = [],
+  coreLoopValidators: CoreLoopValidator[] = []
+): MissionReadinessBreakdown {
+  const cards = [
+    ...scopeEvidenceCards(ceoCommandCenter),
+    ...departmentLanes.flatMap((lane) => scopeEvidenceCards(lane.cards)),
+    ...scopeEvidenceCards(coreLoopValidators)
+  ];
+  const v1Required = cards.filter((card) => card.scope === "v1_required");
+  const passCards = v1Required.filter((card) => card.status === "Pass");
+  const failedCards = v1Required.filter((card) => card.status === "Failed");
+  const needsReviewCards = v1Required.filter((card) => card.status !== "Pass" && card.status !== "Failed");
+  const criticalFailedBlockers = failedCards.filter((card) => card.criticality === "critical" && card.blocksCurrentRelease);
+  const criticalNeedsReviewBlockers = needsReviewCards.filter((card) => card.criticality === "critical" && card.blocksCurrentRelease);
+  const currentReleaseBlockers = v1Required.filter((card) => card.blocksCurrentRelease && card.status !== "Pass");
+  const futureParkedItems = cards.filter((card) => card.scope !== "v1_required" || !card.blocksCurrentRelease);
+  const nextFoundationBlockers = cards.filter((card) =>
+    card.status !== "Pass"
+      && (card.scope === "v2_infrastructure" || card.scope === "v3_future")
+  );
+  const v1ReadinessPercent = v1Required.length ? Math.round((passCards.length / v1Required.length) * 100) : 0;
+  const overallStatus: MissionControlStatus = criticalFailedBlockers.length
+    ? "Failed"
+    : criticalNeedsReviewBlockers.length || currentReleaseBlockers.length
+      ? "Needs Review"
+      : v1Required.length > 0 && passCards.length === v1Required.length
+        ? "Pass"
+        : "Needs Review";
+
+  return {
+    overallStatus,
+    v1ReadinessPercent,
+    v1RequiredPassCount: passCards.length,
+    v1RequiredFailedCount: failedCards.length,
+    v1RequiredNeedsReviewCount: needsReviewCards.length,
+    v1RequiredTotalCount: v1Required.length,
+    futureParkedCount: futureParkedItems.length,
+    currentReleaseBlockers,
+    evidenceGaps: needsReviewCards,
+    nextFoundationBlockers,
+    futureParkedItems
   };
 }
 
@@ -419,10 +599,10 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
     department: MissionEvidenceCard["department"],
     workflow: string,
     missingSummary: string
-  ) => evidenceById.get(id) ?? {
+  ) => scopeEvidenceCard(evidenceById.get(id) ?? {
     ...evidenceCard(id, label, department, workflow, "Needs Review", missingSummary, ["Not connected."]),
     metricValue: "Not connected"
-  };
+  });
   const roleDrift = platformCard("ceo-role-drift-health", "Role Drift Evidence", "Security", "Role Drift", "Profile role drift evidence is not connected.");
   const rlsDisabled = platformCard("ceo-rls-disabled-evidence", "RLS Disabled Evidence", "Security", "Supabase RLS", "RLS disabled table evidence is not connected.");
   const auditEvidence = platformCard("ceo-audit-log-evidence", "Audit Evidence", "Security", "Audit", "Audit trail evidence is not connected.");
@@ -537,13 +717,17 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
     ]
   };
 
-  return MISSION_CONTROL_LANES.map((lane) => ({
+  return MISSION_CONTROL_LANES.map((lane) => {
+    const cards = scopeEvidenceCards(laneCards[lane.id]);
+
+    return {
     id: lane.id,
     label: lane.label,
     purpose: lane.purpose,
-    status: aggregateStatus(laneCards[lane.id]),
-    cards: laneCards[lane.id]
-  }));
+    status: aggregateStatus(cards),
+    cards
+    };
+  });
 }
 
 function applyIncidentFailures(validators: CoreLoopValidator[], incidents: ArchitectIncident[]) {
@@ -592,7 +776,7 @@ function buildValidator(
       ? `${missing.length} validation check(s) need evidence.`
       : "All validator checks passed for the provided fixture.";
 
-  return {
+  return scopeEvidenceCard({
     id,
     label,
     department,
@@ -607,7 +791,7 @@ function buildValidator(
     validationChecklist: checks.map((item) => item.label),
     safeRepairAvailable,
     codexPatchNeeded
-  };
+  });
 }
 
 function check(
@@ -629,7 +813,7 @@ function evidenceCard(
   summary: string,
   evidence: string[]
 ): MissionEvidenceCard {
-  return { id, label, department, workflow, status, summary, evidence };
+  return scopeEvidenceCard({ id, label, department, workflow, status, summary, evidence });
 }
 
 function validatorStatus(validators: CoreLoopValidator[], id: string): MissionControlStatus {

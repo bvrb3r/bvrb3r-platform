@@ -15,6 +15,7 @@ import type {
   FinanceLogEntry,
   FinanceRefundTarget,
   MissionControlFoundation,
+  MissionReadinessBreakdown,
   MissionControlSnapshot,
   MissionDepartmentLane,
   MissionEvidenceCard,
@@ -390,8 +391,12 @@ type CeoReadinessSummary = {
   needsReviewCount: number;
   totalCount: number;
   readinessPercent: number;
-  criticalBlockers: CompactCeoCard[];
-  missingRequiredEvidence: CompactCeoCard[];
+  futureParkedCount: number;
+  criticalBlockers: Array<CompactCeoCard | MissionEvidenceCard>;
+  missingRequiredEvidence: Array<CompactCeoCard | MissionEvidenceCard>;
+  currentReleaseBlockers: Array<CompactCeoCard | MissionEvidenceCard>;
+  evidenceGaps: Array<CompactCeoCard | MissionEvidenceCard>;
+  nextFoundationBlockers: Array<CompactCeoCard | MissionEvidenceCard>;
 };
 
 const CEO_CHECKLIST_IDS = new Set([
@@ -651,8 +656,29 @@ function buildCeoReadiness(cards: CompactCeoCard[]): CeoReadinessSummary {
     needsReviewCount,
     totalCount,
     readinessPercent,
+    futureParkedCount: 0,
     criticalBlockers,
-    missingRequiredEvidence
+    missingRequiredEvidence,
+    currentReleaseBlockers: [...criticalBlockers, ...missingRequiredEvidence],
+    evidenceGaps: missingRequiredEvidence,
+    nextFoundationBlockers: []
+  };
+}
+
+function readinessFromFoundationBreakdown(breakdown: MissionReadinessBreakdown): CeoReadinessSummary {
+  return {
+    overallStatus: breakdown.overallStatus,
+    passCount: breakdown.v1RequiredPassCount,
+    failedCount: breakdown.v1RequiredFailedCount,
+    needsReviewCount: breakdown.v1RequiredNeedsReviewCount,
+    totalCount: breakdown.v1RequiredTotalCount,
+    readinessPercent: breakdown.v1ReadinessPercent,
+    futureParkedCount: breakdown.futureParkedCount,
+    criticalBlockers: breakdown.currentReleaseBlockers.filter((card) => card.criticality === "critical" && card.status === "Failed"),
+    missingRequiredEvidence: breakdown.currentReleaseBlockers.filter((card) => card.criticality === "critical" && card.status !== "Pass" && card.status !== "Failed"),
+    currentReleaseBlockers: breakdown.currentReleaseBlockers,
+    evidenceGaps: breakdown.evidenceGaps,
+    nextFoundationBlockers: breakdown.nextFoundationBlockers
   };
 }
 
@@ -834,7 +860,9 @@ function CompactCeoCard({ card, onAction, onOpenDetail }: { card: CompactCeoCard
 
 function CeoReadinessCard({ readiness }: { readiness: CeoReadinessSummary }) {
   const headline = readiness.overallStatus === "Pass" ? "100% Pass" : readiness.overallStatus;
-  const blockerLabels = readiness.criticalBlockers.map((card) => card.label);
+  const blockerLabels = readiness.currentReleaseBlockers.map((card) => card.label);
+  const evidenceGapLabels = readiness.evidenceGaps.slice(0, 6).map((card) => card.label);
+  const foundationBlockerLabels = readiness.nextFoundationBlockers.slice(0, 6).map((card) => card.label);
 
   return (
     <article
@@ -844,44 +872,62 @@ function CeoReadinessCard({ readiness }: { readiness: CeoReadinessSummary }) {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">App Readiness</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">V1 Readiness</p>
             <StatusPill status={readiness.overallStatus} />
           </div>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <p className="text-4xl font-black leading-none tracking-[-0.055em] text-white sm:text-5xl">{headline}</p>
-            <p className="pb-1 text-sm font-bold text-white/54">{readiness.readinessPercent}% Pass evidence</p>
+            <p className="pb-1 text-sm font-bold text-white/54">{readiness.readinessPercent}% V1 required Pass evidence</p>
           </div>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/62">
-            Overall status requires every CEO checklist item to report Pass from connected evidence. Failed critical evidence blocks release; missing evidence stays Needs Review.
+            App Readiness is version-scoped. V1 counts only required evidence cards. Future and parked scaffolds stay visible, but they do not hide or dilute current release blockers.
           </p>
           <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-white/44">Overall status</p>
         </div>
 
-        <div className="grid min-w-full gap-2 sm:grid-cols-4 lg:min-w-[34rem]">
+        <div className="grid min-w-full gap-2 sm:grid-cols-5 lg:min-w-[42rem]">
           <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Pass count</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">V1 required pass</p>
             <p data-testid="ceo-readiness-pass-count" className="mt-1 text-2xl font-black text-[#d7ffab]">{readiness.passCount}</p>
           </div>
           <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Failed count</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">V1 required failed</p>
             <p data-testid="ceo-readiness-failed-count" className="mt-1 text-2xl font-black text-rose-100">{readiness.failedCount}</p>
           </div>
           <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Needs Review count</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">V1 needs review</p>
             <p data-testid="ceo-readiness-needs-review-count" className="mt-1 text-2xl font-black text-amber-100">{readiness.needsReviewCount}</p>
           </div>
           <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Critical blockers</p>
             <p data-testid="ceo-readiness-critical-blockers" className="mt-1 text-2xl font-black text-white">{readiness.criticalBlockers.length}</p>
           </div>
+          <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Future parked</p>
+            <p data-testid="ceo-readiness-future-parked-count" className="mt-1 text-2xl font-black text-white">{readiness.futureParkedCount}</p>
+          </div>
         </div>
       </div>
 
-      <div className="mt-3 rounded-[16px] border border-white/8 bg-black/18 p-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Critical Blocker</p>
-        <p className="mt-1 text-sm leading-6 text-white/62">
-          {blockerLabels.length ? blockerLabels.join(", ") : "No failed critical checklist blockers reported."}
-        </p>
+      <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Current Release Blockers</p>
+          <p data-testid="ceo-readiness-current-release-blockers" className="mt-1 text-sm leading-6 text-white/62">
+            {blockerLabels.length ? blockerLabels.join(", ") : "No V1 current release blockers reported."}
+          </p>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Evidence Gaps</p>
+          <p data-testid="ceo-readiness-evidence-gaps" className="mt-1 text-sm leading-6 text-white/62">
+            {evidenceGapLabels.length ? evidenceGapLabels.join(", ") : "No V1 evidence gaps reported."}
+          </p>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Foundation Blockers Before AI</p>
+          <p data-testid="ceo-readiness-foundation-blockers" className="mt-1 text-sm leading-6 text-white/62">
+            {foundationBlockerLabels.length ? foundationBlockerLabels.join(", ") : "No v2/v3 foundation blockers are release-scoped yet."}
+          </p>
+        </div>
       </div>
     </article>
   );
@@ -1495,7 +1541,9 @@ function ArchitectIssueDetailModal({
 
 function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexPacket }: { foundation: MissionControlFoundation; snapshot: MissionControlSnapshot; selectedIncident: ArchitectIncident | null; onCopyCodexPacket: () => void }) {
   const cards = buildCompactCeoCards(foundation, snapshot, selectedIncident);
-  const readiness = buildCeoReadiness(cards);
+  const readiness = foundation.readinessBreakdown
+    ? readinessFromFoundationBreakdown(foundation.readinessBreakdown)
+    : buildCeoReadiness(cards);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const selectedCard = cards.find((card) => card.id === selectedCardId) ?? null;
 
