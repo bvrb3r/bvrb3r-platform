@@ -416,52 +416,39 @@ describe("architect mission control", () => {
     expect(screen.getByText("Current Release Blockers")).toBeInTheDocument();
     expect(screen.getByText("Evidence Gaps")).toBeInTheDocument();
     expect(screen.getByText("Foundation Blockers Before AI")).toBeInTheDocument();
-    expect(screen.getByText("V1 Runtime Proof")).toBeInTheDocument();
-    expect(screen.getByText("Role and operating-loop proof matrix")).toBeInTheDocument();
-    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Deployment / Regression Evidence");
-    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Production commit");
-    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Expected main commit");
-    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Deployment ID");
-    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Build evidence");
-    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Lint evidence");
-    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Typecheck evidence");
-    expect(screen.getByTestId("deployment-regression-evidence")).toHaveTextContent("Test evidence");
-    expect(screen.getByTestId("deployment-regression-missing-gaps")).toHaveTextContent("Expected main commit evidence is not connected.");
-    expect(screen.getByText("Audit Spine")).toBeInTheDocument();
-    expect(screen.getByText("Controlled repair evidence stages")).toBeInTheDocument();
-    expect(screen.getByTestId("audit-spine")).toHaveTextContent("Approval");
-    expect(screen.getByTestId("audit-spine")).toHaveTextContent("Execution");
-    expect(screen.getByTestId("audit-spine")).toHaveTextContent("Verification");
-    expect(screen.getByTestId("audit-spine")).toHaveTextContent("Score Impact");
-    expect(screen.getByTestId("audit-spine")).toHaveTextContent("Refund rows can prove execution, but they cannot fake full repair audit Pass.");
-    expect(screen.getByTestId("v1-proof-group-client_loop")).toHaveTextContent("Client loop");
-    expect(screen.getByTestId("v1-proof-connected-client_loop")).toHaveTextContent("no");
-    expect(screen.getByTestId("v1-proof-group-barber_loop")).toHaveTextContent("Barber loop");
-    expect(screen.getByTestId("v1-proof-group-shop_owner_loop")).toHaveTextContent("Shop Owner loop");
-    expect(screen.getByTestId("v1-proof-group-money_loop")).toHaveTextContent("Money loop");
-    expect(screen.getByTestId("v1-proof-group-security_loop")).toHaveTextContent("Security loop");
-    expect(screen.getByTestId("v1-proof-group-deployment_loop")).toHaveTextContent("Deployment loop");
-    expect(screen.getByTestId("v1-proof-group-audit_loop")).toHaveTextContent("Audit loop");
-    expect(screen.getByTestId("v1-proof-group-audit_loop")).toHaveTextContent("Needs Review");
+    expect(screen.getByTestId("ceo-blocker-summary")).toHaveTextContent("Grouped by responsible officer lane.");
+    expect(screen.getByTestId("ceo-officer-status-grid")).toHaveTextContent("Product");
+    expect(screen.getByTestId("ceo-officer-status-grid")).toHaveTextContent("Technology");
+    expect(screen.getByTestId("ceo-officer-status-grid")).toHaveTextContent("Operations");
+    expect(screen.getByTestId("ceo-officer-status-grid")).toHaveTextContent("Finance");
+    expect(screen.getByTestId("ceo-officer-status-grid")).toHaveTextContent("Compliance");
+    expect(screen.getByTestId("ceo-officer-status-grid")).toHaveTextContent("Security");
+    expect(screen.getByTestId("ceo-officer-link-finance")).toHaveAttribute("href", "/architect/finance");
+    expect(screen.queryByTestId("v1-runtime-proof")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("deployment-regression-evidence")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("audit-spine")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("rls-security-inventory")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("role-truth-inventory")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("source-vault-inventory")).not.toBeInTheDocument();
     expect(screen.getByText("Overall status")).toBeInTheDocument();
     expect(screen.getByTestId("architect-ceo-card-platform-health")).toBeInTheDocument();
-    expect(screen.getByText("Money / App Revenue")).toBeInTheDocument();
-    expect(screen.getByText("Total Users")).toBeInTheDocument();
-    expect(screen.getByText("Clients")).toBeInTheDocument();
-    expect(screen.getByText("Barbers")).toBeInTheDocument();
-    expect(screen.getByText("Shop Owners")).toBeInTheDocument();
-    expect(screen.getByText("Bookings")).toBeInTheDocument();
-    expect(screen.getByText("Payments")).toBeInTheDocument();
-    expect(screen.getByText("Refund Evidence")).toBeInTheDocument();
-    expect(screen.getByText("Routing / Payout Readiness")).toBeInTheDocument();
-    expect(screen.getByText("Culture")).toBeInTheDocument();
-    expect(screen.getByText("Active Shops / Active Barbers")).toBeInTheDocument();
-    expect(screen.getByText("Critical Incidents")).toBeInTheDocument();
-    expect(screen.getByText("Deployment / Regression")).toBeInTheDocument();
-    expect(screen.getByText("Source Vault")).toBeInTheDocument();
-    expect(screen.getByText("Action Registry")).toBeInTheDocument();
-    expect(screen.getByText("Hive AI")).toBeInTheDocument();
-    expect(screen.getByText("Codex Packets")).toBeInTheDocument();
+    expect(screen.getByTestId("architect-ceo-card-money-revenue")).toHaveTextContent("Money / App Revenue");
+    expect(screen.getByTestId("architect-ceo-card-total-users")).toHaveTextContent("Total Users");
+    expect(screen.getByTestId("architect-ceo-card-clients")).toHaveTextContent("Clients");
+    expect(screen.getByTestId("architect-ceo-card-barbers")).toHaveTextContent("Barbers");
+    expect(screen.getByTestId("architect-ceo-card-shop-owners")).toHaveTextContent("Shop Owners");
+    expect(screen.getByTestId("architect-ceo-card-bookings")).toHaveTextContent("Bookings");
+    expect(screen.getByTestId("architect-ceo-card-payments")).toHaveTextContent("Payments");
+    expect(screen.getByTestId("architect-ceo-card-refund-evidence")).toHaveTextContent("Refund Evidence");
+    expect(screen.getByTestId("architect-ceo-card-routing-payout")).toHaveTextContent("Routing / Payout Readiness");
+    expect(screen.getByTestId("architect-ceo-card-culture")).toHaveTextContent("Culture");
+    expect(screen.getByTestId("architect-ceo-card-active-supply")).toHaveTextContent("Active Shops / Active Barbers");
+    expect(screen.getByTestId("architect-ceo-card-critical-incidents")).toHaveTextContent("Critical Incidents");
+    expect(screen.getByTestId("architect-ceo-card-deployment-regression")).toHaveTextContent("Deployment / Regression");
+    expect(screen.getByTestId("architect-ceo-card-source-vault")).toHaveTextContent("Source Vault");
+    expect(screen.getByTestId("architect-ceo-card-action-registry")).toHaveTextContent("Action Registry");
+    expect(screen.getByTestId("architect-ceo-card-hive-ai")).toHaveTextContent("Hive AI");
+    expect(screen.getByTestId("architect-ceo-card-codex-packets")).toHaveTextContent("Codex Packets");
     expect(screen.getByRole("button", { name: /copy codex packet/i })).toBeInTheDocument();
     expect(screen.getByTestId("architect-ceo-card-platform-health")).toHaveClass("rounded-[18px]", "bg-black/24");
     [
@@ -488,7 +475,7 @@ describe("architect mission control", () => {
     });
   });
 
-  it("renders connected deployment and regression proof fields on the CEO dashboard", async () => {
+  it("renders connected deployment and regression proof fields in the Technology officer lane", async () => {
     const deploymentRegression = buildDeploymentRegressionEvidence({
       expectedMainCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
       runtimeCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
@@ -512,7 +499,7 @@ describe("architect mission control", () => {
       json: async () => snapshot
     });
 
-    render(<ArchitectMissionControl />);
+    render(<ArchitectMissionControl laneId="technology" />);
 
     const panel = await screen.findByTestId("deployment-regression-evidence");
     expect(panel).toHaveTextContent("c8c2b1f04978bd42970ba16787bdb7965adb099d");
@@ -521,6 +508,36 @@ describe("architect mission control", () => {
     expect(panel).toHaveTextContent("Pass");
     expect(panel).toHaveTextContent("https://www.bvrb3r.app");
     expect(screen.getByTestId("v1-proof-group-deployment_loop")).toHaveTextContent("Deployment loop");
+  });
+
+  it("renders detailed proof panels inside responsible officer lanes", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => createSnapshot()
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => createSnapshot()
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => createSnapshot()
+      });
+
+    const { rerender } = render(<ArchitectMissionControl laneId="product" />);
+    expect(await screen.findByTestId("v1-proof-group-client_loop")).toHaveTextContent("Client loop");
+    expect(screen.queryByTestId("deployment-regression-evidence")).not.toBeInTheDocument();
+
+    rerender(<ArchitectMissionControl laneId="compliance" />);
+    expect(await screen.findByTestId("audit-spine")).toHaveTextContent("Controlled repair evidence stages");
+    expect(screen.getByTestId("v1-proof-group-audit_loop")).toHaveTextContent("Audit loop");
+    expect(screen.getByTestId("role-truth-inventory")).toBeInTheDocument();
+
+    rerender(<ArchitectMissionControl laneId="security" />);
+    expect(await screen.findByTestId("rls-security-inventory")).toBeInTheDocument();
+    expect(screen.getByTestId("v1-proof-group-security_loop")).toHaveTextContent("Security loop");
+    expect(screen.getByTestId("role-truth-inventory")).toBeInTheDocument();
   });
 
   it("shows Officer Cleanup guardrails in the Hive AI detail popup", async () => {
@@ -553,7 +570,8 @@ describe("architect mission control", () => {
     expect(within(readiness).getAllByText("Failed").length).toBeGreaterThan(0);
     expect(Number(screen.getByTestId("ceo-readiness-failed-count").textContent)).toBeGreaterThan(0);
     expect(Number(screen.getByTestId("ceo-readiness-critical-blockers").textContent)).toBeGreaterThan(0);
-    expect(screen.getByTestId("ceo-readiness-current-release-blockers")).toHaveTextContent("Payment health");
+    expect(screen.getByTestId("ceo-readiness-current-release-blockers")).toHaveTextContent("Grouped by responsible officer lane.");
+    expect(screen.getByTestId("ceo-officer-blocker-finance")).toHaveTextContent("Payment Routing Health");
     expect(readiness).not.toHaveTextContent("100% Pass");
   });
 
@@ -569,7 +587,8 @@ describe("architect mission control", () => {
     expect(within(readiness).getAllByText("Failed").length).toBeGreaterThan(0);
     expect(Number(screen.getByTestId("ceo-readiness-critical-blockers").textContent)).toBeGreaterThan(0);
     expect(Number(screen.getByTestId("ceo-readiness-needs-review-count").textContent)).toBeGreaterThan(0);
-    expect(screen.getByTestId("ceo-readiness-current-release-blockers")).toHaveTextContent("RLS Disabled Evidence");
+    expect(screen.getByTestId("ceo-readiness-current-release-blockers")).toHaveTextContent("Grouped by responsible officer lane.");
+    expect(screen.getByTestId("ceo-officer-blocker-security")).toHaveTextContent("RLS Disabled Evidence");
     expect(readiness).not.toHaveTextContent("100% Pass");
   });
 
@@ -715,7 +734,8 @@ describe("architect mission control", () => {
 
     render(<ArchitectMissionControl />);
 
-    const totalUsersCard = (await screen.findByText("Total Users")).closest("article");
+    await screen.findByText("BVRB3R Architect Operating System");
+    const totalUsersCard = screen.getByTestId("architect-ceo-card-total-users");
     expect(totalUsersCard).toHaveTextContent("Needs Review");
     expect(totalUsersCard).toHaveTextContent("Not connected");
     expect(totalUsersCard).not.toHaveTextContent("Pass");

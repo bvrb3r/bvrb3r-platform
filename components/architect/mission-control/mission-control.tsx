@@ -407,6 +407,28 @@ type CeoReadinessSummary = {
   nextFoundationBlockers: Array<CompactCeoCard | MissionEvidenceCard>;
 };
 
+type CeoOfficerStatusSummary = {
+  laneId: MissionLaneId;
+  label: string;
+  status: MissionControlStatus;
+  href: Route;
+  failedCount: number;
+  needsReviewCount: number;
+  criticalBlockerCount: number;
+  proofConnected: boolean;
+};
+
+type CeoOfficerBlockerGroup = {
+  laneId: MissionLaneId;
+  label: string;
+  status: MissionControlStatus;
+  href: Route;
+  failedCount: number;
+  needsReviewCount: number;
+  criticalBlockerCount: number;
+  blockers: Array<CompactCeoCard | MissionEvidenceCard>;
+};
+
 const CEO_CHECKLIST_IDS = new Set([
   "platform-health",
   "money-revenue",
@@ -427,6 +449,26 @@ const CEO_CHECKLIST_IDS = new Set([
   "hive-ai",
   "codex-packets"
 ]);
+
+const OFFICER_LANE_IDS: MissionLaneId[] = [
+  "product",
+  "technology",
+  "operations",
+  "finance",
+  "marketing",
+  "compliance",
+  "security",
+  "content_community"
+];
+
+const RUNTIME_PROOF_GROUPS_BY_LANE: Partial<Record<MissionLaneId, V1RuntimeProofGroup["id"][]>> = {
+  product: ["client_loop"],
+  operations: ["barber_loop", "shop_owner_loop"],
+  finance: ["money_loop"],
+  technology: ["deployment_loop"],
+  security: ["security_loop"],
+  compliance: ["audit_loop"]
+};
 
 const FINANCE_REPAIR_INSPECT_AREAS = [
   "lib/architect/mission-control/foundation.ts",
@@ -537,6 +579,120 @@ function worstStatus(...statuses: Array<MissionControlStatus | undefined>): Miss
     if (!status) return worst;
     return statusRank(status) > statusRank(worst) ? status : worst;
   }, "Pass");
+}
+
+function laneHref(laneId: MissionLaneId): Route {
+  if (laneId === "ceo") return "/architect" as Route;
+  return `/architect/${laneId === "content_community" ? "content-community" : laneId}` as Route;
+}
+
+function departmentLaneId(department: string): MissionLaneId {
+  if (department === "Product") return "product";
+  if (department === "Technology") return "technology";
+  if (department === "Operations") return "operations";
+  if (department === "Finance") return "finance";
+  if (department === "Marketing") return "marketing";
+  if (department === "Compliance") return "compliance";
+  if (department === "Security") return "security";
+  if (department === "Content & Community") return "content_community";
+  return "technology";
+}
+
+function officerLaneForCard(card: CompactCeoCard | MissionEvidenceCard): MissionLaneId {
+  const id = card.id.toLowerCase();
+  const label = card.label.toLowerCase();
+  const workflow = "workflow" in card ? card.workflow.toLowerCase() : "";
+  const combined = `${id} ${label} ${workflow}`;
+
+  if (combined.includes("payment") || combined.includes("refund") || combined.includes("payout") || combined.includes("routing") || combined.includes("fee") || combined.includes("money")) {
+    return "finance";
+  }
+  if (combined.includes("rls") || combined.includes("security") || combined.includes("unsafe") || combined.includes("access")) {
+    return "security";
+  }
+  if (combined.includes("role") || combined.includes("trust") || combined.includes("verification") || combined.includes("audit")) {
+    return "compliance";
+  }
+  if (combined.includes("deploy") || combined.includes("regression") || combined.includes("source") || combined.includes("build") || combined.includes("test") || combined.includes("api") || combined.includes("schema")) {
+    return "technology";
+  }
+  if (combined.includes("client") || combined.includes("booking") || combined.includes("culture") || combined.includes("feature")) {
+    return "product";
+  }
+  if (combined.includes("barber") || combined.includes("owner") || combined.includes("appointment") || combined.includes("calendar") || combined.includes("shop") || combined.includes("relationship") || combined.includes("kiosk")) {
+    return "operations";
+  }
+  if (combined.includes("content") || combined.includes("community") || combined.includes("comment")) {
+    return "content_community";
+  }
+
+  return "department" in card ? departmentLaneId(card.department) : "technology";
+}
+
+function labelForLane(foundation: MissionControlFoundation, laneId: MissionLaneId) {
+  return foundation.departmentLanes.find((lane) => lane.id === laneId)?.label ?? (
+    laneId === "content_community" ? "Content & Community" : laneId.replace(/_/g, " ")
+  );
+}
+
+function buildOfficerBlockerGroups(foundation: MissionControlFoundation, blockers: Array<CompactCeoCard | MissionEvidenceCard>): CeoOfficerBlockerGroup[] {
+  const groups = new Map<MissionLaneId, Array<CompactCeoCard | MissionEvidenceCard>>();
+
+  blockers.forEach((blocker) => {
+    const laneId = officerLaneForCard(blocker);
+    if (!OFFICER_LANE_IDS.includes(laneId)) return;
+    const existing = groups.get(laneId) ?? [];
+    existing.push(blocker);
+    groups.set(laneId, existing);
+  });
+
+  return Array.from(groups.entries())
+    .map(([laneId, groupBlockers]) => ({
+      laneId,
+      label: labelForLane(foundation, laneId),
+      status: worstStatus(...groupBlockers.map((blocker) => blocker.status)),
+      href: laneHref(laneId),
+      failedCount: groupBlockers.filter((blocker) => blocker.status === "Failed").length,
+      needsReviewCount: groupBlockers.filter((blocker) => blocker.status === "Needs Review").length,
+      criticalBlockerCount: groupBlockers.filter((blocker) => "criticality" in blocker && blocker.criticality === "critical").length,
+      blockers: groupBlockers.slice(0, 4)
+    }))
+    .sort((a, b) => statusRank(b.status) - statusRank(a.status) || b.criticalBlockerCount - a.criticalBlockerCount || b.blockers.length - a.blockers.length);
+}
+
+function getRuntimeProofGroupsForLane(laneId: MissionLaneId, groups: V1RuntimeProofGroup[]) {
+  const ownedGroupIds = RUNTIME_PROOF_GROUPS_BY_LANE[laneId] ?? [];
+  if (!ownedGroupIds.length) return [];
+  return groups.filter((group) => ownedGroupIds.includes(group.id));
+}
+
+function buildOfficerStatusSummaries(
+  foundation: MissionControlFoundation,
+  runtimeProofGroups: V1RuntimeProofGroup[],
+  blockerGroups: CeoOfficerBlockerGroup[]
+): CeoOfficerStatusSummary[] {
+  return OFFICER_LANE_IDS.map((laneId) => {
+    const lane = foundation.departmentLanes.find((candidate) => candidate.id === laneId);
+    const blockers = blockerGroups.find((group) => group.laneId === laneId);
+    const ownedProofGroups = getRuntimeProofGroupsForLane(laneId, runtimeProofGroups);
+    const laneCards = lane?.cards ?? [];
+    const failedCount = laneCards.filter((card) => card.status === "Failed").length + (blockers?.failedCount ?? 0);
+    const needsReviewCount = laneCards.filter((card) => card.status === "Needs Review").length + (blockers?.needsReviewCount ?? 0);
+    const proofConnected = ownedProofGroups.length > 0
+      ? ownedProofGroups.every((group) => group.proofConnected)
+      : laneCards.some((card) => card.evidence.length > 0);
+
+    return {
+      laneId,
+      label: String(lane?.label ?? labelForLane(foundation, laneId)),
+      status: worstStatus(lane?.status, blockers?.status, ...ownedProofGroups.map((group) => group.status)),
+      href: laneHref(laneId),
+      failedCount,
+      needsReviewCount,
+      criticalBlockerCount: blockers?.criticalBlockerCount ?? 0,
+      proofConnected
+    };
+  });
 }
 
 function metricValue(card: MissionEvidenceCard | undefined) {
@@ -854,11 +1010,16 @@ function CompactCeoCard({ card, onAction, onOpenDetail }: { card: CompactCeoCard
   );
 }
 
-function CeoReadinessCard({ readiness }: { readiness: CeoReadinessSummary }) {
+function CeoReadinessCard({
+  readiness,
+  officerSummaries,
+  blockerGroups
+}: {
+  readiness: CeoReadinessSummary;
+  officerSummaries: CeoOfficerStatusSummary[];
+  blockerGroups: CeoOfficerBlockerGroup[];
+}) {
   const headline = readiness.overallStatus === "Pass" ? "100% Pass" : readiness.overallStatus;
-  const blockerLabels = readiness.currentReleaseBlockers.map((card) => card.label);
-  const evidenceGapLabels = readiness.evidenceGaps.slice(0, 6).map((card) => card.label);
-  const foundationBlockerLabels = readiness.nextFoundationBlockers.slice(0, 6).map((card) => card.label);
 
   return (
     <article
@@ -905,24 +1066,82 @@ function CeoReadinessCard({ readiness }: { readiness: CeoReadinessSummary }) {
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-3">
-        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Current Release Blockers</p>
-          <p data-testid="ceo-readiness-current-release-blockers" className="mt-1 text-sm leading-6 text-white/62">
-            {blockerLabels.length ? blockerLabels.join(", ") : "No V1 current release blockers reported."}
-          </p>
+      <div className="mt-3 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-[18px] border border-white/8 bg-black/18 p-3" data-testid="ceo-blocker-summary">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Current Release Blockers</p>
+              <p data-testid="ceo-readiness-current-release-blockers" className="mt-1 text-sm leading-6 text-white/62">
+                {blockerGroups.length ? "Grouped by responsible officer lane." : "No V1 current release blockers reported."}
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-white/42">
+              <span className="rounded-[8px] border border-white/8 bg-black/24 px-2 py-1">{readiness.failedCount} Failed</span>
+              <span className="rounded-[8px] border border-white/8 bg-black/24 px-2 py-1">{readiness.needsReviewCount} Review</span>
+              <span className="rounded-[8px] border border-white/8 bg-black/24 px-2 py-1">{readiness.criticalBlockers.length} Critical</span>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {blockerGroups.length ? blockerGroups.slice(0, 6).map((group) => (
+              <section key={group.laneId} data-testid={`ceo-officer-blocker-${group.laneId}`} className="rounded-[14px] border border-white/8 bg-black/24 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">{group.label} officer</p>
+                    <p className="mt-1 text-sm font-black text-white">{group.failedCount} failed / {group.needsReviewCount} review</p>
+                  </div>
+                  <StatusPill status={group.status} />
+                </div>
+                <ul className="mt-2 space-y-1 text-xs leading-5 text-white/58">
+                  {group.blockers.slice(0, 3).map((blocker) => (
+                    <li key={blocker.id}>{blocker.label}</li>
+                  ))}
+                </ul>
+                <Link data-testid={`ceo-officer-link-${group.laneId}`} href={group.href} className="mt-3 inline-flex min-h-9 items-center rounded-[8px] border border-[#A3FF12]/24 px-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#d7ffab] hover:border-[#A3FF12]/50">
+                  Open Officer
+                </Link>
+              </section>
+            )) : (
+              <div className="rounded-[14px] border border-white/8 bg-black/24 p-3 text-sm text-white/58">
+                No release blocker group requires officer action.
+              </div>
+            )}
+          </div>
         </div>
-        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Evidence Gaps</p>
-          <p data-testid="ceo-readiness-evidence-gaps" className="mt-1 text-sm leading-6 text-white/62">
-            {evidenceGapLabels.length ? evidenceGapLabels.join(", ") : "No V1 evidence gaps reported."}
-          </p>
-        </div>
-        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Foundation Blockers Before AI</p>
-          <p data-testid="ceo-readiness-foundation-blockers" className="mt-1 text-sm leading-6 text-white/62">
-            {foundationBlockerLabels.length ? foundationBlockerLabels.join(", ") : "No v2/v3 foundation blockers are release-scoped yet."}
-          </p>
+
+        <div className="space-y-3">
+          <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Evidence Gaps</p>
+            <p data-testid="ceo-readiness-evidence-gaps" className="mt-1 text-sm leading-6 text-white/62">
+              {readiness.evidenceGaps.length ? `${readiness.evidenceGaps.length} V1 evidence gap(s) need officer inspection.` : "No V1 evidence gaps reported."}
+            </p>
+          </div>
+          <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Foundation Blockers Before AI</p>
+            <p data-testid="ceo-readiness-foundation-blockers" className="mt-1 text-sm leading-6 text-white/62">
+              {readiness.nextFoundationBlockers.length ? `${readiness.nextFoundationBlockers.length} foundation blocker(s) remain before AI.` : "No v2/v3 foundation blockers are release-scoped yet."}
+            </p>
+          </div>
+          <div className="rounded-[16px] border border-white/8 bg-black/18 p-3" data-testid="ceo-officer-status-grid">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Officer Status Grid</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {officerSummaries.map((officer) => (
+                <Link key={officer.laneId} href={officer.href} className="rounded-[12px] border border-white/8 bg-black/24 p-3 hover:border-[#A3FF12]/26">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-black text-white">{officer.label}</p>
+                      <p className="mt-1 text-[11px] text-white/48">
+                        {officer.failedCount} failed / {officer.needsReviewCount} review
+                      </p>
+                    </div>
+                    <StatusPill status={officer.status} />
+                  </div>
+                  <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.12em] text-white/38">
+                    proof connected: {officer.proofConnected ? "yes" : "no"}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </article>
@@ -1801,6 +2020,8 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
   const readiness = foundation.readinessBreakdown
     ? readinessFromFoundationBreakdown(foundation.readinessBreakdown)
     : readinessFromFoundationBreakdown(buildMissionReadinessBreakdown(foundation.ceoCommandCenter, foundation.departmentLanes, foundation.coreLoopValidators, runtimeProofMatrix));
+  const blockerGroups = buildOfficerBlockerGroups(foundation, readiness.currentReleaseBlockers);
+  const officerSummaries = buildOfficerStatusSummaries(foundation, runtimeProofMatrix.groups, blockerGroups);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const selectedCard = cards.find((card) => card.id === selectedCardId) ?? null;
 
@@ -1813,10 +2034,7 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
         </div>
         <p className="text-xs text-white/48">Missing data stays Needs Review. Failed evidence stays Failed.</p>
       </div>
-      <CeoReadinessCard readiness={readiness} />
-      <V1RuntimeProofPanel groups={runtimeProofMatrix.groups} />
-      <DeploymentRegressionEvidencePanel evidence={foundation.deploymentRegression} />
-      <AuditSpinePanel auditSpine={foundation.auditSpine} />
+      <CeoReadinessCard readiness={readiness} officerSummaries={officerSummaries} blockerGroups={blockerGroups} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
         {cards.map((card) => (
           <CompactCeoCard
@@ -2348,6 +2566,7 @@ function DepartmentLaneDetail({
     activeUnresolvedRefundBlockerCount: activeRefundTargets.length,
     lastRefundTimestamp: null
   };
+  const runtimeProofGroups = getRuntimeProofGroupsForLane(lane.id, foundation.v1RuntimeProofMatrix?.groups ?? []);
 
   function openFinanceLogs() {
     setSelectedIssueId(null);
@@ -2383,6 +2602,15 @@ function DepartmentLaneDetail({
       </article>
       {lane.id === "finance" ? (
         <FinanceLogsPanel logs={refundLogs} metrics={refundMetrics} />
+      ) : null}
+      {runtimeProofGroups.length ? (
+        <V1RuntimeProofPanel groups={runtimeProofGroups} />
+      ) : null}
+      {lane.id === "technology" ? (
+        <DeploymentRegressionEvidencePanel evidence={foundation.deploymentRegression} />
+      ) : null}
+      {lane.id === "finance" || lane.id === "compliance" ? (
+        <AuditSpinePanel auditSpine={foundation.auditSpine} />
       ) : null}
       {lane.id === "security" ? (
         <RlsSecurityInventoryPanel inventory={foundation.rlsSecurityInventory} />
