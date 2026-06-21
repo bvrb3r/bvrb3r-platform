@@ -14,6 +14,9 @@ import type {
   AuditSpineModel,
   AuditSpineRecord,
   AuditSpineStatus,
+  CeoCardStateSemantics,
+  CeoCardStateStatus,
+  CeoCardStateType,
   DeploymentRegressionEvidence,
   FinanceLogCategory,
   FinanceLogEntry,
@@ -80,6 +83,15 @@ function statusClass(status?: string | null) {
   const normalized = String(status ?? "").toLowerCase();
   if (["healthy", "pass", "completed", "eligible", "ready"].some((token) => normalized.includes(token))) {
     return "border-[#7CFF00]/25 bg-[#7CFF00]/12 text-[#d7ffab]";
+  }
+  if (["idle"].some((token) => normalized.includes(token))) {
+    return "border-emerald-300/20 bg-emerald-300/8 text-emerald-100";
+  }
+  if (["parked", "future"].some((token) => normalized.includes(token))) {
+    return "border-sky-300/22 bg-sky-300/8 text-sky-100";
+  }
+  if (["blocked"].some((token) => normalized.includes(token))) {
+    return "border-orange-300/28 bg-orange-300/10 text-orange-100";
   }
   if (["warning", "review", "unknown"].some((token) => normalized.includes(token))) {
     return "border-amber-300/25 bg-amber-300/10 text-amber-100";
@@ -342,7 +354,8 @@ function buildCodexRepairPrompt(issue: ArchitectIssueDetail) {
 type CompactCeoCard = {
   id: string;
   label: string;
-  status: MissionControlStatus;
+  status: CeoCardStateStatus;
+  underlyingStatus: MissionControlStatus;
   value: string;
   summary: string;
   explanation: string;
@@ -356,6 +369,7 @@ type CompactCeoCard = {
   chartPoints?: CeoChartPoint[];
   href?: Route;
   actionLabel?: string;
+  stateSemantics: CeoCardStateSemantics;
 };
 
 type CeoChartPoint = {
@@ -427,6 +441,15 @@ type CeoOfficerBlockerGroup = {
   needsReviewCount: number;
   criticalBlockerCount: number;
   blockers: Array<CompactCeoCard | MissionEvidenceCard>;
+};
+
+type CeoGreenQueueBucketId = "already_green" | "parked_idle" | "needs_proof" | "needs_repair" | "blocked";
+
+type CeoGreenQueueBucket = {
+  id: CeoGreenQueueBucketId;
+  label: string;
+  summary: string;
+  cards: CompactCeoCard[];
 };
 
 const CEO_CHECKLIST_IDS = new Set([
@@ -567,17 +590,26 @@ function findCeoCard(foundation: MissionControlFoundation, id: string) {
   return foundation.ceoCommandCenter.find((card) => card.id === id);
 }
 
-function statusRank(status: MissionControlStatus) {
+function statusRank(status: MissionControlStatus | CeoCardStateStatus) {
   if (status === "Failed") return 3;
+  if (status === "Blocked") return 3;
   if (status === "Warning") return 2;
   if (status === "Needs Review") return 1;
   return 0;
 }
 
-function worstStatus(...statuses: Array<MissionControlStatus | undefined>): MissionControlStatus {
+function missionStatusForAggregate(status: MissionControlStatus | CeoCardStateStatus | undefined): MissionControlStatus | undefined {
+  if (!status) return undefined;
+  if (status === "Blocked") return "Failed";
+  if (status === "Parked" || status === "Idle") return "Pass";
+  return status;
+}
+
+function worstStatus(...statuses: Array<MissionControlStatus | CeoCardStateStatus | undefined>): MissionControlStatus {
   return statuses.reduce<MissionControlStatus>((worst, status) => {
-    if (!status) return worst;
-    return statusRank(status) > statusRank(worst) ? status : worst;
+    const normalized = missionStatusForAggregate(status);
+    if (!normalized) return worst;
+    return statusRank(normalized) > statusRank(worst) ? normalized : worst;
   }, "Pass");
 }
 
@@ -627,6 +659,112 @@ function officerLaneForCard(card: CompactCeoCard | MissionEvidenceCard): Mission
   }
 
   return "department" in card ? departmentLaneId(card.department) : "technology";
+}
+
+function departmentForLane(laneId: MissionLaneId): MissionDepartmentLane["label"] {
+  if (laneId === "product") return "Product";
+  if (laneId === "technology") return "Technology";
+  if (laneId === "operations") return "Operations";
+  if (laneId === "finance") return "Finance";
+  if (laneId === "marketing") return "Marketing";
+  if (laneId === "compliance") return "Compliance";
+  if (laneId === "security") return "Security";
+  if (laneId === "content_community") return "Content & Community";
+  return "CEO";
+}
+
+function evidenceSourceForCard(evidence: string[]) {
+  const connectedRows = evidence.filter((row) => !row.toLowerCase().includes("no connected evidence"));
+  return connectedRows.length ? connectedRows.slice(0, 2).join(" | ") : "Not connected";
+}
+
+function countEvidenceRows(evidence: string[], tokens: string[]) {
+  return evidence.filter((row) => {
+    const normalized = row.toLowerCase();
+    return tokens.some((token) => normalized.includes(token));
+  }).length;
+}
+
+function countMissingProofRows(evidence: string[]) {
+  return countEvidenceRows(evidence, ["not connected", "missing", "has not been inspected", "needs review", "incomplete"]);
+}
+
+function countFailedProofRows(evidence: string[]) {
+  return countEvidenceRows(evidence, ["failed", "blocked", "unsafe", "disabled", "drift", "missing required"]);
+}
+
+function stateTypeFromStatus(status: CeoCardStateStatus): CeoCardStateType {
+  if (status === "Pass") return "pass_evidence";
+  if (status === "Parked") return "parked_future";
+  if (status === "Idle") return "idle_no_action";
+  if (status === "Blocked") return "blocked_requires_repair";
+  if (status === "Failed") return "failed_evidence";
+  return "needs_proof";
+}
+
+function requiredActionForState(label: string, stateType: CeoCardStateType, nextLane: MissionLaneId) {
+  if (stateType === "pass_evidence") return `Keep ${label} monitored from connected evidence.`;
+  if (stateType === "parked_future") return `${label} is parked by design and should stay neutral until promoted into active scope.`;
+  if (stateType === "idle_no_action") return `${label} has no active work item. Leave it idle unless a required incident or packet appears.`;
+  if (stateType === "blocked_requires_repair") return `Open ${departmentForLane(nextLane)} and plan the controlled prerequisite repair before expecting this card to go green.`;
+  if (stateType === "failed_evidence") return `Open ${departmentForLane(nextLane)} and repair the failed evidence before release readiness can improve.`;
+  return `Open ${departmentForLane(nextLane)} and connect the missing proof required for this card.`;
+}
+
+function reasonForState(label: string, status: CeoCardStateStatus, stateType: CeoCardStateType, summary: string) {
+  if (stateType === "pass_evidence") return `${label} has connected evidence currently supporting Pass.`;
+  if (stateType === "parked_future") return `${label} is intentionally parked/future and is not expected to be active for V1.`;
+  if (stateType === "idle_no_action") return `${label} has no active packet, incident, or action requirement.`;
+  if (stateType === "blocked_requires_repair") return `${label} is blocked by a controlled prerequisite: ${summary}`;
+  if (stateType === "failed_evidence") return `${label} has failed evidence: ${summary}`;
+  return `${label} needs proof before it can be treated as green: ${summary}`;
+}
+
+function buildCeoStateSemantics(input: {
+  id: string;
+  label: string;
+  status: CeoCardStateStatus;
+  underlyingStatus: MissionControlStatus;
+  summary: string;
+  evidence: string[];
+  href?: Route;
+  stateType?: CeoCardStateType;
+  v1Blocking?: boolean;
+  reason?: string;
+  requiredAction?: string;
+  nextOfficerLane?: MissionLaneId;
+}): CeoCardStateSemantics {
+  const nextOfficerLane = input.nextOfficerLane ?? officerLaneForCard({
+    id: input.id,
+    label: input.label,
+    status: input.underlyingStatus,
+    department: "CEO",
+    workflow: input.label,
+    summary: input.summary,
+    evidence: input.evidence
+  });
+  const stateType = input.stateType ?? stateTypeFromStatus(input.status);
+  const v1Blocking = input.v1Blocking ?? (
+    stateType === "failed_evidence"
+    || stateType === "blocked_requires_repair"
+    || (stateType === "needs_proof" && input.underlyingStatus !== "Pass")
+  );
+
+  return {
+    cardId: input.id,
+    label: input.label,
+    officerOwner: departmentForLane(nextOfficerLane),
+    currentStatus: input.status,
+    intendedStateType: stateType,
+    reason: input.reason ?? reasonForState(input.label, input.status, stateType, input.summary),
+    evidenceSource: evidenceSourceForCard(input.evidence),
+    missingProofCount: stateType === "parked_future" || stateType === "idle_no_action" ? 0 : countMissingProofRows(input.evidence),
+    failedProofCount: stateType === "parked_future" || stateType === "idle_no_action" ? 0 : countFailedProofRows(input.evidence),
+    v1Blocking,
+    requiredAction: input.requiredAction ?? requiredActionForState(input.label, stateType, nextOfficerLane),
+    nextOfficerLane,
+    openLaneTarget: input.href ?? laneHref(nextOfficerLane)
+  };
 }
 
 function labelForLane(foundation: MissionControlFoundation, laneId: MissionLaneId) {
@@ -721,6 +859,19 @@ function riskMeaning(label: string, status: MissionControlStatus) {
   return `${label} is not fully connected. Do not treat this as healthy until real evidence is wired and verified.`;
 }
 
+function displayRiskMeaning(label: string, status: CeoCardStateStatus) {
+  if (status === "Parked") {
+    return `${label} is intentionally parked. It should stay visible but neutral until the roadmap promotes it into active V1 scope.`;
+  }
+  if (status === "Idle") {
+    return `${label} has no active work item. Idle is neutral and should not be counted as missing proof.`;
+  }
+  if (status === "Blocked") {
+    return `${label} cannot go green until the mapped officer handles the prerequisite repair or approval gate.`;
+  }
+  return riskMeaning(label, status);
+}
+
 function isCriticalChecklistItem(id: string) {
   return CEO_CHECKLIST_IDS.has(id);
 }
@@ -729,13 +880,22 @@ function passRequirement(label: string) {
   return `${label} must report Pass from connected, role-safe evidence. Missing evidence stays Needs Review, and failed evidence stays Failed.`;
 }
 
-function currentTruth(label: string, status: MissionControlStatus, value: string, summary: string) {
+function currentTruth(label: string, status: CeoCardStateStatus, value: string, summary: string) {
   return `${label} is currently ${status}. Current value: ${value}. ${summary}`;
 }
 
-function missingOrFailed(label: string, status: MissionControlStatus, value: string, summary: string) {
+function missingOrFailed(label: string, status: CeoCardStateStatus, value: string, summary: string) {
   if (status === "Pass") {
     return `No missing or failed evidence is reported for ${label}. Continue monitoring before release decisions.`;
+  }
+  if (status === "Parked") {
+    return `${label} is parked/future by design and does not need active V1 proof yet.`;
+  }
+  if (status === "Idle") {
+    return `${label} has no active packet, incident, or task requirement.`;
+  }
+  if (status === "Blocked") {
+    return `${label} is blocked by a controlled prerequisite: ${summary}`;
   }
 
   if (status === "Failed") {
@@ -749,9 +909,18 @@ function missingOrFailed(label: string, status: MissionControlStatus, value: str
   return `${label} needs review before it can be counted as Pass: ${summary}`;
 }
 
-function nextChecklistAction(label: string, status: MissionControlStatus) {
+function nextChecklistAction(label: string, status: CeoCardStateStatus) {
   if (status === "Pass") {
     return `Keep ${label} monitored and revalidate it before launch gates.`;
+  }
+  if (status === "Parked") {
+    return `Leave ${label} parked until it becomes active product scope.`;
+  }
+  if (status === "Idle") {
+    return `No action is required for ${label} unless new incident evidence appears.`;
+  }
+  if (status === "Blocked") {
+    return `Open the mapped officer lane and clear the blocking prerequisite before expecting ${label} to go green.`;
   }
 
   if (status === "Failed") {
@@ -765,6 +934,12 @@ function compactCard(input: {
   id: string;
   label: string;
   status?: MissionControlStatus;
+  displayStatus?: CeoCardStateStatus;
+  stateType?: CeoCardStateType;
+  v1Blocking?: boolean;
+  stateReason?: string;
+  requiredAction?: string;
+  nextOfficerLane?: MissionLaneId;
   value?: string;
   summary?: string;
   explanation?: string;
@@ -774,18 +949,35 @@ function compactCard(input: {
   href?: Route;
   actionLabel?: string;
 }): CompactCeoCard {
-  const status = input.status ?? "Needs Review";
+  const underlyingStatus = input.status ?? "Needs Review";
+  const status = input.displayStatus ?? underlyingStatus;
   const summary = input.summary ?? "Missing data remains Needs Review.";
+  const evidence = input.evidence?.length ? input.evidence : ["No connected evidence source for this card yet."];
+  const stateSemantics = buildCeoStateSemantics({
+    id: input.id,
+    label: input.label,
+    status,
+    underlyingStatus,
+    summary,
+    evidence,
+    href: input.href,
+    stateType: input.stateType,
+    v1Blocking: input.v1Blocking,
+    reason: input.stateReason,
+    requiredAction: input.requiredAction,
+    nextOfficerLane: input.nextOfficerLane
+  });
 
   return {
     id: input.id,
     label: input.label,
     status,
+    underlyingStatus,
     value: input.value ?? "Not connected",
     summary,
     explanation: input.explanation ?? summary,
-    evidence: input.evidence?.length ? input.evidence : ["No connected evidence source for this card yet."],
-    riskMeaning: input.riskMeaning ?? riskMeaning(input.label, status),
+    evidence,
+    riskMeaning: input.riskMeaning ?? displayRiskMeaning(input.label, status),
     critical: isCriticalChecklistItem(input.id),
     passRequirement: passRequirement(input.label),
     currentTruth: currentTruth(input.label, status, input.value ?? "Not connected", summary),
@@ -793,7 +985,8 @@ function compactCard(input: {
     nextAction: nextChecklistAction(input.label, status),
     chartPoints: input.chartPoints,
     href: input.href,
-    actionLabel: input.actionLabel
+    actionLabel: input.actionLabel,
+    stateSemantics
   };
 }
 
@@ -815,6 +1008,9 @@ function readinessFromFoundationBreakdown(breakdown: MissionReadinessBreakdown):
 }
 
 function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: MissionControlSnapshot, selectedIncident: ArchitectIncident | null): CompactCeoCard[] {
+  const runtimeProofMatrix = foundation.v1RuntimeProofMatrix ?? buildV1RuntimeProofMatrix(foundation.ceoCommandCenter, foundation.departmentLanes, foundation.coreLoopValidators);
+  const readiness = foundation.readinessBreakdown
+    ?? buildMissionReadinessBreakdown(foundation.ceoCommandCenter, foundation.departmentLanes, foundation.coreLoopValidators, runtimeProofMatrix);
   const platform = findCeoCard(foundation, "overall-platform-status");
   const money = findCeoCard(foundation, "ceo-platform-fees");
   const totalUsers = findCeoCard(foundation, "ceo-total-users");
@@ -834,15 +1030,23 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
   const culture = findCeoCard(foundation, "ceo-culture-health");
   const shops = findCeoCard(foundation, "ceo-active-shops");
   const activeBarbers = findCeoCard(foundation, "ceo-active-barbers");
-  const incidents = findCeoCard(foundation, "ceo-critical-incidents");
+  const incidents = findCeoCard(foundation, "critical-incidents") ?? findCeoCard(foundation, "ceo-critical-incidents");
   const deployment = findCeoCard(foundation, "ceo-regression-deployment-health");
   const sourceVault = findCeoCard(foundation, "source-vault-status");
-  const hiveAi = findCeoCard(foundation, "agent-status");
   const unsafeActions = foundation.actionRegistry.filter((action) => action.riskClass === "Unsafe / blocked");
   const unsafeBlocked = unsafeActions.length > 0 && unsafeActions.every((action) => !action.allowed);
   const packetCount = Object.keys(snapshot.packets ?? {}).length;
   const selectedPacket = selectedIncident ? snapshot.packets[selectedIncident.id]?.codexPacket : null;
+  const packetRequired = Boolean(selectedIncident);
+  const criticalIncidentScanConnected = Boolean(snapshot.checkedAt || incidents?.evidence.some((row) => row.toLowerCase().includes("incident detector")));
+  const criticalIncidentCount = snapshot.incidents.filter((incident) => incident.severity === "critical").length;
+  const criticalIncidentsStatus: MissionControlStatus = incidents?.status === "Failed"
+    ? "Failed"
+    : criticalIncidentScanConnected && criticalIncidentCount === 0
+      ? "Pass"
+      : "Needs Review";
   const sourceVaultSummary = foundation.sourceVaultInventory?.summary ?? null;
+  const sourceVaultBlocked = Boolean(sourceVaultSummary && sourceVaultSummary.v1RequiredMissingCount > 0);
   const sourceVaultEvidence = foundation.sourceVaultInventory
     ? [
         `totalSourcesRegistered=${foundation.sourceVaultInventory.summary.totalSourcesRegistered}`,
@@ -888,7 +1092,36 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
     : cardEvidence(refundCount, totalRefunded, failedRefundAttempts, activeRefundBlockers, lastRefundTimestamp);
 
   return [
-    compactCard({ id: "platform-health", label: "Platform Health", status: platform?.status, value: platform?.status, summary: metricSummary(platform), evidence: cardEvidence(platform), href: "/architect/technology" }),
+    compactCard({
+      id: "platform-health",
+      label: "Platform Health",
+      status: readiness.overallStatus,
+      value: readiness.overallStatus,
+      summary: readiness.overallStatus === "Failed"
+        ? "Required officer evidence includes failed blockers. Platform Health inherits the worst V1-required officer state."
+        : metricSummary(platform),
+      evidence: [
+        ...cardEvidence(platform),
+        `v1RequiredFailedCount=${readiness.v1RequiredFailedCount}`,
+        `v1RequiredNeedsReviewCount=${readiness.v1RequiredNeedsReviewCount}`
+      ],
+      href: "/architect/technology",
+      stateType: readiness.overallStatus === "Failed" ? "failed_evidence" : readiness.overallStatus === "Pass" ? "pass_evidence" : "needs_proof",
+      requiredAction: readiness.overallStatus === "Failed"
+        ? "Open the failed officer lanes and clear V1-required blockers before Platform Health can go green."
+        : undefined,
+      nextOfficerLane: readiness.overallStatus === "Failed"
+        ? officerLaneForCard(readiness.currentReleaseBlockers.find((card) => card.status === "Failed") ?? platform ?? {
+            id: "platform-health",
+            label: "Platform Health",
+            department: "CEO",
+            workflow: "Global Health",
+            status: "Failed",
+            summary: "Required officer evidence includes failed blockers.",
+            evidence: []
+          })
+        : "technology"
+    }),
     compactCard({ id: "money-revenue", label: "Money / App Revenue", status: money?.status, value: metricValue(money), summary: metricSummary(money), evidence: cardEvidence(money), href: "/architect/finance" }),
     compactCard({ id: "total-users", label: "Total Users", status: totalUsers?.status, value: metricValue(totalUsers), summary: metricSummary(totalUsers), evidence: cardEvidence(totalUsers), href: "/architect/product" }),
     compactCard({ id: "clients", label: "Clients", status: clients?.status, value: metricValue(clients), summary: metricSummary(clients), evidence: cardEvidence(clients), href: "/architect/product" }),
@@ -908,22 +1141,79 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
     compactCard({ id: "routing-payout", label: "Routing / Payout Readiness", status: worstStatus(routing?.status, payout?.status), value: `${metricValue(routing)} / ${metricValue(payout)}`, summary: "Payment routing and payout readiness stay separated from money mutation.", evidence: cardEvidence(routing, payout), href: "/architect/finance" }),
     compactCard({ id: "culture", label: "Culture", status: culture?.status, value: metricValue(culture), summary: metricSummary(culture), evidence: cardEvidence(culture), href: "/architect/content-community" }),
     compactCard({ id: "active-supply", label: "Active Shops / Active Barbers", status: worstStatus(shops?.status, activeBarbers?.status), value: `${metricValue(shops)} / ${metricValue(activeBarbers)}`, summary: "Active supply is read from shop and barber evidence.", evidence: cardEvidence(shops, activeBarbers), href: "/architect/operations" }),
-    compactCard({ id: "critical-incidents", label: "Critical Incidents", status: incidents?.status, value: metricValue(incidents), summary: metricSummary(incidents), evidence: cardEvidence(incidents), href: "/architect/technology" }),
+    compactCard({
+      id: "critical-incidents",
+      label: "Critical Incidents",
+      status: criticalIncidentsStatus,
+      value: String(criticalIncidentCount),
+      summary: criticalIncidentsStatus === "Pass"
+        ? "Incident scan evidence is connected and reports zero critical incidents."
+        : metricSummary(incidents),
+      evidence: cardEvidence(incidents),
+      href: "/architect/technology",
+      stateType: criticalIncidentsStatus === "Pass" ? "pass_evidence" : criticalIncidentsStatus === "Failed" ? "failed_evidence" : "needs_proof"
+    }),
     compactCard({ id: "deployment-regression", label: "Deployment / Regression", status: deployment?.status, value: metricValue(deployment), summary: metricSummary(deployment), evidence: cardEvidence(deployment), href: "/architect/technology" }),
     compactCard({
       id: "source-vault",
       label: "Source Vault",
       status: sourceVault?.status,
+      displayStatus: sourceVaultBlocked ? "Blocked" : sourceVault?.status,
       value: sourceVaultSummary ? `${sourceVaultSummary.v1RequiredSourceCount} V1 / ${sourceVaultSummary.v1RequiredMissingCount} missing` : `${foundation.sourceVault.length} registered`,
       summary: sourceVaultSummary
         ? `Metadata only. Private required: ${sourceVaultSummary.privateSourceRequiredCount}. Parked/future: ${sourceVaultSummary.parkedFutureSourceCount}.`
         : "Sources are registered, not ingested.",
       evidence: sourceVaultEvidence,
-      href: "/architect/technology"
+      href: "/architect/technology",
+      stateType: sourceVaultBlocked ? "blocked_requires_repair" : undefined,
+      v1Blocking: sourceVaultBlocked,
+      requiredAction: sourceVaultBlocked
+        ? "Open Technology and connect the missing required V1 Source Vault metadata before this card can become green."
+        : undefined,
+      nextOfficerLane: "technology"
     }),
     compactCard({ id: "action-registry", label: "Action Registry", status: unsafeBlocked ? "Pass" : "Failed", value: unsafeBlocked ? "Unsafe blocked" : "Review needed", summary: `${unsafeActions.length} unsafe action(s) blocked by registry.`, evidence: actionRegistryEvidence, href: "/architect/security" }),
-    compactCard({ id: "hive-ai", label: "Hive AI", status: hiveAi?.status, value: `${foundation.agentRegistry.length} agents`, summary: "Hive AI remains Level 0/1 only; Officer Assistants are evidence-led and non-breaking.", evidence: hiveEvidence, href: "/architect/technology" }),
-    compactCard({ id: "codex-packets", label: "Codex Packets", status: selectedPacket ? "Pass" : "Needs Review", value: `${packetCount} packet(s)`, summary: selectedPacket ? "Codex packet is available for the selected incident." : "No active incident packet is selected.", evidence: codexPacketEvidence, href: "/architect/technology", actionLabel: selectedPacket ? "Copy Codex Packet" : undefined })
+    compactCard({
+      id: "hive-ai",
+      label: "Hive AI",
+      status: "Needs Review",
+      displayStatus: "Parked",
+      value: `${foundation.agentRegistry.length} agents`,
+      summary: "Hive AI is intentionally parked/future. Level 0/1 officer assistants remain read-only or draft-only.",
+      evidence: hiveEvidence,
+      href: "/architect/technology",
+      stateType: "parked_future",
+      v1Blocking: false,
+      stateReason: "AI is intentionally not active and must not reduce V1 readiness.",
+      requiredAction: "Do not activate Hive AI until evidence, audit, RLS, role truth, and deployment foundations are clean.",
+      nextOfficerLane: "technology"
+    }),
+    compactCard({
+      id: "codex-packets",
+      label: "Codex Packets",
+      status: selectedPacket ? "Pass" : packetRequired ? "Needs Review" : "Pass",
+      displayStatus: selectedPacket ? "Pass" : packetRequired ? "Needs Review" : "Idle",
+      value: `${packetCount} packet(s)`,
+      summary: selectedPacket
+        ? "Codex packet is available for the selected incident."
+        : packetRequired
+          ? "An incident is selected but no Codex packet is connected."
+          : "No active incident requires a Codex packet.",
+      evidence: codexPacketEvidence,
+      href: "/architect/technology",
+      actionLabel: selectedPacket ? "Copy Codex Packet" : undefined,
+      stateType: selectedPacket ? "pass_evidence" : packetRequired ? "needs_proof" : "idle_no_action",
+      v1Blocking: packetRequired && !selectedPacket,
+      stateReason: selectedPacket
+        ? "A packet exists for the selected incident."
+        : packetRequired
+          ? "The selected incident requires packet evidence before this can be green."
+          : "Zero active packets is idle because no incident currently requires one.",
+      requiredAction: packetRequired && !selectedPacket
+        ? "Open Technology and generate the missing Codex packet for the selected incident."
+        : "No packet action is required until an incident requires one.",
+      nextOfficerLane: "technology"
+    })
   ];
 }
 
@@ -980,6 +1270,9 @@ function CompactCeoCard({ card, onAction, onOpenDetail }: { card: CompactCeoCard
         </div>
         <p className="mt-3 break-words text-2xl font-black leading-tight tracking-[-0.04em] text-white sm:text-3xl">{card.value}</p>
         <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/56">{card.summary}</p>
+        <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/34">
+          {card.stateSemantics.intendedStateType.replace(/_/g, " ")}
+        </p>
       </div>
       <div className="mt-3 flex items-center gap-2">
         {card.href ? (
@@ -1005,6 +1298,82 @@ function CompactCeoCard({ card, onAction, onOpenDetail }: { card: CompactCeoCard
             {card.actionLabel}
           </Button>
         ) : null}
+      </div>
+    </article>
+  );
+}
+
+function buildGreenQueue(cards: CompactCeoCard[]): CeoGreenQueueBucket[] {
+  const buckets: CeoGreenQueueBucket[] = [
+    { id: "already_green", label: "Already Green", summary: "Connected evidence currently supports Pass.", cards: [] },
+    { id: "parked_idle", label: "Parked / Idle by design", summary: "Neutral items that should not reduce V1 readiness.", cards: [] },
+    { id: "needs_proof", label: "Needs Proof", summary: "Missing, stale, or disconnected evidence needs officer inspection.", cards: [] },
+    { id: "needs_repair", label: "Needs Repair", summary: "Failed evidence needs a controlled repair plan.", cards: [] },
+    { id: "blocked", label: "Blocked / Approval Required", summary: "A prerequisite, approval, migration, or controlled repair must happen first.", cards: [] }
+  ];
+  const byId = new Map(buckets.map((bucket) => [bucket.id, bucket]));
+
+  cards.forEach((card) => {
+    const stateType = card.stateSemantics.intendedStateType;
+    if (stateType === "pass_evidence") byId.get("already_green")?.cards.push(card);
+    else if (stateType === "parked_future" || stateType === "idle_no_action") byId.get("parked_idle")?.cards.push(card);
+    else if (stateType === "needs_proof") byId.get("needs_proof")?.cards.push(card);
+    else if (stateType === "blocked_requires_repair") byId.get("blocked")?.cards.push(card);
+    else byId.get("needs_repair")?.cards.push(card);
+  });
+
+  return buckets;
+}
+
+function CeoGreenQueue({ cards }: { cards: CompactCeoCard[] }) {
+  const buckets = buildGreenQueue(cards);
+
+  return (
+    <article className="rounded-[22px] border border-white/8 bg-black/24 p-4 shadow-[0_18px_48px_rgba(0,0,0,0.22)] sm:p-5" data-testid="ceo-green-queue">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#A3FF12]">Green Queue</p>
+          <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Officer-owned path to green or neutral</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
+            Compact card-state queue. It shows what is already green, what is neutral by design, what needs proof, what needs repair, and what is blocked before remediation.
+          </p>
+        </div>
+        <span className="rounded-[8px] border border-white/10 bg-white/[0.035] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/58">
+          {cards.length} card(s)
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-5">
+        {buckets.map((bucket) => (
+          <section key={bucket.id} className="rounded-[16px] border border-white/8 bg-black/26 p-3" data-testid={`ceo-green-queue-${bucket.id}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">{bucket.label}</p>
+                <p className="mt-1 text-[11px] leading-5 text-white/46">{bucket.summary}</p>
+              </div>
+              <span className="rounded-[8px] border border-white/10 bg-white/[0.035] px-2 py-1 text-[10px] font-black text-white/62">{bucket.cards.length}</span>
+            </div>
+            <div className="mt-3 space-y-2">
+              {bucket.cards.length ? bucket.cards.map((card) => (
+                <div key={card.id} className="rounded-[12px] border border-white/8 bg-black/24 p-2.5" data-testid={`ceo-green-queue-item-${card.id}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-black text-white">{card.label}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.11em] text-white/36">{card.stateSemantics.officerOwner}</p>
+                    </div>
+                    <StatusPill status={card.status} />
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-white/52">{card.stateSemantics.requiredAction}</p>
+                  <Link href={card.stateSemantics.openLaneTarget as Route} className="mt-2 inline-flex text-[10px] font-black uppercase tracking-[0.14em] text-[#d7ffab] hover:text-white">
+                    Open Officer
+                  </Link>
+                </div>
+              )) : (
+                <p className="rounded-[12px] border border-dashed border-white/10 bg-white/[0.02] p-3 text-xs leading-5 text-white/44">No cards in this state.</p>
+              )}
+            </div>
+          </section>
+        ))}
       </div>
     </article>
   );
@@ -1468,6 +1837,19 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
               <p className="mt-3 text-sm leading-6 text-white/68">{card.riskMeaning}</p>
             </section>
           </div>
+
+          <section className="mt-3 rounded-[18px] border border-white/8 bg-black/24 p-4" data-testid="ceo-card-state-semantics">
+            <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Card state semantics</h4>
+            <div className="mt-3 grid gap-3 text-xs leading-5 text-white/62 sm:grid-cols-2">
+              <p><span className="font-black text-white/84">State type:</span> {card.stateSemantics.intendedStateType.replace(/_/g, " ")}</p>
+              <p><span className="font-black text-white/84">Officer owner:</span> {card.stateSemantics.officerOwner}</p>
+              <p><span className="font-black text-white/84">Evidence source:</span> {card.stateSemantics.evidenceSource}</p>
+              <p><span className="font-black text-white/84">V1 blocking:</span> {card.stateSemantics.v1Blocking ? "yes" : "no"}</p>
+              <p><span className="font-black text-white/84">Missing proof:</span> {card.stateSemantics.missingProofCount}</p>
+              <p><span className="font-black text-white/84">Failed proof:</span> {card.stateSemantics.failedProofCount}</p>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-white/68">{card.stateSemantics.reason}</p>
+          </section>
 
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
@@ -2045,6 +2427,7 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
           />
         ))}
       </div>
+      <CeoGreenQueue cards={cards} />
       {selectedCard ? <CeoCardDetailModal card={selectedCard} onClose={() => setSelectedCardId(null)} /> : null}
     </section>
   );

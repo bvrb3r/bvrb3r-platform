@@ -1420,4 +1420,22 @@ describe("architect mission control foundation", () => {
       "Prompt generation or officer review never marks an issue Pass by itself."
     ]));
   });
+
+  it("does not mark Critical Incidents Pass without incident scan proof", () => {
+    const foundation = buildMissionControlFoundation([], "", []);
+    const criticalIncidents = foundation.ceoCommandCenter.find((card) => card.id === "critical-incidents");
+
+    expect(criticalIncidents?.status).toBe("Needs Review");
+    expect(criticalIncidents?.summary).toContain("No critical incident scan proof is connected.");
+  });
+
+  it("marks Critical Incidents Pass when scan proof exists and finds zero critical incidents", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-21T15:00:00.000Z", []);
+    const criticalIncidents = foundation.ceoCommandCenter.find((card) => card.id === "critical-incidents");
+
+    expect(criticalIncidents?.status).toBe("Pass");
+    expect(criticalIncidents?.evidence).toEqual(expect.arrayContaining([
+      "Incident detector checkedAt=2026-06-21T15:00:00.000Z; zero critical incidents found."
+    ]));
+  });
 });
