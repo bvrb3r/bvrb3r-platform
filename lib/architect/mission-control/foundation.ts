@@ -3468,6 +3468,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
   const totalRefunded = evidenceById.get("ceo-total-refunded");
   const failedRefundAttempts = evidenceById.get("ceo-failed-refund-attempts");
   const lastRefundTimestamp = evidenceById.get("ceo-last-refund-timestamp");
+  const paymentRoutingHealth = evidenceById.get("ceo-payment-routing-health");
   const refundResolutionStatus: MissionControlStatus = refundIncidents.length
     ? "Failed"
     : activeRefundBlockers?.status === "Pass" && refundCount?.status === "Pass"
@@ -3520,7 +3521,15 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
     finance: [
       evidenceCard("finance-payment-health", "Payment health", "Finance", "Payments", validatorStatus(validators, "payment-routing-loop"), "Payment health uses appointment/payment/routing truth.", validatorEvidence(validators, "payment-routing-loop")),
       evidenceCard("finance-stripe", "Stripe status", "Finance", "Stripe", "Needs Review", "Stripe status requires provider truth; v1 does not mutate Stripe.", ["No Stripe/payment internals changed."]),
-      evidenceCard("finance-routing", "Routing health", "Finance", "Routing", validatorStatus(validators, "payment-routing-loop"), "Routing health uses payment_routing_records evidence.", validatorEvidence(validators, "payment-routing-loop")),
+      evidenceCard(
+        "finance-routing",
+        "Routing health",
+        "Finance",
+        "Routing",
+        paymentRoutingHealth?.status ?? validatorStatus(validators, "payment-routing-loop"),
+        paymentRoutingHealth?.summary ?? "Routing health uses payment_routing_records evidence.",
+        paymentRoutingHealth?.evidence ?? validatorEvidence(validators, "payment-routing-loop")
+      ),
       evidenceCard(
         "finance-refund-resolution",
         "Cancelled/captured refund resolution",

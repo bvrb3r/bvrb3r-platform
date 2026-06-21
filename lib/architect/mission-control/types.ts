@@ -617,10 +617,34 @@ export type FinanceRefundMetrics = {
   lastRefundTimestamp: string | null;
 };
 
+export type FinanceRoutingEvidenceSummary = {
+  status: MissionControlStatus;
+  inspectedBookingPaymentRows: number;
+  rowsWithRouting: number;
+  completedCapturedMissingRoutingCount: number;
+  cancelledCapturedMissingRoutingCount: number;
+  cancelledRefundedSafeRowCount: number;
+  targetPayoutExecutionCount: number;
+  broaderPayoutExecutionReviewCount: number;
+  staleTargetCount: number;
+  proposedInsertCount: number;
+  proposedUpdateCount: number;
+  repairNeeded: boolean;
+  repairRouteAvailable: boolean;
+  repairRouteSafeToCall: boolean;
+  illegalStatusValueCount: number;
+  duplicateUnsafeRoutingCount: number;
+  releasedTargetRoutingCount: number;
+  evidenceCurrent: boolean;
+  reason: string;
+  evidenceSource: string;
+};
+
 export type MissionFinanceEvidence = {
   activeRefundTargets: FinanceRefundTarget[];
   refundLogs: FinanceLogEntry[];
   refundMetrics: FinanceRefundMetrics;
+  routingSummary?: FinanceRoutingEvidenceSummary;
 };
 
 export type MissionSeverity = "warning" | "broken" | "critical";

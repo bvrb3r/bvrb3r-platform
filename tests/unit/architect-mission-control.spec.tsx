@@ -38,11 +38,42 @@ const ACTIVE_REFUND_TARGETS = [{
   currentRoutingState: "blocked/manual_review/manual_review, released_at null, payout_executions target count must remain 0"
 }];
 
-function createFinanceEvidence(activeTargets = ACTIVE_REFUND_TARGETS, refundLogs: Array<Record<string, unknown>> = []) {
+function createRoutingSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    status: "Pass",
+    inspectedBookingPaymentRows: 11,
+    rowsWithRouting: 11,
+    completedCapturedMissingRoutingCount: 0,
+    cancelledCapturedMissingRoutingCount: 0,
+    cancelledRefundedSafeRowCount: 4,
+    targetPayoutExecutionCount: 0,
+    broaderPayoutExecutionReviewCount: 2,
+    staleTargetCount: 0,
+    proposedInsertCount: 0,
+    proposedUpdateCount: 0,
+    repairNeeded: false,
+    repairRouteAvailable: true,
+    repairRouteSafeToCall: false,
+    illegalStatusValueCount: 0,
+    duplicateUnsafeRoutingCount: 0,
+    releasedTargetRoutingCount: 0,
+    evidenceCurrent: true,
+    reason: "Routing repair not required. Broader payout executions exist outside stale repair targets and remain a separate Finance review item.",
+    evidenceSource: "appointments/payments/refunds/payout_executions/payment_routing_records",
+    ...overrides
+  };
+}
+
+function createFinanceEvidence(
+  activeTargets = ACTIVE_REFUND_TARGETS,
+  refundLogs: Array<Record<string, unknown>> = [],
+  routingSummaryOverrides: Record<string, unknown> = {}
+) {
   const refundCount = refundLogs.filter((log) => log.category === "refund").length;
   const totalRefundedAmount = refundLogs
     .filter((log) => log.category === "refund")
     .reduce((sum, log) => sum + Number(log.amount ?? 0), 0);
+  const hasActiveTargets = activeTargets.length > 0;
 
   return {
     activeRefundTargets: activeTargets,
@@ -53,7 +84,20 @@ function createFinanceEvidence(activeTargets = ACTIVE_REFUND_TARGETS, refundLogs
       failedRefundAttemptCount: refundLogs.filter((log) => log.category === "failed_refund").length,
       activeUnresolvedRefundBlockerCount: activeTargets.length,
       lastRefundTimestamp: refundLogs.find((log) => log.category === "refund")?.timestamp ?? null
-    }
+    },
+    routingSummary: createRoutingSummary(hasActiveTargets
+      ? {
+        status: "Failed",
+        completedCapturedMissingRoutingCount: 1,
+        rowsWithRouting: 10,
+        staleTargetCount: activeTargets.length,
+        proposedInsertCount: 1,
+        proposedUpdateCount: activeTargets.length,
+        repairNeeded: true,
+        repairRouteSafeToCall: true,
+        reason: "Current evidence still has payment-routing repair targets; repair route remains gated and should only be called after approval."
+      }
+      : routingSummaryOverrides)
   };
 }
 
@@ -100,35 +144,78 @@ function createFailedRefundLog(overrides: Record<string, unknown> = {}) {
 }
 
 function createResolvedSnapshot() {
+  const financeEvidence = createFinanceEvidence([], [
+    createRefundLog(),
+    createRefundLog({
+      id: "refund:refund-approved-2",
+      paymentId: SECOND_REFUND_PAYMENT_ID,
+      appointmentId: "a47109d8-3365-58bf-90eb-011e3b8857c6",
+      refundId: "refund-approved-2",
+      providerRefundId: "re_stripe_2",
+      timestamp: "2026-06-20T02:05:00.000Z"
+    }),
+    createRefundLog({
+      id: "refund:refund-approved-3",
+      paymentId: THIRD_REFUND_PAYMENT_ID,
+      appointmentId: "c4629292-f905-5d88-ba9e-36a33dfa9d0a",
+      refundId: "refund-approved-3",
+      providerRefundId: "re_stripe_3",
+      timestamp: "2026-06-20T02:10:00.000Z"
+    }),
+    createRefundLog({
+      id: "refund:refund-approved-4",
+      paymentId: FOURTH_REFUND_PAYMENT_ID,
+      appointmentId: "37cdb825-a65d-5cda-b58d-5b5efaedbfc0",
+      refundId: "refund-approved-4",
+      providerRefundId: "re_stripe_4",
+      timestamp: "2026-06-20T02:15:00.000Z"
+    })
+  ]);
+  const routingSummary = financeEvidence.routingSummary;
   return {
     ...createSnapshot(),
-    financeEvidence: createFinanceEvidence([], [
-      createRefundLog(),
-      createRefundLog({
-        id: "refund:refund-approved-2",
-        paymentId: SECOND_REFUND_PAYMENT_ID,
-        appointmentId: "a47109d8-3365-58bf-90eb-011e3b8857c6",
-        refundId: "refund-approved-2",
-        providerRefundId: "re_stripe_2",
-        timestamp: "2026-06-20T02:05:00.000Z"
-      }),
-      createRefundLog({
-        id: "refund:refund-approved-3",
-        paymentId: THIRD_REFUND_PAYMENT_ID,
-        appointmentId: "c4629292-f905-5d88-ba9e-36a33dfa9d0a",
-        refundId: "refund-approved-3",
-        providerRefundId: "re_stripe_3",
-        timestamp: "2026-06-20T02:10:00.000Z"
-      }),
-      createRefundLog({
-        id: "refund:refund-approved-4",
-        paymentId: FOURTH_REFUND_PAYMENT_ID,
-        appointmentId: "37cdb825-a65d-5cda-b58d-5b5efaedbfc0",
-        refundId: "refund-approved-4",
-        providerRefundId: "re_stripe_4",
-        timestamp: "2026-06-20T02:15:00.000Z"
-      })
-    ])
+    incidents: [],
+    selectedIncidentId: null,
+    packets: {},
+    foundation: buildMissionControlFoundation([], "2026-06-20T12:00:00.000Z", [{
+      id: "ceo-payment-routing-health",
+      label: "Payment Routing Health",
+      department: "CEO",
+      workflow: "Finance",
+      status: "Pass",
+      metricValue: "No repair required",
+      summary: String(routingSummary?.reason),
+      evidence: [
+        `inspectedBookingPaymentRows=${routingSummary?.inspectedBookingPaymentRows}`,
+        `rowsWithRouting=${routingSummary?.rowsWithRouting}`,
+        `completedCapturedMissingRouting=${routingSummary?.completedCapturedMissingRoutingCount}`,
+        `cancelledCapturedMissingRouting=${routingSummary?.cancelledCapturedMissingRoutingCount}`,
+        `cancelledRefundedSafeRows=${routingSummary?.cancelledRefundedSafeRowCount}`,
+        `targetPayoutExecutionCount=${routingSummary?.targetPayoutExecutionCount}`,
+        `proposedInsertCount=${routingSummary?.proposedInsertCount}`,
+        `proposedUpdateCount=${routingSummary?.proposedUpdateCount}`,
+        `repairNeeded=${routingSummary?.repairNeeded ? "yes" : "no"}`
+      ]
+    }, {
+      id: "ceo-payout-readiness-health",
+      label: "Payout Readiness Health",
+      department: "CEO",
+      workflow: "Finance",
+      status: "Needs Review",
+      metricValue: "Needs Review",
+      summary: "Broader payout execution proof remains separate from resolved routing repair targets.",
+      evidence: ["Broader payout execution review is separate evidence."]
+    }, {
+      id: "ceo-audit-log-evidence",
+      label: "Audit Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      metricValue: "0 row(s)",
+      summary: "audit_logs returned 0 row(s).",
+      evidence: ["audit_logs returned 0 row(s)."]
+    }]),
+    financeEvidence
   };
 }
 
@@ -500,6 +587,27 @@ describe("architect mission control", () => {
     expect(screen.getByTestId("ceo-green-queue-item-codex-packets")).toHaveTextContent("Technology");
     expect(screen.getByTestId("ceo-green-queue-item-source-vault")).toHaveTextContent("Open Officer");
     expect(within(screen.getByTestId("ceo-green-queue-item-source-vault")).getByRole("link", { name: "Open Officer" })).toHaveAttribute("href", "/architect/technology");
+  });
+
+  it("moves resolved payment routing evidence out of Needs Repair without making Finance fully Pass", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createResolvedSnapshot()
+    });
+
+    render(<ArchitectMissionControl />);
+
+    await screen.findByTestId("ceo-green-queue");
+    const routingCard = screen.getByTestId("architect-ceo-card-routing-payout");
+    const needsProof = screen.getByTestId("ceo-green-queue-needs_proof");
+    const needsRepair = screen.getByTestId("ceo-green-queue-needs_repair");
+
+    expect(routingCard).toHaveTextContent("Routing / Payout Readiness");
+    expect(routingCard).toHaveTextContent("Needs Review");
+    expect(routingCard).toHaveTextContent("No repair required / Needs Review");
+    expect(needsProof).toHaveTextContent("Routing / Payout Readiness");
+    expect(needsRepair).not.toHaveTextContent("Routing / Payout Readiness");
+    expect(screen.getByTestId("architect-ceo-card-platform-health")).toHaveTextContent("Failed");
   });
 
   it("marks Codex Packets Needs Review when a selected incident is missing a packet", async () => {
@@ -1063,6 +1171,18 @@ describe("architect mission control", () => {
     });
 
     render(<ArchitectMissionControl laneId="finance" />);
+
+    const routingEvidence = await screen.findByTestId("finance-routing-evidence-summary");
+    expect(routingEvidence).toHaveTextContent("Routing repair not required");
+    expect(routingEvidence).toHaveTextContent("Completed/captured missing routing");
+    expect(routingEvidence).toHaveTextContent("Cancelled/captured missing routing");
+    expect(routingEvidence).toHaveTextContent("Cancelled/refunded targets safe");
+    expect(routingEvidence).toHaveTextContent("Target payout executions");
+    expect(routingEvidence).toHaveTextContent("Proposed inserts");
+    expect(routingEvidence).toHaveTextContent("Proposed updates");
+    expect(routingEvidence).toHaveTextContent("0");
+    expect(routingEvidence).toHaveTextContent("No repair required: yes");
+    expect(routingEvidence).toHaveTextContent("does not call the Architect payment-routing repair route");
 
     fireEvent.click(await screen.findByRole("button", { name: "Open Cancelled/captured refund resolution issue detail" }));
 
