@@ -415,6 +415,13 @@ describe("architect mission control", () => {
     expect(screen.getByText("Foundation Blockers Before AI")).toBeInTheDocument();
     expect(screen.getByText("V1 Runtime Proof")).toBeInTheDocument();
     expect(screen.getByText("Role and operating-loop proof matrix")).toBeInTheDocument();
+    expect(screen.getByText("Audit Spine")).toBeInTheDocument();
+    expect(screen.getByText("Controlled repair evidence stages")).toBeInTheDocument();
+    expect(screen.getByTestId("audit-spine")).toHaveTextContent("Approval");
+    expect(screen.getByTestId("audit-spine")).toHaveTextContent("Execution");
+    expect(screen.getByTestId("audit-spine")).toHaveTextContent("Verification");
+    expect(screen.getByTestId("audit-spine")).toHaveTextContent("Score Impact");
+    expect(screen.getByTestId("audit-spine")).toHaveTextContent("Refund rows can prove execution, but they cannot fake full repair audit Pass.");
     expect(screen.getByTestId("v1-proof-group-client_loop")).toHaveTextContent("Client loop");
     expect(screen.getByTestId("v1-proof-connected-client_loop")).toHaveTextContent("no");
     expect(screen.getByTestId("v1-proof-group-barber_loop")).toHaveTextContent("Barber loop");
@@ -423,6 +430,7 @@ describe("architect mission control", () => {
     expect(screen.getByTestId("v1-proof-group-security_loop")).toHaveTextContent("Security loop");
     expect(screen.getByTestId("v1-proof-group-deployment_loop")).toHaveTextContent("Deployment loop");
     expect(screen.getByTestId("v1-proof-group-audit_loop")).toHaveTextContent("Audit loop");
+    expect(screen.getByTestId("v1-proof-group-audit_loop")).toHaveTextContent("Needs Review");
     expect(screen.getByText("Overall status")).toBeInTheDocument();
     expect(screen.getByTestId("architect-ceo-card-platform-health")).toBeInTheDocument();
     expect(screen.getByText("Money / App Revenue")).toBeInTheDocument();

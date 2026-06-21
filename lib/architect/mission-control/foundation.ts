@@ -2,6 +2,12 @@ import type {
   ActionRegistryEntry,
   ArchitectIncident,
   ArchitectMissionIncidentType,
+  AuditSpineGroupSummary,
+  AuditSpineModel,
+  AuditSpineRecord,
+  AuditSpineStageEvidence,
+  AuditSpineStageKey,
+  AuditSpineStatus,
   CodexFailureClass,
   CoreLoopValidator,
   HiveAgentEntry,
@@ -110,6 +116,7 @@ const V1_CRITICAL_CARD_IDS = new Set([
   "finance-refund-resolution",
   "finance-payout",
   "finance-repair-audit-coverage",
+  "audit-spine-coverage",
   "compliance-trust-gates",
   "security-role-access",
   "security-role-drift",
@@ -710,6 +717,20 @@ const V1_RUNTIME_PROOF_DEFINITIONS: RuntimeProofDefinition[] = [
     nextRepairLane: "compliance"
   },
   {
+    id: "audit-spine-stage-coverage",
+    label: "audit spine stage proof",
+    lane: "Compliance",
+    roleAffected: "Architect",
+    proofGroup: "audit_loop",
+    requiredProofSource: "approval, execution, verification, and score-impact audit spine",
+    currentEvidenceSource: "audit-spine-coverage card",
+    sourceCardId: "audit-spine-coverage",
+    statusRule: "Audit Spine cannot Pass until every stage is persisted from existing evidence sources.",
+    passRequirement: "Approval, execution, verification, and score-impact stages all pass without UI memory or refund-only shortcuts.",
+    failureMeaning: "CEO cannot prove controlled repairs are governed end to end.",
+    nextRepairLane: "compliance"
+  },
+  {
     id: "audit-repair-coverage",
     label: "repair audit coverage proof",
     lane: "Compliance",
@@ -1070,12 +1091,24 @@ export function buildMissionControlFoundation(
   ceoPlatformMetrics: MissionEvidenceCard[] = []
 ): MissionControlFoundation {
   const coreLoopValidators = scopeEvidenceCards(applyIncidentFailures(validateCoreLoopState(), incidents));
-  const departmentLanes = buildDepartmentLanes(coreLoopValidators, incidents, ceoPlatformMetrics);
+  const baseDepartmentLanes = buildDepartmentLanes(coreLoopValidators, incidents, ceoPlatformMetrics);
   const ceoCommandCenter = [
     ...buildCeoPlatformMetricCards(ceoPlatformMetrics),
     ...buildCeoCards(coreLoopValidators, incidents, checkedAt)
   ];
   const scopedCeoCommandCenter = scopeEvidenceCards(ceoCommandCenter);
+  const preliminaryAuditSpine = buildAuditSpineModel(scopedCeoCommandCenter, baseDepartmentLanes, coreLoopValidators);
+  const auditSpineCard = auditSpineEvidenceCard(preliminaryAuditSpine);
+  const departmentLanes = baseDepartmentLanes.map((lane) => {
+    if (lane.id !== "compliance") return lane;
+    const cards = scopeEvidenceCards([...lane.cards, auditSpineCard]);
+    return {
+      ...lane,
+      cards,
+      status: aggregateStatus(cards)
+    };
+  });
+  const auditSpine = buildAuditSpineModel(scopedCeoCommandCenter, departmentLanes, coreLoopValidators);
   const v1RuntimeProofMatrix = buildV1RuntimeProofMatrix(scopedCeoCommandCenter, departmentLanes, coreLoopValidators);
   const readinessBreakdown = buildMissionReadinessBreakdown(scopedCeoCommandCenter, departmentLanes, coreLoopValidators, v1RuntimeProofMatrix);
 
@@ -1087,6 +1120,7 @@ export function buildMissionControlFoundation(
     coreLoopValidators,
     readinessBreakdown,
     v1RuntimeProofMatrix,
+    auditSpine,
     incidentTypes: MISSION_INCIDENT_DEFINITIONS,
     sourceVault: SOURCE_VAULT_REGISTRY,
     actionRegistry: ACTION_REGISTRY,
@@ -1249,6 +1283,221 @@ function runtimeProofGroupEvidenceCard(group: V1RuntimeProofGroup): MissionEvide
     blocksCurrentRelease: true,
     evidenceRequiredForPass: `${group.label} runtime proof must have every row Pass from connected evidence before V1 readiness can reach 100%.`
   });
+}
+
+export function buildAuditSpineModel(
+  ceoCommandCenter: MissionEvidenceCard[] = [],
+  departmentLanes: MissionDepartmentLane[] = [],
+  coreLoopValidators: CoreLoopValidator[] = [],
+  actionRegistry: ActionRegistryEntry[] = ACTION_REGISTRY
+): AuditSpineModel {
+  const evidenceById = new Map<string, MissionEvidenceCard>();
+  for (const card of [
+    ...scopeEvidenceCards(ceoCommandCenter),
+    ...departmentLanes.flatMap((lane) => scopeEvidenceCards(lane.cards)),
+    ...scopeEvidenceCards(coreLoopValidators)
+  ]) {
+    evidenceById.set(card.id, card);
+  }
+
+  const auditCard = evidenceById.get("ceo-audit-log-evidence");
+  const repairAuditCard = evidenceById.get("finance-repair-audit-coverage");
+  const refundCard = evidenceById.get("finance-refund-resolution");
+  const refundCountCard = evidenceById.get("ceo-refund-count") ?? evidenceById.get("finance-refund-count");
+  const totalRefundedCard = evidenceById.get("ceo-total-refunded") ?? evidenceById.get("finance-refund-total");
+  const failedRefundCard = evidenceById.get("ceo-failed-refund-attempts") ?? evidenceById.get("finance-failed-refund-attempts");
+  const activeRefundBlockersCard = evidenceById.get("ceo-active-refund-blockers") ?? evidenceById.get("finance-active-refund-blockers");
+  const lastRefundTimestampCard = evidenceById.get("ceo-last-refund-timestamp") ?? evidenceById.get("finance-last-refund-timestamp");
+  const unsafeActionsCard = evidenceById.get("security-unsafe-actions");
+  const unsafeActionsBlocked = actionRegistry
+    .filter((action) => action.riskClass === "Unsafe / blocked")
+    .every((action) => action.allowed === false);
+
+  const records = [
+    auditSpineRecord({
+      id: "audit-spine-repair-coverage",
+      actionId: "repair-audit-coverage",
+      lane: "Finance",
+      actorType: "platform_admin",
+      actionType: "controlled_repair_audit_coverage",
+      sourceTableOrFunction: "audit_logs / architect_repair_audit_logs / platform_admin_audit_logs / platform_events",
+      relatedIncidentCode: "unsafe_repair_requested",
+      nextRepairLane: "finance",
+      stages: [
+        auditStage("approval", "Approval evidence", auditStatusFromCard(auditCard), auditEvidenceFromCard(auditCard, "audit_logs approval evidence is not connected."), "audit_logs"),
+        auditStage("execution", "Execution evidence", auditStatusFromCard(repairAuditCard), auditEvidenceFromCard(repairAuditCard, "architect_repair_audit_logs execution evidence is not connected."), "architect_repair_audit_logs"),
+        auditStage("verification", "Verification evidence", auditStatusFromCard(repairAuditCard), auditEvidenceFromCard(repairAuditCard, "repair verification evidence is not connected."), "architect_repair_audit_logs"),
+        auditStage("scoreImpact", "Score impact evidence", auditStatusFromCard(repairAuditCard), [
+          "Score updates must be persisted from evidence; UI state does not count.",
+          ...auditEvidenceFromCard(repairAuditCard, "score-impact audit evidence is not connected.")
+        ], "Mission readiness score evidence")
+      ]
+    }),
+    auditSpineRecord({
+      id: "audit-spine-controlled-finance-refunds",
+      actionId: "cancelled-captured-controlled-refund",
+      lane: "Finance",
+      actorType: "platform_admin",
+      actionType: "architect_finance_controlled_refund",
+      sourceTableOrFunction: "refunds / payments / platform_events / platform_admin_audit_logs / payment_routing_records",
+      relatedIncidentCode: "cancelled_captured_refund_unresolved",
+      relatedPaymentId: refundCard?.evidence.find((item) => item.includes("paymentId="))?.split("paymentId=").at(1)?.split(/\s|,/).at(0) ?? null,
+      nextRepairLane: "finance",
+      stages: [
+        auditStage("approval", "Approval evidence", auditStatusFromCard(auditCard), auditEvidenceFromCard(auditCard, "Controlled refund approval evidence is not connected outside the UI confirmation."), "platform_admin_audit_logs"),
+        auditStage("execution", "Execution evidence", auditStatusFromCard(refundCard), auditEvidenceFromCard(refundCard, "Refund execution evidence is not connected."), "refunds / platform_events"),
+        auditStage("verification", "Verification evidence", aggregateAuditStatuses([
+          auditStatusFromCard(refundCountCard),
+          auditStatusFromCard(totalRefundedCard),
+          auditStatusFromCard(activeRefundBlockersCard),
+          auditStatusFromCard(failedRefundCard),
+          auditStatusFromCard(lastRefundTimestampCard)
+        ]), [
+          ...auditEvidenceFromCard(refundCountCard, "Refund count evidence is not connected."),
+          ...auditEvidenceFromCard(totalRefundedCard, "Total refunded evidence is not connected."),
+          ...auditEvidenceFromCard(activeRefundBlockersCard, "Active refund blocker evidence is not connected."),
+          ...auditEvidenceFromCard(failedRefundCard, "Failed refund attempt evidence is not connected."),
+          ...auditEvidenceFromCard(lastRefundTimestampCard, "Last refund timestamp evidence is not connected."),
+          "Verification must also prove payout_executions remain 0 and routing released_at remains null."
+        ], "refunds / payments / payout_executions / payment_routing_records"),
+        auditStage("scoreImpact", "Score impact evidence", "Needs Review", [
+          "Refund evidence can improve Finance posture, but score-impact audit evidence is not connected.",
+          "Finance must not become full Pass from refund rows alone."
+        ], "Mission readiness score evidence")
+      ]
+    }),
+    auditSpineRecord({
+      id: "audit-spine-unsafe-action-guardrails",
+      actionId: "unsafe-action-guardrail",
+      lane: "Security",
+      actorType: "system",
+      actionType: "unsafe_action_prevention",
+      sourceTableOrFunction: "Action Registry / Mission Control foundation",
+      relatedIncidentCode: "unsafe_repair_requested",
+      nextRepairLane: "security",
+      stages: [
+        auditStage("approval", "Approval evidence", unsafeActionsBlocked ? "Pass" : "Failed", unsafeActionsBlocked ? ["Unsafe actions are approval-gated or blocked in the Action Registry."] : ["One or more unsafe actions are not blocked."], "Action Registry"),
+        auditStage("execution", "Execution evidence", unsafeActionsBlocked ? "Pass" : "Failed", unsafeActionsBlocked ? ["Refund, payout release, role mutation, delete appointment, and production schema changes are blocked from autopilot."] : ["Unsafe action execution guardrail failed."], "Action Registry"),
+        auditStage("verification", "Verification evidence", auditStatusFromCard(unsafeActionsCard), auditEvidenceFromCard(unsafeActionsCard, "Unsafe action verification card is not connected."), "security-unsafe-actions card"),
+        auditStage("scoreImpact", "Score impact evidence", "Needs Review", ["Unsafe-action guardrails are visible, but no persisted score-update audit source is connected."], "Mission readiness score evidence")
+      ]
+    })
+  ];
+
+  const summary: AuditSpineGroupSummary = {
+    approvalCoverageStatus: aggregateAuditStatuses(records.map((record) => stageStatus(record, "approval"))),
+    executionCoverageStatus: aggregateAuditStatuses(records.map((record) => stageStatus(record, "execution"))),
+    verificationCoverageStatus: aggregateAuditStatuses(records.map((record) => stageStatus(record, "verification"))),
+    scoreImpactCoverageStatus: aggregateAuditStatuses(records.map((record) => stageStatus(record, "scoreImpact"))),
+    repairAuditCoverageStatus: records.find((record) => record.id === "audit-spine-repair-coverage")?.status ?? "Not Connected",
+    controlledFinanceRefundAuditStatus: records.find((record) => record.id === "audit-spine-controlled-finance-refunds")?.status ?? "Not Connected",
+    unsafeActionGuardrailAuditStatus: records.find((record) => record.id === "audit-spine-unsafe-action-guardrails")?.status ?? "Not Connected"
+  };
+  const status = aggregateAuditStatuses([
+    summary.approvalCoverageStatus,
+    summary.executionCoverageStatus,
+    summary.verificationCoverageStatus,
+    summary.scoreImpactCoverageStatus
+  ]);
+  const firstRepairRecord = records.find((record) => record.status === "Failed")
+    ?? records.find((record) => record.status !== "Pass")
+    ?? records[0];
+
+  return {
+    status,
+    summary,
+    records,
+    missingStageCount: records.reduce((sum, record) => sum + record.missingStageCount, 0),
+    failingStageCount: records.reduce((sum, record) => sum + record.failingStageCount, 0),
+    evidenceSourceCount: new Set(records.flatMap((record) => record.stages.map((stage) => stage.sourceTableOrFunction))).size,
+    nextRepairLane: firstRepairRecord?.nextRepairLane ?? "compliance"
+  };
+}
+
+function auditSpineEvidenceCard(auditSpine: AuditSpineModel): MissionEvidenceCard {
+  const status = auditStatusToMissionStatus(auditSpine.status);
+  return scopeEvidenceCard({
+    id: "audit-spine-coverage",
+    label: "Audit Spine coverage",
+    department: "Compliance",
+    workflow: "Audit Spine",
+    status,
+    summary: status === "Pass"
+      ? "Approval, execution, verification, and score-impact audit stages are connected."
+      : `Audit Spine has ${auditSpine.failingStageCount} failing and ${auditSpine.missingStageCount} missing stage(s).`,
+    evidence: [
+      `Approval coverage: ${auditSpine.summary.approvalCoverageStatus}.`,
+      `Execution coverage: ${auditSpine.summary.executionCoverageStatus}.`,
+      `Verification coverage: ${auditSpine.summary.verificationCoverageStatus}.`,
+      `Score-impact coverage: ${auditSpine.summary.scoreImpactCoverageStatus}.`,
+      `Repair audit coverage: ${auditSpine.summary.repairAuditCoverageStatus}.`,
+      `Controlled finance refund audit: ${auditSpine.summary.controlledFinanceRefundAuditStatus}.`,
+      `Unsafe action guardrail audit: ${auditSpine.summary.unsafeActionGuardrailAuditStatus}.`,
+      "Refund rows alone do not create full Audit Spine Pass."
+    ],
+    metricValue: auditSpine.status,
+    scope: "v1_required",
+    criticality: "critical",
+    blocksCurrentRelease: true,
+    evidenceRequiredForPass: "Audit Spine requires approval, execution, verification, and score-impact evidence to all Pass from persisted/read-only sources."
+  });
+}
+
+function auditSpineRecord(input: Omit<AuditSpineRecord, "status" | "missingStageCount" | "failingStageCount">): AuditSpineRecord {
+  return {
+    ...input,
+    status: aggregateAuditStatuses(input.stages.map((stage) => stage.status)),
+    missingStageCount: input.stages.filter((stage) => stage.status === "Needs Review" || stage.status === "Not Connected").length,
+    failingStageCount: input.stages.filter((stage) => stage.status === "Failed").length
+  };
+}
+
+function auditStage(
+  stage: AuditSpineStageKey,
+  label: string,
+  status: AuditSpineStatus,
+  evidence: string[],
+  sourceTableOrFunction: string
+): AuditSpineStageEvidence {
+  return {
+    stage,
+    label,
+    status,
+    evidence: evidence.length ? evidence : [`${label} evidence is not connected.`],
+    sourceTableOrFunction
+  };
+}
+
+function auditStatusFromCard(card?: MissionEvidenceCard): AuditSpineStatus {
+  if (!card) return "Not Connected";
+  if (card.status === "Needs Review" && (card.metricValue === "Not connected" || card.evidence.some(isNotConnectedEvidence))) {
+    return "Not Connected";
+  }
+  return card.status;
+}
+
+function auditEvidenceFromCard(card: MissionEvidenceCard | undefined, fallback: string) {
+  return card?.evidence?.length ? card.evidence : [fallback];
+}
+
+function isNotConnectedEvidence(item: string) {
+  return item.toLowerCase().includes("not connected");
+}
+
+function auditStatusToMissionStatus(status: AuditSpineStatus): MissionControlStatus {
+  return status === "Not Connected" ? "Needs Review" : status;
+}
+
+function aggregateAuditStatuses(statuses: AuditSpineStatus[]): AuditSpineStatus {
+  if (!statuses.length) return "Not Connected";
+  if (statuses.some((status) => status === "Failed")) return "Failed";
+  if (statuses.every((status) => status === "Not Connected")) return "Not Connected";
+  if (statuses.some((status) => status === "Needs Review" || status === "Not Connected" || status === "Warning")) return "Needs Review";
+  return "Pass";
+}
+
+function stageStatus(record: AuditSpineRecord, stage: AuditSpineStageKey): AuditSpineStatus {
+  return record.stages.find((item) => item.stage === stage)?.status ?? "Not Connected";
 }
 
 function isMissingProofEvidence(item: string) {

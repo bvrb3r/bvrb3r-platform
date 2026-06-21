@@ -229,6 +229,59 @@ export type V1RuntimeProofMatrix = {
   needsReviewGroupCount: number;
 };
 
+export type AuditSpineStatus = MissionControlStatus | "Not Connected";
+
+export type AuditSpineStageKey = "approval" | "execution" | "verification" | "scoreImpact";
+
+export type AuditSpineStageEvidence = {
+  stage: AuditSpineStageKey;
+  label: string;
+  status: AuditSpineStatus;
+  evidence: string[];
+  sourceTableOrFunction: string;
+};
+
+export type AuditSpineRecord = {
+  id: string;
+  actionId: string;
+  lane: MissionDepartment;
+  actorType: "platform_admin" | "shop_operator" | "system" | "unknown";
+  actionType: string;
+  sourceTableOrFunction: string;
+  relatedIncidentCode: ArchitectMissionIncidentType | string;
+  relatedPaymentId?: string | null;
+  relatedRefundId?: string | null;
+  relatedPayoutId?: string | null;
+  relatedRoleProof?: string | null;
+  relatedRlsProof?: string | null;
+  relatedDeploymentProof?: string | null;
+  status: AuditSpineStatus;
+  missingStageCount: number;
+  failingStageCount: number;
+  nextRepairLane: MissionLaneId;
+  stages: AuditSpineStageEvidence[];
+};
+
+export type AuditSpineGroupSummary = {
+  approvalCoverageStatus: AuditSpineStatus;
+  executionCoverageStatus: AuditSpineStatus;
+  verificationCoverageStatus: AuditSpineStatus;
+  scoreImpactCoverageStatus: AuditSpineStatus;
+  repairAuditCoverageStatus: AuditSpineStatus;
+  controlledFinanceRefundAuditStatus: AuditSpineStatus;
+  unsafeActionGuardrailAuditStatus: AuditSpineStatus;
+};
+
+export type AuditSpineModel = {
+  status: AuditSpineStatus;
+  summary: AuditSpineGroupSummary;
+  records: AuditSpineRecord[];
+  missingStageCount: number;
+  failingStageCount: number;
+  evidenceSourceCount: number;
+  nextRepairLane: MissionLaneId;
+};
+
 export type MissionControlFoundation = {
   navigationLanes: MissionControlLane[];
   defaultLaneId: MissionLaneId;
@@ -237,6 +290,7 @@ export type MissionControlFoundation = {
   coreLoopValidators: CoreLoopValidator[];
   readinessBreakdown?: MissionReadinessBreakdown;
   v1RuntimeProofMatrix?: V1RuntimeProofMatrix;
+  auditSpine?: AuditSpineModel;
   incidentTypes: MissionIncidentDefinition[];
   sourceVault: SourceVaultEntry[];
   actionRegistry: ActionRegistryEntry[];
