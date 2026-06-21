@@ -7,6 +7,7 @@ import {
   OFFICER_ASSISTANT_DEPARTMENTS,
   SOURCE_VAULT_REGISTRY,
   buildMissionControlFoundation,
+  buildAuditSpineModel,
   buildMissionReadinessBreakdown,
   buildV1RuntimeProofMatrix,
   classifyArchitectIncident,
@@ -570,6 +571,151 @@ describe("architect mission control foundation", () => {
     expect(evidence.join("\n")).toContain("Repair executions");
     expect(evidence.join("\n")).toContain("Repair verification");
     expect(evidence.join("\n")).toContain("Score updates");
+  });
+
+  it("keeps Audit Spine from Pass when no audit evidence is connected", () => {
+    const spine = buildAuditSpineModel();
+
+    expect(spine.status).not.toBe("Pass");
+    expect(spine.records.find((record) => record.id === "audit-spine-repair-coverage")).toMatchObject({
+      status: "Not Connected"
+    });
+    expect(spine.summary.scoreImpactCoverageStatus).toBe("Needs Review");
+  });
+
+  it("does not let refund evidence alone make Audit Spine Pass", () => {
+    const spine = buildAuditSpineModel([
+      {
+        id: "ceo-refund-count",
+        label: "Refund Count",
+        department: "CEO",
+        workflow: "Finance",
+        status: "Pass",
+        summary: "Refund count is connected.",
+        evidence: ["4 refund row(s) connected."],
+        metricValue: "4"
+      },
+      {
+        id: "ceo-total-refunded",
+        label: "Total Refunded Amount",
+        department: "CEO",
+        workflow: "Finance",
+        status: "Pass",
+        summary: "Total refunded is connected.",
+        evidence: ["totalRefunded=$20"],
+        metricValue: "$20"
+      },
+      {
+        id: "ceo-active-refund-blockers",
+        label: "Active Refund Blockers",
+        department: "CEO",
+        workflow: "Finance",
+        status: "Pass",
+        summary: "No active refund blockers.",
+        evidence: ["activeRefundTargets=0"],
+        metricValue: "0"
+      },
+      {
+        id: "ceo-failed-refund-attempts",
+        label: "Failed Refund Attempts",
+        department: "CEO",
+        workflow: "Finance",
+        status: "Pass",
+        summary: "No failed refund attempts.",
+        evidence: ["payment_refund_failed events=0"],
+        metricValue: "0"
+      },
+      {
+        id: "ceo-last-refund-timestamp",
+        label: "Last Refund Timestamp",
+        department: "CEO",
+        workflow: "Finance",
+        status: "Pass",
+        summary: "Last refund timestamp is connected.",
+        evidence: ["lastRefundTimestamp=2026-06-20T02:00:00.000Z"],
+        metricValue: "2026-06-20T02:00:00.000Z"
+      }
+    ], [{
+      id: "finance",
+      label: "Finance",
+      purpose: "Finance evidence.",
+      status: "Pass",
+      cards: [{
+        id: "finance-refund-resolution",
+        label: "Cancelled/captured refund resolution",
+        department: "Finance",
+        workflow: "Refund Resolution",
+        status: "Pass",
+        summary: "No active cancelled/captured refund targets. Refund history is available in Finance Logs.",
+        evidence: ["No active cancelled/captured refund blocker incident is currently detected."]
+      }]
+    }]);
+
+    const refundRecord = spine.records.find((record) => record.id === "audit-spine-controlled-finance-refunds");
+    expect(refundRecord?.stages.find((stage) => stage.stage === "execution")).toMatchObject({ status: "Pass" });
+    expect(refundRecord?.stages.find((stage) => stage.stage === "verification")).toMatchObject({ status: "Pass" });
+    expect(refundRecord).toMatchObject({ status: "Needs Review" });
+    expect(spine.status).not.toBe("Pass");
+    expect(spine.summary.scoreImpactCoverageStatus).toBe("Needs Review");
+  });
+
+  it("keeps approval plus execution without verification below Pass", () => {
+    const spine = buildAuditSpineModel([
+      {
+        id: "ceo-audit-log-evidence",
+        label: "Audit Evidence",
+        department: "CEO",
+        workflow: "Security",
+        status: "Pass",
+        summary: "Audit evidence exists.",
+        evidence: ["audit_logs returned 1 row(s)."],
+        metricValue: "1 row(s)"
+      }
+    ], [{
+      id: "finance",
+      label: "Finance",
+      purpose: "Finance evidence.",
+      status: "Pass",
+      cards: [{
+        id: "finance-refund-resolution",
+        label: "Cancelled/captured refund resolution",
+        department: "Finance",
+        workflow: "Refund Resolution",
+        status: "Pass",
+        summary: "Refund execution evidence exists.",
+        evidence: ["refund row exists."]
+      }]
+    }]);
+
+    const refundRecord = spine.records.find((record) => record.id === "audit-spine-controlled-finance-refunds");
+
+    expect(refundRecord?.stages.find((stage) => stage.stage === "approval")).toMatchObject({ status: "Pass" });
+    expect(refundRecord?.stages.find((stage) => stage.stage === "execution")).toMatchObject({ status: "Pass" });
+    expect(refundRecord?.stages.find((stage) => stage.stage === "verification")).toMatchObject({ status: "Not Connected" });
+    expect(refundRecord?.status).toBe("Needs Review");
+  });
+
+  it("adds Audit Spine to Audit loop readiness and blocks 100 percent when score impact is missing", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-20T12:00:00.000Z", [{
+      id: "ceo-audit-log-evidence",
+      label: "Audit Evidence",
+      department: "CEO",
+      workflow: "Security",
+      status: "Failed",
+      summary: "audit_logs is connected but empty.",
+      evidence: ["audit_logs returned 0 row(s).", "No audit row was inserted."],
+      metricValue: "0 row(s)"
+    }]);
+    const complianceLane = foundation.departmentLanes.find((lane) => lane.id === "compliance");
+    const auditGroup = foundation.v1RuntimeProofMatrix?.groups.find((group) => group.id === "audit_loop");
+
+    expect(foundation.auditSpine?.status).toBe("Failed");
+    expect(complianceLane?.cards.find((card) => card.id === "audit-spine-coverage")).toMatchObject({
+      status: "Failed"
+    });
+    expect(auditGroup).toMatchObject({ status: "Failed" });
+    expect(foundation.readinessBreakdown?.overallStatus).toBe("Failed");
+    expect(foundation.readinessBreakdown?.v1ReadinessPercent).toBeLessThan(100);
   });
   it("keeps missing validator data as Needs Review instead of Pass", () => {
     const validators = validateCoreLoopState();

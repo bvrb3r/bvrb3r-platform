@@ -11,6 +11,9 @@ import { buildArchitectCodexRepairPrompt } from "@/lib/architect/mission-control
 import { buildMissionControlFoundation, buildMissionReadinessBreakdown, buildV1RuntimeProofMatrix, getOfficerCleanupEvidence } from "@/lib/architect/mission-control/foundation";
 import type {
   ArchitectIncident,
+  AuditSpineModel,
+  AuditSpineRecord,
+  AuditSpineStatus,
   FinanceLogCategory,
   FinanceLogEntry,
   FinanceRefundTarget,
@@ -957,6 +960,128 @@ function V1RuntimeProofPanel({ groups }: { groups: V1RuntimeProofGroup[] }) {
   );
 }
 
+function AuditSpineStageSummary({ label, status }: { label: string; status: AuditSpineStatus }) {
+  return (
+    <div className="rounded-[14px] border border-white/8 bg-black/24 p-3" data-testid={`audit-spine-stage-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/38">{label}</p>
+      <div className="mt-2">
+        <StatusPill status={status} />
+      </div>
+    </div>
+  );
+}
+
+function AuditSpineRecordCard({ record }: { record: AuditSpineRecord }) {
+  return (
+    <section className="rounded-[16px] border border-white/8 bg-black/26 p-3" data-testid={`audit-spine-record-${record.id}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">{record.lane} / {record.actorType}</p>
+          <h4 className="mt-1 text-sm font-black text-white">{record.actionType.replaceAll("_", " ")}</h4>
+        </div>
+        <StatusPill status={record.status} />
+      </div>
+      <dl className="mt-3 grid gap-2 text-xs leading-5 text-white/58 sm:grid-cols-2">
+        <div>
+          <dt className="font-black uppercase tracking-[0.12em] text-white/34">Missing stages</dt>
+          <dd className="text-white/76">{record.missingStageCount}</dd>
+        </div>
+        <div>
+          <dt className="font-black uppercase tracking-[0.12em] text-white/34">Failing stages</dt>
+          <dd className="text-white/76">{record.failingStageCount}</dd>
+        </div>
+        <div>
+          <dt className="font-black uppercase tracking-[0.12em] text-white/34">Next repair lane</dt>
+          <dd className="text-white/76">{record.nextRepairLane.replace("_", " ")}</dd>
+        </div>
+        <div>
+          <dt className="font-black uppercase tracking-[0.12em] text-white/34">Related incident</dt>
+          <dd className="text-white/76">{record.relatedIncidentCode}</dd>
+        </div>
+      </dl>
+      <p className="mt-3 text-xs leading-5 text-white/50">
+        <span className="font-black text-white/72">Evidence source:</span> {record.sourceTableOrFunction}
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {record.stages.map((stage) => (
+          <div key={stage.stage} className="rounded-[12px] border border-white/8 bg-white/[0.025] p-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-white/38">{stage.label}</p>
+              <StatusPill status={stage.status} />
+            </div>
+            <p className="mt-2 text-xs leading-5 text-white/50">{stage.evidence[0]}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AuditSpinePanel({ auditSpine }: { auditSpine?: AuditSpineModel }) {
+  if (!auditSpine) {
+    return (
+      <article data-testid="audit-spine" className="rounded-[22px] border border-white/8 bg-black/24 p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Audit Spine</p>
+            <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Repair audit evidence is not connected</h3>
+            <p className="mt-2 text-sm leading-6 text-white/62">No Audit Spine read model was returned. This remains Needs Review and cannot count as Pass.</p>
+          </div>
+          <StatusPill status="Not Connected" />
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article data-testid="audit-spine" className="rounded-[22px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.24)] sm:p-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Audit Spine</p>
+          <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Controlled repair evidence stages</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
+            Read-only coverage for approval, execution, verification, and score-impact evidence. Refund rows can prove execution, but they cannot fake full repair audit Pass.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusPill status={auditSpine.status} />
+          <span className="rounded-[8px] border border-white/10 bg-white/[0.035] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/58">
+            {auditSpine.records.length} action(s)
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <AuditSpineStageSummary label="Approval" status={auditSpine.summary.approvalCoverageStatus} />
+        <AuditSpineStageSummary label="Execution" status={auditSpine.summary.executionCoverageStatus} />
+        <AuditSpineStageSummary label="Verification" status={auditSpine.summary.verificationCoverageStatus} />
+        <AuditSpineStageSummary label="Score Impact" status={auditSpine.summary.scoreImpactCoverageStatus} />
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Missing Stages</p>
+          <p data-testid="audit-spine-missing-stage-count" className="mt-1 text-2xl font-black tracking-[-0.04em] text-white">{auditSpine.missingStageCount}</p>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Failing Stages</p>
+          <p data-testid="audit-spine-failing-stage-count" className="mt-1 text-2xl font-black tracking-[-0.04em] text-white">{auditSpine.failingStageCount}</p>
+        </div>
+        <div className="rounded-[16px] border border-white/8 bg-black/18 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Next Repair Lane</p>
+          <p className="mt-1 text-sm font-black uppercase tracking-[0.12em] text-white">{auditSpine.nextRepairLane.replace("_", " ")}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-3">
+        {auditSpine.records.map((record) => (
+          <AuditSpineRecordCard key={record.id} record={record} />
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: () => void }) {
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
@@ -1586,6 +1711,7 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
       </div>
       <CeoReadinessCard readiness={readiness} />
       <V1RuntimeProofPanel groups={runtimeProofMatrix.groups} />
+      <AuditSpinePanel auditSpine={foundation.auditSpine} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
         {cards.map((card) => (
           <CompactCeoCard
