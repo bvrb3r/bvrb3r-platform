@@ -31,7 +31,11 @@ import type {
   RlsSecurityInventory,
   RlsSecurityInventoryRow,
   RlsSecurityInventoryStatus,
+  SourceVaultCategory,
   SourceVaultEntry,
+  SourceVaultEvidenceStatus,
+  SourceVaultInventory,
+  SourceVaultRiskLevel,
   V1RuntimeProofGroup,
   V1RuntimeProofGroupId,
   V1RuntimeProofMatrix,
@@ -109,6 +113,7 @@ const V1_CRITICAL_CARD_IDS = new Set([
   "ceo-role-drift-health",
   "ceo-rls-disabled-evidence",
   "ceo-audit-log-evidence",
+  "source-vault-status",
   "culture-to-booking-loop",
   "booking-availability-loop",
   "barber-calendar-loop",
@@ -137,11 +142,11 @@ const V1_CRITICAL_CARD_IDS = new Set([
   "security-route-protection",
   "security-unsafe-actions",
   "security-audit",
-  "technology-rls-disabled"
+  "technology-rls-disabled",
+  "technology-source-vault-readiness"
 ]);
 
 const V2_INFRASTRUCTURE_CARD_IDS = new Set([
-  "source-vault-status",
   "deployment-health",
   "regression-status",
   "deployment-regression",
@@ -1480,20 +1485,321 @@ export const MISSION_CONTROL_LANES: MissionControlLane[] = [
   { id: "content_community", label: "Content & Community", href: "/architect/content-community", purpose: "Culture moderation, reports, comments, creators, and community health." }
 ];
 
-export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
-  { id: "platform-blueprint", sourceName: "Platform Blueprint", category: "Blueprint", purpose: "Anchor product systems and role boundaries.", linkedSystemArea: "Global architecture", status: "Active", ingestionStatus: "registered, not ingested" },
-  { id: "supabase-master-truth", sourceName: "Supabase Master Truth", category: "Database", purpose: "Define canonical tables, constraints, and read models.", linkedSystemArea: "Technology", status: "Needs Review", ingestionStatus: "registered, not ingested" },
-  { id: "app-master-build-logic", sourceName: "App Master Build Logic", category: "Build logic", purpose: "Map app loops to implementation rules.", linkedSystemArea: "Product", status: "Active", ingestionStatus: "registered, not ingested" },
-  { id: "culture-feed-plan", sourceName: "Culture Feed Plan", category: "Culture", purpose: "Govern social feed, engagement, comments, and booking attribution.", linkedSystemArea: "Marketing", status: "Active", ingestionStatus: "registered, not ingested" },
-  { id: "kiosk-plan", sourceName: "Kiosk Plan", category: "Operations", purpose: "Track front-door shop mode readiness.", linkedSystemArea: "Operations", status: "Needs Review", ingestionStatus: "registered, not ingested" },
-  { id: "money-flow", sourceName: "Money Flow", category: "Finance", purpose: "Define payment, routing, payout, refund, and risk rules.", linkedSystemArea: "Finance", status: "Active", ingestionStatus: "registered, not ingested" },
-  { id: "role-completion-map", sourceName: "Role Completion Map", category: "Roles", purpose: "Track role activation and completion gates.", linkedSystemArea: "Product", status: "Needs Review", ingestionStatus: "registered, not ingested" },
-  { id: "architect-super-master-plan", sourceName: "Architect Super Master Plan", category: "Architect", purpose: "Define Mission Control, agents, vaults, and executive decision posture.", linkedSystemArea: "CEO", status: "Active", ingestionStatus: "registered, not ingested" },
-  { id: "architect-officer-cleanup", sourceName: "Architect Officer Cleanup", category: "Architect", purpose: "Govern non-breaking evidence-led Officer Assistant cleanup.", linkedSystemArea: "Hive AI", status: "Needs Review", ingestionStatus: "registered, not ingested" },
-  { id: "barber-master-plan", sourceName: "Barber Master Plan / BARB3R doctrine", category: "Barber", purpose: "Govern chair command, barber growth, and service operations.", linkedSystemArea: "Operations", status: "Needs Review", ingestionStatus: "registered, not ingested" },
-  { id: "design-master-plan", sourceName: "Design Master Plan", category: "Design", purpose: "Keep Architect internal, technical, and evidence-backed.", linkedSystemArea: "Product", status: "Needs Review", ingestionStatus: "registered, not ingested" },
-  { id: "debugging-doctrine", sourceName: "Debugging Doctrine", category: "Debug", purpose: "Codify safe diagnosis, repair boundaries, and validation packets.", linkedSystemArea: "Technology", status: "Active", ingestionStatus: "registered, not ingested" }
+export const SOURCE_VAULT_CATEGORIES: SourceVaultCategory[] = [
+  "Client doctrine",
+  "Barber doctrine",
+  "Shop Owner doctrine",
+  "Architect doctrine",
+  "Money Flow doctrine",
+  "Security / Compliance doctrine",
+  "Build doctrine",
+  "AI / Hive future doctrine",
+  "Design doctrine",
+  "Operations doctrine",
+  "Content / Community doctrine"
 ];
+
+export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
+  sourceVaultEntry({
+    id: "client-doctrine",
+    sourceName: "Client Doctrine",
+    category: "Client doctrine",
+    sourceType: "private_reference",
+    privacyClass: "confidential",
+    roleLaneRelevance: ["client", "marketing"],
+    versionDate: "Needs Review",
+    storageLocation: "private://source-vault/client-doctrine",
+    contentHash: "sha256:metadata-placeholder-client-doctrine",
+    purpose: "Define client discovery, booking, loyalty, messaging, profile, and trust expectations.",
+    linkedSystemArea: "Client/Product",
+    ingestionStatus: "private_source_required",
+    summary: "Metadata registered only. Private client doctrine must be reviewed before Source Vault can claim full V1 readiness.",
+    topicTags: ["client", "booking", "discovery", "loyalty"],
+    scope: "v1_required",
+    linkedArchitectCardIds: ["product-client-health", "client_loop", "booking-posture"],
+    critical: true,
+    nextRepairLane: "product"
+  }),
+  sourceVaultEntry({
+    id: "barber-doctrine",
+    sourceName: "Barber Doctrine",
+    category: "Barber doctrine",
+    sourceType: "private_reference",
+    privacyClass: "confidential",
+    roleLaneRelevance: ["barber", "operations"],
+    versionDate: "Needs Review",
+    storageLocation: "private://source-vault/barber-doctrine",
+    contentHash: "sha256:metadata-placeholder-barber-doctrine",
+    purpose: "Define chair command, barber calendar, service completion, checkout, profile, and growth rules.",
+    linkedSystemArea: "Barber/Operations",
+    ingestionStatus: "private_source_required",
+    summary: "Metadata registered only. Private barber doctrine must be connected without committing source files.",
+    topicTags: ["barber", "chair-command", "calendar", "checkout"],
+    scope: "v1_required",
+    linkedArchitectCardIds: ["product-barber-health", "barber_loop", "operations-command-calendars"],
+    critical: true,
+    nextRepairLane: "operations"
+  }),
+  sourceVaultEntry({
+    id: "shop-owner-doctrine",
+    sourceName: "Shop Owner Doctrine",
+    category: "Shop Owner doctrine",
+    sourceType: "private_reference",
+    privacyClass: "confidential",
+    roleLaneRelevance: ["shop_owner", "operations", "finance"],
+    versionDate: "Missing",
+    storageLocation: "private://source-vault/shop-owner-doctrine",
+    contentHash: "sha256:missing-shop-owner-doctrine",
+    purpose: "Define shop command, active barber source truth, owner KPIs, team relationships, and shop money visibility.",
+    linkedSystemArea: "Shop Owner/Operations",
+    ingestionStatus: "missing",
+    summary: "Required V1 shop owner doctrine is not connected. This must stay blocking until metadata/source reference exists.",
+    topicTags: ["shop-owner", "team", "command-calendar", "kpi"],
+    scope: "v1_required",
+    linkedArchitectCardIds: ["product-owner-health", "shop_owner_loop", "owner-command-calendar-loop"],
+    critical: true,
+    nextRepairLane: "operations"
+  }),
+  sourceVaultEntry({
+    id: "architect-doctrine",
+    sourceName: "Architect Super Master Plan",
+    category: "Architect doctrine",
+    sourceType: "private_reference",
+    privacyClass: "restricted",
+    roleLaneRelevance: ["architect", "technology", "compliance"],
+    versionDate: "2026-06",
+    storageLocation: "private://source-vault/architect-super-master-plan",
+    contentHash: "sha256:metadata-only-architect-super-master-plan",
+    purpose: "Define Mission Control, evidence-led status, Source Vault, Action Registry, and Hive AI boundaries.",
+    linkedSystemArea: "Architect/CEO",
+    ingestionStatus: "ingested_metadata_only",
+    summary: "Metadata-only reference is registered. Raw private strategy content is not committed.",
+    topicTags: ["architect", "mission-control", "evidence", "guardrails"],
+    scope: "v1_required",
+    linkedArchitectCardIds: ["overall-platform-status", "source-vault-status", "technology-source-vault-readiness", "audit-spine-coverage"],
+    critical: true,
+    nextRepairLane: "technology"
+  }),
+  sourceVaultEntry({
+    id: "money-flow-doctrine",
+    sourceName: "Money Flow Doctrine",
+    category: "Money Flow doctrine",
+    sourceType: "private_reference",
+    privacyClass: "restricted",
+    roleLaneRelevance: ["finance", "security", "compliance"],
+    versionDate: "Needs Review",
+    storageLocation: "private://source-vault/money-flow-doctrine",
+    contentHash: "sha256:metadata-placeholder-money-flow-doctrine",
+    purpose: "Define payments, routing, refunds, payout readiness, fee posture, and money mutation guardrails.",
+    linkedSystemArea: "Finance",
+    ingestionStatus: "private_source_required",
+    summary: "Money doctrine metadata is registered, but private money-flow source evidence still needs controlled review.",
+    topicTags: ["payments", "routing", "refunds", "payouts"],
+    scope: "v1_required",
+    linkedArchitectCardIds: ["finance-payment-health", "finance-routing", "finance-refund-resolution", "finance-payout"],
+    critical: true,
+    nextRepairLane: "finance"
+  }),
+  sourceVaultEntry({
+    id: "security-compliance-doctrine",
+    sourceName: "Security / Compliance Doctrine",
+    category: "Security / Compliance doctrine",
+    sourceType: "private_reference",
+    privacyClass: "restricted",
+    roleLaneRelevance: ["security", "compliance", "technology"],
+    versionDate: "Missing",
+    storageLocation: "private://source-vault/security-compliance-doctrine",
+    contentHash: "sha256:missing-security-compliance-doctrine",
+    purpose: "Define role truth, RLS expectations, audit coverage, trust gates, policy visibility, and unsafe-action boundaries.",
+    linkedSystemArea: "Security/Compliance",
+    ingestionStatus: "missing",
+    summary: "Required security/compliance doctrine is missing and must block V1 readiness until metadata/source reference exists.",
+    topicTags: ["security", "compliance", "rls", "roles", "audit"],
+    scope: "v1_required",
+    linkedArchitectCardIds: ["security-role-truth-inventory", "security-rls-inventory", "compliance-role-truth-inventory"],
+    critical: true,
+    nextRepairLane: "security"
+  }),
+  sourceVaultEntry({
+    id: "v1-master-build-template",
+    sourceName: "BVRB3R V1 Master Build Template",
+    category: "Build doctrine",
+    sourceType: "private_reference",
+    privacyClass: "restricted",
+    roleLaneRelevance: ["architect", "technology", "compliance"],
+    versionDate: "2026-06",
+    storageLocation: "private://source-vault/v1-master-build-template",
+    contentHash: "sha256:metadata-only-v1-master-build-template",
+    purpose: "Govern Codex build doctrine: no fake Pass, no unsafe mutation, exact validation, and final report requirements.",
+    linkedSystemArea: "Build/Architect",
+    ingestionStatus: "ingested_metadata_only",
+    summary: "Metadata-only doctrine reference is registered. The full private PDF is not committed to the repository.",
+    topicTags: ["build", "codex", "validation", "pass-failed"],
+    scope: "v1_required",
+    linkedArchitectCardIds: ["source-vault-status", "technology-source-vault-readiness", "technology-coverage", "codex-packets"],
+    critical: true,
+    nextRepairLane: "technology"
+  }),
+  sourceVaultEntry({
+    id: "hive-ai-future-doctrine",
+    sourceName: "Hive AI Future Doctrine",
+    category: "AI / Hive future doctrine",
+    sourceType: "private_reference",
+    privacyClass: "restricted",
+    roleLaneRelevance: ["hive_ai_future", "architect"],
+    versionDate: "Parked future",
+    storageLocation: "private://source-vault/hive-ai-future-doctrine",
+    contentHash: "sha256:parked-future-hive-ai-doctrine",
+    purpose: "Define future Architect Prime, Officer Assistant, and agent autonomy boundaries after foundation blockers are clean.",
+    linkedSystemArea: "Hive AI",
+    ingestionStatus: "parked_future",
+    summary: "Hive AI doctrine is parked for future work and does not reduce V1 readiness.",
+    topicTags: ["hive-ai", "agents", "future"],
+    scope: "v3_future",
+    linkedArchitectCardIds: ["agent-status"],
+    critical: false,
+    nextRepairLane: "technology"
+  }),
+  sourceVaultEntry({
+    id: "design-doctrine",
+    sourceName: "Design Doctrine",
+    category: "Design doctrine",
+    sourceType: "private_reference",
+    privacyClass: "internal",
+    roleLaneRelevance: ["architect", "marketing"],
+    versionDate: "Needs Review",
+    storageLocation: "private://source-vault/design-doctrine",
+    contentHash: "sha256:metadata-placeholder-design-doctrine",
+    purpose: "Govern BVRB3R black-glass design language, role-dashboard parity, and premium UI standards.",
+    linkedSystemArea: "Product/Design",
+    ingestionStatus: "needs_review",
+    summary: "Design doctrine is registered as metadata and needs source review before it can support design readiness claims.",
+    topicTags: ["design", "ui", "role-dashboard", "polish"],
+    scope: "v2_infrastructure",
+    linkedArchitectCardIds: ["product-feature-readiness"],
+    critical: false,
+    nextRepairLane: "product"
+  }),
+  sourceVaultEntry({
+    id: "operations-doctrine",
+    sourceName: "Operations Doctrine",
+    category: "Operations doctrine",
+    sourceType: "private_reference",
+    privacyClass: "confidential",
+    roleLaneRelevance: ["operations", "barber", "shop_owner"],
+    versionDate: "Needs Review",
+    storageLocation: "private://source-vault/operations-doctrine",
+    contentHash: "sha256:metadata-placeholder-operations-doctrine",
+    purpose: "Define appointments, calendars, shop relationships, kiosk readiness, and command calendar operations.",
+    linkedSystemArea: "Operations",
+    ingestionStatus: "private_source_required",
+    summary: "Operations doctrine source reference is required before operations proof can claim full V1 readiness.",
+    topicTags: ["appointments", "calendar", "shop-relationships", "operations"],
+    scope: "v1_required",
+    linkedArchitectCardIds: ["operations-appointments", "operations-calendars", "operations-relationships"],
+    critical: true,
+    nextRepairLane: "operations"
+  }),
+  sourceVaultEntry({
+    id: "content-community-doctrine",
+    sourceName: "Content / Community Doctrine",
+    category: "Content / Community doctrine",
+    sourceType: "private_reference",
+    privacyClass: "internal",
+    roleLaneRelevance: ["content_community", "marketing", "client", "barber"],
+    versionDate: "Needs Review",
+    storageLocation: "private://source-vault/content-community-doctrine",
+    contentHash: "sha256:metadata-placeholder-content-community-doctrine",
+    purpose: "Define Culture feed, comments, reports, creator behavior, community signals, and content health rules.",
+    linkedSystemArea: "Content & Community",
+    ingestionStatus: "private_source_required",
+    summary: "Content/community doctrine metadata is registered, but private source review remains required.",
+    topicTags: ["culture", "comments", "reports", "community"],
+    scope: "v1_required",
+    linkedArchitectCardIds: ["community-comments", "community-health", "marketing-culture-feed"],
+    critical: false,
+    nextRepairLane: "content_community"
+  })
+];
+
+type SourceVaultEntryInput = Omit<
+  SourceVaultEntry,
+  "status" | "evidenceStatus" | "failureMeaning" | "staleOrMissingEvidenceState" | "rawContentCommitted"
+> & Partial<Pick<SourceVaultEntry, "status" | "evidenceStatus" | "failureMeaning" | "staleOrMissingEvidenceState" | "rawContentCommitted">>;
+
+function sourceVaultEntry(input: SourceVaultEntryInput): SourceVaultEntry {
+  const evidenceStatus = input.evidenceStatus ?? inferSourceVaultEntryStatus(input);
+
+  return {
+    ...input,
+    rawContentCommitted: input.rawContentCommitted ?? false,
+    evidenceStatus,
+    status: input.status ?? sourceVaultStatusLabel(evidenceStatus),
+    failureMeaning: input.failureMeaning ?? sourceVaultFailureMeaning(input, evidenceStatus),
+    staleOrMissingEvidenceState: input.staleOrMissingEvidenceState ?? sourceVaultMissingEvidence(input, evidenceStatus)
+  };
+}
+
+function inferSourceVaultEntryStatus(entry: SourceVaultEntryInput): SourceVaultEvidenceStatus {
+  if (entry.scope === "parked" || entry.scope === "v3_future" || entry.ingestionStatus === "parked_future") return "Parked";
+  if ((entry.privacyClass === "confidential" || entry.privacyClass === "restricted") && entry.rawContentCommitted) return "Failed";
+  if (entry.ingestionStatus === "missing") return entry.scope === "v1_required" && entry.critical ? "Failed" : "Needs Review";
+  if (entry.ingestionStatus === "private_source_required") return "Needs Review";
+  if (entry.ingestionStatus === "needs_review" || entry.ingestionStatus === "registered") return "Needs Review";
+  if (entry.ingestionStatus === "ingested_metadata_only") {
+    const hasRequiredMetadata = Boolean(
+      entry.id
+      && entry.sourceName
+      && entry.category
+      && entry.sourceType
+      && entry.privacyClass
+      && entry.storageLocation
+      && entry.contentHash
+      && entry.summary
+      && entry.topicTags.length
+      && entry.linkedArchitectCardIds.length
+    );
+
+    return hasRequiredMetadata ? "Pass" : "Needs Review";
+  }
+
+  return "Needs Review";
+}
+
+function sourceVaultStatusLabel(status: SourceVaultEvidenceStatus): SourceVaultEntry["status"] {
+  if (status === "Pass") return "Active";
+  if (status === "Parked") return "Parked";
+  if (status === "Failed") return "Missing";
+  return "Needs Review";
+}
+
+function sourceVaultFailureMeaning(entry: SourceVaultEntryInput, status: SourceVaultEvidenceStatus) {
+  if (status === "Pass") return `${entry.sourceName} has complete metadata-only evidence. Raw source content is not required in the repo.`;
+  if (status === "Parked") return `${entry.sourceName} is parked/future-scaffolded and does not block V1 readiness.`;
+  if ((entry.privacyClass === "confidential" || entry.privacyClass === "restricted") && entry.rawContentCommitted) {
+    return `${entry.sourceName} would expose private source content and must fail until raw content is removed.`;
+  }
+  if (entry.ingestionStatus === "missing") return `${entry.sourceName} is required but missing from connected Source Vault metadata.`;
+  if (entry.ingestionStatus === "private_source_required") return `${entry.sourceName} requires private source review before it can support a Pass state.`;
+  if (entry.ingestionStatus === "registered") return `${entry.sourceName} is only registered and cannot fake ingestion readiness.`;
+
+  return `${entry.sourceName} needs metadata/source evidence review before it can Pass.`;
+}
+
+function sourceVaultMissingEvidence(entry: SourceVaultEntryInput, status: SourceVaultEvidenceStatus) {
+  const missing: string[] = [];
+
+  if (status === "Pass" || status === "Parked") return missing;
+  if (entry.ingestionStatus === "missing") missing.push("Required source reference is missing.");
+  if (entry.ingestionStatus === "registered") missing.push("Registered title alone is not ingestion evidence.");
+  if (entry.ingestionStatus === "private_source_required") missing.push("Private source must be reviewed from private storage; do not commit the file.");
+  if (entry.ingestionStatus === "needs_review") missing.push("Metadata exists but needs source-owner review.");
+  if ((entry.privacyClass === "confidential" || entry.privacyClass === "restricted") && entry.rawContentCommitted) missing.push("Confidential/restricted raw content must not be committed.");
+  if (!entry.contentHash || entry.contentHash.includes("missing")) missing.push("Checksum placeholder is missing or unresolved.");
+  if (!entry.linkedArchitectCardIds.length) missing.push("Linked Architect card IDs are not connected.");
+
+  return missing.length ? missing : ["Source Vault evidence is incomplete."];
+}
 
 export const ACTION_REGISTRY: ActionRegistryEntry[] = [
   { id: "inspect-booking", label: "Inspect booking", riskClass: "Safe read-only", department: "Operations", description: "Read booking state and related appointment evidence.", allowed: true, approvalRequired: false, status: "Pass" },
@@ -1724,14 +2030,16 @@ export function buildMissionControlFoundation(
   ceoPlatformMetrics: MissionEvidenceCard[] = [],
   deploymentRegression = buildDeploymentRegressionEvidence(),
   rlsSecurityInventory = buildRlsSecurityInventory(),
-  roleTruthInventory = buildRoleTruthInventory()
+  roleTruthInventory = buildRoleTruthInventory(),
+  sourceVaultInventory = buildSourceVaultInventory()
 ): MissionControlFoundation {
   const coreLoopValidators = scopeEvidenceCards(applyIncidentFailures(validateCoreLoopState(), incidents));
   const platformEvidence = mergeEvidenceCards(
     ceoPlatformMetrics,
     buildDeploymentRegressionEvidenceCards(deploymentRegression),
     buildRlsSecurityInventoryEvidenceCards(rlsSecurityInventory),
-    buildRoleTruthInventoryEvidenceCards(roleTruthInventory)
+    buildRoleTruthInventoryEvidenceCards(roleTruthInventory),
+    buildSourceVaultEvidenceCards(sourceVaultInventory)
   );
   const baseDepartmentLanes = buildDepartmentLanes(coreLoopValidators, incidents, platformEvidence);
   const ceoCommandCenter = [
@@ -1766,8 +2074,9 @@ export function buildMissionControlFoundation(
     auditSpine,
     rlsSecurityInventory,
     roleTruthInventory,
+    sourceVaultInventory,
     incidentTypes: MISSION_INCIDENT_DEFINITIONS,
-    sourceVault: SOURCE_VAULT_REGISTRY,
+    sourceVault: sourceVaultInventory.entries,
     actionRegistry: ACTION_REGISTRY,
     agentRegistry: HIVE_AGENT_REGISTRY,
     codexFailureClasses: CODEX_FAILURE_CLASSES
@@ -2332,6 +2641,151 @@ function buildRlsSecurityInventoryEvidenceCards(inventory: RlsSecurityInventory)
         : "Database security proof has no disabled RLS evidence connected.",
       disabledEvidence
     )
+  ];
+}
+
+export function buildSourceVaultInventory(entries: SourceVaultEntry[] = SOURCE_VAULT_REGISTRY): SourceVaultInventory {
+  const normalizedEntries = entries.map((entry) => sourceVaultEntry(entry));
+  const v1RequiredSources = normalizedEntries.filter((entry) => entry.scope === "v1_required");
+  const missingRequiredSources = v1RequiredSources.filter((entry) => entry.evidenceStatus === "Failed" || entry.ingestionStatus === "missing");
+  const privateSourceRequiredSources = normalizedEntries.filter((entry) => entry.ingestionStatus === "private_source_required");
+  const needsReviewSources = normalizedEntries.filter((entry) => entry.evidenceStatus === "Needs Review" || entry.evidenceStatus === "Not Connected");
+  const parkedFutureSources = normalizedEntries.filter((entry) => entry.evidenceStatus === "Parked" || entry.scope === "v3_future" || entry.scope === "parked");
+  const linkedArchitectCardIds = Array.from(new Set(normalizedEntries.flatMap((entry) => entry.linkedArchitectCardIds))).sort();
+  const status = aggregateSourceVaultStatus(normalizedEntries);
+  const categories = SOURCE_VAULT_CATEGORIES.map((category) => sourceVaultCategorySummary(category, normalizedEntries));
+
+  const summary = {
+    totalSourcesRegistered: normalizedEntries.length,
+    ingestedMetadataCount: normalizedEntries.filter((entry) => entry.ingestionStatus === "ingested_metadata_only").length,
+    missingRequiredSourceCount: missingRequiredSources.length,
+    privateSourceRequiredCount: privateSourceRequiredSources.length,
+    needsReviewCount: needsReviewSources.length,
+    parkedFutureSourceCount: parkedFutureSources.length,
+    v1RequiredSourceCount: v1RequiredSources.length,
+    v1RequiredMissingCount: missingRequiredSources.length,
+    linkedArchitectCardsCount: linkedArchitectCardIds.length,
+    highestRiskLevel: highestSourceVaultRiskLevel(normalizedEntries),
+    nextRepairLane: firstSourceVaultRepairLane(normalizedEntries) ?? "technology"
+  };
+
+  return {
+    status,
+    summary,
+    categories,
+    entries: normalizedEntries,
+    v1RequiredSources,
+    missingRequiredSources,
+    privateSourceRequiredSources,
+    needsReviewSources,
+    parkedFutureSources,
+    linkedArchitectCardIds,
+    evidenceSource: "Static metadata-only Source Vault registry; private documents remain outside the public repository.",
+    privacyWarning: "Metadata only - no private documents committed."
+  };
+}
+
+function sourceVaultCategorySummary(category: SourceVaultCategory, entries: SourceVaultEntry[]) {
+  const categoryEntries = entries.filter((entry) => entry.category === category);
+  const activeEntries = categoryEntries.filter((entry) => entry.evidenceStatus !== "Parked");
+  const failedEntries = activeEntries.filter((entry) => entry.evidenceStatus === "Failed");
+  const reviewEntries = activeEntries.filter((entry) => entry.evidenceStatus === "Needs Review" || entry.evidenceStatus === "Not Connected");
+  const parkedFutureCount = categoryEntries.filter((entry) => entry.evidenceStatus === "Parked" || entry.scope === "v3_future" || entry.scope === "parked").length;
+  const v1RequiredCount = categoryEntries.filter((entry) => entry.scope === "v1_required").length;
+  const missingRequiredCount = categoryEntries.filter((entry) => entry.scope === "v1_required" && (entry.evidenceStatus === "Failed" || entry.ingestionStatus === "missing")).length;
+  const status: SourceVaultEvidenceStatus = failedEntries.length
+    ? "Failed"
+    : reviewEntries.length
+      ? "Needs Review"
+      : categoryEntries.length && categoryEntries.every((entry) => entry.evidenceStatus === "Parked")
+        ? "Parked"
+        : categoryEntries.length
+          ? "Pass"
+          : "Needs Review";
+
+  return {
+    category,
+    total: categoryEntries.length,
+    v1RequiredCount,
+    missingRequiredCount,
+    needsReviewCount: reviewEntries.length,
+    parkedFutureCount,
+    highestRiskLevel: highestSourceVaultRiskLevel(categoryEntries),
+    status
+  };
+}
+
+function aggregateSourceVaultStatus(entries: SourceVaultEntry[]): SourceVaultEvidenceStatus {
+  const activeEntries = entries.filter((entry) => entry.evidenceStatus !== "Parked");
+  if (activeEntries.some((entry) => entry.evidenceStatus === "Failed")) return "Failed";
+  if (activeEntries.some((entry) => entry.evidenceStatus === "Needs Review" || entry.evidenceStatus === "Not Connected")) return "Needs Review";
+  if (activeEntries.length) return "Pass";
+  return "Needs Review";
+}
+
+function highestSourceVaultRiskLevel(entries: SourceVaultEntry[]): SourceVaultRiskLevel {
+  const riskOrder: SourceVaultRiskLevel[] = ["low", "medium", "high", "critical"];
+  const activeEntries = entries.filter((entry) => entry.evidenceStatus !== "Parked");
+  if (!activeEntries.length) return "unknown";
+
+  return activeEntries.reduce<SourceVaultRiskLevel>((highest, entry) => {
+    const entryRisk: SourceVaultRiskLevel = entry.critical || entry.privacyClass === "restricted" || entry.evidenceStatus === "Failed"
+      ? "critical"
+      : entry.privacyClass === "confidential" || entry.scope === "v1_required"
+        ? "high"
+        : entry.evidenceStatus === "Needs Review"
+          ? "medium"
+          : "low";
+
+    return riskOrder.indexOf(entryRisk) > riskOrder.indexOf(highest) ? entryRisk : highest;
+  }, "low");
+}
+
+function firstSourceVaultRepairLane(entries: SourceVaultEntry[]): MissionLaneId | null {
+  const blockingEntry = entries.find((entry) => entry.evidenceStatus === "Failed" && entry.scope === "v1_required")
+    ?? entries.find((entry) => entry.evidenceStatus === "Needs Review" && entry.scope === "v1_required")
+    ?? entries.find((entry) => entry.evidenceStatus === "Failed" || entry.evidenceStatus === "Needs Review");
+
+  return blockingEntry?.nextRepairLane ?? null;
+}
+
+function sourceVaultStatusToMissionStatus(status: SourceVaultEvidenceStatus): MissionControlStatus {
+  if (status === "Pass" || status === "Warning" || status === "Failed" || status === "Needs Review") return status;
+  return "Needs Review";
+}
+
+function buildSourceVaultEvidenceCards(inventory: SourceVaultInventory): MissionEvidenceCard[] {
+  const summary = inventory.summary;
+  const status = sourceVaultStatusToMissionStatus(inventory.status);
+  const evidence = [
+    `totalSourcesRegistered=${summary.totalSourcesRegistered}.`,
+    `ingestedMetadataCount=${summary.ingestedMetadataCount}.`,
+    `missingRequiredSourceCount=${summary.missingRequiredSourceCount}.`,
+    `privateSourceRequiredCount=${summary.privateSourceRequiredCount}.`,
+    `needsReviewCount=${summary.needsReviewCount}.`,
+    `parkedFutureSourceCount=${summary.parkedFutureSourceCount}.`,
+    `v1RequiredSourceCount=${summary.v1RequiredSourceCount}.`,
+    `v1RequiredMissingCount=${summary.v1RequiredMissingCount}.`,
+    `linkedArchitectCardsCount=${summary.linkedArchitectCardsCount}.`,
+    `highestRiskLevel=${summary.highestRiskLevel}.`,
+    inventory.privacyWarning,
+    ...inventory.entries.slice(0, 8).map((entry) => `${entry.sourceName}: ${entry.evidenceStatus}; ${entry.ingestionStatus}; ${entry.privacyClass}; ${entry.scope}.`)
+  ];
+  const summaryText = summary.missingRequiredSourceCount
+    ? `${summary.missingRequiredSourceCount} required V1 Source Vault source(s) are missing.`
+    : status === "Pass"
+      ? "Source Vault metadata is connected without private document exposure."
+      : "Source Vault metadata is registered, but private source review is incomplete.";
+
+  return [
+    {
+      ...evidenceCard("source-vault-status", "Source Vault status", "CEO", "Source Vault", status, summaryText, evidence),
+      metricValue: `${summary.v1RequiredSourceCount} V1 / ${summary.v1RequiredMissingCount} missing`
+    },
+    {
+      ...evidenceCard("technology-source-vault-readiness", "Source Vault readiness", "Technology", "Source Vault", status, summaryText, evidence),
+      metricValue: `${summary.totalSourcesRegistered} registered`
+    }
   ];
 }
 
@@ -2967,6 +3421,8 @@ function buildCeoCards(
     ?? evidenceCard("deployment-health", "Deployment health", "CEO", "Deployment", "Needs Review", "Deployment fingerprint is not connected.", ["Missing deployment data must remain Needs Review."]);
   const regressionStatus = evidenceById.get("regression-status")
     ?? evidenceCard("regression-status", "Regression status", "CEO", "Regression Coverage", "Needs Review", "Regression status is tracked by test evidence and must not infer Pass automatically.", ["Run targeted Architect and loop regressions for proof."]);
+  const sourceVaultStatus = evidenceById.get("source-vault-status")
+    ?? evidenceCard("source-vault-status", "Source Vault status", "CEO", "Source Vault", "Needs Review", "Source Vault metadata is not connected.", ["Missing Source Vault evidence must remain Needs Review."]);
 
   return [
     evidenceCard("overall-platform-status", "Overall platform status", "CEO", "Global Health", failedValidators.length || criticalIncidents.length ? "Failed" : "Needs Review", failedValidators.length || criticalIncidents.length ? "Critical workflow evidence needs attention." : "No full-platform proof bundle has been run in this snapshot.", [
@@ -2982,7 +3438,7 @@ function buildCeoCards(
     evidenceCard("role-health", "Client/Barber/Owner role health", "CEO", "Role Health", validatorStatus(validators, "owner-command-calendar-loop"), "Role health watches client booking, barber chair command, owner shop command, and relationship sync.", validatorEvidence(validators, "owner-command-calendar-loop")),
     deploymentHealth,
     regressionStatus,
-    evidenceCard("source-vault-status", "Source Vault status", "CEO", "Source Vault", "Needs Review", "Sources are registered for v1, not ingested into AI memory.", [`${SOURCE_VAULT_REGISTRY.length} source(s) registered.`, "No ingestion system is claimed."]),
+    sourceVaultStatus,
     evidenceCard("agent-status", "Agent status", "CEO", "Hive AI", "Needs Review", "Hive agents are Level 0 or Level 1 only in v1.", [`${HIVE_AGENT_REGISTRY.length} agent(s) registered.`, "No autonomous money/account/team/code execution enabled."]),
     evidenceCard("next-executive-decisions", "Next executive decisions", "CEO", "Executive Decisions", "Needs Review", "Phillip remains final executive decision maker.", ["Mission Control can surface decisions; it does not make executive decisions in v1."])
   ];
@@ -3050,6 +3506,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       platformCard("technology-rls-disabled", "RLS disabled tables", "Technology", "Supabase RLS", "RLS disabled table evidence is not connected."),
       evidenceCard("technology-api", "API health", "Technology", "API", "Needs Review", "API health requires route-specific evidence.", ["Architect APIs remain gated."]),
       evidenceCard("technology-schema", "Schema constraints", "Technology", "Schema", incidents.some((incident) => incident.diagnosisCode === "schema_constraint_mismatch") ? "Failed" : "Needs Review", "Schema constraint evidence is available for payment routing.", ["Constraint checks are read-only."]),
+      platformCard("technology-source-vault-readiness", "Source Vault readiness", "Technology", "Source Vault", "Source Vault metadata readiness is not connected."),
       platformCard("technology-coverage", "Regression coverage", "Technology", "Coverage", "Regression coverage must be explicit.")
     ],
     operations: [

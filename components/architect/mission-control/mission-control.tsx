@@ -27,6 +27,7 @@ import type {
   MissionLaneId,
   RoleTruthInventory,
   RlsSecurityInventory,
+  SourceVaultInventory,
   V1RuntimeProofGroup
 } from "@/lib/architect/mission-control/types";
 import { cn } from "@/lib/utils";
@@ -685,7 +686,17 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
   const unsafeBlocked = unsafeActions.length > 0 && unsafeActions.every((action) => !action.allowed);
   const packetCount = Object.keys(snapshot.packets ?? {}).length;
   const selectedPacket = selectedIncident ? snapshot.packets[selectedIncident.id]?.codexPacket : null;
-  const sourceVaultEvidence = foundation.sourceVault.slice(0, 5).map((source) => `${source.sourceName}: ${source.status}; ${source.ingestionStatus}.`);
+  const sourceVaultSummary = foundation.sourceVaultInventory?.summary ?? null;
+  const sourceVaultEvidence = foundation.sourceVaultInventory
+    ? [
+        `totalSourcesRegistered=${foundation.sourceVaultInventory.summary.totalSourcesRegistered}`,
+        `ingestedMetadataCount=${foundation.sourceVaultInventory.summary.ingestedMetadataCount}`,
+        `missingRequiredSourceCount=${foundation.sourceVaultInventory.summary.missingRequiredSourceCount}`,
+        `privateSourceRequiredCount=${foundation.sourceVaultInventory.summary.privateSourceRequiredCount}`,
+        `parkedFutureSourceCount=${foundation.sourceVaultInventory.summary.parkedFutureSourceCount}`,
+        foundation.sourceVaultInventory.privacyWarning
+      ]
+    : foundation.sourceVault.slice(0, 5).map((source) => `${source.sourceName}: ${source.status}; ${source.ingestionStatus}.`);
   const actionRegistryEvidence = unsafeActions.length
     ? unsafeActions.slice(0, 5).map((action) => `${action.label}: ${action.allowed ? "allowed" : "blocked"} (${action.riskClass}).`)
     : ["No unsafe action registry rows are connected."];
@@ -743,7 +754,17 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
     compactCard({ id: "active-supply", label: "Active Shops / Active Barbers", status: worstStatus(shops?.status, activeBarbers?.status), value: `${metricValue(shops)} / ${metricValue(activeBarbers)}`, summary: "Active supply is read from shop and barber evidence.", evidence: cardEvidence(shops, activeBarbers), href: "/architect/operations" }),
     compactCard({ id: "critical-incidents", label: "Critical Incidents", status: incidents?.status, value: metricValue(incidents), summary: metricSummary(incidents), evidence: cardEvidence(incidents), href: "/architect/technology" }),
     compactCard({ id: "deployment-regression", label: "Deployment / Regression", status: deployment?.status, value: metricValue(deployment), summary: metricSummary(deployment), evidence: cardEvidence(deployment), href: "/architect/technology" }),
-    compactCard({ id: "source-vault", label: "Source Vault", status: sourceVault?.status, value: `${foundation.sourceVault.length} registered`, summary: "Sources are registered, not ingested.", evidence: sourceVaultEvidence, href: "/architect/technology" }),
+    compactCard({
+      id: "source-vault",
+      label: "Source Vault",
+      status: sourceVault?.status,
+      value: sourceVaultSummary ? `${sourceVaultSummary.v1RequiredSourceCount} V1 / ${sourceVaultSummary.v1RequiredMissingCount} missing` : `${foundation.sourceVault.length} registered`,
+      summary: sourceVaultSummary
+        ? `Metadata only. Private required: ${sourceVaultSummary.privateSourceRequiredCount}. Parked/future: ${sourceVaultSummary.parkedFutureSourceCount}.`
+        : "Sources are registered, not ingested.",
+      evidence: sourceVaultEvidence,
+      href: "/architect/technology"
+    }),
     compactCard({ id: "action-registry", label: "Action Registry", status: unsafeBlocked ? "Pass" : "Failed", value: unsafeBlocked ? "Unsafe blocked" : "Review needed", summary: `${unsafeActions.length} unsafe action(s) blocked by registry.`, evidence: actionRegistryEvidence, href: "/architect/security" }),
     compactCard({ id: "hive-ai", label: "Hive AI", status: hiveAi?.status, value: `${foundation.agentRegistry.length} agents`, summary: "Hive AI remains Level 0/1 only; Officer Assistants are evidence-led and non-breaking.", evidence: hiveEvidence, href: "/architect/technology" }),
     compactCard({ id: "codex-packets", label: "Codex Packets", status: selectedPacket ? "Pass" : "Needs Review", value: `${packetCount} packet(s)`, summary: selectedPacket ? "Codex packet is available for the selected incident." : "No active incident packet is selected.", evidence: codexPacketEvidence, href: "/architect/technology", actionLabel: selectedPacket ? "Copy Codex Packet" : undefined })
@@ -2103,6 +2124,122 @@ function RoleTruthRowCard({ row }: { row: RoleTruthInventory["rows"][number] }) 
   );
 }
 
+function SourceVaultEntryCard({ source }: { source: SourceVaultInventory["entries"][number] }) {
+  return (
+    <article className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">{source.category}</p>
+          <h4 className="mt-1 text-sm font-black text-white">{source.sourceName}</h4>
+        </div>
+        <StatusPill status={source.evidenceStatus} />
+      </div>
+      <div className="mt-3 grid gap-2 text-xs leading-5 text-white/58 sm:grid-cols-2">
+        <p><span className="font-black text-white/82">Type:</span> {source.sourceType}</p>
+        <p><span className="font-black text-white/82">Privacy:</span> {source.privacyClass}</p>
+        <p><span className="font-black text-white/82">Scope:</span> {source.scope}</p>
+        <p><span className="font-black text-white/82">Ingestion:</span> {source.ingestionStatus}</p>
+        <p><span className="font-black text-white/82">Storage:</span> {source.storageLocation}</p>
+        <p><span className="font-black text-white/82">Hash:</span> {source.contentHash}</p>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-white/58">{source.summary}</p>
+      {source.staleOrMissingEvidenceState.length ? (
+        <ul className="mt-3 space-y-1 text-xs text-amber-100/82">
+          {source.staleOrMissingEvidenceState.slice(0, 3).map((gap) => (
+            <li key={gap}>- {gap}</li>
+          ))}
+        </ul>
+      ) : null}
+    </article>
+  );
+}
+
+function SourceVaultInventoryPanel({ inventory }: { inventory?: SourceVaultInventory }) {
+  if (!inventory) {
+    return (
+      <article className="rounded-[24px] border border-amber-300/15 bg-amber-300/8 p-4 text-sm text-amber-100 sm:p-5" data-testid="source-vault-inventory">
+        Source Vault inventory is not connected. Missing source metadata must stay Needs Review.
+      </article>
+    );
+  }
+
+  const summary = inventory.summary;
+  const priorityEntries = [
+    ...inventory.missingRequiredSources,
+    ...inventory.privateSourceRequiredSources,
+    ...inventory.needsReviewSources
+  ].filter((entry, index, entries) => entries.findIndex((candidate) => candidate.id === entry.id) === index);
+
+  return (
+    <article className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5" data-testid="source-vault-inventory">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">Source Vault Ingestion Foundation</p>
+          <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Metadata-only source readiness</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/58">
+            {inventory.privacyWarning} Source titles, categories, private-storage references, placeholder hashes, scopes, linked cards, and readiness states are tracked without committing raw PDFs, DOCX files, screenshots, transcripts, secrets, or private strategy documents.
+          </p>
+        </div>
+        <StatusPill status={inventory.status} />
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          ["Sources registered", summary.totalSourcesRegistered],
+          ["Ingested metadata", summary.ingestedMetadataCount],
+          ["Missing required", summary.missingRequiredSourceCount],
+          ["Private source required", summary.privateSourceRequiredCount],
+          ["Needs review", summary.needsReviewCount],
+          ["Parked/future", summary.parkedFutureSourceCount],
+          ["V1 required", summary.v1RequiredSourceCount],
+          ["V1 required missing", summary.v1RequiredMissingCount],
+          ["Linked Architect cards", summary.linkedArchitectCardsCount],
+          ["Highest risk", summary.highestRiskLevel],
+          ["Next repair lane", summary.nextRepairLane]
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-[16px] border border-white/8 bg-white/[0.025] p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">{label}</p>
+            <p className="mt-1 text-lg font-black text-white">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <section className="mt-5">
+        <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/50">Category breakdown</h4>
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {inventory.categories.map((category) => (
+            <div key={category.category} className="rounded-[16px] border border-white/8 bg-white/[0.025] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-black text-white">{category.category}</p>
+                <StatusPill status={category.status} />
+              </div>
+              <div className="mt-2 grid gap-1 text-xs text-white/58">
+                <p>Total: {category.total}</p>
+                <p>V1 required: {category.v1RequiredCount}</p>
+                <p>Missing required: {category.missingRequiredCount}</p>
+                <p>Needs Review: {category.needsReviewCount}</p>
+                <p>Parked/future: {category.parkedFutureCount}</p>
+                <p>Risk: {category.highestRiskLevel}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-5">
+        <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">Priority source gaps</h4>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          {priorityEntries.length ? priorityEntries.slice(0, 8).map((source) => (
+            <SourceVaultEntryCard key={source.id} source={source} />
+          )) : (
+            <div className="rounded-[16px] border border-dashed border-white/12 bg-white/[0.025] p-3 text-sm text-white/58">No active Source Vault gaps are connected.</div>
+          )}
+        </div>
+      </section>
+    </article>
+  );
+}
+
 function RoleTruthInventoryPanel({ inventory }: { inventory?: RoleTruthInventory }) {
   if (!inventory) {
     return (
@@ -2252,6 +2389,9 @@ function DepartmentLaneDetail({
       ) : null}
       {lane.id === "security" || lane.id === "compliance" ? (
         <RoleTruthInventoryPanel inventory={foundation.roleTruthInventory} />
+      ) : null}
+      {lane.id === "technology" ? (
+        <SourceVaultInventoryPanel inventory={foundation.sourceVaultInventory} />
       ) : null}
       {issueDetailsEnabled && selectedIssue ? (
         <ArchitectIssueDetailModal

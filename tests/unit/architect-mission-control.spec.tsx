@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArchitectMissionControl } from "@/components/architect/mission-control/mission-control";
-import { buildDeploymentRegressionEvidence, buildMissionControlFoundation } from "@/lib/architect/mission-control/foundation";
+import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, buildSourceVaultInventory } from "@/lib/architect/mission-control/foundation";
 import { APPOINTMENT_ID } from "@/tests/unit/architect-debug-test-utils";
 
 const fetchMock = vi.fn();
@@ -291,6 +291,15 @@ function createAllPassRuntimeProofMatrix() {
 function createAllPassSnapshot() {
   const snapshot = createSnapshot();
   const incidentId = "packet_ready:regression:all-pass";
+  const sourceVaultInventory = buildSourceVaultInventory([
+    {
+      ...buildSourceVaultInventory().entries.find((source) => source.id === "v1-master-build-template")!,
+      evidenceStatus: "Pass",
+      status: "Active",
+      failureMeaning: "Source Vault metadata is complete for this all-pass fixture.",
+      staleOrMissingEvidenceState: []
+    }
+  ]);
   const selectedIncident = {
     ...snapshot.incidents[0],
     id: incidentId,
@@ -344,15 +353,8 @@ function createAllPassSnapshot() {
       coreLoopValidators: [],
       v1RuntimeProofMatrix,
       incidentTypes: [],
-      sourceVault: [{
-        id: "architect-super-master-plan",
-        sourceName: "Architect Super Master Plan",
-        category: "Architect",
-        purpose: "Governs Mission Control.",
-        linkedSystemArea: "Architect",
-        status: "Active",
-        ingestionStatus: "registered, not ingested"
-      }],
+      sourceVaultInventory,
+      sourceVault: sourceVaultInventory.entries,
       actionRegistry: [{
         id: "refund",
         label: "Refund",
@@ -581,7 +583,7 @@ describe("architect mission control", () => {
 
     const readiness = await screen.findByTestId("architect-ceo-readiness");
     expect(within(readiness).getByText("100% Pass")).toBeInTheDocument();
-    expect(screen.getByTestId("ceo-readiness-pass-count")).toHaveTextContent("28");
+    expect(screen.getByTestId("ceo-readiness-pass-count")).toHaveTextContent("29");
     expect(screen.getByTestId("ceo-readiness-failed-count")).toHaveTextContent("0");
     expect(screen.getByTestId("ceo-readiness-needs-review-count")).toHaveTextContent("0");
     expect(screen.getByTestId("ceo-readiness-critical-blockers")).toHaveTextContent("0");
@@ -649,6 +651,31 @@ describe("architect mission control", () => {
     expect(inventory).toHaveTextContent("front_desk");
     expect(inventory).not.toHaveTextContent("Normalize roles");
     expect(inventory).not.toHaveTextContent("Run migration");
+  });
+
+  it("renders the Source Vault Ingestion Foundation as metadata-only readiness evidence", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createNoIncidentSnapshot()
+    });
+
+    render(<ArchitectMissionControl laneId="technology" />);
+
+    const inventory = await screen.findByTestId("source-vault-inventory");
+    expect(inventory).toHaveTextContent("Source Vault Ingestion Foundation");
+    expect(inventory).toHaveTextContent("Metadata-only source readiness");
+    expect(inventory).toHaveTextContent("Metadata only - no private documents committed.");
+    expect(inventory).toHaveTextContent("Sources registered");
+    expect(inventory).toHaveTextContent("Ingested metadata");
+    expect(inventory).toHaveTextContent("Missing required");
+    expect(inventory).toHaveTextContent("Private source required");
+    expect(inventory).toHaveTextContent("V1 required missing");
+    expect(inventory).toHaveTextContent("Linked Architect cards");
+    expect(inventory).toHaveTextContent("Client doctrine");
+    expect(inventory).toHaveTextContent("AI / Hive future doctrine");
+    expect(inventory).toHaveTextContent("Parked");
+    expect(inventory).not.toHaveTextContent("Ingest private source");
+    expect(inventory).not.toHaveTextContent("Activate Hive AI");
   });
 
   it("opens CEO card detail popups with evidence and lane routing", async () => {
