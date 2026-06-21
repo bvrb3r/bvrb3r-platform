@@ -11,12 +11,36 @@ import {
   buildAuditSpineModel,
   buildMissionReadinessBreakdown,
   buildV1RuntimeProofMatrix,
+  buildRlsSecurityInventory,
   classifyArchitectIncident,
   getOfficerAssistants,
   getAuditCoveragePlanEvidence,
   getOfficerCleanupEvidence,
   validateCoreLoopState
 } from "@/lib/architect/mission-control/foundation";
+
+type RlsInventoryRows = NonNullable<NonNullable<Parameters<typeof buildRlsSecurityInventory>[0]>["rows"]>;
+
+function rlsInventoryRow(overrides: Partial<RlsInventoryRows[number]> = {}): RlsInventoryRows[number] {
+  return {
+    id: "rls-test-table",
+    schemaName: "public",
+    tableName: "test_table",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "V1 test data.",
+    userRoleExposure: ["client_user"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "RLS enabled with role-scoped policies.",
+    suggestedPolicyPlanSummary: "Verify RLS before marking Pass.",
+    nextRepairLane: "security",
+    evidenceSource: "test evidence",
+    ...overrides
+  };
+}
 
 describe("architect mission control foundation", () => {
   it("defines the official nine-lane Mission Control Navigation with CEO default", () => {
@@ -76,7 +100,7 @@ describe("architect mission control foundation", () => {
     });
   });
 
-  it("keeps missing cleanup evidence as Needs Review instead of fake Pass", () => {
+  it("keeps missing cleanup evidence as Needs Review while connected RLS disabled evidence stays Failed", () => {
     const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
     const securityLane = foundation.departmentLanes.find((lane) => lane.id === "security");
 
@@ -84,11 +108,18 @@ describe("architect mission control foundation", () => {
       status: "Needs Review",
       metricValue: "Not connected"
     });
+    expect(foundation.ceoCommandCenter.find((card) => card.id === "ceo-rls-disabled-evidence")).toMatchObject({
+      status: "Failed",
+      metricValue: "28 disabled"
+    });
     expect(securityLane?.cards.find((card) => card.id === "security-role-drift")).toMatchObject({
       status: "Needs Review"
     });
     expect(securityLane?.cards.find((card) => card.id === "security-rls-disabled")).toMatchObject({
-      status: "Needs Review"
+      status: "Failed"
+    });
+    expect(securityLane?.cards.find((card) => card.id === "security-rls-inventory")).toMatchObject({
+      status: "Failed"
     });
     expect(securityLane?.cards.find((card) => card.id === "security-audit")).toMatchObject({
       status: "Needs Review"
@@ -173,6 +204,137 @@ describe("architect mission control foundation", () => {
       "security-rls-disabled",
       "technology-rls-disabled"
     ]));
+  });
+
+  it("builds an RLS Security Inventory with disabled V1 critical tables as Failed", () => {
+    const inventory = buildRlsSecurityInventory({
+      productionDisabledPublicTableCount: 1,
+      rows: [
+        rlsInventoryRow({
+          id: "rls-payments",
+          tableName: "payments",
+          rlsEnabled: "no",
+          policyCount: 0,
+          policyNames: [],
+          currentRiskLevel: "critical"
+        })
+      ],
+      evidenceSource: "test production inventory"
+    });
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z", [], undefined, inventory);
+    const securityLane = foundation.departmentLanes.find((lane) => lane.id === "security");
+    const securityLoop = foundation.v1RuntimeProofMatrix?.groups.find((group) => group.id === "security_loop");
+
+    expect(inventory.status).toBe("Failed");
+    expect(inventory.summary.rlsDisabledCount).toBe(1);
+    expect(inventory.v1CriticalDisabledTables[0]).toMatchObject({ tableName: "payments", currentStatus: "Failed" });
+    expect(securityLane?.cards.find((card) => card.id === "security-rls-inventory")).toMatchObject({
+      status: "Failed",
+      metricValue: "1 inventoried"
+    });
+    expect(securityLane?.cards.find((card) => card.id === "security-rls-disabled")).toMatchObject({ status: "Failed" });
+    expect(securityLoop?.status).toBe("Failed");
+    expect(foundation.readinessBreakdown?.overallStatus).toBe("Failed");
+  });
+
+  it("keeps unknown RLS posture as Needs Review instead of fake Pass", () => {
+    const inventory = buildRlsSecurityInventory({
+      productionDisabledPublicTableCount: 0,
+      rows: [
+        rlsInventoryRow({
+          id: "rls-appointments",
+          tableName: "appointments",
+          rlsEnabled: "unknown",
+          policyCount: null,
+          policyNames: []
+        })
+      ]
+    });
+
+    expect(inventory.status).toBe("Needs Review");
+    expect(inventory.unknownPostureTables[0]).toMatchObject({
+      tableName: "appointments",
+      currentStatus: "Needs Review"
+    });
+    expect(inventory.rows[0].staleOrMissingEvidenceState).toEqual(expect.arrayContaining([
+      "Production RLS enabled state is not connected.",
+      "Production policy count is not connected.",
+      "Production policy names are not connected."
+    ]));
+  });
+
+  it("does not mark enabled RLS Pass without connected policy evidence", () => {
+    const inventory = buildRlsSecurityInventory({
+      productionDisabledPublicTableCount: 0,
+      rows: [
+        rlsInventoryRow({
+          id: "rls-profiles",
+          tableName: "profiles",
+          rlsEnabled: "yes",
+          policyCount: 0,
+          policyNames: []
+        })
+      ]
+    });
+
+    expect(inventory.status).toBe("Needs Review");
+    expect(inventory.rows[0]).toMatchObject({
+      tableName: "profiles",
+      currentStatus: "Needs Review",
+      migrationRequired: "unknown"
+    });
+  });
+
+  it("lets connected RLS and policy evidence pass when no disabled production evidence exists", () => {
+    const inventory = buildRlsSecurityInventory({
+      productionDisabledPublicTableCount: 0,
+      rows: [
+        rlsInventoryRow({
+          id: "rls-culture-posts",
+          tableName: "culture_posts",
+          rlsEnabled: "yes",
+          policyCount: 2,
+          policyNames: ["culture_posts_public_read", "culture_posts_author_write"],
+          currentRiskLevel: "high"
+        })
+      ]
+    });
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z", [], undefined, inventory);
+    const securityLane = foundation.departmentLanes.find((lane) => lane.id === "security");
+
+    expect(inventory.status).toBe("Pass");
+    expect(inventory.rows[0]).toMatchObject({
+      tableName: "culture_posts",
+      currentStatus: "Pass",
+      migrationRequired: "no"
+    });
+    expect(securityLane?.cards.find((card) => card.id === "security-rls-inventory")).toMatchObject({ status: "Pass" });
+    expect(securityLane?.cards.find((card) => card.id === "security-rls-disabled")).toMatchObject({ status: "Pass" });
+  });
+
+  it("parks future RLS rows without counting them as V1 release blockers", () => {
+    const inventory = buildRlsSecurityInventory({
+      productionDisabledPublicTableCount: 0,
+      rows: [
+        rlsInventoryRow({
+          id: "rls-campaign-events",
+          tableName: "campaign_events",
+          rlsEnabled: "unknown",
+          v1Required: false,
+          futureParked: true,
+          currentRiskLevel: "unknown",
+          nextRepairLane: "marketing"
+        })
+      ]
+    });
+
+    expect(inventory.status).toBe("Parked");
+    expect(inventory.summary.parkedFutureCount).toBe(1);
+    expect(inventory.parkedFutureTables[0]).toMatchObject({
+      tableName: "campaign_events",
+      currentStatus: "Parked"
+    });
+    expect(inventory.summary.v1CriticalTableCount).toBe(0);
   });
 
   it("does not let all-pass CEO cards hide failed child required cards", () => {
@@ -502,7 +664,20 @@ describe("architect mission control foundation", () => {
 
   it("keeps missing deployment evidence from faking Deployment loop Pass", () => {
     const deploymentEvidence = buildDeploymentRegressionEvidence();
-    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], deploymentEvidence);
+    const rlsInventory = buildRlsSecurityInventory({
+      productionDisabledPublicTableCount: 0,
+      rows: [
+        rlsInventoryRow({
+          id: "rls-technology-clean",
+          tableName: "deployment_security_table",
+          rlsEnabled: "yes",
+          policyCount: 1,
+          policyNames: ["deployment_security_table_read"],
+          currentRiskLevel: "high"
+        })
+      ]
+    });
+    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], deploymentEvidence, rlsInventory);
     const deploymentGroup = foundation.v1RuntimeProofMatrix?.groups.find((group) => group.id === "deployment_loop");
     const commitProof = deploymentGroup?.rows.find((row) => row.id === "technology-current-commit");
 

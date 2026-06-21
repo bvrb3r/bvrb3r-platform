@@ -555,7 +555,7 @@ describe("architect mission control", () => {
     expect(readiness).not.toHaveTextContent("100% Pass");
   });
 
-  it("marks overall readiness Needs Review when required evidence is missing", async () => {
+  it("marks overall readiness Failed when connected RLS evidence is disabled even without incidents", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => createNoIncidentSnapshot()
@@ -564,9 +564,10 @@ describe("architect mission control", () => {
     render(<ArchitectMissionControl />);
 
     const readiness = await screen.findByTestId("architect-ceo-readiness");
-    expect(within(readiness).getAllByText("Needs Review").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("ceo-readiness-critical-blockers")).toHaveTextContent("0");
+    expect(within(readiness).getAllByText("Failed").length).toBeGreaterThan(0);
+    expect(Number(screen.getByTestId("ceo-readiness-critical-blockers").textContent)).toBeGreaterThan(0);
     expect(Number(screen.getByTestId("ceo-readiness-needs-review-count").textContent)).toBeGreaterThan(0);
+    expect(screen.getByTestId("ceo-readiness-current-release-blockers")).toHaveTextContent("RLS Disabled Evidence");
     expect(readiness).not.toHaveTextContent("100% Pass");
   });
 
@@ -598,6 +599,30 @@ describe("architect mission control", () => {
 
     expect(screen.queryByText("BVRB3R Mission Control Navigation")).not.toBeInTheDocument();
     expect(screen.getByText("CEO Command Center")).toBeInTheDocument();
+  });
+
+  it("renders the Security RLS inventory as read-only evidence", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createNoIncidentSnapshot()
+    });
+
+    render(<ArchitectMissionControl laneId="security" />);
+
+    const inventory = await screen.findByTestId("rls-security-inventory");
+    expect(inventory).toHaveTextContent("RLS Security Inventory");
+    expect(inventory).toHaveTextContent("Read-only Supabase RLS posture");
+    expect(inventory).toHaveTextContent("Inventory only - no RLS changes applied.");
+    expect(inventory).toHaveTextContent("Tables inventoried");
+    expect(inventory).toHaveTextContent("RLS disabled count");
+    expect(inventory).toHaveTextContent("V1 critical disabled");
+    expect(inventory).toHaveTextContent("Unknown RLS posture");
+    expect(inventory).toHaveTextContent("Future / parked tables");
+    expect(inventory).toHaveTextContent("public tables reported disabled by safe cleanup");
+    expect(inventory).toHaveTextContent("profiles");
+    expect(inventory).toHaveTextContent("campaign_events");
+    expect(inventory).toHaveTextContent("Next repair lane");
+    expect(inventory).not.toHaveTextContent("Enable RLS");
   });
 
   it("opens CEO card detail popups with evidence and lane routing", async () => {
