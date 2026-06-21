@@ -2,6 +2,8 @@ import type {
   ActionRegistryEntry,
   ArchitectIncident,
   ArchitectMissionIncidentType,
+  DeploymentRegressionEvidence,
+  DeploymentRegressionEvidenceStatus,
   AuditSpineGroupSummary,
   AuditSpineModel,
   AuditSpineRecord,
@@ -133,6 +135,9 @@ const V2_INFRASTRUCTURE_CARD_IDS = new Set([
   "regression-status",
   "deployment-regression",
   "technology-deployments",
+  "technology-current-commit-proof",
+  "technology-current-deploy-proof",
+  "technology-deployment-status-proof",
   "technology-build-tests",
   "technology-database",
   "technology-api",
@@ -171,6 +176,22 @@ type RuntimeProofDefinition = {
   passRequirement: string;
   failureMeaning: string;
   nextRepairLane: MissionLaneId;
+};
+
+type DeploymentRegressionEvidenceInput = {
+  expectedMainCommit?: string | null;
+  runtimeCommit?: string | null;
+  deploymentId?: string | null;
+  deploymentEnvironment?: string | null;
+  deploymentTarget?: string | null;
+  deploymentUrl?: string | null;
+  deploymentState?: string | null;
+  buildEvidenceStatus?: string | null;
+  lintEvidenceStatus?: string | null;
+  typecheckEvidenceStatus?: string | null;
+  testEvidenceStatus?: string | null;
+  lastValidatedAt?: string | null;
+  evidenceSource?: string;
 };
 
 const V1_RUNTIME_PROOF_GROUPS: Array<Pick<V1RuntimeProofGroup, "id" | "label" | "lane" | "nextRepairLane">> = [
@@ -569,8 +590,8 @@ const V1_RUNTIME_PROOF_DEFINITIONS: RuntimeProofDefinition[] = [
     roleAffected: "Platform",
     proofGroup: "deployment_loop",
     requiredProofSource: "deployment environment fingerprint",
-    currentEvidenceSource: "deployment-regression card",
-    sourceCardId: "ceo-regression-deployment-health",
+    currentEvidenceSource: "runtime commit evidence",
+    sourceCardId: "technology-current-commit-proof",
     statusRule: "Commit proof must be connected to deployed environment truth.",
     passRequirement: "Current production commit evidence is connected and passing.",
     failureMeaning: "Architect cannot prove which code is running.",
@@ -583,8 +604,8 @@ const V1_RUNTIME_PROOF_DEFINITIONS: RuntimeProofDefinition[] = [
     roleAffected: "Platform",
     proofGroup: "deployment_loop",
     requiredProofSource: "Vercel deployment id/status",
-    currentEvidenceSource: "technology-deployments card",
-    sourceCardId: "technology-deployments",
+    currentEvidenceSource: "deployment id evidence",
+    sourceCardId: "technology-current-deploy-proof",
     statusRule: "Deployment proof stays Needs Review without Vercel status evidence.",
     passRequirement: "Production deployment id and READY status are connected.",
     failureMeaning: "Architect cannot prove production is on the expected deploy.",
@@ -597,8 +618,8 @@ const V1_RUNTIME_PROOF_DEFINITIONS: RuntimeProofDefinition[] = [
     roleAffected: "Platform",
     proofGroup: "deployment_loop",
     requiredProofSource: "Vercel check/deployment status",
-    currentEvidenceSource: "deployment-health card",
-    sourceCardId: "deployment-health",
+    currentEvidenceSource: "deployment status evidence",
+    sourceCardId: "technology-deployment-status-proof",
     statusRule: "Missing Vercel proof is not Pass.",
     passRequirement: "Vercel production deployment status is READY/success.",
     failureMeaning: "Release readiness could be stale or failed.",
@@ -1088,13 +1109,15 @@ export function validateCoreLoopState(fixture: CoreLoopFixture = {}): CoreLoopVa
 export function buildMissionControlFoundation(
   incidents: ArchitectIncident[] = [],
   checkedAt = new Date().toISOString(),
-  ceoPlatformMetrics: MissionEvidenceCard[] = []
+  ceoPlatformMetrics: MissionEvidenceCard[] = [],
+  deploymentRegression = buildDeploymentRegressionEvidence()
 ): MissionControlFoundation {
   const coreLoopValidators = scopeEvidenceCards(applyIncidentFailures(validateCoreLoopState(), incidents));
-  const baseDepartmentLanes = buildDepartmentLanes(coreLoopValidators, incidents, ceoPlatformMetrics);
+  const platformEvidence = mergeEvidenceCards(ceoPlatformMetrics, buildDeploymentRegressionEvidenceCards(deploymentRegression));
+  const baseDepartmentLanes = buildDepartmentLanes(coreLoopValidators, incidents, platformEvidence);
   const ceoCommandCenter = [
-    ...buildCeoPlatformMetricCards(ceoPlatformMetrics),
-    ...buildCeoCards(coreLoopValidators, incidents, checkedAt)
+    ...buildCeoPlatformMetricCards(platformEvidence),
+    ...buildCeoCards(coreLoopValidators, incidents, checkedAt, platformEvidence)
   ];
   const scopedCeoCommandCenter = scopeEvidenceCards(ceoCommandCenter);
   const preliminaryAuditSpine = buildAuditSpineModel(scopedCeoCommandCenter, baseDepartmentLanes, coreLoopValidators);
@@ -1120,6 +1143,7 @@ export function buildMissionControlFoundation(
     coreLoopValidators,
     readinessBreakdown,
     v1RuntimeProofMatrix,
+    deploymentRegression,
     auditSpine,
     incidentTypes: MISSION_INCIDENT_DEFINITIONS,
     sourceVault: SOURCE_VAULT_REGISTRY,
@@ -1509,6 +1533,389 @@ function isMissingProofEvidence(item: string) {
     || value.includes("missing deployment data");
 }
 
+export function buildDeploymentRegressionEvidence(
+  input: DeploymentRegressionEvidenceInput = {}
+): DeploymentRegressionEvidence {
+  const expectedMainCommit = normalizeText(input.expectedMainCommit);
+  const runtimeCommit = normalizeText(input.runtimeCommit);
+  const deploymentId = normalizeText(input.deploymentId);
+  const deploymentEnvironment = normalizeText(input.deploymentEnvironment);
+  const deploymentTarget = normalizeText(input.deploymentTarget);
+  const deploymentUrl = normalizeText(input.deploymentUrl);
+  const deploymentState = normalizeText(input.deploymentState);
+  const commitEvidenceStatus = classifyCommitEvidence(expectedMainCommit, runtimeCommit);
+  const deploymentEvidenceStatus = classifyDeploymentEvidence(deploymentId, deploymentState);
+  const buildEvidenceStatus = classifyValidationEvidence(input.buildEvidenceStatus);
+  const lintEvidenceStatus = classifyValidationEvidence(input.lintEvidenceStatus);
+  const typecheckEvidenceStatus = classifyValidationEvidence(input.typecheckEvidenceStatus);
+  const testEvidenceStatus = classifyValidationEvidence(input.testEvidenceStatus);
+  const validationStatuses = [buildEvidenceStatus, lintEvidenceStatus, typecheckEvidenceStatus, testEvidenceStatus];
+  const regressionEvidenceStatus = aggregateDeploymentStatuses(validationStatuses);
+  const statuses = [
+    commitEvidenceStatus,
+    deploymentEvidenceStatus,
+    buildEvidenceStatus,
+    lintEvidenceStatus,
+    typecheckEvidenceStatus,
+    testEvidenceStatus
+  ];
+  const staleOrMissingState = [
+    ...missingDeploymentEvidenceRows({
+      expectedMainCommit,
+      runtimeCommit,
+      deploymentId,
+      deploymentEnvironment,
+      deploymentTarget,
+      deploymentUrl,
+      deploymentState,
+      buildEvidenceStatus,
+      lintEvidenceStatus,
+      typecheckEvidenceStatus,
+      testEvidenceStatus
+    })
+  ];
+  const failingState = [
+    ...failedDeploymentEvidenceRows({
+      expectedMainCommit,
+      runtimeCommit,
+      deploymentState,
+      commitEvidenceStatus,
+      deploymentEvidenceStatus,
+      buildEvidenceStatus,
+      lintEvidenceStatus,
+      typecheckEvidenceStatus,
+      testEvidenceStatus
+    })
+  ];
+
+  return {
+    status: aggregateDeploymentStatuses(statuses),
+    expectedMainCommit,
+    runtimeCommit,
+    deploymentId,
+    deploymentEnvironment,
+    deploymentTarget,
+    deploymentUrl,
+    deploymentState,
+    commitEvidenceStatus,
+    deploymentEvidenceStatus,
+    buildEvidenceStatus,
+    lintEvidenceStatus,
+    typecheckEvidenceStatus,
+    testEvidenceStatus,
+    regressionEvidenceStatus,
+    lastValidatedAt: normalizeText(input.lastValidatedAt),
+    evidenceSource: input.evidenceSource ?? "Vercel runtime environment and explicit validation evidence",
+    staleOrMissingState,
+    failingState,
+    nextRepairLane: "technology"
+  };
+}
+
+function buildDeploymentRegressionEvidenceCards(evidence: DeploymentRegressionEvidence): MissionEvidenceCard[] {
+  const deploymentSummary = deploymentEvidenceSummary(evidence);
+  const deploymentRows = deploymentEvidenceRows(evidence);
+  const commitRows = [
+    `expectedMainCommit=${evidence.expectedMainCommit ?? "Not connected"}`,
+    `runtimeCommit=${evidence.runtimeCommit ?? "Not connected"}`,
+    ...commitEvidenceGapRows(evidence),
+    ...statusEvidenceRows("Commit proof", evidence.commitEvidenceStatus)
+  ];
+  const deployRows = [
+    `deploymentId=${evidence.deploymentId ?? "Not connected"}`,
+    `deploymentEnvironment=${evidence.deploymentEnvironment ?? "Not connected"}`,
+    `deploymentTarget=${evidence.deploymentTarget ?? "Not connected"}`,
+    `deploymentUrl=${evidence.deploymentUrl ?? "Not connected"}`,
+    ...statusEvidenceRows("Deployment proof", evidence.deploymentEvidenceStatus)
+  ];
+  const statusRows = [
+    `deploymentState=${evidence.deploymentState ?? "Not connected"}`,
+    ...statusEvidenceRows("Deployment status", evidence.deploymentEvidenceStatus)
+  ];
+  const regressionRows = [
+    `buildEvidence=${evidence.buildEvidenceStatus}`,
+    `lintEvidence=${evidence.lintEvidenceStatus}`,
+    `typecheckEvidence=${evidence.typecheckEvidenceStatus}`,
+    `testEvidence=${evidence.testEvidenceStatus}`,
+    `lastValidatedAt=${evidence.lastValidatedAt ?? "Not connected"}`,
+    ...statusEvidenceRows("Regression proof", evidence.regressionEvidenceStatus)
+  ];
+
+  return [
+    {
+      ...evidenceCard(
+        "ceo-regression-deployment-health",
+        "Regression / Deployment Health",
+        "CEO",
+        "Technology",
+        deploymentStatusToMissionStatus(evidence.status),
+        deploymentSummary,
+        deploymentRows
+      ),
+      metricValue: deploymentStatusMetric(evidence)
+    },
+    evidenceCard(
+      "deployment-health",
+      "Deployment health",
+      "CEO",
+      "Deployment",
+      deploymentStatusToMissionStatus(evidence.deploymentEvidenceStatus),
+      deploymentIdSummary(evidence),
+      deployRows
+    ),
+    evidenceCard(
+      "regression-status",
+      "Regression status",
+      "CEO",
+      "Regression Coverage",
+      deploymentStatusToMissionStatus(evidence.regressionEvidenceStatus),
+      regressionSummary(evidence),
+      regressionRows
+    ),
+    evidenceCard(
+      "technology-deployments",
+      "Deployments",
+      "Technology",
+      "Deployments",
+      deploymentStatusToMissionStatus(evidence.status),
+      deploymentSummary,
+      deploymentRows
+    ),
+    evidenceCard(
+      "technology-current-commit-proof",
+      "Current commit proof",
+      "Technology",
+      "Deployments",
+      deploymentStatusToMissionStatus(evidence.commitEvidenceStatus),
+      commitSummary(evidence),
+      commitRows
+    ),
+    evidenceCard(
+      "technology-current-deploy-proof",
+      "Current deploy proof",
+      "Technology",
+      "Deployments",
+      deploymentStatusToMissionStatus(evidence.deploymentId ? evidence.deploymentEvidenceStatus : "Not Connected"),
+      deploymentIdSummary(evidence),
+      deployRows
+    ),
+    evidenceCard(
+      "technology-deployment-status-proof",
+      "Vercel deployment status proof",
+      "Technology",
+      "Deployments",
+      deploymentStatusToMissionStatus(evidence.deploymentEvidenceStatus),
+      deploymentStatusSummary(evidence),
+      statusRows
+    ),
+    evidenceCard(
+      "technology-build-tests",
+      "Build/test status",
+      "Technology",
+      "Regression",
+      deploymentStatusToMissionStatus(evidence.regressionEvidenceStatus),
+      regressionSummary(evidence),
+      regressionRows
+    ),
+    evidenceCard(
+      "technology-coverage",
+      "Regression coverage",
+      "Technology",
+      "Coverage",
+      deploymentStatusToMissionStatus(evidence.regressionEvidenceStatus),
+      "Regression coverage requires explicit lint, typecheck, test, and build proof.",
+      regressionRows
+    )
+  ];
+}
+
+function normalizeText(value: string | null | undefined) {
+  const text = value?.trim();
+  return text ? text : null;
+}
+
+function classifyCommitEvidence(expectedMainCommit: string | null, runtimeCommit: string | null): DeploymentRegressionEvidenceStatus {
+  if (!runtimeCommit) return "Not Connected";
+  if (!expectedMainCommit) return "Needs Review";
+  return commitsMatch(expectedMainCommit, runtimeCommit) ? "Pass" : "Failed";
+}
+
+function classifyDeploymentEvidence(deploymentId: string | null, deploymentState: string | null): DeploymentRegressionEvidenceStatus {
+  const normalizedState = deploymentState?.toLowerCase() ?? null;
+  if (normalizedState && ["error", "failed", "failure", "canceled", "cancelled"].some((token) => normalizedState.includes(token))) {
+    return "Failed";
+  }
+  if (normalizedState && ["ready", "success", "succeeded", "passed", "pass"].some((token) => normalizedState.includes(token))) {
+    return deploymentId ? "Pass" : "Needs Review";
+  }
+  return deploymentId ? "Needs Review" : "Not Connected";
+}
+
+function classifyValidationEvidence(status: string | null | undefined): DeploymentRegressionEvidenceStatus {
+  const normalized = status?.trim().toLowerCase();
+  if (!normalized) return "Not Connected";
+  if (["pass", "passed", "success", "succeeded", "ready", "ok", "green"].includes(normalized)) return "Pass";
+  if (["fail", "failed", "failure", "error", "errored", "red", "canceled", "cancelled"].includes(normalized)) return "Failed";
+  if (["needs_review", "needs review", "review", "pending", "unknown", "missing", "not connected"].includes(normalized)) return "Needs Review";
+  return "Needs Review";
+}
+
+function aggregateDeploymentStatuses(statuses: DeploymentRegressionEvidenceStatus[]): DeploymentRegressionEvidenceStatus {
+  if (!statuses.length) return "Not Connected";
+  if (statuses.some((status) => status === "Failed")) return "Failed";
+  if (statuses.every((status) => status === "Pass")) return "Pass";
+  if (statuses.every((status) => status === "Not Connected")) return "Not Connected";
+  return "Needs Review";
+}
+
+function deploymentStatusToMissionStatus(status: DeploymentRegressionEvidenceStatus): MissionControlStatus {
+  return status === "Not Connected" ? "Needs Review" : status;
+}
+
+function commitsMatch(expectedMainCommit: string, runtimeCommit: string) {
+  const expected = expectedMainCommit.toLowerCase();
+  const runtime = runtimeCommit.toLowerCase();
+  return expected === runtime || expected.startsWith(runtime) || runtime.startsWith(expected);
+}
+
+function missingDeploymentEvidenceRows(input: {
+  expectedMainCommit: string | null;
+  runtimeCommit: string | null;
+  deploymentId: string | null;
+  deploymentEnvironment: string | null;
+  deploymentTarget: string | null;
+  deploymentUrl: string | null;
+  deploymentState: string | null;
+  buildEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  lintEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  typecheckEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  testEvidenceStatus: DeploymentRegressionEvidenceStatus;
+}) {
+  const rows: string[] = [];
+  if (!input.expectedMainCommit) rows.push("Expected main commit evidence is not connected.");
+  if (!input.runtimeCommit) rows.push("Runtime production commit evidence is not connected.");
+  if (!input.deploymentId) rows.push("Vercel deployment ID evidence is not connected.");
+  if (!input.deploymentEnvironment) rows.push("Deployment environment evidence is not connected.");
+  if (!input.deploymentTarget) rows.push("Deployment target evidence is not connected.");
+  if (!input.deploymentUrl) rows.push("Deployment URL/alias evidence is not connected.");
+  if (!input.deploymentState) rows.push("Deployment READY/status evidence is not connected.");
+  if (input.buildEvidenceStatus !== "Pass" && input.buildEvidenceStatus !== "Failed") rows.push("Build validation evidence is missing or not passing.");
+  if (input.lintEvidenceStatus !== "Pass" && input.lintEvidenceStatus !== "Failed") rows.push("Lint validation evidence is missing or not passing.");
+  if (input.typecheckEvidenceStatus !== "Pass" && input.typecheckEvidenceStatus !== "Failed") rows.push("Typecheck validation evidence is missing or not passing.");
+  if (input.testEvidenceStatus !== "Pass" && input.testEvidenceStatus !== "Failed") rows.push("Test validation evidence is missing or not passing.");
+  return rows;
+}
+
+function failedDeploymentEvidenceRows(input: {
+  expectedMainCommit: string | null;
+  runtimeCommit: string | null;
+  deploymentState: string | null;
+  commitEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  deploymentEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  buildEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  lintEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  typecheckEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  testEvidenceStatus: DeploymentRegressionEvidenceStatus;
+}) {
+  const rows: string[] = [];
+  if (input.commitEvidenceStatus === "Failed") {
+    rows.push(`Production/runtime commit ${input.runtimeCommit ?? "unknown"} does not match expected main commit ${input.expectedMainCommit ?? "unknown"}.`);
+  }
+  if (input.deploymentEvidenceStatus === "Failed") {
+    rows.push(`Deployment status is failed/error/canceled: ${input.deploymentState ?? "unknown"}.`);
+  }
+  if (input.buildEvidenceStatus === "Failed") rows.push("Build validation evidence is Failed.");
+  if (input.lintEvidenceStatus === "Failed") rows.push("Lint validation evidence is Failed.");
+  if (input.typecheckEvidenceStatus === "Failed") rows.push("Typecheck validation evidence is Failed.");
+  if (input.testEvidenceStatus === "Failed") rows.push("Test validation evidence is Failed.");
+  return rows;
+}
+
+function deploymentEvidenceRows(evidence: DeploymentRegressionEvidence) {
+  return [
+    `expectedMainCommit=${evidence.expectedMainCommit ?? "Not connected"}`,
+    `runtimeCommit=${evidence.runtimeCommit ?? "Not connected"}`,
+    `deploymentId=${evidence.deploymentId ?? "Not connected"}`,
+    `deploymentEnvironment=${evidence.deploymentEnvironment ?? "Not connected"}`,
+    `deploymentTarget=${evidence.deploymentTarget ?? "Not connected"}`,
+    `deploymentUrl=${evidence.deploymentUrl ?? "Not connected"}`,
+    `deploymentState=${evidence.deploymentState ?? "Not connected"}`,
+    `buildEvidence=${evidence.buildEvidenceStatus}`,
+    `lintEvidence=${evidence.lintEvidenceStatus}`,
+    `typecheckEvidence=${evidence.typecheckEvidenceStatus}`,
+    `testEvidence=${evidence.testEvidenceStatus}`,
+    `lastValidatedAt=${evidence.lastValidatedAt ?? "Not connected"}`,
+    `evidenceSource=${evidence.evidenceSource}`,
+    ...evidence.failingState,
+    ...evidence.staleOrMissingState
+  ];
+}
+
+function statusEvidenceRows(label: string, status: DeploymentRegressionEvidenceStatus) {
+  if (status === "Pass") return [`${label} is connected and passing.`];
+  if (status === "Failed") return [`${label} has failed evidence.`];
+  if (status === "Not Connected") return [`${label} is not connected.`];
+  return [`${label} needs review before release.`];
+}
+
+function commitEvidenceGapRows(evidence: DeploymentRegressionEvidence) {
+  const rows: string[] = [];
+  if (!evidence.expectedMainCommit) rows.push("Expected main commit evidence is not connected.");
+  if (!evidence.runtimeCommit) rows.push("Runtime production commit evidence is not connected.");
+  return rows;
+}
+
+function deploymentEvidenceSummary(evidence: DeploymentRegressionEvidence) {
+  if (evidence.status === "Pass") {
+    return "Production deployment, commit, and regression validation evidence are connected and passing.";
+  }
+  if (evidence.status === "Failed") {
+    return "Deployment/regression evidence has a failed commit, deploy, build, lint, typecheck, or test signal.";
+  }
+  return "Deployment/regression proof is incomplete. Missing validation proof stays Needs Review.";
+}
+
+function commitSummary(evidence: DeploymentRegressionEvidence) {
+  if (evidence.commitEvidenceStatus === "Pass") return "Runtime commit matches expected main commit evidence.";
+  if (evidence.commitEvidenceStatus === "Failed") return "Runtime commit does not match expected main commit evidence.";
+  if (!evidence.runtimeCommit) return "Runtime commit evidence is not connected.";
+  return "Runtime commit is present, but expected main commit evidence is missing.";
+}
+
+function deploymentIdSummary(evidence: DeploymentRegressionEvidence) {
+  if (!evidence.deploymentId) return "Vercel deployment ID is not connected.";
+  if (evidence.deploymentEvidenceStatus === "Pass") return "Vercel deployment ID and READY/success status are connected.";
+  return "Vercel deployment ID is connected, but READY/status evidence is missing or needs review.";
+}
+
+function deploymentStatusSummary(evidence: DeploymentRegressionEvidence) {
+  if (evidence.deploymentEvidenceStatus === "Pass") return "Deployment status is READY/success.";
+  if (evidence.deploymentEvidenceStatus === "Failed") return "Deployment status is failed/error/canceled.";
+  return "Deployment status is not connected; deployment ID alone is not a full Pass.";
+}
+
+function regressionSummary(evidence: DeploymentRegressionEvidence) {
+  if (evidence.regressionEvidenceStatus === "Pass") return "Build, lint, typecheck, and test evidence are connected and passing.";
+  if (evidence.regressionEvidenceStatus === "Failed") return "At least one build, lint, typecheck, or test evidence signal failed.";
+  return "Build, lint, typecheck, and test proof is missing or incomplete.";
+}
+
+function deploymentStatusMetric(evidence: DeploymentRegressionEvidence) {
+  if (evidence.status === "Pass") return "Pass";
+  if (evidence.status === "Failed") return "Failed";
+  return evidence.deploymentId ? "Needs Review" : "Not connected";
+}
+
+function mergeEvidenceCards(...groups: MissionEvidenceCard[][]) {
+  const byId = new Map<string, MissionEvidenceCard>();
+  for (const group of groups) {
+    for (const card of group) {
+      byId.set(card.id, card);
+    }
+  }
+  return [...byId.values()];
+}
+
 function buildCeoPlatformMetricCards(metrics: MissionEvidenceCard[]): MissionEvidenceCard[] {
   const requestedMetrics = [
     ["ceo-total-users", "Total Users", "Audience", "Total user count is not connected."],
@@ -1542,10 +1949,20 @@ function buildCeoPlatformMetricCards(metrics: MissionEvidenceCard[]): MissionEvi
   });
 }
 
-function buildCeoCards(validators: CoreLoopValidator[], incidents: ArchitectIncident[], checkedAt: string): MissionEvidenceCard[] {
+function buildCeoCards(
+  validators: CoreLoopValidator[],
+  incidents: ArchitectIncident[],
+  checkedAt: string,
+  platformEvidence: MissionEvidenceCard[] = []
+): MissionEvidenceCard[] {
   const criticalIncidents = incidents.filter((incident) => incident.severity === "critical");
   const failedValidators = validators.filter((validator) => validator.status === "Failed");
   const reviewValidators = validators.filter((validator) => validator.status === "Needs Review");
+  const evidenceById = new Map(platformEvidence.map((card) => [card.id, card]));
+  const deploymentHealth = evidenceById.get("deployment-health")
+    ?? evidenceCard("deployment-health", "Deployment health", "CEO", "Deployment", "Needs Review", "Deployment fingerprint is not connected.", ["Missing deployment data must remain Needs Review."]);
+  const regressionStatus = evidenceById.get("regression-status")
+    ?? evidenceCard("regression-status", "Regression status", "CEO", "Regression Coverage", "Needs Review", "Regression status is tracked by test evidence and must not infer Pass automatically.", ["Run targeted Architect and loop regressions for proof."]);
 
   return [
     evidenceCard("overall-platform-status", "Overall platform status", "CEO", "Global Health", failedValidators.length || criticalIncidents.length ? "Failed" : "Needs Review", failedValidators.length || criticalIncidents.length ? "Critical workflow evidence needs attention." : "No full-platform proof bundle has been run in this snapshot.", [
@@ -1559,8 +1976,8 @@ function buildCeoCards(validators: CoreLoopValidator[], incidents: ArchitectInci
     evidenceCard("booking-posture", "Booking posture", "CEO", "Booking", validatorStatus(validators, "culture-to-booking-loop"), "Culture-to-booking and availability loops determine booking posture.", validatorEvidence(validators, "culture-to-booking-loop")),
     evidenceCard("culture-posture", "Culture posture", "CEO", "Culture", validatorStatus(validators, "culture-social-loop"), "Culture social loop is tracked separately from marketplace discovery.", validatorEvidence(validators, "culture-social-loop")),
     evidenceCard("role-health", "Client/Barber/Owner role health", "CEO", "Role Health", validatorStatus(validators, "owner-command-calendar-loop"), "Role health watches client booking, barber chair command, owner shop command, and relationship sync.", validatorEvidence(validators, "owner-command-calendar-loop")),
-    evidenceCard("deployment-health", "Deployment health", "CEO", "Deployment", "Needs Review", "Deployment fingerprint is present in the legacy Mission Control snapshot; CI/deploy status needs external confirmation.", ["Missing deployment data must remain Needs Review."]),
-    evidenceCard("regression-status", "Regression status", "CEO", "Regression Coverage", "Needs Review", "Regression status is tracked by test evidence and must not infer Pass automatically.", ["Run targeted Architect and loop regressions for proof."]),
+    deploymentHealth,
+    regressionStatus,
     evidenceCard("source-vault-status", "Source Vault status", "CEO", "Source Vault", "Needs Review", "Sources are registered for v1, not ingested into AI memory.", [`${SOURCE_VAULT_REGISTRY.length} source(s) registered.`, "No ingestion system is claimed."]),
     evidenceCard("agent-status", "Agent status", "CEO", "Hive AI", "Needs Review", "Hive agents are Level 0 or Level 1 only in v1.", [`${HIVE_AGENT_REGISTRY.length} agent(s) registered.`, "No autonomous money/account/team/code execution enabled."]),
     evidenceCard("next-executive-decisions", "Next executive decisions", "CEO", "Executive Decisions", "Needs Review", "Phillip remains final executive decision maker.", ["Mission Control can surface decisions; it does not make executive decisions in v1."])
@@ -1617,13 +2034,16 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("product-feature-readiness", "Feature readiness", "Product", "Feature Readiness", "Needs Review", "Feature readiness requires targeted regression proof.", ["Missing test evidence stays Needs Review."])
     ],
     technology: [
-      evidenceCard("technology-deployments", "Deployments", "Technology", "Deployments", "Needs Review", "Deployment health needs CI/deploy truth.", ["Commit metadata alone is not a Pass."]),
-      evidenceCard("technology-build-tests", "Build/test status", "Technology", "Regression", "Needs Review", "Build and test status comes from validation commands.", ["Run targeted tests, typecheck, and build."]),
+      platformCard("technology-deployments", "Deployments", "Technology", "Deployments", "Deployment health needs CI/deploy truth."),
+      platformCard("technology-current-commit-proof", "Current commit proof", "Technology", "Deployments", "Runtime commit proof is not connected."),
+      platformCard("technology-current-deploy-proof", "Current deploy proof", "Technology", "Deployments", "Current deployment ID proof is not connected."),
+      platformCard("technology-deployment-status-proof", "Vercel deployment status proof", "Technology", "Deployments", "Deployment status proof is not connected."),
+      platformCard("technology-build-tests", "Build/test status", "Technology", "Regression", "Build and test status comes from validation commands."),
       evidenceCard("technology-database", "Database health", "Technology", "Database", "Needs Review", "Database health requires schema/read evidence.", ["No database migration is part of v1 foundation."]),
       evidenceCard("technology-rls-disabled", "RLS disabled tables", "Technology", "Supabase RLS", rlsDisabled.status, rlsDisabled.summary, rlsDisabled.evidence),
       evidenceCard("technology-api", "API health", "Technology", "API", "Needs Review", "API health requires route-specific evidence.", ["Architect APIs remain gated."]),
       evidenceCard("technology-schema", "Schema constraints", "Technology", "Schema", incidents.some((incident) => incident.diagnosisCode === "schema_constraint_mismatch") ? "Failed" : "Needs Review", "Schema constraint evidence is available for payment routing.", ["Constraint checks are read-only."]),
-      evidenceCard("technology-coverage", "Regression coverage", "Technology", "Coverage", "Needs Review", "Regression coverage must be explicit.", ["Missing regression test is not a Pass."])
+      platformCard("technology-coverage", "Regression coverage", "Technology", "Coverage", "Regression coverage must be explicit.")
     ],
     operations: [
       evidenceCard("operations-appointments", "Appointments", "Operations", "Appointments", validatorStatus(validators, "culture-to-booking-loop"), "Appointment loop is validated through Culture-to-booking and calendar sync.", validatorEvidence(validators, "culture-to-booking-loop")),
