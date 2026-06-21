@@ -12,6 +12,7 @@ import {
   buildMissionReadinessBreakdown,
   buildV1RuntimeProofMatrix,
   buildRlsSecurityInventory,
+  buildRoleTruthInventory,
   classifyArchitectIncident,
   getOfficerAssistants,
   getAuditCoveragePlanEvidence,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/architect/mission-control/foundation";
 
 type RlsInventoryRows = NonNullable<NonNullable<Parameters<typeof buildRlsSecurityInventory>[0]>["rows"]>;
+type RoleTruthRows = NonNullable<NonNullable<Parameters<typeof buildRoleTruthInventory>[0]>["rows"]>;
 
 function rlsInventoryRow(overrides: Partial<RlsInventoryRows[number]> = {}): RlsInventoryRows[number] {
   return {
@@ -38,6 +40,28 @@ function rlsInventoryRow(overrides: Partial<RlsInventoryRows[number]> = {}): Rls
     suggestedPolicyPlanSummary: "Verify RLS before marking Pass.",
     nextRepairLane: "security",
     evidenceSource: "test evidence",
+    ...overrides
+  };
+}
+
+function roleTruthRow(overrides: Partial<RoleTruthRows[number]> = {}): RoleTruthRows[number] {
+  return {
+    id: "role-test",
+    currentRoleValue: "test_role",
+    normalizedDisplayLabel: "Test role",
+    canonicalClassification: "unknown",
+    expectedCanonicalDestination: "Needs inspection",
+    currentUsageLocations: ["test fixture"],
+    affectedRoleOrLane: "Security",
+    v1Required: true,
+    futureParked: false,
+    userImpactRisk: "high",
+    securityRisk: "critical",
+    suggestedMigrationPath: "Inspect before migration.",
+    rollbackNote: "No mutation in tests.",
+    nextRepairLane: "security",
+    evidenceSource: "test evidence",
+    accountRoleMisuse: false,
     ...overrides
   };
 }
@@ -100,20 +124,23 @@ describe("architect mission control foundation", () => {
     });
   });
 
-  it("keeps missing cleanup evidence as Needs Review while connected RLS disabled evidence stays Failed", () => {
+  it("keeps connected role and RLS blockers Failed instead of fake Pass", () => {
     const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
     const securityLane = foundation.departmentLanes.find((lane) => lane.id === "security");
 
     expect(foundation.ceoCommandCenter.find((card) => card.id === "ceo-role-drift-health")).toMatchObject({
-      status: "Needs Review",
-      metricValue: "Not connected"
+      status: "Failed",
+      metricValue: "8 critical drift"
     });
     expect(foundation.ceoCommandCenter.find((card) => card.id === "ceo-rls-disabled-evidence")).toMatchObject({
       status: "Failed",
       metricValue: "28 disabled"
     });
     expect(securityLane?.cards.find((card) => card.id === "security-role-drift")).toMatchObject({
-      status: "Needs Review"
+      status: "Failed"
+    });
+    expect(securityLane?.cards.find((card) => card.id === "security-role-truth-inventory")).toMatchObject({
+      status: "Failed"
     });
     expect(securityLane?.cards.find((card) => card.id === "security-rls-disabled")).toMatchObject({
       status: "Failed"
@@ -335,6 +362,143 @@ describe("architect mission control foundation", () => {
       currentStatus: "Parked"
     });
     expect(inventory.summary.v1CriticalTableCount).toBe(0);
+  });
+
+  it("classifies noncanonical primary account role drift as Failed", () => {
+    const inventory = buildRoleTruthInventory({
+      rows: [
+        roleTruthRow({
+          id: "role-owner",
+          currentRoleValue: "owner",
+          normalizedDisplayLabel: "Owner permission",
+          canonicalClassification: "staff_permission",
+          expectedCanonicalDestination: "shop_owner_user account role plus shop/team owner permission",
+          accountRoleMisuse: true,
+          suggestedMigrationPath: "Move owner out of profiles.role and into shop/team permission truth."
+        })
+      ]
+    });
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z", [], undefined, undefined, inventory);
+
+    expect(inventory.status).toBe("Failed");
+    expect(inventory.summary.v1CriticalDriftCount).toBe(1);
+    expect(inventory.summary.accountRoleMisuseCount).toBe(1);
+    expect(inventory.rows[0]).toMatchObject({
+      currentStatus: "Failed",
+      migrationRequired: "yes"
+    });
+    expect(foundation.ceoCommandCenter.find((card) => card.id === "ceo-role-drift-health")).toMatchObject({
+      status: "Failed",
+      metricValue: "1 critical drift"
+    });
+    expect(foundation.departmentLanes.find((lane) => lane.id === "security")?.cards.find((card) => card.id === "security-role-truth-inventory")).toMatchObject({ status: "Failed" });
+    expect(foundation.departmentLanes.find((lane) => lane.id === "compliance")?.cards.find((card) => card.id === "compliance-role-truth-inventory")).toMatchObject({ status: "Failed" });
+  });
+
+  it("classifies business relationship values without fake account-role Pass", () => {
+    const inventory = buildRoleTruthInventory({
+      rows: [
+        roleTruthRow({
+          id: "role-commission",
+          currentRoleValue: "commission_barber",
+          normalizedDisplayLabel: "Commission barber relationship",
+          canonicalClassification: "business_relationship",
+          expectedCanonicalDestination: "barber_user account role plus commission relationship",
+          accountRoleMisuse: true,
+          suggestedMigrationPath: "Move account role to barber_user and preserve commission relationship terms."
+        })
+      ]
+    });
+
+    expect(inventory.status).toBe("Failed");
+    expect(inventory.businessRelationshipRoles[0]).toMatchObject({
+      currentRoleValue: "commission_barber",
+      canonicalClassification: "business_relationship",
+      currentStatus: "Failed"
+    });
+    expect(inventory.rows[0].failureMeaning).toContain("account-role truth");
+  });
+
+  it("classifies staff permission values without making them account roles", () => {
+    const inventory = buildRoleTruthInventory({
+      rows: [
+        roleTruthRow({
+          id: "role-front-desk",
+          currentRoleValue: "front_desk",
+          normalizedDisplayLabel: "Front desk permission",
+          canonicalClassification: "staff_permission",
+          expectedCanonicalDestination: "staff/team permission scoped by shop/location",
+          accountRoleMisuse: true,
+          suggestedMigrationPath: "Keep front_desk as scoped staff permission only."
+        })
+      ]
+    });
+
+    expect(inventory.status).toBe("Failed");
+    expect(inventory.staffPermissionRoles[0]).toMatchObject({
+      currentRoleValue: "front_desk",
+      canonicalClassification: "staff_permission",
+      currentStatus: "Failed"
+    });
+    expect(inventory.rows[0].staleOrMissingEvidenceState).toEqual(expect.arrayContaining([
+      "Staff permission proof must be connected before this can be treated as clean."
+    ]));
+  });
+
+  it("keeps unknown role evidence as Needs Review", () => {
+    const inventory = buildRoleTruthInventory({
+      rows: [
+        roleTruthRow({
+          id: "role-unknown-production",
+          currentRoleValue: "unknown",
+          normalizedDisplayLabel: "Unknown role",
+          canonicalClassification: "unknown",
+          expectedCanonicalDestination: "Needs production inspection",
+          accountRoleMisuse: false
+        })
+      ]
+    });
+
+    expect(inventory.status).toBe("Needs Review");
+    expect(inventory.summary.unknownCount).toBe(1);
+    expect(inventory.unknownRoles[0]).toMatchObject({
+      currentStatus: "Needs Review",
+      migrationRequired: "unknown"
+    });
+  });
+
+  it("allows canonical roles to Pass when only canonical role evidence is connected", () => {
+    const inventory = buildRoleTruthInventory({
+      rows: [
+        roleTruthRow({
+          id: "role-client-user",
+          currentRoleValue: "client_user",
+          normalizedDisplayLabel: "Client user",
+          canonicalClassification: "public_account_role",
+          expectedCanonicalDestination: "profiles.role = client_user",
+          accountRoleMisuse: false,
+          userImpactRisk: "low",
+          securityRisk: "low",
+          suggestedMigrationPath: "Keep canonical."
+        }),
+        roleTruthRow({
+          id: "role-platform-admin",
+          currentRoleValue: "platform_admin",
+          normalizedDisplayLabel: "Platform admin",
+          canonicalClassification: "internal_platform_role",
+          expectedCanonicalDestination: "Internal Architect account only",
+          accountRoleMisuse: false,
+          userImpactRisk: "medium",
+          securityRisk: "critical",
+          suggestedMigrationPath: "Keep gated."
+        })
+      ]
+    });
+
+    expect(inventory.status).toBe("Pass");
+    expect(inventory.summary.canonicalAccountRoleCount).toBe(1);
+    expect(inventory.summary.platformAdminRoleCount).toBe(1);
+    expect(inventory.summary.v1CriticalDriftCount).toBe(0);
   });
 
   it("does not let all-pass CEO cards hide failed child required cards", () => {

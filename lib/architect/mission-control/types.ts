@@ -359,6 +359,72 @@ export type RlsSecurityInventory = {
   nextRepairLane: MissionLaneId;
 };
 
+export type RoleTruthInventoryStatus = MissionControlStatus | "Not Connected" | "Parked";
+
+export type RoleTruthClassification =
+  | "public_account_role"
+  | "internal_platform_role"
+  | "business_relationship"
+  | "staff_permission"
+  | "legacy_or_drift"
+  | "unknown";
+
+export type RoleTruthRiskLevel = "low" | "medium" | "high" | "critical" | "unknown";
+
+export type RoleTruthInventoryRow = {
+  id: string;
+  currentRoleValue: string;
+  normalizedDisplayLabel: string;
+  canonicalClassification: RoleTruthClassification;
+  expectedCanonicalDestination: string;
+  currentUsageLocations: string[];
+  affectedRoleOrLane: string;
+  v1Required: boolean;
+  futureParked: boolean;
+  userImpactRisk: RoleTruthRiskLevel;
+  securityRisk: RoleTruthRiskLevel;
+  migrationRequired: "yes" | "no" | "unknown";
+  suggestedMigrationPath: string;
+  rollbackNote: string;
+  currentStatus: RoleTruthInventoryStatus;
+  failureMeaning: string;
+  nextRepairLane: MissionLaneId;
+  evidenceSource: string;
+  staleOrMissingEvidenceState: string[];
+  accountRoleMisuse: boolean;
+};
+
+export type RoleTruthInventorySummary = {
+  totalRoleValuesInventoried: number;
+  canonicalAccountRoleCount: number;
+  platformAdminRoleCount: number;
+  businessRelationshipCount: number;
+  staffPermissionCount: number;
+  legacyOrDriftCount: number;
+  unknownCount: number;
+  migrationRequiredCount: number;
+  v1CriticalDriftCount: number;
+  accountRoleMisuseCount: number;
+  highestRiskLevel: RoleTruthRiskLevel;
+  nextRepairLane: MissionLaneId;
+};
+
+export type RoleTruthInventory = {
+  status: RoleTruthInventoryStatus;
+  summary: RoleTruthInventorySummary;
+  rows: RoleTruthInventoryRow[];
+  canonicalAccountRoles: RoleTruthInventoryRow[];
+  platformAdminRoles: RoleTruthInventoryRow[];
+  businessRelationshipRoles: RoleTruthInventoryRow[];
+  staffPermissionRoles: RoleTruthInventoryRow[];
+  legacyOrDriftRoles: RoleTruthInventoryRow[];
+  unknownRoles: RoleTruthInventoryRow[];
+  migrationRequiredRoles: RoleTruthInventoryRow[];
+  v1CriticalDriftRoles: RoleTruthInventoryRow[];
+  evidenceSource: string;
+  nextRepairLane: MissionLaneId;
+};
+
 export type MissionControlFoundation = {
   navigationLanes: MissionControlLane[];
   defaultLaneId: MissionLaneId;
@@ -370,6 +436,7 @@ export type MissionControlFoundation = {
   deploymentRegression?: DeploymentRegressionEvidence;
   auditSpine?: AuditSpineModel;
   rlsSecurityInventory?: RlsSecurityInventory;
+  roleTruthInventory?: RoleTruthInventory;
   incidentTypes: MissionIncidentDefinition[];
   sourceVault: SourceVaultEntry[];
   actionRegistry: ActionRegistryEntry[];
