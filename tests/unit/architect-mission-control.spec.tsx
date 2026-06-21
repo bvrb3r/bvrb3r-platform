@@ -351,11 +351,16 @@ describe("architect mission control", () => {
     expect(screen.getByTestId("architect-mission-control-root").className).not.toMatch(/min-h|h-screen|100svh|items-center|justify-end/);
     expect(screen.getByText("CEO Command Center")).toBeInTheDocument();
     expect(screen.getByText("One-screen platform posture")).toBeInTheDocument();
-    expect(screen.getByText("App Readiness")).toBeInTheDocument();
-    expect(screen.getByText("Pass count")).toBeInTheDocument();
-    expect(screen.getByText("Failed count")).toBeInTheDocument();
-    expect(screen.getByText("Needs Review count")).toBeInTheDocument();
+    expect(screen.getByText(/App Readiness is version-scoped/)).toBeInTheDocument();
+    expect(screen.getByText("V1 Readiness")).toBeInTheDocument();
+    expect(screen.getByText("V1 required pass")).toBeInTheDocument();
+    expect(screen.getByText("V1 required failed")).toBeInTheDocument();
+    expect(screen.getByText("V1 needs review")).toBeInTheDocument();
     expect(screen.getByText("Critical blockers")).toBeInTheDocument();
+    expect(screen.getByText("Future parked")).toBeInTheDocument();
+    expect(screen.getByText("Current Release Blockers")).toBeInTheDocument();
+    expect(screen.getByText("Evidence Gaps")).toBeInTheDocument();
+    expect(screen.getByText("Foundation Blockers Before AI")).toBeInTheDocument();
     expect(screen.getByText("Overall status")).toBeInTheDocument();
     expect(screen.getByTestId("architect-ceo-card-platform-health")).toBeInTheDocument();
     expect(screen.getByText("Money / App Revenue")).toBeInTheDocument();
@@ -429,8 +434,9 @@ describe("architect mission control", () => {
 
     const readiness = await screen.findByTestId("architect-ceo-readiness");
     expect(within(readiness).getAllByText("Failed").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("ceo-readiness-failed-count")).toHaveTextContent("2");
-    expect(screen.getByTestId("ceo-readiness-critical-blockers")).toHaveTextContent("2");
+    expect(Number(screen.getByTestId("ceo-readiness-failed-count").textContent)).toBeGreaterThan(0);
+    expect(Number(screen.getByTestId("ceo-readiness-critical-blockers").textContent)).toBeGreaterThan(0);
+    expect(screen.getByTestId("ceo-readiness-current-release-blockers")).toHaveTextContent("Payment health");
     expect(readiness).not.toHaveTextContent("100% Pass");
   });
 

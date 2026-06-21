@@ -14,6 +14,10 @@ export type MissionSystemKey =
 
 export type MissionControlStatus = "Pass" | "Warning" | "Failed" | "Needs Review";
 
+export type ArchitectReadinessScope = "v1_required" | "v2_infrastructure" | "v3_future" | "parked";
+
+export type ArchitectReadinessCriticality = "critical" | "important" | "informational";
+
 export type MissionLaneId =
   | "ceo"
   | "product"
@@ -52,6 +56,10 @@ export type MissionEvidenceCard = {
   summary: string;
   evidence: string[];
   metricValue?: string;
+  scope?: ArchitectReadinessScope;
+  criticality?: ArchitectReadinessCriticality;
+  blocksCurrentRelease?: boolean;
+  evidenceRequiredForPass?: string;
 };
 
 export type MissionDepartmentLane = {
@@ -160,12 +168,27 @@ export type CodexFailureClass = {
   validationRequired: string[];
 };
 
+export type MissionReadinessBreakdown = {
+  overallStatus: MissionControlStatus;
+  v1ReadinessPercent: number;
+  v1RequiredPassCount: number;
+  v1RequiredFailedCount: number;
+  v1RequiredNeedsReviewCount: number;
+  v1RequiredTotalCount: number;
+  futureParkedCount: number;
+  currentReleaseBlockers: MissionEvidenceCard[];
+  evidenceGaps: MissionEvidenceCard[];
+  nextFoundationBlockers: MissionEvidenceCard[];
+  futureParkedItems: MissionEvidenceCard[];
+};
+
 export type MissionControlFoundation = {
   navigationLanes: MissionControlLane[];
   defaultLaneId: MissionLaneId;
   ceoCommandCenter: MissionEvidenceCard[];
   departmentLanes: MissionDepartmentLane[];
   coreLoopValidators: CoreLoopValidator[];
+  readinessBreakdown?: MissionReadinessBreakdown;
   incidentTypes: MissionIncidentDefinition[];
   sourceVault: SourceVaultEntry[];
   actionRegistry: ActionRegistryEntry[];
