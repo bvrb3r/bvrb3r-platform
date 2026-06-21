@@ -307,6 +307,58 @@ export type AuditSpineModel = {
   nextRepairLane: MissionLaneId;
 };
 
+export type RlsSecurityInventoryStatus = MissionControlStatus | "Not Connected" | "Parked";
+
+export type RlsEnabledState = "yes" | "no" | "unknown";
+
+export type RlsRiskLevel = "low" | "medium" | "high" | "critical" | "unknown";
+
+export type RlsSecurityInventoryRow = {
+  id: string;
+  schemaName: string;
+  tableName: string;
+  rlsEnabled: RlsEnabledState;
+  policyCount: number | null;
+  policyNames: string[];
+  dataSensitivity: string;
+  userRoleExposure: string[];
+  v1Required: boolean;
+  futureParked: boolean;
+  currentRiskLevel: RlsRiskLevel;
+  expectedPolicyPosture: string;
+  currentStatus: RlsSecurityInventoryStatus;
+  failureMeaning: string;
+  migrationRequired: "yes" | "no" | "unknown";
+  suggestedPolicyPlanSummary: string;
+  nextRepairLane: MissionLaneId;
+  evidenceSource: string;
+  staleOrMissingEvidenceState: string[];
+};
+
+export type RlsSecurityInventorySummary = {
+  totalTablesInventoried: number;
+  v1CriticalTableCount: number;
+  rlsEnabledCount: number;
+  rlsDisabledCount: number;
+  unknownPostureCount: number;
+  v1CriticalDisabledCount: number;
+  needsReviewCount: number;
+  parkedFutureCount: number;
+  highestRiskLevel: RlsRiskLevel;
+  nextRepairLane: MissionLaneId;
+};
+
+export type RlsSecurityInventory = {
+  status: RlsSecurityInventoryStatus;
+  summary: RlsSecurityInventorySummary;
+  rows: RlsSecurityInventoryRow[];
+  v1CriticalDisabledTables: RlsSecurityInventoryRow[];
+  unknownPostureTables: RlsSecurityInventoryRow[];
+  parkedFutureTables: RlsSecurityInventoryRow[];
+  evidenceSource: string;
+  nextRepairLane: MissionLaneId;
+};
+
 export type MissionControlFoundation = {
   navigationLanes: MissionControlLane[];
   defaultLaneId: MissionLaneId;
@@ -317,6 +369,7 @@ export type MissionControlFoundation = {
   v1RuntimeProofMatrix?: V1RuntimeProofMatrix;
   deploymentRegression?: DeploymentRegressionEvidence;
   auditSpine?: AuditSpineModel;
+  rlsSecurityInventory?: RlsSecurityInventory;
   incidentTypes: MissionIncidentDefinition[];
   sourceVault: SourceVaultEntry[];
   actionRegistry: ActionRegistryEntry[];

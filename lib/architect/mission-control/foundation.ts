@@ -23,6 +23,10 @@ import type {
   MissionLaneId,
   MissionReadinessBreakdown,
   MissionSeverity,
+  RlsRiskLevel,
+  RlsSecurityInventory,
+  RlsSecurityInventoryRow,
+  RlsSecurityInventoryStatus,
   SourceVaultEntry,
   V1RuntimeProofGroup,
   V1RuntimeProofGroupId,
@@ -122,6 +126,7 @@ const V1_CRITICAL_CARD_IDS = new Set([
   "compliance-trust-gates",
   "security-role-access",
   "security-role-drift",
+  "security-rls-inventory",
   "security-rls-disabled",
   "security-route-protection",
   "security-unsafe-actions",
@@ -193,6 +198,262 @@ type DeploymentRegressionEvidenceInput = {
   lastValidatedAt?: string | null;
   evidenceSource?: string;
 };
+
+type RlsSecurityInventoryRowInput = Omit<
+  RlsSecurityInventoryRow,
+  "currentStatus" | "failureMeaning" | "migrationRequired" | "staleOrMissingEvidenceState"
+> & Partial<Pick<RlsSecurityInventoryRow, "currentStatus" | "failureMeaning" | "migrationRequired" | "staleOrMissingEvidenceState">>;
+
+type RlsSecurityInventoryInput = {
+  rows?: RlsSecurityInventoryRowInput[];
+  productionDisabledPublicTableCount?: number;
+  evidenceSource?: string;
+};
+
+const DEFAULT_RLS_DISABLED_PUBLIC_TABLE_COUNT = 28;
+
+const DEFAULT_RLS_EVIDENCE_SOURCE = "Safe cleanup evidence, Supabase public schema inventory plan, and repo-known V1 table map";
+
+const DEFAULT_RLS_SECURITY_INVENTORY_ROWS: RlsSecurityInventoryRowInput[] = [
+  {
+    id: "rls-public-disabled-aggregate",
+    schemaName: "public",
+    tableName: "public tables reported disabled by safe cleanup (names not connected)",
+    rlsEnabled: "no",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Unknown public table set; treated as V1-critical until table-level production evidence is connected.",
+    userRoleExposure: ["public API", "authenticated roles", "platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "Every public table exposed through Supabase Data API must have RLS enabled with reviewed role policies.",
+    suggestedPolicyPlanSummary: "Connect production table-level pg_class/pg_policies inventory, then review and apply RLS migrations in a separate approved security PR.",
+    nextRepairLane: "security",
+    evidenceSource: "Safe cleanup evidence reports 28 public Supabase table(s) have RLS disabled; exact table names are not connected yet."
+  },
+  {
+    id: "rls-profiles",
+    schemaName: "public",
+    tableName: "profiles",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Private account identity, public role posture, display identity, and trust-gate evidence.",
+    userRoleExposure: ["client_user", "barber_user", "shop_owner_user", "platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "Users can read/update their own private profile fields; public display reads are limited to safe public fields; platform_admin reads are gated server-side.",
+    suggestedPolicyPlanSummary: "Verify production RLS enabled state and policy names before any role-drift or trust-gate cleanup.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 role and compliance loop table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-appointments",
+    schemaName: "public",
+    tableName: "appointments",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Client, barber, shop, service, time, lifecycle, and calendar visibility truth.",
+    userRoleExposure: ["client_user", "barber_user", "shop_owner_user", "platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "Clients see their appointments, barbers see their chair appointments, owners see shop-context appointments, and platform_admin access remains server-gated.",
+    suggestedPolicyPlanSummary: "Verify production policies before treating booking/calendar proof as release-safe.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 booking and calendar proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-payments",
+    schemaName: "public",
+    tableName: "payments",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Payment status, Stripe/provider references, captured/refunded posture, and money evidence.",
+    userRoleExposure: ["client_user", "barber_user", "shop_owner_user", "platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "Payment reads are limited by appointment/shop ownership; money mutation remains server-only and Stripe-backed.",
+    suggestedPolicyPlanSummary: "Verify RLS and policy posture before Finance can claim full V1 security posture.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 Finance proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-payment-routing-records",
+    schemaName: "public",
+    tableName: "payment_routing_records",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Payout readiness, routing model, barber/shop split, release guard, and reconciliation posture.",
+    userRoleExposure: ["barber_user", "shop_owner_user", "platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "Routing evidence is readable only to authorized money contexts; payout release remains server-only and explicitly approved.",
+    suggestedPolicyPlanSummary: "Verify policies before marking payment-routing security as Pass.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 Finance routing proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-refunds",
+    schemaName: "public",
+    tableName: "refunds",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Refund evidence, actor/source, provider refund reference, amount, and result state.",
+    userRoleExposure: ["client_user", "shop_owner_user", "platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "Refund evidence reads are scoped to authorized appointment/shop contexts; refund execution remains canonical route-only.",
+    suggestedPolicyPlanSummary: "Verify production RLS and policy evidence before treating refund logs as fully secured.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 Finance refund log proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-payout-executions",
+    schemaName: "public",
+    tableName: "payout_executions",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Payout execution evidence and release guard proof.",
+    userRoleExposure: ["shop_owner_user", "platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "Payout execution evidence is read-only for authorized money contexts and never mutated by Architect diagnostics.",
+    suggestedPolicyPlanSummary: "Verify production RLS and policies before payout evidence can contribute to V1 Pass.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 Finance payout guard proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-audit-logs",
+    schemaName: "public",
+    tableName: "audit_logs",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Repair approval, execution, verification, and score-impact audit evidence.",
+    userRoleExposure: ["platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "Audit evidence is readable to platform_admin control-plane paths only; public users never receive private audit rows.",
+    suggestedPolicyPlanSummary: "Connect production RLS/policy evidence and persisted audit coverage before Audit Spine can Pass.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 Audit Spine proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-platform-events",
+    schemaName: "public",
+    tableName: "platform_events",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Platform event evidence for controlled repair success/failure and Finance logs.",
+    userRoleExposure: ["platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "Platform event evidence is visible only through gated Architect/server-side surfaces.",
+    suggestedPolicyPlanSummary: "Verify production RLS and policy posture for platform event evidence.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 Audit/Finance log proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-message-threads",
+    schemaName: "public",
+    tableName: "message_threads",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Client/barber/owner message thread membership and communication context.",
+    userRoleExposure: ["client_user", "barber_user", "shop_owner_user"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "high",
+    expectedPolicyPosture: "Participants only read threads they belong to; owner/team message visibility follows explicit policy.",
+    suggestedPolicyPlanSummary: "Verify RLS before messaging can be considered V1 security-clean.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 messaging proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-messages",
+    schemaName: "public",
+    tableName: "messages",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Private conversation body and participant-visible message state.",
+    userRoleExposure: ["client_user", "barber_user", "shop_owner_user"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "high",
+    expectedPolicyPosture: "Participants only read/send messages inside authorized threads.",
+    suggestedPolicyPlanSummary: "Verify message table RLS and participant policies.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 messaging proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-culture-posts",
+    schemaName: "public",
+    tableName: "culture_posts",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Public Culture post identity, attribution, booking CTA, and moderation state.",
+    userRoleExposure: ["anonymous public", "client_user", "barber_user", "shop_owner_user", "platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "high",
+    expectedPolicyPosture: "Public reads expose approved public content only; writes/moderation are role-gated.",
+    suggestedPolicyPlanSummary: "Verify production RLS and public-read policies before Culture security can Pass.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 Culture proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-shop-barber-relationships",
+    schemaName: "public",
+    tableName: "shop_barber_relationships",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Shop-owner/team relationship truth, active barber count, pending invitations, and approval state.",
+    userRoleExposure: ["barber_user", "shop_owner_user", "platform_admin"],
+    v1Required: true,
+    futureParked: false,
+    currentRiskLevel: "critical",
+    expectedPolicyPosture: "Owners and barbers can read only their relationship context; active membership changes require canonical server paths.",
+    suggestedPolicyPlanSummary: "Verify production RLS before owner active-barber proof can be marked security-clean.",
+    nextRepairLane: "security",
+    evidenceSource: "V1 owner/team proof table map; production RLS/policy state is not connected."
+  },
+  {
+    id: "rls-campaign-events",
+    schemaName: "public",
+    tableName: "campaign_events",
+    rlsEnabled: "unknown",
+    policyCount: null,
+    policyNames: [],
+    dataSensitivity: "Future campaign attribution events.",
+    userRoleExposure: ["platform_admin"],
+    v1Required: false,
+    futureParked: true,
+    currentRiskLevel: "unknown",
+    expectedPolicyPosture: "Parked future table must not affect V1 readiness until campaign tracking is implemented.",
+    suggestedPolicyPlanSummary: "Define policy during future campaign tracking work; no current V1 migration.",
+    nextRepairLane: "marketing",
+    evidenceSource: "Parked future marketing scaffold; no production RLS claim."
+  }
+];
 
 const V1_RUNTIME_PROOF_GROUPS: Array<Pick<V1RuntimeProofGroup, "id" | "label" | "lane" | "nextRepairLane">> = [
   { id: "client_loop", label: "Client loop", lane: "Product", nextRepairLane: "product" },
@@ -1110,10 +1371,15 @@ export function buildMissionControlFoundation(
   incidents: ArchitectIncident[] = [],
   checkedAt = new Date().toISOString(),
   ceoPlatformMetrics: MissionEvidenceCard[] = [],
-  deploymentRegression = buildDeploymentRegressionEvidence()
+  deploymentRegression = buildDeploymentRegressionEvidence(),
+  rlsSecurityInventory = buildRlsSecurityInventory()
 ): MissionControlFoundation {
   const coreLoopValidators = scopeEvidenceCards(applyIncidentFailures(validateCoreLoopState(), incidents));
-  const platformEvidence = mergeEvidenceCards(ceoPlatformMetrics, buildDeploymentRegressionEvidenceCards(deploymentRegression));
+  const platformEvidence = mergeEvidenceCards(
+    ceoPlatformMetrics,
+    buildDeploymentRegressionEvidenceCards(deploymentRegression),
+    buildRlsSecurityInventoryEvidenceCards(rlsSecurityInventory)
+  );
   const baseDepartmentLanes = buildDepartmentLanes(coreLoopValidators, incidents, platformEvidence);
   const ceoCommandCenter = [
     ...buildCeoPlatformMetricCards(platformEvidence),
@@ -1145,6 +1411,7 @@ export function buildMissionControlFoundation(
     v1RuntimeProofMatrix,
     deploymentRegression,
     auditSpine,
+    rlsSecurityInventory,
     incidentTypes: MISSION_INCIDENT_DEFINITIONS,
     sourceVault: SOURCE_VAULT_REGISTRY,
     actionRegistry: ACTION_REGISTRY,
@@ -1522,6 +1789,196 @@ function aggregateAuditStatuses(statuses: AuditSpineStatus[]): AuditSpineStatus 
 
 function stageStatus(record: AuditSpineRecord, stage: AuditSpineStageKey): AuditSpineStatus {
   return record.stages.find((item) => item.stage === stage)?.status ?? "Not Connected";
+}
+
+export function buildRlsSecurityInventory(input: RlsSecurityInventoryInput = {}): RlsSecurityInventory {
+  const productionDisabledPublicTableCount = input.productionDisabledPublicTableCount ?? DEFAULT_RLS_DISABLED_PUBLIC_TABLE_COUNT;
+  const rows = (input.rows ?? DEFAULT_RLS_SECURITY_INVENTORY_ROWS).map(buildRlsSecurityInventoryRow);
+  const v1CriticalRows = rows.filter((row) => row.v1Required && !row.futureParked);
+  const disabledRows = rows.filter((row) => row.rlsEnabled === "no" && !row.futureParked);
+  const unknownRows = rows.filter((row) => row.rlsEnabled === "unknown" && !row.futureParked);
+  const needsReviewRows = rows.filter((row) => row.currentStatus === "Needs Review" || row.currentStatus === "Not Connected");
+  const parkedFutureTables = rows.filter((row) => row.futureParked || row.currentStatus === "Parked");
+  const rlsDisabledCount = Math.max(disabledRows.length, productionDisabledPublicTableCount);
+  const v1CriticalDisabledCount = Math.max(disabledRows.filter((row) => row.v1Required).length, productionDisabledPublicTableCount);
+  const status: RlsSecurityInventoryStatus = rlsDisabledCount > 0 || rows.some((row) => row.currentStatus === "Failed")
+    ? "Failed"
+    : needsReviewRows.length
+      ? "Needs Review"
+      : rows.length && rows.every((row) => row.currentStatus === "Parked")
+        ? "Parked"
+        : "Pass";
+  const summary = {
+    totalTablesInventoried: rows.length,
+    v1CriticalTableCount: v1CriticalRows.length,
+    rlsEnabledCount: rows.filter((row) => row.rlsEnabled === "yes").length,
+    rlsDisabledCount,
+    unknownPostureCount: unknownRows.length,
+    v1CriticalDisabledCount,
+    needsReviewCount: needsReviewRows.length,
+    parkedFutureCount: parkedFutureTables.length,
+    highestRiskLevel: highestRlsRiskLevel(rows, productionDisabledPublicTableCount),
+    nextRepairLane: firstRlsRepairLane(rows) ?? "security"
+  };
+
+  return {
+    status,
+    summary,
+    rows,
+    v1CriticalDisabledTables: rows.filter((row) => row.currentStatus === "Failed" && row.v1Required && !row.futureParked),
+    unknownPostureTables: rows.filter((row) => row.currentStatus === "Needs Review" || row.currentStatus === "Not Connected"),
+    parkedFutureTables,
+    evidenceSource: input.evidenceSource ?? DEFAULT_RLS_EVIDENCE_SOURCE,
+    nextRepairLane: summary.nextRepairLane
+  };
+}
+
+function buildRlsSecurityInventoryRow(input: RlsSecurityInventoryRowInput): RlsSecurityInventoryRow {
+  const currentStatus = input.currentStatus ?? inferRlsInventoryRowStatus(input);
+  const staleOrMissingEvidenceState = input.staleOrMissingEvidenceState ?? rlsStaleOrMissingEvidence(input, currentStatus);
+  const migrationRequired = input.migrationRequired ?? inferRlsMigrationRequirement(input, currentStatus);
+
+  return {
+    ...input,
+    currentStatus,
+    staleOrMissingEvidenceState,
+    migrationRequired,
+    failureMeaning: input.failureMeaning ?? rlsFailureMeaning(input, currentStatus)
+  };
+}
+
+function inferRlsInventoryRowStatus(row: RlsSecurityInventoryRowInput): RlsSecurityInventoryStatus {
+  if (row.futureParked) return "Parked";
+  if (row.rlsEnabled === "no") return "Failed";
+  if (row.rlsEnabled === "unknown") return "Needs Review";
+  if (row.policyCount === null || typeof row.policyCount === "undefined") return "Needs Review";
+  if (row.policyCount <= 0 || row.policyNames.length <= 0) return "Needs Review";
+  return "Pass";
+}
+
+function inferRlsMigrationRequirement(row: RlsSecurityInventoryRowInput, status: RlsSecurityInventoryStatus): RlsSecurityInventoryRow["migrationRequired"] {
+  if (row.futureParked) return "no";
+  if (row.rlsEnabled === "no") return "yes";
+  if (row.rlsEnabled === "unknown" || status === "Needs Review" || status === "Not Connected") return "unknown";
+  return "no";
+}
+
+function rlsStaleOrMissingEvidence(row: RlsSecurityInventoryRowInput, status: RlsSecurityInventoryStatus) {
+  if (status === "Pass") return [];
+  if (status === "Parked") return ["Future/parked scope; excluded from V1 readiness until promoted."];
+  const missing = [];
+  if (row.rlsEnabled === "unknown") missing.push("Production RLS enabled state is not connected.");
+  if (row.policyCount === null || typeof row.policyCount === "undefined") missing.push("Production policy count is not connected.");
+  if (!row.policyNames.length) missing.push("Production policy names are not connected.");
+  if (row.rlsEnabled === "no") missing.push("RLS disabled evidence is connected and release-blocking.");
+  return missing.length ? missing : ["Required production RLS evidence is incomplete."];
+}
+
+function rlsFailureMeaning(row: RlsSecurityInventoryRowInput, status: RlsSecurityInventoryStatus) {
+  if (status === "Failed") {
+    return `${row.schemaName}.${row.tableName} cannot be treated as V1-safe because RLS is disabled or disabled-table evidence is unresolved.`;
+  }
+  if (status === "Needs Review" || status === "Not Connected") {
+    return `${row.schemaName}.${row.tableName} cannot be marked Pass until RLS enabled state and policy evidence are connected.`;
+  }
+  if (status === "Parked") {
+    return `${row.schemaName}.${row.tableName} is parked/future scope and does not affect V1 readiness.`;
+  }
+  return `${row.schemaName}.${row.tableName} has connected RLS enabled and policy evidence for this inventory row.`;
+}
+
+function highestRlsRiskLevel(rows: RlsSecurityInventoryRow[], productionDisabledPublicTableCount: number): RlsRiskLevel {
+  if (productionDisabledPublicTableCount > 0 || rows.some((row) => row.currentRiskLevel === "critical" && row.currentStatus !== "Parked")) return "critical";
+  if (rows.some((row) => row.currentRiskLevel === "high" && row.currentStatus !== "Parked")) return "high";
+  if (rows.some((row) => row.currentRiskLevel === "medium" && row.currentStatus !== "Parked")) return "medium";
+  if (rows.some((row) => row.currentRiskLevel === "low" && row.currentStatus !== "Parked")) return "low";
+  return "unknown";
+}
+
+function firstRlsRepairLane(rows: RlsSecurityInventoryRow[]): MissionLaneId | null {
+  return rows.find((row) => row.currentStatus === "Failed")?.nextRepairLane
+    ?? rows.find((row) => row.currentStatus === "Needs Review" || row.currentStatus === "Not Connected")?.nextRepairLane
+    ?? null;
+}
+
+function rlsInventoryStatusToMissionStatus(status: RlsSecurityInventoryStatus): MissionControlStatus {
+  if (status === "Pass") return "Pass";
+  if (status === "Failed") return "Failed";
+  if (status === "Warning") return "Warning";
+  return "Needs Review";
+}
+
+function buildRlsSecurityInventoryEvidenceCards(inventory: RlsSecurityInventory): MissionEvidenceCard[] {
+  const summary = inventory.summary;
+  const inventoryStatus = rlsInventoryStatusToMissionStatus(inventory.status);
+  const disabledEvidence = [
+    `${summary.rlsDisabledCount} public Supabase table(s) reported RLS disabled.`,
+    `${summary.v1CriticalDisabledCount} V1 critical disabled/unresolved disabled table signal(s).`,
+    `${summary.unknownPostureCount} named V1 table posture row(s) still need production RLS/policy proof.`,
+    `highestRiskLevel=${summary.highestRiskLevel}.`,
+    `evidenceSource=${inventory.evidenceSource}.`,
+    "Read-only inventory only; no RLS enablement, policy mutation, migration, or production data change was attempted."
+  ];
+  const inventoryEvidence = [
+    `totalTablesInventoried=${summary.totalTablesInventoried}.`,
+    `v1CriticalTableCount=${summary.v1CriticalTableCount}.`,
+    `rlsEnabledCount=${summary.rlsEnabledCount}.`,
+    `rlsDisabledCount=${summary.rlsDisabledCount}.`,
+    `unknownPostureCount=${summary.unknownPostureCount}.`,
+    `parkedFutureCount=${summary.parkedFutureCount}.`,
+    ...inventory.rows.slice(0, 8).map((row) => `${row.schemaName}.${row.tableName}: RLS=${row.rlsEnabled}; policies=${row.policyCount ?? "unknown"}; status=${row.currentStatus}; risk=${row.currentRiskLevel}.`)
+  ];
+
+  return [
+    {
+      ...evidenceCard(
+        "ceo-rls-disabled-evidence",
+        "RLS Disabled Evidence",
+        "CEO",
+        "Security",
+        summary.rlsDisabledCount > 0 ? "Failed" : inventoryStatus,
+        summary.rlsDisabledCount > 0
+          ? "Public Supabase RLS disabled evidence remains release-blocking."
+          : "No disabled-table evidence is connected, but policy proof still controls Pass.",
+        disabledEvidence
+      ),
+      metricValue: summary.rlsDisabledCount > 0 ? `${summary.rlsDisabledCount} disabled` : inventoryStatus
+    },
+    {
+      ...evidenceCard(
+        "security-rls-inventory",
+        "RLS Security Inventory",
+        "Security",
+        "Supabase RLS",
+        inventoryStatus,
+        "Read-only inventory separates disabled, unknown, policy-missing, and parked/future RLS posture.",
+        inventoryEvidence
+      ),
+      metricValue: `${summary.totalTablesInventoried} inventoried`
+    },
+    evidenceCard(
+      "security-rls-disabled",
+      "RLS disabled tables",
+      "Security",
+      "Supabase RLS",
+      summary.rlsDisabledCount > 0 ? "Failed" : inventoryStatus,
+      summary.rlsDisabledCount > 0
+        ? `${summary.rlsDisabledCount} public Supabase table(s) have disabled or unresolved disabled RLS evidence.`
+        : "RLS disabled count is clean; policy proof still controls table-level Pass.",
+      disabledEvidence
+    ),
+    evidenceCard(
+      "technology-rls-disabled",
+      "RLS disabled tables",
+      "Technology",
+      "Supabase RLS",
+      summary.rlsDisabledCount > 0 ? "Failed" : inventoryStatus,
+      summary.rlsDisabledCount > 0
+        ? "Database security proof is blocked by disabled public-table evidence."
+        : "Database security proof has no disabled RLS evidence connected.",
+      disabledEvidence
+    )
+  ];
 }
 
 function isMissingProofEvidence(item: string) {
@@ -1998,6 +2455,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
   });
   const roleDrift = platformCard("ceo-role-drift-health", "Role Drift Evidence", "Security", "Role Drift", "Profile role drift evidence is not connected.");
   const rlsDisabled = platformCard("ceo-rls-disabled-evidence", "RLS Disabled Evidence", "Security", "Supabase RLS", "RLS disabled table evidence is not connected.");
+  const rlsInventory = platformCard("security-rls-inventory", "RLS Security Inventory", "Security", "Supabase RLS", "RLS inventory evidence is not connected.");
   const auditEvidence = platformCard("ceo-audit-log-evidence", "Audit Evidence", "Security", "Audit", "Audit trail evidence is not connected.");
   const refundIncidents = incidents.filter((incident) => (incident.missionIncidentType ?? mapDiagnosisToIncidentType(incident.diagnosisCode)) === "cancelled_captured_refund_unresolved");
   const activeRefundBlockers = evidenceById.get("ceo-active-refund-blockers");
@@ -2040,7 +2498,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       platformCard("technology-deployment-status-proof", "Vercel deployment status proof", "Technology", "Deployments", "Deployment status proof is not connected."),
       platformCard("technology-build-tests", "Build/test status", "Technology", "Regression", "Build and test status comes from validation commands."),
       evidenceCard("technology-database", "Database health", "Technology", "Database", "Needs Review", "Database health requires schema/read evidence.", ["No database migration is part of v1 foundation."]),
-      evidenceCard("technology-rls-disabled", "RLS disabled tables", "Technology", "Supabase RLS", rlsDisabled.status, rlsDisabled.summary, rlsDisabled.evidence),
+      platformCard("technology-rls-disabled", "RLS disabled tables", "Technology", "Supabase RLS", "RLS disabled table evidence is not connected."),
       evidenceCard("technology-api", "API health", "Technology", "API", "Needs Review", "API health requires route-specific evidence.", ["Architect APIs remain gated."]),
       evidenceCard("technology-schema", "Schema constraints", "Technology", "Schema", incidents.some((incident) => incident.diagnosisCode === "schema_constraint_mismatch") ? "Failed" : "Needs Review", "Schema constraint evidence is available for payment routing.", ["Constraint checks are read-only."]),
       platformCard("technology-coverage", "Regression coverage", "Technology", "Coverage", "Regression coverage must be explicit.")
@@ -2097,6 +2555,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
     security: [
       evidenceCard("security-role-access", "Role access", "Security", "Access", "Needs Review", "Architect route and API guards exist; broader role audit needs explicit proof.", ["Architect route uses platform-admin guard."]),
       evidenceCard("security-role-drift", "Profile role drift", "Security", "Role Drift", roleDrift.status, roleDrift.summary, roleDrift.evidence),
+      rlsInventory,
       evidenceCard("security-rls-disabled", "RLS disabled tables", "Security", "Supabase RLS", rlsDisabled.status, rlsDisabled.summary, rlsDisabled.evidence),
       evidenceCard("security-route-protection", "Route protection", "Security", "Route Protection", "Needs Review", "Architect APIs use debug access guard.", ["Public roles are blocked by guard tests."]),
       evidenceCard("security-unsafe-actions", "Unsafe action prevention", "Security", "Action Registry", "Pass", "Unsafe v1 actions are blocked in Action Registry.", ACTION_REGISTRY.filter((action) => action.riskClass === "Unsafe / blocked").map((action) => `${action.label}: blocked`)),

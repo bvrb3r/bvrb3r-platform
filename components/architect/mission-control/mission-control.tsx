@@ -25,6 +25,7 @@ import type {
   MissionEvidenceCard,
   MissionControlStatus,
   MissionLaneId,
+  RlsSecurityInventory,
   V1RuntimeProofGroup
 } from "@/lib/architect/mission-control/types";
 import { cn } from "@/lib/utils";
@@ -1974,7 +1975,123 @@ function FinanceLogsPanel({ logs, metrics }: { logs: FinanceLogEntry[]; metrics:
   );
 }
 
-function DepartmentLaneDetail({ lane, snapshot, onRefreshSnapshot }: { lane: MissionDepartmentLane; snapshot: MissionControlSnapshot; onRefreshSnapshot: () => Promise<void> }) {
+function RlsInventoryRowCard({ row }: { row: RlsSecurityInventory["rows"][number] }) {
+  return (
+    <article className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="font-mono text-xs text-white/45">{row.schemaName}.{row.tableName}</p>
+          <h4 className="mt-1 text-sm font-black text-white">{row.dataSensitivity}</h4>
+        </div>
+        <StatusPill status={row.currentStatus} />
+      </div>
+      <div className="mt-3 grid gap-2 text-xs leading-5 text-white/58 sm:grid-cols-3">
+        <p><span className="font-black text-white/82">RLS:</span> {row.rlsEnabled}</p>
+        <p><span className="font-black text-white/82">Policies:</span> {row.policyCount ?? "unknown"}</p>
+        <p><span className="font-black text-white/82">Risk:</span> {row.currentRiskLevel}</p>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-white/58">{row.failureMeaning}</p>
+      <p className="mt-2 text-xs leading-5 text-white/45">{row.suggestedPolicyPlanSummary}</p>
+    </article>
+  );
+}
+
+function RlsSecurityInventoryPanel({ inventory }: { inventory?: RlsSecurityInventory }) {
+  if (!inventory) {
+    return (
+      <article className="rounded-[24px] border border-amber-300/15 bg-amber-300/8 p-4 text-sm text-amber-100 sm:p-5" data-testid="rls-security-inventory">
+        RLS Security Inventory is not connected. Missing inventory evidence remains Needs Review.
+      </article>
+    );
+  }
+
+  const summary = inventory.summary;
+
+  return (
+    <article className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5" data-testid="rls-security-inventory">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">RLS Security Inventory</p>
+          <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Read-only Supabase RLS posture</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
+            Inventory only - no RLS changes applied. Missing production table/policy evidence stays Needs Review, and disabled V1-critical evidence stays Failed.
+          </p>
+        </div>
+        <StatusPill status={inventory.status} />
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ["Tables inventoried", summary.totalTablesInventoried],
+          ["V1 critical tables", summary.v1CriticalTableCount],
+          ["RLS disabled count", summary.rlsDisabledCount],
+          ["Unknown posture", summary.unknownPostureCount],
+          ["V1 critical disabled", summary.v1CriticalDisabledCount],
+          ["Needs Review", summary.needsReviewCount],
+          ["Parked future", summary.parkedFutureCount],
+          ["Highest risk", summary.highestRiskLevel]
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-[16px] border border-white/8 bg-white/[0.025] p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">{label}</p>
+            <p className="mt-1 text-2xl font-black text-white">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-[16px] border border-white/8 bg-white/[0.025] p-3 text-xs leading-5 text-white/58">
+        <p><span className="font-black text-white/82">Evidence source:</span> {inventory.evidenceSource}</p>
+        <p><span className="font-black text-white/82">Next repair lane:</span> {inventory.nextRepairLane}</p>
+      </div>
+
+      <div className="mt-5 space-y-5">
+        <section>
+          <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-100">V1 critical disabled tables</h4>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {inventory.v1CriticalDisabledTables.length ? inventory.v1CriticalDisabledTables.map((row) => (
+              <RlsInventoryRowCard key={row.id} row={row} />
+            )) : (
+              <div className="rounded-[16px] border border-dashed border-white/12 bg-white/[0.025] p-3 text-sm text-white/58">No named V1 critical disabled table rows are connected.</div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">Unknown RLS posture</h4>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {inventory.unknownPostureTables.length ? inventory.unknownPostureTables.slice(0, 8).map((row) => (
+              <RlsInventoryRowCard key={row.id} row={row} />
+            )) : (
+              <div className="rounded-[16px] border border-dashed border-white/12 bg-white/[0.025] p-3 text-sm text-white/58">No unknown table posture rows are connected.</div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/50">Future / parked tables</h4>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {inventory.parkedFutureTables.length ? inventory.parkedFutureTables.map((row) => (
+              <RlsInventoryRowCard key={row.id} row={row} />
+            )) : (
+              <div className="rounded-[16px] border border-dashed border-white/12 bg-white/[0.025] p-3 text-sm text-white/58">No parked future RLS rows are connected.</div>
+            )}
+          </div>
+        </section>
+      </div>
+    </article>
+  );
+}
+
+function DepartmentLaneDetail({
+  lane,
+  snapshot,
+  foundation,
+  onRefreshSnapshot
+}: {
+  lane: MissionDepartmentLane;
+  snapshot: MissionControlSnapshot;
+  foundation: MissionControlFoundation;
+  onRefreshSnapshot: () => Promise<void>;
+}) {
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const selectedIssue = lane.cards.find((card) => card.id === selectedIssueId) ?? null;
   const issueDetailsEnabled = lane.id === "finance";
@@ -2022,6 +2139,9 @@ function DepartmentLaneDetail({ lane, snapshot, onRefreshSnapshot }: { lane: Mis
       </article>
       {lane.id === "finance" ? (
         <FinanceLogsPanel logs={refundLogs} metrics={refundMetrics} />
+      ) : null}
+      {lane.id === "security" ? (
+        <RlsSecurityInventoryPanel inventory={foundation.rlsSecurityInventory} />
       ) : null}
       {issueDetailsEnabled && selectedIssue ? (
         <ArchitectIssueDetailModal
@@ -2137,7 +2257,7 @@ export function ArchitectMissionControl({ laneId = "ceo" }: { laneId?: MissionLa
                 onCopyCodexPacket={() => void copyPacket("codexPacket")}
               />
             ) : selectedDepartmentLane ? (
-              <DepartmentLaneDetail lane={selectedDepartmentLane} snapshot={snapshot} onRefreshSnapshot={loadSnapshot} />
+              <DepartmentLaneDetail lane={selectedDepartmentLane} snapshot={snapshot} foundation={foundation} onRefreshSnapshot={loadSnapshot} />
             ) : null}
           </>
         ) : null}
