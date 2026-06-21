@@ -658,6 +658,11 @@ describe("architect mission control", () => {
       lintEvidenceStatus: "pass",
       typecheckEvidenceStatus: "pass",
       testEvidenceStatus: "pass",
+      validationCommand: "npm run verify:deployment",
+      validationSource: "package.json prebuild -> verify:deployment",
+      validationCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      validationTimestamp: "2026-06-21T12:00:00.000Z",
+      regressionSuiteName: "architect-mission-control-targeted-regression",
       lastValidatedAt: "2026-06-21T12:00:00.000Z"
     });
     const snapshot = {
@@ -677,7 +682,48 @@ describe("architect mission control", () => {
     expect(panel).toHaveTextContent("READY");
     expect(panel).toHaveTextContent("Pass");
     expect(panel).toHaveTextContent("https://www.bvrb3r.app");
+    expect(panel).toHaveTextContent("package.json prebuild -> verify:deployment");
+    expect(panel).toHaveTextContent("architect-mission-control-targeted-regression");
+    expect(panel).toHaveTextContent("Proof connected");
+    expect(panel).toHaveTextContent("yes");
     expect(screen.getByTestId("v1-proof-group-deployment_loop")).toHaveTextContent("Deployment loop");
+  });
+
+  it("moves Deployment / Regression out of Needs Proof when commit, deployment, and regression proof pass", async () => {
+    const deploymentRegression = buildDeploymentRegressionEvidence({
+      expectedMainCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      runtimeCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      deploymentId: "dpl_ready",
+      deploymentState: "READY",
+      deploymentEnvironment: "production",
+      deploymentTarget: "production",
+      deploymentUrl: "https://www.bvrb3r.app",
+      buildEvidenceStatus: "pass",
+      lintEvidenceStatus: "pass",
+      typecheckEvidenceStatus: "pass",
+      testEvidenceStatus: "pass",
+      validationCommand: "npm run verify:deployment",
+      validationSource: "package.json prebuild -> verify:deployment",
+      validationCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
+      validationTimestamp: "2026-06-21T12:00:00.000Z",
+      regressionSuiteName: "architect-mission-control-targeted-regression"
+    });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...createNoIncidentSnapshot(),
+        foundation: buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], deploymentRegression)
+      })
+    });
+
+    render(<ArchitectMissionControl />);
+
+    const alreadyGreen = await screen.findByTestId("ceo-green-queue-already_green");
+    const needsProof = screen.getByTestId("ceo-green-queue-needs_proof");
+
+    expect(screen.getByTestId("architect-ceo-card-deployment-regression")).toHaveTextContent("Pass");
+    expect(alreadyGreen).toHaveTextContent("Deployment / Regression");
+    expect(needsProof).not.toHaveTextContent("Deployment / Regression");
   });
 
   it("renders detailed proof panels inside responsible officer lanes", async () => {

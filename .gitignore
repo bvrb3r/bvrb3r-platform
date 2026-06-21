@@ -12,3 +12,4 @@ dist
 .android-user-home
 .gradle-user-home
 .vercel
+public/.well-known/bvrb3r-deployment-regression-proof.json
