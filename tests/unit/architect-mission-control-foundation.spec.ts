@@ -923,6 +923,8 @@ describe("architect mission control foundation", () => {
       runtimeCommit: "different-runtime",
       deploymentId: "dpl_ready",
       deploymentState: "READY",
+      deploymentEnvironment: "production",
+      deploymentTarget: "production",
       buildEvidenceStatus: "pass",
       lintEvidenceStatus: "pass",
       typecheckEvidenceStatus: "pass",
@@ -939,6 +941,56 @@ describe("architect mission control foundation", () => {
     expect(foundation.readinessBreakdown?.overallStatus).toBe("Failed");
   });
 
+  it("does not fail preview deployment when branch commit differs from main but matches validation proof", () => {
+    const deploymentEvidence = buildDeploymentRegressionEvidence({
+      expectedMainCommit: "3bffe71b73708d1a3e2df30e86b2cd66d42d850",
+      runtimeCommit: "e0ca765f3bb6eb0eec90c4280e952440805cc735",
+      deploymentId: "dpl_preview_ready",
+      deploymentState: "READY",
+      deploymentEnvironment: "preview",
+      deploymentTarget: "preview",
+      deploymentUrl: "https://bvrb3r-platform-a5hnccj84-bvrb3rs-projects.vercel.app",
+      buildEvidenceStatus: "pass",
+      lintEvidenceStatus: "pass",
+      typecheckEvidenceStatus: "pass",
+      testEvidenceStatus: "pass",
+      validationCommand: "npm run verify:deployment",
+      validationSource: "package.json prebuild -> verify:deployment",
+      validationCommit: "e0ca765f3bb6eb0eec90c4280e952440805cc735",
+      validationTimestamp: "2026-06-22T12:00:00.000Z",
+      regressionSuiteName: "architect-mission-control-targeted-regression",
+      regressionTestCount: 114,
+      evidenceFreshness: "fresh",
+      proofConnected: true
+    });
+
+    expect(deploymentEvidence.productionCommitMatchesMain).toBe(false);
+    expect(deploymentEvidence.commitEvidenceStatus).toBe("Pass");
+    expect(deploymentEvidence.regressionEvidenceStatus).toBe("Pass");
+    expect(deploymentEvidence.status).toBe("Pass");
+    expect(deploymentEvidence.failingState.join("\n")).not.toContain("expected main commit");
+  });
+
+  it("keeps preview deployment Needs Review when validation proof is missing instead of failing main mismatch", () => {
+    const deploymentEvidence = buildDeploymentRegressionEvidence({
+      expectedMainCommit: "3bffe71b73708d1a3e2df30e86b2cd66d42d850",
+      runtimeCommit: "e0ca765f3bb6eb0eec90c4280e952440805cc735",
+      deploymentId: "dpl_preview_ready",
+      deploymentState: "READY",
+      deploymentEnvironment: "preview",
+      deploymentTarget: "preview",
+      deploymentUrl: "https://bvrb3r-platform-a5hnccj84-bvrb3rs-projects.vercel.app"
+    });
+
+    expect(deploymentEvidence.productionCommitMatchesMain).toBe(false);
+    expect(deploymentEvidence.commitEvidenceStatus).toBe("Needs Review");
+    expect(deploymentEvidence.status).toBe("Needs Review");
+    expect(deploymentEvidence.failingState.join("\n")).not.toContain("expected main commit");
+    expect(deploymentEvidence.staleOrMissingState).toEqual(expect.arrayContaining([
+      "Validation proof commit is not connected.",
+      "Validation proof freshness is not connected."
+    ]));
+  });
   it("lets READY deployment plus matching commit improve deployment proof while missing validation remains Needs Review", () => {
     const deploymentEvidence = buildDeploymentRegressionEvidence({
       expectedMainCommit: "c8c2b1f04978bd42970ba16787bdb7965adb099d",
