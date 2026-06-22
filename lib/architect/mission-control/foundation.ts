@@ -3,6 +3,7 @@ import type {
   ArchitectIncident,
   ArchitectMissionIncidentType,
   DeploymentRegressionEvidence,
+  DeploymentRegressionEvidenceFreshness,
   DeploymentRegressionEvidenceStatus,
   AuditSpineGroupSummary,
   AuditSpineModel,
@@ -206,9 +207,20 @@ type DeploymentRegressionEvidenceInput = {
   lintEvidenceStatus?: string | null;
   typecheckEvidenceStatus?: string | null;
   testEvidenceStatus?: string | null;
+  regressionSuiteName?: string | null;
+  regressionTestCount?: number | null;
+  validationCommand?: string | null;
+  validationSource?: string | null;
+  validationCommit?: string | null;
+  validationTimestamp?: string | null;
   lastValidatedAt?: string | null;
+  verifiedAt?: string | null;
   evidenceSource?: string;
+  evidenceFreshness?: DeploymentRegressionEvidenceFreshness;
+  proofConnected?: boolean;
 };
+
+type DeploymentEvidenceScope = "production" | "preview" | "unknown";
 
 type RlsSecurityInventoryRowInput = Omit<
   RlsSecurityInventoryRow,
@@ -2996,27 +3008,58 @@ export function buildDeploymentRegressionEvidence(
 ): DeploymentRegressionEvidence {
   const expectedMainCommit = normalizeText(input.expectedMainCommit);
   const runtimeCommit = normalizeText(input.runtimeCommit);
+  const productionCommitMatchesMain = expectedMainCommit && runtimeCommit
+    ? commitsMatch(expectedMainCommit, runtimeCommit)
+    : null;
   const deploymentId = normalizeText(input.deploymentId);
   const deploymentEnvironment = normalizeText(input.deploymentEnvironment);
   const deploymentTarget = normalizeText(input.deploymentTarget);
+  const deploymentScope = deploymentEvidenceScope(deploymentEnvironment, deploymentTarget);
   const deploymentUrl = normalizeText(input.deploymentUrl);
   const deploymentState = normalizeText(input.deploymentState);
-  const commitEvidenceStatus = classifyCommitEvidence(expectedMainCommit, runtimeCommit);
+  const validationCommand = normalizeText(input.validationCommand);
+  const validationSource = normalizeText(input.validationSource);
+  const validationCommit = normalizeText(input.validationCommit);
+  const validationTimestamp = normalizeText(input.validationTimestamp) ?? normalizeText(input.lastValidatedAt);
+  const regressionSuiteName = normalizeText(input.regressionSuiteName);
+  const regressionTestCount = Number.isFinite(input.regressionTestCount) ? input.regressionTestCount ?? null : null;
+  const lastValidatedAt = normalizeText(input.lastValidatedAt) ?? validationTimestamp;
+  const evidenceFreshness = input.evidenceFreshness ?? (validationTimestamp ? "fresh" : "missing");
+  const commitEvidenceStatus = classifyCommitEvidence({
+    expectedMainCommit,
+    runtimeCommit,
+    validationCommit,
+    deploymentScope
+  });
   const deploymentEvidenceStatus = classifyDeploymentEvidence(deploymentId, deploymentState);
   const buildEvidenceStatus = classifyValidationEvidence(input.buildEvidenceStatus);
   const lintEvidenceStatus = classifyValidationEvidence(input.lintEvidenceStatus);
   const typecheckEvidenceStatus = classifyValidationEvidence(input.typecheckEvidenceStatus);
   const testEvidenceStatus = classifyValidationEvidence(input.testEvidenceStatus);
   const validationStatuses = [buildEvidenceStatus, lintEvidenceStatus, typecheckEvidenceStatus, testEvidenceStatus];
-  const regressionEvidenceStatus = aggregateDeploymentStatuses(validationStatuses);
+  const regressionEvidenceStatus = classifyRegressionEvidence({
+    validationStatuses,
+    expectedMainCommit,
+    runtimeCommit,
+    deploymentScope,
+    validationCommand,
+    validationSource,
+    validationCommit,
+    validationTimestamp,
+    evidenceFreshness
+  });
   const statuses = [
     commitEvidenceStatus,
     deploymentEvidenceStatus,
-    buildEvidenceStatus,
-    lintEvidenceStatus,
-    typecheckEvidenceStatus,
-    testEvidenceStatus
+    regressionEvidenceStatus
   ];
+  const proofConnected = input.proofConnected ?? Boolean(
+    regressionEvidenceStatus !== "Not Connected"
+      && validationCommand
+      && validationSource
+      && validationCommit
+      && validationTimestamp
+  );
   const staleOrMissingState = [
     ...missingDeploymentEvidenceRows({
       expectedMainCommit,
@@ -3024,25 +3067,34 @@ export function buildDeploymentRegressionEvidence(
       deploymentId,
       deploymentEnvironment,
       deploymentTarget,
+      deploymentScope,
       deploymentUrl,
       deploymentState,
       buildEvidenceStatus,
       lintEvidenceStatus,
       typecheckEvidenceStatus,
-      testEvidenceStatus
+      testEvidenceStatus,
+      validationCommand,
+      validationSource,
+      validationCommit,
+      validationTimestamp,
+      evidenceFreshness
     })
   ];
   const failingState = [
     ...failedDeploymentEvidenceRows({
       expectedMainCommit,
       runtimeCommit,
+      deploymentScope,
       deploymentState,
       commitEvidenceStatus,
       deploymentEvidenceStatus,
       buildEvidenceStatus,
       lintEvidenceStatus,
       typecheckEvidenceStatus,
-      testEvidenceStatus
+      testEvidenceStatus,
+      validationCommit,
+      evidenceFreshness
     })
   ];
 
@@ -3050,6 +3102,7 @@ export function buildDeploymentRegressionEvidence(
     status: aggregateDeploymentStatuses(statuses),
     expectedMainCommit,
     runtimeCommit,
+    productionCommitMatchesMain,
     deploymentId,
     deploymentEnvironment,
     deploymentTarget,
@@ -3062,8 +3115,17 @@ export function buildDeploymentRegressionEvidence(
     typecheckEvidenceStatus,
     testEvidenceStatus,
     regressionEvidenceStatus,
-    lastValidatedAt: normalizeText(input.lastValidatedAt),
+    regressionSuiteName,
+    regressionTestCount,
+    validationCommand,
+    validationSource,
+    validationCommit,
+    validationTimestamp,
+    lastValidatedAt,
+    verifiedAt: normalizeText(input.verifiedAt),
     evidenceSource: input.evidenceSource ?? "Vercel runtime environment and explicit validation evidence",
+    evidenceFreshness,
+    proofConnected,
     staleOrMissingState,
     failingState,
     nextRepairLane: "technology"
@@ -3076,6 +3138,7 @@ function buildDeploymentRegressionEvidenceCards(evidence: DeploymentRegressionEv
   const commitRows = [
     `expectedMainCommit=${evidence.expectedMainCommit ?? "Not connected"}`,
     `runtimeCommit=${evidence.runtimeCommit ?? "Not connected"}`,
+    `productionCommitMatchesMain=${evidence.productionCommitMatchesMain === null ? "Not connected" : evidence.productionCommitMatchesMain ? "yes" : "no"}`,
     ...commitEvidenceGapRows(evidence),
     ...statusEvidenceRows("Commit proof", evidence.commitEvidenceStatus)
   ];
@@ -3095,6 +3158,14 @@ function buildDeploymentRegressionEvidenceCards(evidence: DeploymentRegressionEv
     `lintEvidence=${evidence.lintEvidenceStatus}`,
     `typecheckEvidence=${evidence.typecheckEvidenceStatus}`,
     `testEvidence=${evidence.testEvidenceStatus}`,
+    `validationCommit=${evidence.validationCommit ?? "Not connected"}`,
+    `validationSource=${evidence.validationSource ?? "Not connected"}`,
+    `validationCommand=${evidence.validationCommand ?? "Not connected"}`,
+    `validationTimestamp=${evidence.validationTimestamp ?? "Not connected"}`,
+    `regressionSuite=${evidence.regressionSuiteName ?? "Not connected"}`,
+    `regressionTestCount=${evidence.regressionTestCount ?? "Not connected"}`,
+    `proofConnected=${evidence.proofConnected ? "yes" : "no"}`,
+    `evidenceFreshness=${evidence.evidenceFreshness}`,
     `lastValidatedAt=${evidence.lastValidatedAt ?? "Not connected"}`,
     ...statusEvidenceRows("Regression proof", evidence.regressionEvidenceStatus)
   ];
@@ -3192,10 +3263,42 @@ function normalizeText(value: string | null | undefined) {
   return text ? text : null;
 }
 
-function classifyCommitEvidence(expectedMainCommit: string | null, runtimeCommit: string | null): DeploymentRegressionEvidenceStatus {
-  if (!runtimeCommit) return "Not Connected";
-  if (!expectedMainCommit) return "Needs Review";
-  return commitsMatch(expectedMainCommit, runtimeCommit) ? "Pass" : "Failed";
+function deploymentEvidenceScope(
+  deploymentEnvironment: string | null,
+  deploymentTarget: string | null
+): DeploymentEvidenceScope {
+  const values = [deploymentEnvironment, deploymentTarget]
+    .map((value) => value?.toLowerCase().trim())
+    .filter(Boolean) as string[];
+
+  if (values.some((value) => value === "production" || value === "prod")) return "production";
+  if (values.some((value) => value === "preview")) return "preview";
+  return "unknown";
+}
+
+function classifyCommitEvidence(input: {
+  expectedMainCommit: string | null;
+  runtimeCommit: string | null;
+  validationCommit: string | null;
+  deploymentScope: DeploymentEvidenceScope;
+}): DeploymentRegressionEvidenceStatus {
+  if (!input.runtimeCommit) return "Not Connected";
+
+  if (input.deploymentScope === "production") {
+    if (!input.expectedMainCommit) return "Needs Review";
+    return commitsMatch(input.expectedMainCommit, input.runtimeCommit) ? "Pass" : "Failed";
+  }
+
+  if (input.deploymentScope === "preview") {
+    if (!input.validationCommit) return "Needs Review";
+    return commitsMatch(input.validationCommit, input.runtimeCommit) ? "Pass" : "Failed";
+  }
+
+  if (input.validationCommit && !commitsMatch(input.validationCommit, input.runtimeCommit)) {
+    return "Failed";
+  }
+
+  return "Needs Review";
 }
 
 function classifyDeploymentEvidence(deploymentId: string | null, deploymentState: string | null): DeploymentRegressionEvidenceStatus {
@@ -3215,6 +3318,37 @@ function classifyValidationEvidence(status: string | null | undefined): Deployme
   if (["pass", "passed", "success", "succeeded", "ready", "ok", "green"].includes(normalized)) return "Pass";
   if (["fail", "failed", "failure", "error", "errored", "red", "canceled", "cancelled"].includes(normalized)) return "Failed";
   if (["needs_review", "needs review", "review", "pending", "unknown", "missing", "not connected"].includes(normalized)) return "Needs Review";
+  return "Needs Review";
+}
+
+function classifyRegressionEvidence(input: {
+  validationStatuses: DeploymentRegressionEvidenceStatus[];
+  expectedMainCommit: string | null;
+  runtimeCommit: string | null;
+  deploymentScope: DeploymentEvidenceScope;
+  validationCommand: string | null;
+  validationSource: string | null;
+  validationCommit: string | null;
+  validationTimestamp: string | null;
+  evidenceFreshness: DeploymentRegressionEvidenceFreshness;
+}): DeploymentRegressionEvidenceStatus {
+  if (input.validationStatuses.some((status) => status === "Failed")) return "Failed";
+  if (input.evidenceFreshness === "stale") return "Failed";
+  if (input.validationStatuses.every((status) => status === "Not Connected")) return "Not Connected";
+  if (!input.validationStatuses.every((status) => status === "Pass")) return "Needs Review";
+  if (!input.validationCommand || !input.validationSource || !input.validationTimestamp || !input.validationCommit) {
+    return "Needs Review";
+  }
+  if (!input.runtimeCommit) return "Needs Review";
+  if (!commitsMatch(input.validationCommit, input.runtimeCommit)) return "Failed";
+
+  if (input.deploymentScope === "production") {
+    if (!input.expectedMainCommit) return "Needs Review";
+    return commitsMatch(input.validationCommit, input.expectedMainCommit) ? "Pass" : "Failed";
+  }
+
+  if (input.deploymentScope === "preview") return "Pass";
+
   return "Needs Review";
 }
 
@@ -3242,15 +3376,21 @@ function missingDeploymentEvidenceRows(input: {
   deploymentId: string | null;
   deploymentEnvironment: string | null;
   deploymentTarget: string | null;
+  deploymentScope: DeploymentEvidenceScope;
   deploymentUrl: string | null;
   deploymentState: string | null;
   buildEvidenceStatus: DeploymentRegressionEvidenceStatus;
   lintEvidenceStatus: DeploymentRegressionEvidenceStatus;
   typecheckEvidenceStatus: DeploymentRegressionEvidenceStatus;
   testEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  validationCommand: string | null;
+  validationSource: string | null;
+  validationCommit: string | null;
+  validationTimestamp: string | null;
+  evidenceFreshness: DeploymentRegressionEvidenceFreshness;
 }) {
   const rows: string[] = [];
-  if (!input.expectedMainCommit) rows.push("Expected main commit evidence is not connected.");
+  if (input.deploymentScope === "production" && !input.expectedMainCommit) rows.push("Expected main commit evidence is not connected.");
   if (!input.runtimeCommit) rows.push("Runtime production commit evidence is not connected.");
   if (!input.deploymentId) rows.push("Vercel deployment ID evidence is not connected.");
   if (!input.deploymentEnvironment) rows.push("Deployment environment evidence is not connected.");
@@ -3261,12 +3401,18 @@ function missingDeploymentEvidenceRows(input: {
   if (input.lintEvidenceStatus !== "Pass" && input.lintEvidenceStatus !== "Failed") rows.push("Lint validation evidence is missing or not passing.");
   if (input.typecheckEvidenceStatus !== "Pass" && input.typecheckEvidenceStatus !== "Failed") rows.push("Typecheck validation evidence is missing or not passing.");
   if (input.testEvidenceStatus !== "Pass" && input.testEvidenceStatus !== "Failed") rows.push("Test validation evidence is missing or not passing.");
+  if (!input.validationCommand) rows.push("Validation command evidence is not connected.");
+  if (!input.validationSource) rows.push("Validation proof source is not connected.");
+  if (!input.validationCommit) rows.push("Validation proof commit is not connected.");
+  if (!input.validationTimestamp) rows.push("Validation proof timestamp is not connected.");
+  if (input.evidenceFreshness === "missing") rows.push("Validation proof freshness is not connected.");
   return rows;
 }
 
 function failedDeploymentEvidenceRows(input: {
   expectedMainCommit: string | null;
   runtimeCommit: string | null;
+  deploymentScope: DeploymentEvidenceScope;
   deploymentState: string | null;
   commitEvidenceStatus: DeploymentRegressionEvidenceStatus;
   deploymentEvidenceStatus: DeploymentRegressionEvidenceStatus;
@@ -3274,10 +3420,18 @@ function failedDeploymentEvidenceRows(input: {
   lintEvidenceStatus: DeploymentRegressionEvidenceStatus;
   typecheckEvidenceStatus: DeploymentRegressionEvidenceStatus;
   testEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  validationCommit: string | null;
+  evidenceFreshness: DeploymentRegressionEvidenceFreshness;
 }) {
   const rows: string[] = [];
   if (input.commitEvidenceStatus === "Failed") {
-    rows.push(`Production/runtime commit ${input.runtimeCommit ?? "unknown"} does not match expected main commit ${input.expectedMainCommit ?? "unknown"}.`);
+    if (input.deploymentScope === "production") {
+      rows.push(`Production/runtime commit ${input.runtimeCommit ?? "unknown"} does not match expected main commit ${input.expectedMainCommit ?? "unknown"}.`);
+    } else if (input.deploymentScope === "preview") {
+      rows.push(`Preview/runtime commit ${input.runtimeCommit ?? "unknown"} does not match validation proof commit ${input.validationCommit ?? "unknown"}.`);
+    } else {
+      rows.push(`Runtime commit ${input.runtimeCommit ?? "unknown"} has failed commit evidence for an unknown deployment environment.`);
+    }
   }
   if (input.deploymentEvidenceStatus === "Failed") {
     rows.push(`Deployment status is failed/error/canceled: ${input.deploymentState ?? "unknown"}.`);
@@ -3286,6 +3440,13 @@ function failedDeploymentEvidenceRows(input: {
   if (input.lintEvidenceStatus === "Failed") rows.push("Lint validation evidence is Failed.");
   if (input.typecheckEvidenceStatus === "Failed") rows.push("Typecheck validation evidence is Failed.");
   if (input.testEvidenceStatus === "Failed") rows.push("Test validation evidence is Failed.");
+  if (input.validationCommit && input.runtimeCommit && !commitsMatch(input.validationCommit, input.runtimeCommit)) {
+    rows.push(`Validation proof commit ${input.validationCommit} does not match runtime commit ${input.runtimeCommit}.`);
+  }
+  if (input.deploymentScope === "production" && input.validationCommit && input.expectedMainCommit && !commitsMatch(input.validationCommit, input.expectedMainCommit)) {
+    rows.push(`Validation proof commit ${input.validationCommit} does not match expected main commit ${input.expectedMainCommit}.`);
+  }
+  if (input.evidenceFreshness === "stale") rows.push("Validation proof is stale or belongs to a different deployed commit.");
   return rows;
 }
 
@@ -3293,6 +3454,7 @@ function deploymentEvidenceRows(evidence: DeploymentRegressionEvidence) {
   return [
     `expectedMainCommit=${evidence.expectedMainCommit ?? "Not connected"}`,
     `runtimeCommit=${evidence.runtimeCommit ?? "Not connected"}`,
+    `productionCommitMatchesMain=${evidence.productionCommitMatchesMain === null ? "Not connected" : evidence.productionCommitMatchesMain ? "yes" : "no"}`,
     `deploymentId=${evidence.deploymentId ?? "Not connected"}`,
     `deploymentEnvironment=${evidence.deploymentEnvironment ?? "Not connected"}`,
     `deploymentTarget=${evidence.deploymentTarget ?? "Not connected"}`,
@@ -3302,7 +3464,16 @@ function deploymentEvidenceRows(evidence: DeploymentRegressionEvidence) {
     `lintEvidence=${evidence.lintEvidenceStatus}`,
     `typecheckEvidence=${evidence.typecheckEvidenceStatus}`,
     `testEvidence=${evidence.testEvidenceStatus}`,
+    `validationCommit=${evidence.validationCommit ?? "Not connected"}`,
+    `validationSource=${evidence.validationSource ?? "Not connected"}`,
+    `validationCommand=${evidence.validationCommand ?? "Not connected"}`,
+    `validationTimestamp=${evidence.validationTimestamp ?? "Not connected"}`,
+    `regressionSuite=${evidence.regressionSuiteName ?? "Not connected"}`,
+    `regressionTestCount=${evidence.regressionTestCount ?? "Not connected"}`,
+    `proofConnected=${evidence.proofConnected ? "yes" : "no"}`,
+    `evidenceFreshness=${evidence.evidenceFreshness}`,
     `lastValidatedAt=${evidence.lastValidatedAt ?? "Not connected"}`,
+    `verifiedAt=${evidence.verifiedAt ?? "Not connected"}`,
     `evidenceSource=${evidence.evidenceSource}`,
     ...evidence.failingState,
     ...evidence.staleOrMissingState

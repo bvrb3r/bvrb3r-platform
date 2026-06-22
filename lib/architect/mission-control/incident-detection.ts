@@ -3,6 +3,7 @@ import { isPaymentSuccessful, numberValue, roundMoney } from "@/lib/architect/de
 import { readArchitectDebugEnvironment } from "@/lib/architect/debug/env";
 import type { ArchitectActor, JsonRecord } from "@/lib/architect/debug/types";
 import { buildAppointmentSqlSnippets } from "@/lib/architect/debug/sql-snippets";
+import type { DeploymentRuntimeEvidence } from "@/lib/architect/mission-control/deployment-evidence";
 import {
   isPayoutReadinessEligible,
   loadPaymentRoutingConstraintEvidence,
@@ -25,6 +26,61 @@ import { buildChatGptPacket, buildCodexPacket, buildIncidentPacket } from "@/lib
 import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+
+function fallbackDeploymentRuntimeEvidence(checkedAt: string): DeploymentRuntimeEvidence {
+  const debugEnvironment = readArchitectDebugEnvironment();
+  const expectedMainCommit = process.env.BVRB3R_EXPECTED_MAIN_COMMIT
+    ?? process.env.NEXT_PUBLIC_EXPECTED_MAIN_COMMIT
+    ?? null;
+  const deploymentUrl = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : process.env.NEXT_PUBLIC_VERCEL_URL
+      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+      : null;
+  const deploymentStatus = process.env.BVRB3R_DEPLOYMENT_STATUS
+    ?? process.env.NEXT_PUBLIC_DEPLOYMENT_STATUS
+    ?? null;
+  const lastValidatedAt = process.env.BVRB3R_LAST_VALIDATED_AT
+    ?? process.env.NEXT_PUBLIC_LAST_VALIDATED_AT
+    ?? null;
+  const environment = {
+    ...debugEnvironment,
+    expectedMainCommit,
+    expectedMainCommitSource: expectedMainCommit ? "explicit environment metadata" : "not connected",
+    deploymentUrl,
+    deploymentStatus,
+    branch: process.env.VERCEL_GIT_COMMIT_REF ?? process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF ?? null,
+    buildTime: process.env.NEXT_PUBLIC_BUILD_TIME ?? process.env.BUILD_TIME ?? null,
+    lastValidatedAt
+  };
+
+  return {
+    checkedAt,
+    environment,
+    validationProofConnected: false,
+    validationProofFilePresent: false,
+    validationProofFileState: "missing",
+    evidenceInput: {
+      expectedMainCommit: environment.expectedMainCommit,
+      runtimeCommit: environment.commitHash,
+      deploymentId: environment.deploymentId,
+      deploymentEnvironment: environment.appEnv,
+      deploymentTarget: environment.appEnv,
+      deploymentUrl: environment.deploymentUrl,
+      deploymentState: environment.deploymentStatus,
+      buildEvidenceStatus: process.env.BVRB3R_BUILD_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_BUILD_EVIDENCE_STATUS ?? null,
+      lintEvidenceStatus: process.env.BVRB3R_LINT_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_LINT_EVIDENCE_STATUS ?? null,
+      typecheckEvidenceStatus: process.env.BVRB3R_TYPECHECK_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_TYPECHECK_EVIDENCE_STATUS ?? null,
+      testEvidenceStatus: process.env.BVRB3R_TEST_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_TEST_EVIDENCE_STATUS ?? null,
+      validationTimestamp: lastValidatedAt,
+      lastValidatedAt,
+      verifiedAt: checkedAt,
+      evidenceSource: "fallback runtime environment metadata; generated deployment proof not supplied",
+      evidenceFreshness: "missing",
+      proofConnected: false
+    }
+  };
+}
 
 const MISSION_SYSTEMS: Array<{ key: MissionControlHealthItem["key"]; label: string; healthySummary: string }> = [
   { key: "bookings", label: "Bookings", healthySummary: "Latest booking loop evidence is clean." },
@@ -1553,29 +1609,13 @@ async function buildCeoPlatformMetrics(
 
 export async function buildMissionControlSnapshot(
   supabase: SupabaseClient,
-  actor: ArchitectActor
+  actor: ArchitectActor,
+  deploymentRuntimeEvidence?: DeploymentRuntimeEvidence
 ): Promise<MissionControlSnapshot> {
   void actor;
   const checkedAt = new Date().toISOString();
-  const environment = {
-    ...readArchitectDebugEnvironment(),
-    expectedMainCommit: process.env.BVRB3R_EXPECTED_MAIN_COMMIT
-      ?? process.env.NEXT_PUBLIC_EXPECTED_MAIN_COMMIT
-      ?? null,
-    deploymentUrl: process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_VERCEL_URL
-        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-        : null,
-    deploymentStatus: process.env.BVRB3R_DEPLOYMENT_STATUS
-      ?? process.env.NEXT_PUBLIC_DEPLOYMENT_STATUS
-      ?? null,
-    branch: process.env.VERCEL_GIT_COMMIT_REF ?? process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF ?? null,
-    buildTime: process.env.NEXT_PUBLIC_BUILD_TIME ?? process.env.BUILD_TIME ?? null,
-    lastValidatedAt: process.env.BVRB3R_LAST_VALIDATED_AT
-      ?? process.env.NEXT_PUBLIC_LAST_VALIDATED_AT
-      ?? null
-  };
+  const runtimeEvidence = deploymentRuntimeEvidence ?? fallbackDeploymentRuntimeEvidence(checkedAt);
+  const environment = runtimeEvidence.environment;
   const [incidents, constraintEvidence] = await Promise.all([
     detectArchitectMissionIncidents(supabase),
     loadPaymentRoutingConstraintEvidence(supabase)
@@ -1584,21 +1624,7 @@ export async function buildMissionControlSnapshot(
   const ceoPlatformMetrics = await buildCeoPlatformMetrics(supabase, incidents, checkedAt, financeEvidence);
   const health = healthFromIncidents(incidents, checkedAt);
   const packets = Object.fromEntries(incidents.map((incident) => [incident.id, packetSet({ checkedAt, environment }, incident)]));
-  const deploymentRegression = buildDeploymentRegressionEvidence({
-    expectedMainCommit: environment.expectedMainCommit,
-    runtimeCommit: environment.commitHash,
-    deploymentId: environment.deploymentId,
-    deploymentEnvironment: environment.appEnv,
-    deploymentTarget: environment.appEnv,
-    deploymentUrl: environment.deploymentUrl,
-    deploymentState: environment.deploymentStatus,
-    buildEvidenceStatus: process.env.BVRB3R_BUILD_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_BUILD_EVIDENCE_STATUS ?? null,
-    lintEvidenceStatus: process.env.BVRB3R_LINT_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_LINT_EVIDENCE_STATUS ?? null,
-    typecheckEvidenceStatus: process.env.BVRB3R_TYPECHECK_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_TYPECHECK_EVIDENCE_STATUS ?? null,
-    testEvidenceStatus: process.env.BVRB3R_TEST_EVIDENCE_STATUS ?? process.env.NEXT_PUBLIC_TEST_EVIDENCE_STATUS ?? null,
-    lastValidatedAt: environment.lastValidatedAt,
-    evidenceSource: "Vercel runtime environment variables and explicit BVRB3R validation status metadata"
-  });
+  const deploymentRegression = buildDeploymentRegressionEvidence(runtimeEvidence.evidenceInput);
   const foundation = buildMissionControlFoundation(incidents, checkedAt, ceoPlatformMetrics, deploymentRegression);
 
   return {

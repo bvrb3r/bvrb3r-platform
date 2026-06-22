@@ -366,11 +366,13 @@ export type V1RuntimeProofMatrix = {
 };
 
 export type DeploymentRegressionEvidenceStatus = MissionControlStatus | "Not Connected";
+export type DeploymentRegressionEvidenceFreshness = "fresh" | "stale" | "missing";
 
 export type DeploymentRegressionEvidence = {
   status: DeploymentRegressionEvidenceStatus;
   expectedMainCommit: string | null;
   runtimeCommit: string | null;
+  productionCommitMatchesMain: boolean | null;
   deploymentId: string | null;
   deploymentEnvironment: string | null;
   deploymentTarget: string | null;
@@ -383,8 +385,17 @@ export type DeploymentRegressionEvidence = {
   typecheckEvidenceStatus: DeploymentRegressionEvidenceStatus;
   testEvidenceStatus: DeploymentRegressionEvidenceStatus;
   regressionEvidenceStatus: DeploymentRegressionEvidenceStatus;
+  regressionSuiteName: string | null;
+  regressionTestCount: number | null;
+  validationCommand: string | null;
+  validationSource: string | null;
+  validationCommit: string | null;
+  validationTimestamp: string | null;
   lastValidatedAt: string | null;
+  verifiedAt: string | null;
   evidenceSource: string;
+  evidenceFreshness: DeploymentRegressionEvidenceFreshness;
+  proofConnected: boolean;
   staleOrMissingState: string[];
   failingState: string[];
   nextRepairLane: MissionLaneId;

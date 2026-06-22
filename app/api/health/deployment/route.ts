@@ -1,28 +1,47 @@
 import { NextResponse } from "next/server";
-import { readArchitectDebugEnvironment } from "@/lib/architect/debug/env";
+import { readDeploymentRuntimeEvidence } from "@/lib/architect/mission-control/deployment-evidence.server";
+import { buildDeploymentRegressionEvidence } from "@/lib/architect/mission-control/foundation";
 
 export async function GET() {
+  const runtimeEvidence = await readDeploymentRuntimeEvidence();
+  const evidence = buildDeploymentRegressionEvidence(runtimeEvidence.evidenceInput);
+
   return NextResponse.json({
     ok: true,
-    checkedAt: new Date().toISOString(),
-    environment: {
-      ...readArchitectDebugEnvironment(),
-      expectedMainCommit: process.env.BVRB3R_EXPECTED_MAIN_COMMIT
-        ?? process.env.NEXT_PUBLIC_EXPECTED_MAIN_COMMIT
-        ?? null,
-      deploymentUrl: process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : process.env.NEXT_PUBLIC_VERCEL_URL
-          ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-          : null,
-      deploymentStatus: process.env.BVRB3R_DEPLOYMENT_STATUS
-        ?? process.env.NEXT_PUBLIC_DEPLOYMENT_STATUS
-        ?? null,
-      branch: process.env.VERCEL_GIT_COMMIT_REF ?? process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF ?? null,
-      buildTime: process.env.NEXT_PUBLIC_BUILD_TIME ?? process.env.BUILD_TIME ?? null,
-      lastValidatedAt: process.env.BVRB3R_LAST_VALIDATED_AT
-        ?? process.env.NEXT_PUBLIC_LAST_VALIDATED_AT
-        ?? null
+    checkedAt: runtimeEvidence.checkedAt,
+    status: evidence.status,
+    environment: runtimeEvidence.environment,
+    deploymentEvidence: {
+      runtimeCommit: evidence.runtimeCommit,
+      expectedMainCommit: evidence.expectedMainCommit,
+      productionDeploymentId: evidence.deploymentId,
+      deploymentStatus: evidence.deploymentState,
+      productionCommitMatchesMain: evidence.productionCommitMatchesMain,
+      deploymentEnvironment: evidence.deploymentEnvironment,
+      deploymentUrl: evidence.deploymentUrl,
+      verifiedAt: evidence.verifiedAt,
+      evidenceSource: evidence.evidenceSource,
+      evidenceFreshness: evidence.evidenceFreshness,
+      proofConnected: evidence.proofConnected,
+      missingProof: evidence.staleOrMissingState,
+      failedProof: evidence.failingState
+    },
+    regressionEvidence: {
+      buildStatus: evidence.buildEvidenceStatus,
+      lintStatus: evidence.lintEvidenceStatus,
+      typecheckStatus: evidence.typecheckEvidenceStatus,
+      targetedTestStatus: evidence.testEvidenceStatus,
+      regressionSuiteName: evidence.regressionSuiteName,
+      regressionTestCount: evidence.regressionTestCount,
+      validationCommand: evidence.validationCommand,
+      validationSource: evidence.validationSource,
+      validationCommit: evidence.validationCommit,
+      validationTimestamp: evidence.validationTimestamp,
+      proofConnected: runtimeEvidence.validationProofConnected,
+      proofFilePresent: runtimeEvidence.validationProofFilePresent,
+      proofFileState: runtimeEvidence.validationProofFileState,
+      missingProof: evidence.staleOrMissingState.filter((row) => row.toLowerCase().includes("validation")),
+      failedProof: evidence.failingState.filter((row) => row.toLowerCase().includes("validation"))
     }
   });
 }
