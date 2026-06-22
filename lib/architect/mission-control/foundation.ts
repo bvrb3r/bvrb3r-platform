@@ -51,7 +51,7 @@ type BooleanCheck = {
   evidenceWhenMissing: string;
 };
 
-type CoreLoopFixture = {
+export type CoreLoopFixture = {
   cultureSocial?: {
     publicPostsExist?: boolean;
     authorIdentityHydrates?: boolean;
@@ -2043,9 +2043,10 @@ export function buildMissionControlFoundation(
   deploymentRegression = buildDeploymentRegressionEvidence(),
   rlsSecurityInventory = buildRlsSecurityInventory(),
   roleTruthInventory = buildRoleTruthInventory(),
-  sourceVaultInventory = buildSourceVaultInventory()
+  sourceVaultInventory = buildSourceVaultInventory(),
+  coreLoopFixture: CoreLoopFixture = {}
 ): MissionControlFoundation {
-  const coreLoopValidators = scopeEvidenceCards(applyIncidentFailures(validateCoreLoopState(), incidents));
+  const coreLoopValidators = scopeEvidenceCards(applyIncidentFailures(validateCoreLoopState(coreLoopFixture), incidents));
   const platformEvidence = mergeEvidenceCards(
     ceoPlatformMetrics,
     buildDeploymentRegressionEvidenceCards(deploymentRegression),
@@ -3657,11 +3658,21 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       ]
       : ["No connected refund/reversal evidence bundle has proven cancelled/captured payments are resolved."];
   const auditPlanEvidence = getAuditCoveragePlanEvidence();
+  const clientAccountEvidence = platformCard("ceo-clients-total", "Client account evidence", "Product", "Client", "Client profile/account evidence is not connected.");
+  const clientRuntimeEvidence = [
+    clientAccountEvidence,
+    validators.find((validator) => validator.id === "culture-to-booking-loop"),
+    validators.find((validator) => validator.id === "booking-availability-loop")
+  ].filter((card): card is MissionEvidenceCard => Boolean(card));
+  const clientHealthStatus = aggregateStatus(clientRuntimeEvidence);
+  const clientHealthEvidence = clientRuntimeEvidence.length
+    ? clientRuntimeEvidence.flatMap((card) => [`${card.label}: ${card.status}`, ...card.evidence])
+    : ["Client runtime evidence is not connected."];
 
   const laneCards: Record<MissionLaneId, MissionEvidenceCard[]> = {
     ceo: [],
     product: [
-      evidenceCard("product-client-health", "Client lane health", "Product", "Client", "Needs Review", "Client booking and engagement health require fresh loop evidence.", ["No fake client health metrics are generated."]),
+      evidenceCard("product-client-health", "Client lane health", "Product", "Client", clientHealthStatus, "Client runtime loop proof combines account, appointment, booking, and availability evidence.", clientHealthEvidence),
       evidenceCard("product-barber-health", "Barber lane health", "Product", "Barber", validatorStatus(validators, "barber-calendar-loop"), "Barber chair command depends on calendar and completion evidence.", validatorEvidence(validators, "barber-calendar-loop")),
       evidenceCard("product-owner-health", "Owner lane health", "Product", "Owner", validatorStatus(validators, "owner-command-calendar-loop"), "Owner shop command depends on active team and KPI truth.", validatorEvidence(validators, "owner-command-calendar-loop")),
       evidenceCard("product-culture-loop", "Culture loop health", "Product", "Culture", validatorStatus(validators, "culture-social-loop"), "Culture social health is tracked through public posts, identity, comments, engagement, and booking CTA.", validatorEvidence(validators, "culture-social-loop")),

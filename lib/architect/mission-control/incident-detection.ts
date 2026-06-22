@@ -24,6 +24,7 @@ import type {
 } from "@/lib/architect/mission-control/types";
 import { buildChatGptPacket, buildCodexPacket, buildIncidentPacket } from "@/lib/architect/mission-control/packets";
 import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
+import { buildProductOperationsRuntimeLoopProofFixture } from "@/lib/architect/mission-control/runtime-loop-proof";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -1620,12 +1621,26 @@ export async function buildMissionControlSnapshot(
     detectArchitectMissionIncidents(supabase),
     loadPaymentRoutingConstraintEvidence(supabase)
   ]);
-  const financeEvidence = await buildFinanceEvidence(supabase, incidents);
+  const [financeEvidence, runtimeLoopFixture] = await Promise.all([
+    buildFinanceEvidence(supabase, incidents),
+    buildProductOperationsRuntimeLoopProofFixture(supabase)
+  ]);
   const ceoPlatformMetrics = await buildCeoPlatformMetrics(supabase, incidents, checkedAt, financeEvidence);
   const health = healthFromIncidents(incidents, checkedAt);
   const packets = Object.fromEntries(incidents.map((incident) => [incident.id, packetSet({ checkedAt, environment }, incident)]));
-  const deploymentRegression = buildDeploymentRegressionEvidence(runtimeEvidence.evidenceInput);
-  const foundation = buildMissionControlFoundation(incidents, checkedAt, ceoPlatformMetrics, deploymentRegression);
+
+const deploymentRegression = buildDeploymentRegressionEvidence(runtimeEvidence.evidenceInput);
+const foundation = buildMissionControlFoundation(
+  incidents,
+  checkedAt,
+  ceoPlatformMetrics,
+  deploymentRegression,
+  undefined,
+  undefined,
+  undefined,
+  runtimeLoopFixture
+);
+
 
   return {
     ok: true,
