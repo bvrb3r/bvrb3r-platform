@@ -1,8 +1,89 @@
 import { describe, expect, it } from "vitest";
 import { buildMissionControlSnapshot, detectArchitectMissionIncidents } from "@/lib/architect/mission-control/incident-detection";
+import { buildProductOperationsRuntimeLoopProofFixtureFromTables } from "@/lib/architect/mission-control/runtime-loop-proof";
 import { APPOINTMENT_ID, ARCHITECT_USER, BARBER_ID, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
 
 describe("architect mission incident detection", () => {
+  it("builds Product and Operations runtime loop proof from read-only production tables", () => {
+    const base = createArchitectDebugTables();
+    const shopId = "shop-runtime-proof";
+    const ownerProfileId = "owner-runtime-proof";
+    const tables = createArchitectDebugTables({
+      profiles: [
+        ...base.profiles,
+        { id: ownerProfileId, email: "owner@bvrb3r.app", full_name: "Owner Runtime", role: "shop_owner_user", account_status: "active" }
+      ],
+      shops: [{ id: shopId, owner_id: ownerProfileId, status: "active", name: "Runtime Proof Shop" }],
+      appointments: [{ ...base.appointments[0], shop_id: shopId, starts_at: "2026-06-20T14:00:00.000Z" }],
+      shop_barber_relationships: [{
+        id: "relationship-runtime-proof",
+        shop_id: shopId,
+        barber_id: BARBER_ID,
+        status: "active",
+        relationship_type: "freelance",
+        approved_by_owner_at: "2026-06-20T12:00:00.000Z",
+        approved_by_barber_at: "2026-06-20T12:01:00.000Z",
+        started_at: "2026-06-20T12:01:00.000Z"
+      }]
+    });
+
+    const fixture = buildProductOperationsRuntimeLoopProofFixtureFromTables({
+      profiles: { rows: tables.profiles, connected: true },
+      clients: { rows: tables.clients, connected: true },
+      barbers: { rows: tables.barbers, connected: true },
+      shops: { rows: tables.shops, connected: true },
+      appointments: { rows: tables.appointments, connected: true },
+      services: { rows: tables.services, connected: true },
+      availability_rules: { rows: tables.availability_rules, connected: true },
+      shop_barber_relationships: { rows: tables.shop_barber_relationships, connected: true },
+      staff_locations: { rows: [], connected: true },
+      appointment_status_history: { rows: tables.appointment_status_history, connected: true }
+    });
+
+    expect(fixture.bookingAvailability).toMatchObject({
+      selectedBarberResolves: true,
+      selectedServiceResolves: true,
+      canonicalLocationResolves: true,
+      availabilityRulesGenerateSlots: true,
+      noAppointmentBeforeFinalConfirm: true
+    });
+    expect(fixture.barberCalendar).toMatchObject({
+      appointmentAppearsOnCommandCalendar: true,
+      barberCanCompleteOwnService: true,
+      ownerCannotCompleteBarberService: true
+    });
+    expect(fixture.shopRelationship).toMatchObject({
+      barberCanAccept: true,
+      activeRelationshipAppearsInOwnerHome: true,
+      acceptedBarberAppearsInScoreboard: true,
+      profileRoleRemainsBarberUser: true
+    });
+    expect(fixture.ownerCommandCalendar).toMatchObject({
+      activeBarbersFromRelationships: true,
+      shopProductionUsesShopContext: true,
+      ownerTimelineShopWide: true
+    });
+  });
+
+  it("keeps missing Product and Operations runtime loop proof as Needs Review", () => {
+    const fixture = buildProductOperationsRuntimeLoopProofFixtureFromTables({
+      profiles: { rows: [], connected: false, errorMessage: "profiles unavailable" },
+      clients: { rows: [], connected: false, errorMessage: "clients unavailable" },
+      barbers: { rows: [], connected: false, errorMessage: "barbers unavailable" },
+      shops: { rows: [], connected: false, errorMessage: "shops unavailable" },
+      appointments: { rows: [], connected: false, errorMessage: "appointments unavailable" },
+      services: { rows: [], connected: false, errorMessage: "services unavailable" },
+      availability_rules: { rows: [], connected: false, errorMessage: "availability unavailable" },
+      shop_barber_relationships: { rows: [], connected: false, errorMessage: "relationships unavailable" },
+      staff_locations: { rows: [], connected: false, errorMessage: "staff locations unavailable" },
+      appointment_status_history: { rows: [], connected: false, errorMessage: "history unavailable" }
+    });
+
+    expect(fixture.bookingAvailability?.selectedBarberResolves).toBeUndefined();
+    expect(fixture.barberCalendar?.appointmentAppearsOnCommandCalendar).toBeUndefined();
+    expect(fixture.shopRelationship?.activeRelationshipAppearsInOwnerHome).toBeUndefined();
+    expect(fixture.ownerCommandCalendar?.activeBarbersFromRelationships).toBeUndefined();
+  });
   it("detects completed captured appointments with missing routing", async () => {
     const tables = createArchitectDebugTables();
     const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
@@ -359,6 +440,8 @@ describe("architect mission incident detection", () => {
     const auditEvidence = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-audit-log-evidence");
     const securityLane = snapshot.foundation.departmentLanes.find((lane) => lane.id === "security");
     const financeLane = snapshot.foundation.departmentLanes.find((lane) => lane.id === "finance");
+    const productLane = snapshot.foundation.departmentLanes.find((lane) => lane.id === "product");
+    const operationsLane = snapshot.foundation.departmentLanes.find((lane) => lane.id === "operations");
 
     expect(totalUsers).toMatchObject({ label: "Total Users", status: "Pass", metricValue: "3" });
     expect(clients).toMatchObject({ label: "Clients", status: "Pass", metricValue: "1" });
@@ -372,6 +455,10 @@ describe("architect mission incident detection", () => {
     expect(securityLane?.cards.find((card) => card.id === "security-audit")).toMatchObject({ status: "Failed" });
     expect(securityLane?.cards.find((card) => card.id === "security-audit-plan")?.evidence.join("\\n")).toContain("Repair approvals");
     expect(financeLane?.cards.find((card) => card.id === "finance-repair-audit-coverage")).toMatchObject({ status: "Failed" });
+    expect(productLane?.cards.find((card) => card.id === "product-client-health")).toMatchObject({ status: "Needs Review" });
+    expect(productLane?.cards.find((card) => card.id === "product-booking-ux")).toMatchObject({ status: "Pass" });
+    expect(operationsLane?.cards.find((card) => card.id === "operations-calendars")).toMatchObject({ status: "Pass" });
+    expect(operationsLane?.cards.find((card) => card.id === "operations-completion")).toMatchObject({ status: "Pass" });
   });
 
   it("keeps Finance failed when captured cancelled appointments are unresolved", async () => {
