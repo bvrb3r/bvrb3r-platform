@@ -538,6 +538,9 @@ describe("architect mission incident detection", () => {
     });
     expect(invalidRow?.evidenceSource).toContain("invalidProfileRoleCounts=owner=1");
     expect(invalidRow?.evidenceSource).toContain("nullOrMissingProfileRoleCount=1");
+    expect(invalidRow?.evidenceSource).toContain("roleNormalizationBlocked=");
+    expect(invalidRow?.evidenceSource).toContain("ambiguousRoles=");
+    expect(invalidRow?.evidenceSource).toContain("rollbackPlanPresent=");
     expect(ceoCard).toMatchObject({ status: "Failed" });
   });
 
