@@ -25,7 +25,7 @@ import type {
 import { buildChatGptPacket, buildCodexPacket, buildIncidentPacket } from "@/lib/architect/mission-control/packets";
 import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, buildRoleTruthInventory, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
 import { buildProductOperationsRuntimeLoopProofFixture } from "@/lib/architect/mission-control/runtime-loop-proof";
-import { summarizeRoleNormalizationPlan } from "@/lib/auth/role-normalization-plan";
+import { buildRoleNormalizationApprovalPacket, summarizeRoleNormalizationPlan } from "@/lib/auth/role-normalization-plan";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -1478,6 +1478,17 @@ function buildProductionRoleTruthInventory(tables: {
       hasOwnedShopRecord: shopOwnerProfileIds.has(profileId)
     };
   }));
+  const roleNormalizationApprovalPacket = buildRoleNormalizationApprovalPacket(tables.profiles.rows.map((row) => {
+    const profileId = firstUsableId(row, ["id", "profile_id", "user_id"]);
+    return {
+      profileId,
+      currentRole: stringValue(row.role).trim() || null,
+      primaryOnboardingRole: stringValue(row.primary_onboarding_role).trim() || null,
+      hasClientRecord: clientProfileIds.has(profileId),
+      hasBarberRecord: barberProfileIds.has(profileId),
+      hasOwnedShopRecord: shopOwnerProfileIds.has(profileId)
+    };
+  }));
   const missingEvidence = disconnectedReads.length
     ? [`Disconnected read-only source table(s): ${disconnectedReads.join(", ")}.`]
     : [];
@@ -1504,8 +1515,9 @@ function buildProductionRoleTruthInventory(tables: {
       `missingRelationshipTypeCount=${missingRelationshipTypeCount}.`,
       `clientLinkageGaps=${clientLinkageGaps}; barberLinkageGaps=${barberLinkageGaps}; shopOwnerLinkageGaps=${shopOwnerLinkageGaps}.`,
       `roleNormalizationEligible=${roleNormalizationSummary.eligibleCount}; roleNormalizationBlocked=${roleNormalizationSummary.blockedCount}; roleNormalizationNoChange=${roleNormalizationSummary.noChangeCount}.`,
+      `roleNormalizationDryRunStatus=Needs Review; approvalRequired=${roleNormalizationApprovalPacket.approvalRequired ? "yes" : "no"}; manualReviewCount=${roleNormalizationApprovalPacket.manualReviewCount}; noOpCount=${roleNormalizationApprovalPacket.noOpCount}; rawMutationExecuted=${roleNormalizationApprovalPacket.rawMutationExecuted ? "yes" : "no"}.`,
       `ambiguousRoles=${roleNormalizationSummary.ambiguousRoles.join(", ") || "none"}.`,
-      `rollbackPlanPresent=${roleNormalizationSummary.rollbackPlanPresent ? "yes" : "no"}.`,
+      `rollbackPlanPresent=${roleNormalizationSummary.rollbackPlanPresent ? "yes" : "no"}; rollbackPacketPresent=${roleNormalizationApprovalPacket.rollbackPacketPresent ? "yes" : "no"}; publicOutputRedacted=${roleNormalizationApprovalPacket.publicOutputRedacted ? "yes" : "no"}.`,
       "content_exposed=false; mutation_attempted=false."
     ].join(" "),
     rows: [
@@ -1559,10 +1571,11 @@ function buildProductionRoleTruthInventory(tables: {
           `nullOrMissingProfileRoleCount=${nullOrMissingRoleCount}.`,
           `roleNormalizationEligible=${roleNormalizationSummary.eligibleCount}.`,
           `roleNormalizationBlocked=${roleNormalizationSummary.blockedCount}.`,
+          `manualReviewCount=${roleNormalizationApprovalPacket.manualReviewCount}.`,
           `ambiguousRoles=${roleNormalizationSummary.ambiguousRoles.join(", ") || "none"}.`
         ] : [],
         accountRoleMisuse: invalidRoleCount > 0,
-        evidenceSource: `invalidProfileRoleCounts=${formatCounts(invalidRoleCounts)}; nullOrMissingProfileRoleCount=${nullOrMissingRoleCount}; roleNormalizationEligible=${roleNormalizationSummary.eligibleCount}; roleNormalizationBlocked=${roleNormalizationSummary.blockedCount}; rollbackPlanPresent=${roleNormalizationSummary.rollbackPlanPresent ? "yes" : "no"}; ambiguousRoles=${roleNormalizationSummary.ambiguousRoles.join(", ") || "none"}; content_exposed=false.`
+        evidenceSource: `invalidProfileRoleCounts=${formatCounts(invalidRoleCounts)}; nullOrMissingProfileRoleCount=${nullOrMissingRoleCount}; roleNormalizationEligible=${roleNormalizationSummary.eligibleCount}; roleNormalizationBlocked=${roleNormalizationSummary.blockedCount}; manualReviewCount=${roleNormalizationApprovalPacket.manualReviewCount}; noOpCount=${roleNormalizationApprovalPacket.noOpCount}; rawMutationExecuted=${roleNormalizationApprovalPacket.rawMutationExecuted ? "yes" : "no"}; approvalRequired=${roleNormalizationApprovalPacket.approvalRequired ? "yes" : "no"}; rollbackPlanPresent=${roleNormalizationSummary.rollbackPlanPresent ? "yes" : "no"}; rollbackPacketPresent=${roleNormalizationApprovalPacket.rollbackPacketPresent ? "yes" : "no"}; ambiguousRoles=${roleNormalizationSummary.ambiguousRoles.join(", ") || "none"}; publicOutputRedacted=${roleNormalizationApprovalPacket.publicOutputRedacted ? "yes" : "no"}; content_exposed=false.`
       },
       {
         ...baseRow,
