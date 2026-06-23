@@ -1202,6 +1202,16 @@ describe("architect mission control foundation", () => {
     const financeLane = foundation.departmentLanes.find((lane) => lane.id === "finance");
 
     expect(financeLane?.status).toBe("Needs Review");
+    expect(financeLane?.cards.find((card) => card.id === "finance-payment-health")).toMatchObject({
+      status: "Needs Review"
+    });
+    expect(financeLane?.cards.find((card) => card.id === "finance-stripe")).toMatchObject({
+      status: "Needs Review",
+      summary: "Stripe status cannot be safely verified from connected metadata yet."
+    });
+    expect(financeLane?.cards.find((card) => card.id === "finance-payout")).toMatchObject({
+      status: "Needs Review"
+    });
     expect(financeLane?.cards.find((card) => card.id === "finance-refund-resolution")).toMatchObject({
       status: "Needs Review",
       summary: "Refund/reversal evidence must be connected before Finance can Pass."
@@ -1209,6 +1219,116 @@ describe("architect mission control foundation", () => {
     expect(financeLane?.cards.find((card) => card.id === "finance-repair-audit-coverage")).toMatchObject({
       status: "Needs Review"
     });
+  });
+
+  it("allows connected read-only Finance proof to pass core officer cards without fake Stripe Pass", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-23T12:00:00.000Z", [{
+      id: "ceo-payments-captured",
+      label: "Payments Captured",
+      department: "CEO",
+      workflow: "Finance",
+      status: "Pass",
+      metricValue: "12",
+      summary: "Captured payment count is connected.",
+      evidence: ["capturedPaymentCount=12", "failedPaymentCount=0"]
+    }, {
+      id: "ceo-payment-routing-health",
+      label: "Payment Routing Health",
+      department: "CEO",
+      workflow: "Finance",
+      status: "Pass",
+      metricValue: "No repair required",
+      summary: "Routing repair not required. Current production evidence has safe routing/refund posture for the payment-routing repair target classes.",
+      evidence: ["completedCapturedMissingRouting=0", "cancelledCapturedMissingRouting=0", "repairNeeded=no"]
+    }, {
+      id: "ceo-payout-readiness-health",
+      label: "Payout Readiness Health",
+      department: "CEO",
+      workflow: "Finance",
+      status: "Pass",
+      metricValue: "Pass",
+      summary: "Payout readiness evidence is connected and healthy.",
+      evidence: ["heldCount=0", "blockedCount=0", "releasedCount=0"]
+    }, {
+      id: "ceo-active-refund-blockers",
+      label: "Active Refund Blockers",
+      department: "CEO",
+      workflow: "Refund Logs",
+      status: "Pass",
+      metricValue: "0",
+      summary: "No active refund blockers.",
+      evidence: ["activeRefundTargets=0"]
+    }, {
+      id: "ceo-failed-refund-attempts",
+      label: "Failed Refund Attempts",
+      department: "CEO",
+      workflow: "Refund Logs",
+      status: "Pass",
+      metricValue: "0",
+      summary: "No failed refund attempts.",
+      evidence: ["payment_refund_failed events=0"]
+    }]);
+    const financeLane = foundation.departmentLanes.find((lane) => lane.id === "finance");
+
+    expect(financeLane?.cards.find((card) => card.id === "finance-payment-health")).toMatchObject({ status: "Pass" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-routing")).toMatchObject({ status: "Pass" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-payout")).toMatchObject({ status: "Pass" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-refund-resolution")).toMatchObject({ status: "Pass" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-stripe")).toMatchObject({ status: "Needs Review" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-evidence-summary")).toMatchObject({
+      status: "Needs Review",
+      scope: "v2_infrastructure",
+      blocksCurrentRelease: false
+    });
+    expect(financeLane?.cards.find((card) => card.id === "finance-payment-health")?.evidence.join("\n")).toContain("no payment capture, charge creation, routing insert, or ledger mutation was attempted");
+    expect(financeLane?.cards.find((card) => card.id === "finance-payout")?.evidence.join("\n")).toContain("no payout release, transfer creation, or routing mutation was attempted");
+  });
+
+  it("marks connected broken Finance proof Failed instead of fake Needs Review or Pass", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-23T12:00:00.000Z", [{
+      id: "ceo-payments-captured",
+      label: "Payments Captured",
+      department: "CEO",
+      workflow: "Finance",
+      status: "Pass",
+      metricValue: "12",
+      summary: "Captured payment count is connected.",
+      evidence: ["capturedPaymentCount=12"]
+    }, {
+      id: "ceo-payment-routing-health",
+      label: "Payment Routing Health",
+      department: "CEO",
+      workflow: "Finance",
+      status: "Failed",
+      metricValue: "Repair needed",
+      summary: "Completed captured payments are missing routing.",
+      evidence: ["completedCapturedMissingRouting=2", "repairNeeded=yes"]
+    }, {
+      id: "ceo-payout-readiness-health",
+      label: "Payout Readiness Health",
+      department: "CEO",
+      workflow: "Finance",
+      status: "Failed",
+      metricValue: "Failed",
+      summary: "Payout readiness is blocked by broken routing evidence.",
+      evidence: ["blockedCount=2"]
+    }, {
+      id: "ceo-active-refund-blockers",
+      label: "Active Refund Blockers",
+      department: "CEO",
+      workflow: "Refund Logs",
+      status: "Failed",
+      metricValue: "1",
+      summary: "Active refund blocker exists.",
+      evidence: ["activeRefundTargets=1"]
+    }]);
+    const financeLane = foundation.departmentLanes.find((lane) => lane.id === "finance");
+
+    expect(financeLane?.cards.find((card) => card.id === "finance-payment-health")).toMatchObject({ status: "Failed" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-routing")).toMatchObject({ status: "Failed" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-payout")).toMatchObject({ status: "Failed" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-refund-resolution")).toMatchObject({ status: "Failed" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-evidence-summary")).toMatchObject({ status: "Failed" });
   });
 
   it("keeps Finance failed when cancelled captured refund evidence is missing", () => {

@@ -1015,7 +1015,7 @@ describe("architect mission control", () => {
     expect(within(dialog).getByText("Risk notes")).toBeInTheDocument();
     expect(within(dialog).getByText("Required validation")).toBeInTheDocument();
     expect(within(dialog).getByText("Required tests")).toBeInTheDocument();
-    expect(within(dialog).getByText(/Payment health is currently Failed\. Payment health uses appointment\/payment\/routing truth\./)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Payment health is currently Failed\. Connected payment or routing evidence proves a broken Finance posture\./)).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Generate Codex Prompt" }));
 
@@ -1037,7 +1037,7 @@ describe("architect mission control", () => {
     expect(copiedPrompt).toContain("Server owns serious business logic.");
     expect(copiedPrompt).toContain("UI must not calculate final money.");
     expect(copiedPrompt).toContain("Architect prompt generation does not repair the issue by itself.");
-    expect(copiedPrompt).toContain("Payment health uses appointment/payment/routing truth.");
+    expect(copiedPrompt).toContain("Connected payment or routing evidence proves a broken Finance posture.");
     expect(copiedPrompt).toContain("Evidence groups:");
     expect(copiedPrompt).toContain("Passing evidence:");
     expect(copiedPrompt).toContain("- appointments.status = completed");
