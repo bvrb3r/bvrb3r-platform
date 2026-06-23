@@ -78,6 +78,12 @@ export type RoleNormalizationApprovalPacket = {
   blockedCount: number;
   manualReviewCount: number;
   noOpCount: number;
+  affectedCount: number;
+  currentRoleCounts: Record<string, number>;
+  proposedRoleCounts: Partial<Record<(typeof ROLE_NORMALIZATION_CANONICAL_PUBLIC_ROLES)[number], number>>;
+  blockedRoleCounts: Record<string, number>;
+  manualReviewRoleCounts: Record<string, number>;
+  canonicalOutputOnly: boolean;
   rollbackPacketPresent: boolean;
   publicOutputRedacted: true;
   rows: RoleNormalizationApprovalPacketRow[];
@@ -270,6 +276,14 @@ function approvalDecisionFor(decision: RoleNormalizationDecision): RoleNormaliza
   return roleRequiresManualReview(decision.currentRole) ? "manual_review" : "blocked";
 }
 
+function approvalProposedRoleFor(decision: RoleNormalizationDecision, packetDecision: RoleNormalizationApprovalDecision) {
+  if (!decision.targetRole) return null;
+  if (ROLE_NORMALIZATION_CANONICAL_PUBLIC_ROLES.includes(decision.targetRole as (typeof ROLE_NORMALIZATION_CANONICAL_PUBLIC_ROLES)[number])) {
+    return decision.targetRole;
+  }
+  return packetDecision === "manual_review" ? null : decision.targetRole;
+}
+
 function requiredEvidenceFor(decision: RoleNormalizationDecision) {
   if (decision.currentRole === "client") return ["clients.profile_id link"];
   if (decision.currentRole === "booth_rent_barber" || decision.currentRole === "commission_barber") {
@@ -302,6 +316,11 @@ function safetyReasonFor(decision: RoleNormalizationDecision) {
   return "Required linkage or mapping evidence is missing; row remains blocked.";
 }
 
+function incrementCount(counts: Record<string, number>, key: string) {
+  counts[key] = (counts[key] ?? 0) + 1;
+  return counts;
+}
+
 export function buildRoleNormalizationApprovalPacket(inputs: RoleNormalizationProfileEvidence[]): RoleNormalizationApprovalPacket {
   const summary = summarizeRoleNormalizationPlan(inputs);
   const rows = summary.decisions.map((decision) => {
@@ -310,7 +329,7 @@ export function buildRoleNormalizationApprovalPacket(inputs: RoleNormalizationPr
     return {
       redactedProfileId: redactedProfileId(decision.profileId),
       currentRole: decision.currentRole || "__NULL_OR_EMPTY__",
-      proposedRole: decision.targetRole,
+      proposedRole: approvalProposedRoleFor(decision, packetDecision),
       decision: packetDecision,
       reason: decision.reason,
       requiredEvidence: requiredEvidenceFor(decision),
@@ -323,6 +342,23 @@ export function buildRoleNormalizationApprovalPacket(inputs: RoleNormalizationPr
   const blockedCount = rows.filter((row) => row.decision === "blocked").length;
   const noOpCount = rows.filter((row) => row.decision === "no_op").length;
   const eligibleCount = rows.filter((row) => row.decision === "eligible").length;
+  const currentRoleCounts = rows.reduce<Record<string, number>>((counts, row) => incrementCount(counts, row.currentRole), {});
+  const proposedRoleCounts = rows.reduce<Partial<Record<(typeof ROLE_NORMALIZATION_CANONICAL_PUBLIC_ROLES)[number], number>>>((counts, row) => {
+    if (row.proposedRole && ROLE_NORMALIZATION_CANONICAL_PUBLIC_ROLES.includes(row.proposedRole as (typeof ROLE_NORMALIZATION_CANONICAL_PUBLIC_ROLES)[number])) {
+      counts[row.proposedRole as (typeof ROLE_NORMALIZATION_CANONICAL_PUBLIC_ROLES)[number]] = (counts[row.proposedRole as (typeof ROLE_NORMALIZATION_CANONICAL_PUBLIC_ROLES)[number]] ?? 0) + 1;
+    }
+    return counts;
+  }, {});
+  const blockedRoleCounts = rows
+    .filter((row) => row.decision === "blocked")
+    .reduce<Record<string, number>>((counts, row) => incrementCount(counts, row.currentRole), {});
+  const manualReviewRoleCounts = rows
+    .filter((row) => row.decision === "manual_review")
+    .reduce<Record<string, number>>((counts, row) => incrementCount(counts, row.currentRole), {});
+  const canonicalOutputOnly = rows.every((row) =>
+    !row.proposedRole || ROLE_NORMALIZATION_CANONICAL_PUBLIC_ROLES.includes(row.proposedRole as (typeof ROLE_NORMALIZATION_CANONICAL_PUBLIC_ROLES)[number])
+  );
+  const affectedCount = eligibleCount + blockedCount + manualReviewCount;
 
   return {
     planVersion: ROLE_NORMALIZATION_PLAN_VERSION,
@@ -330,11 +366,17 @@ export function buildRoleNormalizationApprovalPacket(inputs: RoleNormalizationPr
     approvalRequired: true,
     rawMutationExecuted: false,
     totalProfilesInspected: summary.totalProfilesInspected,
-    totalAffectedCount: eligibleCount + blockedCount + manualReviewCount,
+    totalAffectedCount: affectedCount,
     eligibleCount,
     blockedCount,
     manualReviewCount,
     noOpCount,
+    affectedCount,
+    currentRoleCounts,
+    proposedRoleCounts,
+    blockedRoleCounts,
+    manualReviewRoleCounts,
+    canonicalOutputOnly,
     rollbackPacketPresent: rows.filter((row) => row.decision === "eligible").every((row) => row.rollbackInstructions.length > 0),
     publicOutputRedacted: true,
     rows

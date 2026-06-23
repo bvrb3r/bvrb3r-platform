@@ -539,6 +539,10 @@ describe("architect mission incident detection", () => {
     expect(invalidRow?.evidenceSource).toContain("invalidProfileRoleCounts=owner=1");
     expect(invalidRow?.evidenceSource).toContain("nullOrMissingProfileRoleCount=1");
     expect(invalidRow?.evidenceSource).toContain("roleNormalizationBlocked=");
+    expect(invalidRow?.evidenceSource).toContain("roleNormalizationApprovalEvidenceStatus=Needs Review");
+    expect(invalidRow?.evidenceSource).toContain("affectedCount=");
+    expect(invalidRow?.evidenceSource).toContain("proposedRoleCounts=");
+    expect(invalidRow?.evidenceSource).toContain("canonicalOutputOnly=yes");
     expect(invalidRow?.evidenceSource).toContain("ambiguousRoles=");
     expect(invalidRow?.evidenceSource).toContain("rollbackPlanPresent=");
     expect(invalidRow?.evidenceSource).toContain("rawMutationExecuted=no");
