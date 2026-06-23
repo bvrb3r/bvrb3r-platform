@@ -2792,6 +2792,7 @@ function RoleTruthRowCard({ row }: { row: RoleTruthInventory["rows"][number] }) 
       </div>
       <p className="mt-3 text-xs leading-5 text-white/58">{row.failureMeaning}</p>
       <p className="mt-2 text-xs leading-5 text-white/45">{row.suggestedMigrationPath}</p>
+      <p className="mt-2 text-xs leading-5 text-white/45"><span className="font-black text-white/72">Evidence source:</span> {row.evidenceSource}</p>
     </article>
   );
 }

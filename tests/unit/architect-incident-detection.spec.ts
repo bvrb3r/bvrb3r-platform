@@ -498,7 +498,7 @@ describe("architect mission incident detection", () => {
       status: "Pass",
       summary: {
         v1CriticalDriftCount: 0,
-        unknownCount: 1
+        unknownCount: 2
       }
     });
     expect(inventory?.evidenceSource).toContain("profileRoleCounts=barber_user=1, client_user=1, platform_admin=1, shop_owner_user=1.");
@@ -515,6 +515,54 @@ describe("architect mission incident detection", () => {
       shops: tables.shops,
       shop_barber_relationships: tables.shop_barber_relationships
     })).toBe(roleTablesBefore);
+  });
+
+  it("surfaces the authenticated role normalization approval packet as aggregate metadata only", async () => {
+    const base = createArchitectDebugTables();
+    const ownerProfileId = "owner-approval-packet";
+    const legacyShopOwnerProfileId = "legacy-shop-owner-packet";
+    const frontDeskProfileId = "front-desk-approval-packet";
+    const tables = createArchitectDebugTables({
+      profiles: [
+        ...base.profiles,
+        { id: ownerProfileId, email: "owner-approval@bvrb3r.app", full_name: "Owner Approval", role: "owner", account_status: "active" },
+        { id: legacyShopOwnerProfileId, email: "legacy-owner@bvrb3r.app", full_name: "Legacy Owner", role: "shop_owner", account_status: "active" },
+        { id: frontDeskProfileId, email: "front-desk@bvrb3r.app", full_name: "Front Desk", role: "front_desk", account_status: "active" }
+      ],
+      shops: [{ id: "shop-approval-packet", owner_id: ownerProfileId, status: "active", name: "Approval Packet Shop" }]
+    });
+
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(tables) as never, ARCHITECT_USER);
+    const approvalRow = snapshot.foundation.roleTruthInventory?.rows.find((row) => row.id === "production-role-normalization-approval-packet");
+    const evidence = approvalRow?.evidenceSource ?? "";
+
+    expect(approvalRow).toMatchObject({
+      currentStatus: "Pass",
+      currentRoleValue: "role_normalization_approval_packet",
+      expectedCanonicalDestination: "Future approved migration may propose only client_user, barber_user, shop_owner_user"
+    });
+    expect(evidence).toContain("roleNormalizationApprovalEvidenceStatus=Pass");
+    expect(evidence).toContain("eligibleCount=1");
+    expect(evidence).toContain("blockedCount=1");
+    expect(evidence).toContain("manualReviewCount=2");
+    expect(evidence).toContain("affectedCount=4");
+    expect(evidence).toContain("currentRoleCounts=");
+    expect(evidence).toMatch(/proposedRoleCounts=[^;]*shop_owner_user=1/);
+    expect(evidence).toMatch(/blockedRoleCounts=[^;]*shop_owner=1/);
+    expect(evidence).toMatch(/manualReviewRoleCounts=[^;]*front_desk=1/);
+    expect(evidence).toContain("canonicalOutputOnly=yes");
+    expect(evidence).toContain("approvalRequired=yes");
+    expect(evidence).toContain("roleNormalizationExecutable=false");
+    expect(evidence).toContain("rawMutationExecuted=no");
+    expect(evidence).toContain("publicOutputRedacted=yes");
+    expect(evidence).toContain("content_exposed=false");
+    expect(evidence).not.toMatch(/proposedRoleCounts=[^;]*\bshop_owner=1/);
+    expect(evidence).not.toContain(ownerProfileId);
+    expect(evidence).not.toContain(legacyShopOwnerProfileId);
+    expect(evidence).not.toContain(frontDeskProfileId);
+    expect(evidence).not.toContain("owner-approval@bvrb3r.app");
+    expect(evidence).not.toContain("legacy-owner@bvrb3r.app");
+    expect(evidence).not.toContain("front-desk@bvrb3r.app");
   });
 
   it("fails production role evidence when invalid or null profile roles are connected", async () => {

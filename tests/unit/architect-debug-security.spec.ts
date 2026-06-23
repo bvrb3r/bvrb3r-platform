@@ -17,6 +17,10 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock
 }));
 
+vi.mock("@/lib/architect/mission-control/deployment-evidence.server", () => ({
+  readDeploymentRuntimeEvidence: vi.fn().mockResolvedValue(undefined)
+}));
+
 import { GET as getAppointmentDebug } from "@/app/api/architect/debug/appointment/route";
 import { GET as getMissionControl } from "@/app/api/architect/mission-control/route";
 import { POST as postRoutingRepair } from "@/app/api/architect/repairs/payment-routing/route";
@@ -68,6 +72,7 @@ describe("architect debug security", () => {
 
     expect(response.status).toBe(403);
     expect(body.error).toMatch(/platform administrators/i);
+    expect(JSON.stringify(body)).not.toContain("roleNormalizationApprovalEvidenceStatus");
     expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
   });
 

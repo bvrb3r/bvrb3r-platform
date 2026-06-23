@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArchitectMissionControl } from "@/components/architect/mission-control/mission-control";
 import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, buildSourceVaultInventory } from "@/lib/architect/mission-control/foundation";
-import { APPOINTMENT_ID } from "@/tests/unit/architect-debug-test-utils";
+import { buildMissionControlSnapshot } from "@/lib/architect/mission-control/incident-detection";
+import { APPOINTMENT_ID, ARCHITECT_USER, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
 
 const fetchMock = vi.fn();
 const clipboardWriteTextMock = vi.fn();
@@ -886,6 +887,43 @@ describe("architect mission control", () => {
     expect(inventory).toHaveTextContent("front_desk");
     expect(inventory).not.toHaveTextContent("Normalize roles");
     expect(inventory).not.toHaveTextContent("Run migration");
+  });
+
+  it("renders authenticated role normalization approval aggregates without private profile data", async () => {
+    const base = createArchitectDebugTables();
+    const ownerProfileId = "owner-approval-ui";
+    const legacyShopOwnerProfileId = "legacy-shop-owner-ui";
+    const tables = createArchitectDebugTables({
+      profiles: [
+        ...base.profiles,
+        { id: ownerProfileId, email: "owner-approval-ui@bvrb3r.app", full_name: "Owner Approval UI", role: "owner", account_status: "active" },
+        { id: legacyShopOwnerProfileId, email: "legacy-owner-ui@bvrb3r.app", full_name: "Legacy Owner UI", role: "shop_owner", account_status: "active" }
+      ],
+      shops: [{ id: "shop-approval-ui", owner_id: ownerProfileId, status: "active", name: "Approval UI Shop" }]
+    });
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(tables) as never, ARCHITECT_USER);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => snapshot
+    });
+
+    render(<ArchitectMissionControl laneId="security" />);
+
+    const inventory = await screen.findByTestId("role-truth-inventory");
+    expect(inventory).toHaveTextContent("Role normalization approval packet");
+    expect(inventory).toHaveTextContent("Evidence source: roleNormalizationApprovalEvidenceStatus=Pass");
+    expect(inventory).toHaveTextContent("eligibleCount=1");
+    expect(inventory).toHaveTextContent("blockedCount=1");
+    expect(inventory).toHaveTextContent(/proposedRoleCounts=[^;]*shop_owner_user=1/);
+    expect(inventory).toHaveTextContent("canonicalOutputOnly=yes");
+    expect(inventory).toHaveTextContent("approvalRequired=yes");
+    expect(inventory).toHaveTextContent("roleNormalizationExecutable=false");
+    expect(inventory).toHaveTextContent("rawMutationExecuted=no");
+    expect(inventory).toHaveTextContent("content_exposed=false");
+    expect(inventory).not.toHaveTextContent(ownerProfileId);
+    expect(inventory).not.toHaveTextContent(legacyShopOwnerProfileId);
+    expect(inventory).not.toHaveTextContent("owner-approval-ui@bvrb3r.app");
+    expect(inventory).not.toHaveTextContent("legacy-owner-ui@bvrb3r.app");
   });
 
   it("renders the Source Vault Ingestion Foundation as metadata-only readiness evidence", async () => {
