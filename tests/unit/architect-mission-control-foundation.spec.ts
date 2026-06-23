@@ -63,6 +63,14 @@ function sourceVaultWithCloseoutKeysMissing(): SourceVaultEntryFixture[] {
   });
 }
 
+function cardById(foundation: ReturnType<typeof buildMissionControlFoundation>, id: string) {
+  return [
+    ...foundation.ceoCommandCenter,
+    ...foundation.departmentLanes.flatMap((lane) => lane.cards),
+    ...foundation.coreLoopValidators
+  ].find((card) => card.id === id);
+}
+
 function rlsInventoryRow(overrides: Partial<RlsInventoryRows[number]> = {}): RlsInventoryRows[number] {
   return {
     id: "rls-test-table",
@@ -1506,6 +1514,140 @@ describe("architect mission control foundation", () => {
       type: "unsafe_repair_requested",
       safeRepairAvailable: false
     });
+  });
+
+  it("lets connected Marketing and Content proof pass without building new product features", () => {
+    const fixture = {
+      cultureSocial: {
+        publicPostsExist: true,
+        authorIdentityHydrates: true,
+        commentsRouteExists: true,
+        commentPreviewExists: true,
+        engagementActionsExist: true,
+        bookCtaExistsForBookableBarber: true
+      },
+      cultureDiscovery: {
+        discoverySearchProofExists: true
+      },
+      cultureModeration: {
+        reportsRouteExists: true,
+        moderationReviewEvidenceExists: true
+      },
+      cultureBooking: {
+        bookingCtaUrlHasAttribution: true,
+        bookingFormAcceptsAttribution: true,
+        appointmentCreatedThroughBooking: true,
+        appointmentAppearsOnBarberCalendar: true,
+        regressionTestExists: true
+      }
+    };
+    const foundation = buildMissionControlFoundation([], "2026-06-23T12:00:00.000Z", [], undefined, undefined, undefined, undefined, fixture);
+
+    expect(cardById(foundation, "marketing-culture-feed")).toMatchObject({ status: "Pass" });
+    expect(cardById(foundation, "marketing-discovery")).toMatchObject({ status: "Pass" });
+    expect(cardById(foundation, "marketing-attribution")).toMatchObject({ status: "Pass" });
+    expect(cardById(foundation, "community-comments")).toMatchObject({ status: "Pass" });
+    expect(cardById(foundation, "community-reports-moderation")).toMatchObject({ status: "Pass" });
+    expect(cardById(foundation, "community-health")).toMatchObject({ status: "Pass" });
+  });
+
+  it("keeps missing Marketing and Content proof Needs Review instead of fake Pass", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-23T12:00:00.000Z");
+
+    expect(cardById(foundation, "marketing-culture-feed")).toMatchObject({ status: "Needs Review" });
+    expect(cardById(foundation, "marketing-discovery")).toMatchObject({ status: "Needs Review" });
+    expect(cardById(foundation, "marketing-attribution")).toMatchObject({ status: "Needs Review" });
+    expect(cardById(foundation, "community-comments")).toMatchObject({ status: "Needs Review" });
+    expect(cardById(foundation, "community-reports-moderation")).toMatchObject({ status: "Needs Review" });
+    expect(cardById(foundation, "marketing-culture-feed")?.evidence.join("\n")).toContain("has not been inspected");
+  });
+
+  it("keeps future Marketing and Content features parked instead of failed", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-23T12:00:00.000Z");
+    const parkedIds = [
+      "marketing-referrals",
+      "marketing-campaigns",
+      "community-moderation",
+      "community-creators",
+      "community-signals"
+    ];
+
+    parkedIds.forEach((id) => {
+      expect(cardById(foundation, id)).toMatchObject({
+        status: "Needs Review",
+        scope: "parked",
+        blocksCurrentRelease: false
+      });
+      expect(cardById(foundation, id)?.summary).toContain("Parked");
+    });
+  });
+
+  it("keeps broken Marketing and Content proof Failed when evidence proves failure", () => {
+    const fixture = {
+      cultureSocial: {
+        publicPostsExist: false,
+        authorIdentityHydrates: true,
+        commentsRouteExists: false,
+        commentPreviewExists: true,
+        engagementActionsExist: true
+      },
+      cultureDiscovery: {
+        discoverySearchProofExists: false
+      },
+      cultureModeration: {
+        reportsRouteExists: true,
+        moderationReviewEvidenceExists: false
+      },
+      cultureBooking: {
+        bookingCtaUrlHasAttribution: false,
+        bookingFormAcceptsAttribution: true,
+        appointmentCreatedThroughBooking: true,
+        appointmentAppearsOnBarberCalendar: true,
+        regressionTestExists: true
+      }
+    };
+    const foundation = buildMissionControlFoundation([], "2026-06-23T12:00:00.000Z", [], undefined, undefined, undefined, undefined, fixture);
+
+    expect(cardById(foundation, "marketing-culture-feed")).toMatchObject({ status: "Failed" });
+    expect(cardById(foundation, "marketing-discovery")).toMatchObject({ status: "Failed" });
+    expect(cardById(foundation, "marketing-attribution")).toMatchObject({ status: "Failed" });
+    expect(cardById(foundation, "community-comments")).toMatchObject({ status: "Failed" });
+    expect(cardById(foundation, "community-reports-moderation")).toMatchObject({ status: "Failed" });
+  });
+
+  it("keeps CEO Culture compact while deeper Marketing and Content lanes carry proof details", () => {
+    const fixture = {
+      cultureSocial: {
+        publicPostsExist: true,
+        authorIdentityHydrates: true,
+        commentsRouteExists: true,
+        commentPreviewExists: true,
+        engagementActionsExist: true,
+        bookCtaExistsForBookableBarber: true
+      },
+      cultureDiscovery: { discoverySearchProofExists: true },
+      cultureModeration: { reportsRouteExists: true, moderationReviewEvidenceExists: true },
+      cultureBooking: {
+        bookingCtaUrlHasAttribution: true,
+        bookingFormAcceptsAttribution: true,
+        appointmentCreatedThroughBooking: true,
+        appointmentAppearsOnBarberCalendar: true,
+        regressionTestExists: true
+      }
+    };
+    const foundation = buildMissionControlFoundation([], "2026-06-23T12:00:00.000Z", [], undefined, undefined, undefined, undefined, fixture);
+    const ceoCulture = foundation.ceoCommandCenter.find((card) => card.id === "culture-posture");
+    const marketingEvidence = cardById(foundation, "marketing-discovery")?.evidence.join("\n") ?? "";
+    const contentEvidence = cardById(foundation, "community-reports-moderation")?.evidence.join("\n") ?? "";
+
+    expect(ceoCulture).toMatchObject({
+      label: "Culture posture",
+      status: "Pass",
+      department: "CEO"
+    });
+    expect(ceoCulture?.summary).toBe("Culture social loop is tracked separately from marketplace discovery.");
+    expect(marketingEvidence).toContain("Discovery/search proof exists.");
+    expect(contentEvidence).toContain("Reports route evidence exists.");
   });
 
   it("registers Source Vault categories as metadata without committing private source contents", () => {

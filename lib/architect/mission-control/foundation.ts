@@ -61,6 +61,13 @@ export type CoreLoopFixture = {
     engagementActionsExist?: boolean;
     bookCtaExistsForBookableBarber?: boolean;
   };
+  cultureDiscovery?: {
+    discoverySearchProofExists?: boolean;
+  };
+  cultureModeration?: {
+    reportsRouteExists?: boolean;
+    moderationReviewEvidenceExists?: boolean;
+  };
   cultureBooking?: {
     bookingCtaUrlHasAttribution?: boolean;
     bookingFormAcceptsAttribution?: boolean;
@@ -2032,6 +2039,22 @@ export function getCodexFailureClass(diagnosisCode: string): CodexFailureClass {
 
 export function validateCoreLoopState(fixture: CoreLoopFixture = {}): CoreLoopValidator[] {
   return [
+    buildValidator("culture-feed-proof", "Culture Feed Proof", "Content & Community", "Culture Feed", [
+      check("public Culture posts exist or empty state is clean", fixture.cultureSocial?.publicPostsExist, "Public approved Culture post or clean empty-state evidence exists.", "Public Culture post read evidence failed.", "Public approved Culture post or clean empty-state evidence has not been inspected."),
+      check("author identity hydrates", fixture.cultureSocial?.authorIdentityHydrates, "Culture author identity hydration is proven.", "Culture author identity hydration failed.", "Culture author identity hydration has not been inspected."),
+      check("engagement actions exist", fixture.cultureSocial?.engagementActionsExist, "Culture engagement action surface exists.", "Culture engagement action surface failed.", "Culture engagement action surface has not been inspected.")
+    ], false, true),
+    buildValidator("culture-comments-proof", "Culture Comments Proof", "Content & Community", "Comments", [
+      check("comments route exists", fixture.cultureSocial?.commentsRouteExists, "Comments route evidence exists.", "Comments route evidence failed.", "Comments route evidence has not been inspected."),
+      check("comment preview route exists", fixture.cultureSocial?.commentPreviewExists, "Comment preview evidence exists.", "Comment preview evidence failed.", "Comment preview evidence has not been inspected.")
+    ], false, true),
+    buildValidator("culture-discovery-proof", "Culture Discovery Proof", "Marketing", "Discovery", [
+      check("discovery/search proof exists", fixture.cultureDiscovery?.discoverySearchProofExists, "Discovery/search proof exists.", "Discovery/search proof failed.", "Discovery/search proof has not been inspected.")
+    ], false, true),
+    buildValidator("culture-reports-moderation-proof", "Reports Moderation Proof", "Content & Community", "Reports / Moderation", [
+      check("reports route exists", fixture.cultureModeration?.reportsRouteExists, "Reports route evidence exists.", "Reports route evidence failed.", "Reports route evidence has not been inspected."),
+      check("moderation review evidence exists", fixture.cultureModeration?.moderationReviewEvidenceExists, "Moderation review evidence exists.", "Moderation review evidence failed.", "Moderation review evidence has not been inspected.")
+    ], false, true),
     buildValidator("culture-social-loop", "Culture Social Loop", "Content & Community", "Culture Social Loop", [
       check("public Culture posts exist or empty state is clean", fixture.cultureSocial?.publicPostsExist, "Public Culture post truth or clean empty state exists.", "Public Culture post truth failed.", "Public Culture post truth has not been inspected."),
       check("author identity hydrates", fixture.cultureSocial?.authorIdentityHydrates, "Author identity hydration is proven.", "Author identity hydration failed.", "Author identity hydration has not been inspected."),
@@ -3795,11 +3818,11 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("finance-future", "Booth rent/commission future readiness", "Finance", "Future Money Models", "Needs Review", "Future money models remain approval-gated.", ["No commission or booth-rent rule mutation."])
     ],
     marketing: [
-      evidenceCard("marketing-culture-feed", "Culture feed", "Marketing", "Culture", validatorStatus(validators, "culture-social-loop"), "Culture feed is the demand/content signal.", validatorEvidence(validators, "culture-social-loop")),
-      evidenceCard("marketing-discovery", "Discovery signals", "Marketing", "Discovery", "Needs Review", "Discovery signals require real counts and safe attribution.", ["No fake trending or local ranking."]),
+      evidenceCard("marketing-culture-feed", "Culture feed", "Marketing", "Culture", validatorStatus(validators, "culture-feed-proof"), "Culture feed can Pass only from public approved post/read-path evidence.", validatorEvidence(validators, "culture-feed-proof")),
+      evidenceCard("marketing-discovery", "Discovery signals", "Marketing", "Discovery", validatorStatus(validators, "culture-discovery-proof"), "Discovery can Pass only from connected search/discovery proof.", validatorEvidence(validators, "culture-discovery-proof")),
       evidenceCard("marketing-attribution", "Booking attribution", "Marketing", "Attribution", validatorStatus(validators, "culture-to-booking-loop"), "Culture attribution must survive into booking truth.", validatorEvidence(validators, "culture-to-booking-loop")),
-      evidenceCard("marketing-referrals", "Referral readiness", "Marketing", "Referrals", "Needs Review", "Referral readiness is future-scaffolded.", ["No referral automation is enabled."]),
-      evidenceCard("marketing-campaigns", "Campaign tracking future readiness", "Marketing", "Campaigns", "Needs Review", "Campaign tracking requires future implementation.", ["No fake campaign tracking."])
+      evidenceCard("marketing-referrals", "Referral readiness", "Marketing", "Referrals", "Needs Review", "Parked future referral readiness. It is not V1 release proof and no referral automation is enabled.", ["Parked: no referral automation is enabled."]),
+      evidenceCard("marketing-campaigns", "Campaign tracking future readiness", "Marketing", "Campaigns", "Needs Review", "Parked future campaign tracking. It is not V1 release proof and cannot fake marketing attribution.", ["Parked: no fake campaign tracking."])
     ],
     compliance: [
       evidenceCard("compliance-verification", "Verification", "Compliance", "Verification", "Needs Review", "Verification queues remain existing Architect surfaces.", ["No automatic approval/rejection in v1."]),
@@ -3822,11 +3845,12 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("security-restrictions", "Account restrictions", "Security", "Restrictions", "Needs Review", "Account restrictions require route-by-route evidence.", ["No role mutation is allowed from v1."])
     ],
     content_community: [
-      evidenceCard("community-moderation", "Culture moderation", "Content & Community", "Moderation", "Needs Review", "Moderation depends on reports/comments evidence.", ["No moderation dashboard is built in this v1 foundation."]),
-      evidenceCard("community-comments", "Comments/reports", "Content & Community", "Comments", validatorStatus(validators, "culture-social-loop"), "Comments and reports are part of Culture social health.", validatorEvidence(validators, "culture-social-loop")),
-      evidenceCard("community-creators", "Creator behavior", "Content & Community", "Creators", "Needs Review", "Creator behavior needs safe public post evidence.", ["No private identity data exposed."]),
-      evidenceCard("community-signals", "Community signals", "Content & Community", "Signals", "Needs Review", "Signals must be real engagement evidence only.", ["No fake likes/comments/views."]),
-      evidenceCard("community-health", "Content health", "Content & Community", "Content Health", validatorStatus(validators, "culture-social-loop"), "Content health is tied to public, approved, non-deleted Culture posts.", validatorEvidence(validators, "culture-social-loop"))
+      evidenceCard("community-reports-moderation", "Reports/moderation proof", "Content & Community", "Reports / Moderation", validatorStatus(validators, "culture-reports-moderation-proof"), "Reports/moderation can Pass only from connected report and moderation-review proof.", validatorEvidence(validators, "culture-reports-moderation-proof")),
+      evidenceCard("community-moderation", "Advanced moderation dashboard", "Content & Community", "Moderation", "Needs Review", "Parked future moderation dashboard. V1 report/moderation proof is tracked separately.", ["Parked: no moderation dashboard is built in this V1 foundation."]),
+      evidenceCard("community-comments", "Comments proof", "Content & Community", "Comments", validatorStatus(validators, "culture-comments-proof"), "Comments can Pass only from connected comments route and preview evidence.", validatorEvidence(validators, "culture-comments-proof")),
+      evidenceCard("community-creators", "Creator behavior", "Content & Community", "Creators", "Needs Review", "Parked future creator behavior analytics. V1 content health uses public post proof.", ["Parked: no private identity data exposed."]),
+      evidenceCard("community-signals", "Community signals", "Content & Community", "Signals", "Needs Review", "Parked future community signal analytics. Signals must be real engagement evidence only.", ["Parked: no fake likes/comments/views."]),
+      evidenceCard("community-health", "Content health", "Content & Community", "Content Health", validatorStatus(validators, "culture-feed-proof"), "Content health is tied to public, approved, non-deleted Culture post proof.", validatorEvidence(validators, "culture-feed-proof"))
     ]
   };
 
@@ -3845,16 +3869,12 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
 
 function applyIncidentFailures(validators: CoreLoopValidator[], incidents: ArchitectIncident[]) {
   return validators.map((validator) => {
+    const incidentMatcher = incidentTypesForValidator(validator.id);
+    if (!incidentMatcher.length) return validator;
+
     const related = incidents.filter((incident) => {
       const type = incident.missionIncidentType ?? mapDiagnosisToIncidentType(incident.diagnosisCode);
-      if (validator.id === "culture-social-loop") return type === "culture_social_loop_failed";
-      if (validator.id === "culture-to-booking-loop") return type === "culture_booking_bridge_failed" || type === "barber_calendar_missing_appointment";
-      if (validator.id === "booking-availability-loop") return type === "booking_slot_generation_failed";
-      if (validator.id === "barber-calendar-loop") return type === "barber_calendar_missing_appointment";
-      if (validator.id === "shop-relationship-loop") return type === "shop_relationship_accept_failed" || type === "owner_active_barber_sync_failed";
-      if (validator.id === "owner-command-calendar-loop") return type === "owner_active_barber_sync_failed" || type === "owner_kpi_mismatch";
-      if (validator.id === "payment-routing-loop") return type === "payment_routing_missing" || type === "cancelled_captured_refund_unresolved" || type === "payout_constraint_mismatch" || type === "schema_constraint_mismatch";
-      return false;
+      return incidentMatcher.includes(type);
     });
 
     if (!related.length) return validator;
@@ -3869,6 +3889,17 @@ function applyIncidentFailures(validators: CoreLoopValidator[], incidents: Archi
       codexPatchNeeded: validator.codexPatchNeeded || related.some((incident) => incident.codexRequired)
     };
   });
+}
+
+function incidentTypesForValidator(validatorId: string): ArchitectMissionIncidentType[] {
+  if (validatorId === "culture-social-loop") return ["culture_social_loop_failed"];
+  if (validatorId === "culture-to-booking-loop") return ["culture_booking_bridge_failed", "barber_calendar_missing_appointment"];
+  if (validatorId === "booking-availability-loop") return ["booking_slot_generation_failed"];
+  if (validatorId === "barber-calendar-loop") return ["barber_calendar_missing_appointment"];
+  if (validatorId === "shop-relationship-loop") return ["shop_relationship_accept_failed", "owner_active_barber_sync_failed"];
+  if (validatorId === "owner-command-calendar-loop") return ["owner_active_barber_sync_failed", "owner_kpi_mismatch"];
+  if (validatorId === "payment-routing-loop") return ["payment_routing_missing", "cancelled_captured_refund_unresolved", "payout_constraint_mismatch", "schema_constraint_mismatch"];
+  return [];
 }
 
 function buildValidator(
