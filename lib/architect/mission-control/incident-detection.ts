@@ -1492,6 +1492,27 @@ function buildProductionRoleTruthInventory(tables: {
   const missingEvidence = disconnectedReads.length
     ? [`Disconnected read-only source table(s): ${disconnectedReads.join(", ")}.`]
     : [];
+  const roleNormalizationExecutable = false;
+  const roleNormalizationApprovalEvidenceSource = [
+    `roleNormalizationApprovalEvidenceStatus=${disconnectedReads.length ? "Needs Review" : "Pass"}`,
+    `eligibleCount=${roleNormalizationApprovalPacket.eligibleCount}`,
+    `blockedCount=${roleNormalizationApprovalPacket.blockedCount}`,
+    `manualReviewCount=${roleNormalizationApprovalPacket.manualReviewCount}`,
+    `noOpCount=${roleNormalizationApprovalPacket.noOpCount}`,
+    `affectedCount=${roleNormalizationApprovalPacket.affectedCount}`,
+    `totalProfilesInspected=${roleNormalizationApprovalPacket.totalProfilesInspected}`,
+    `currentRoleCounts=${formatCounts(new Map(Object.entries(roleNormalizationApprovalPacket.currentRoleCounts)))}`,
+    `proposedRoleCounts=${formatCounts(new Map(Object.entries(roleNormalizationApprovalPacket.proposedRoleCounts)))}`,
+    `blockedRoleCounts=${formatCounts(new Map(Object.entries(roleNormalizationApprovalPacket.blockedRoleCounts)))}`,
+    `manualReviewRoleCounts=${formatCounts(new Map(Object.entries(roleNormalizationApprovalPacket.manualReviewRoleCounts)))}`,
+    `canonicalOutputOnly=${roleNormalizationApprovalPacket.canonicalOutputOnly ? "yes" : "no"}`,
+    `approvalRequired=${roleNormalizationApprovalPacket.approvalRequired ? "yes" : "no"}`,
+    `roleNormalizationExecutable=${roleNormalizationExecutable ? "true" : "false"}`,
+    `rawMutationExecuted=${roleNormalizationApprovalPacket.rawMutationExecuted ? "yes" : "no"}`,
+    `rollbackPacketPresent=${roleNormalizationApprovalPacket.rollbackPacketPresent ? "yes" : "no"}`,
+    `publicOutputRedacted=${roleNormalizationApprovalPacket.publicOutputRedacted ? "yes" : "no"}`,
+    "content_exposed=false"
+  ].join("; ");
 
   const baseRow = {
     currentUsageLocations: ["production Supabase read-only evidence"],
@@ -1515,14 +1536,33 @@ function buildProductionRoleTruthInventory(tables: {
       `missingRelationshipTypeCount=${missingRelationshipTypeCount}.`,
       `clientLinkageGaps=${clientLinkageGaps}; barberLinkageGaps=${barberLinkageGaps}; shopOwnerLinkageGaps=${shopOwnerLinkageGaps}.`,
       `roleNormalizationEligible=${roleNormalizationSummary.eligibleCount}; roleNormalizationBlocked=${roleNormalizationSummary.blockedCount}; roleNormalizationNoChange=${roleNormalizationSummary.noChangeCount}.`,
-      `roleNormalizationApprovalEvidenceStatus=Needs Review; eligibleCount=${roleNormalizationApprovalPacket.eligibleCount}; blockedCount=${roleNormalizationApprovalPacket.blockedCount}; manualReviewCount=${roleNormalizationApprovalPacket.manualReviewCount}; noOpCount=${roleNormalizationApprovalPacket.noOpCount}; affectedCount=${roleNormalizationApprovalPacket.affectedCount}.`,
-      `proposedRoleCounts=${formatCounts(new Map(Object.entries(roleNormalizationApprovalPacket.proposedRoleCounts)))}; blockedRoleCounts=${formatCounts(new Map(Object.entries(roleNormalizationApprovalPacket.blockedRoleCounts)))}; manualReviewRoleCounts=${formatCounts(new Map(Object.entries(roleNormalizationApprovalPacket.manualReviewRoleCounts)))}.`,
-      `canonicalOutputOnly=${roleNormalizationApprovalPacket.canonicalOutputOnly ? "yes" : "no"}; approvalRequired=${roleNormalizationApprovalPacket.approvalRequired ? "yes" : "no"}; rawMutationExecuted=${roleNormalizationApprovalPacket.rawMutationExecuted ? "yes" : "no"}.`,
+      `${roleNormalizationApprovalEvidenceSource}.`,
       `ambiguousRoles=${roleNormalizationSummary.ambiguousRoles.join(", ") || "none"}.`,
       `rollbackPlanPresent=${roleNormalizationSummary.rollbackPlanPresent ? "yes" : "no"}; rollbackPacketPresent=${roleNormalizationApprovalPacket.rollbackPacketPresent ? "yes" : "no"}; publicOutputRedacted=${roleNormalizationApprovalPacket.publicOutputRedacted ? "yes" : "no"}.`,
       "content_exposed=false; mutation_attempted=false."
     ].join(" "),
     rows: [
+      {
+        ...baseRow,
+        id: "production-role-normalization-approval-packet",
+        currentRoleValue: "role_normalization_approval_packet",
+        normalizedDisplayLabel: "Role normalization approval packet",
+        canonicalClassification: "unknown" as const,
+        expectedCanonicalDestination: `Future approved migration may propose only ${CANONICAL_PUBLIC_PROFILE_ROLES.join(", ")}`,
+        affectedRoleOrLane: "Security / Compliance",
+        userImpactRisk: "critical" as const,
+        securityRisk: "critical" as const,
+        currentStatus: disconnectedReads.length ? "Needs Review" as const : roleNormalizationApprovalPacket.canonicalOutputOnly && !roleNormalizationApprovalPacket.rawMutationExecuted ? "Pass" as const : "Needs Review" as const,
+        migrationRequired: roleNormalizationApprovalPacket.affectedCount > 0 ? "unknown" as const : "no" as const,
+        suggestedMigrationPath: "Authenticated approval surface only. No Architect UI control can execute role normalization from this evidence packet.",
+        rollbackNote: "Rollback packet is metadata proof only; any future migration must snapshot affected rows before approved execution.",
+        failureMeaning: "Role normalization remains approval-gated and non-executable from Mission Control.",
+        staleOrMissingEvidenceState: disconnectedReads.length ? missingEvidence : roleNormalizationApprovalPacket.canonicalOutputOnly && !roleNormalizationApprovalPacket.rawMutationExecuted ? [] : [
+          "Approval packet must stay canonical-only, redacted, and non-mutating before it can be treated as connected evidence."
+        ],
+        accountRoleMisuse: false,
+        evidenceSource: `${roleNormalizationApprovalEvidenceSource}; planVersion=${roleNormalizationApprovalPacket.planVersion}; generatedFor=${roleNormalizationApprovalPacket.generatedFor}; mutation_attempted=false.`
+      },
       ...CANONICAL_PUBLIC_PROFILE_ROLES.map((role) => ({
         ...baseRow,
         id: `production-profile-role-${role}`,
