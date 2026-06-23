@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   isClientRole,
@@ -16,6 +16,15 @@ import {
   decideRoleNormalization,
   summarizeRoleNormalizationPlan
 } from "@/lib/auth/role-normalization-plan";
+
+function readApiFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const path = join(dir, entry);
+    const stat = statSync(path);
+    if (stat.isDirectory()) return readApiFiles(path);
+    return path.endsWith(".ts") || path.endsWith(".tsx") ? [path] : [];
+  });
+}
 
 describe("barber account role normalization", () => {
   it("normalizes legacy account roles to master-truth identity roles", () => {
@@ -194,6 +203,66 @@ describe("role normalization migration plan", () => {
     expect(sql).not.toContain("delete from");
     expect(sql).not.toContain("alter table");
     expect(sql).not.toContain("create policy");
+  });
+
+  it("keeps the approved eligible-only migration candidate guarded, reversible, and canonical-only", () => {
+    const migrationPath = join(
+      process.cwd(),
+      "supabase",
+      "migrations",
+      "20260623183000_approved_eligible_only_role_normalization.sql"
+    );
+    const sql = readFileSync(migrationPath, "utf8");
+    const normalizedSql = sql.toLowerCase();
+    const apiSource = readApiFiles(join(process.cwd(), "app", "api")).map((file) => readFileSync(file, "utf8")).join("\n");
+
+    expect(sql).toContain("PR #29 Approved Eligible-Only Role Normalization Migration Candidate");
+    expect(sql).toContain("v_expected_total_profiles_inspected constant integer := 27");
+    expect(sql).toContain("v_expected_eligible_count constant integer := 16");
+    expect(sql).toContain("v_expected_blocked_count constant integer := 2");
+    expect(sql).toContain("v_expected_manual_review_count constant integer := 5");
+    expect(sql).toContain("v_expected_no_op_count constant integer := 4");
+    expect(sql).toContain("v_expected_affected_count constant integer := 23");
+    expect(sql).toContain("if to_regtype('public.app_role') is null then");
+    expect(sql).toContain("public.app_role is missing required role labels");
+    expect(sql).toContain("profile_role_inputs as");
+    expect(sql).toContain("eligible_profiles as");
+    expect(sql).toContain("blocked_profiles as");
+    expect(sql).toContain("manual_review_profiles as");
+    expect(sql).toContain("no_op_profiles as");
+    expect(sql).toContain("approval_packet_counts as");
+    expect(sql).toContain("nullif(btrim(coalesce(p.role::text, '')), '') as old_role");
+    expect(sql).toContain("nullif(btrim(coalesce(p.role::text, '')), '') = backup.old_role");
+    expect(sql).toContain("raise exception 'PR29 role normalization aborted: expected % total profiles inspected, found %.'");
+    expect(sql).toContain("raise exception 'PR29 role normalization aborted: expected % eligible rows, found %.'");
+    expect(sql).toContain("raise exception 'PR29 role normalization aborted: expected % blocked rows, found %.'");
+    expect(sql).toContain("raise exception 'PR29 role normalization aborted: expected % manual-review rows, found %.'");
+    expect(sql).toContain("raise exception 'PR29 role normalization aborted: expected % no-op rows, found %.'");
+    expect(sql).toContain("raise exception 'PR29 role normalization aborted: expected % affected rows, found %.'");
+    expect(sql).toContain("private.role_normalization_profile_backups");
+    expect(sql).toContain("primary key (migration_key, profile_id)");
+    expect(sql).toContain("Rollback instructions for founder-approved manual rollback only");
+    expect(sql).toContain("backup.old_role::public.app_role");
+    expect(sql).toContain("when old_role = 'client' and has_client_record then 'client_user'");
+    expect(sql).toContain("when old_role = 'booth_rent_barber' and has_barber_record then 'barber_user'");
+    expect(sql).toContain("when old_role = 'commission_barber' and has_barber_record then 'barber_user'");
+    expect(sql).toContain("when old_role = 'owner' and has_owned_shop_record then 'shop_owner_user'");
+    expect(sql).toContain("old_role = 'client' and has_client_record");
+    expect(sql).toContain("old_role = 'booth_rent_barber' and has_barber_record");
+    expect(sql).toContain("old_role = 'commission_barber' and has_barber_record");
+    expect(sql).toContain("old_role = 'owner' and has_owned_shop_record");
+    expect(sql).toContain("old_role in ('front_desk', 'manager', 'platform_admin')");
+    expect(sql).toContain("backup.new_role in ('client_user', 'barber_user', 'shop_owner_user')");
+    expect(sql).toContain("backup.new_role <> 'shop_owner'");
+    expect(sql).toContain("updated_at = now()");
+    expect(sql).not.toMatch(/delete\s+from/i);
+    expect(normalizedSql).not.toContain("auth.users");
+    expect(normalizedSql).not.toContain("payment_routing_records");
+    expect(normalizedSql).not.toContain("payout_executions");
+    expect(normalizedSql).not.toContain("stripe");
+    expect(normalizedSql).not.toContain("create policy");
+    expect(normalizedSql).not.toContain("alter table public.profiles");
+    expect(apiSource).not.toMatch(/role[-_ ]normalization[\s\S]{0,160}(update|execute|mutation)/i);
   });
 
   it("builds a redacted dry-run approval packet without raw private identifiers", () => {
