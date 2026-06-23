@@ -116,25 +116,30 @@ describe("role normalization migration plan", () => {
   });
 
   it("maps owner to shop_owner_user only when owned shop evidence exists", () => {
-    expect(decideRoleNormalization({
+    const linkedOwnerDecision = decideRoleNormalization({
       profileId: "profile-owner-safe",
       currentRole: "owner",
       hasOwnedShopRecord: true
-    })).toMatchObject({
+    });
+    const blockedOwnerDecision = decideRoleNormalization({
+      profileId: "profile-owner-blocked",
+      currentRole: "owner",
+      hasOwnedShopRecord: false
+    });
+
+    expect(linkedOwnerDecision).toMatchObject({
       action: "normalize_account_role",
       status: "eligible",
       targetRole: "shop_owner_user"
     });
 
-    expect(decideRoleNormalization({
-      profileId: "profile-owner-blocked",
-      currentRole: "owner",
-      hasOwnedShopRecord: false
-    })).toMatchObject({
+    expect(blockedOwnerDecision).toMatchObject({
       action: "manual_review",
       status: "blocked",
       targetRole: "shop_owner_user"
     });
+    expect(linkedOwnerDecision.targetRole).not.toBe("shop_owner");
+    expect(blockedOwnerDecision.targetRole).not.toBe("shop_owner");
   });
 
   it("blocks operational and internal roles instead of blindly converting them", () => {
@@ -210,15 +215,43 @@ describe("role normalization migration plan", () => {
       approvalRequired: true,
       rawMutationExecuted: false,
       totalAffectedCount: 9,
+      affectedCount: 9,
       eligibleCount: 4,
       blockedCount: 2,
       manualReviewCount: 3,
       noOpCount: 1,
+      currentRoleCounts: {
+        client: 2,
+        booth_rent_barber: 1,
+        commission_barber: 1,
+        owner: 1,
+        front_desk: 1,
+        manager: 1,
+        platform_admin: 1,
+        mystery_role: 1,
+        client_user: 1
+      },
+      proposedRoleCounts: {
+        client_user: 3,
+        barber_user: 2,
+        shop_owner_user: 1
+      },
+      blockedRoleCounts: {
+        client: 1,
+        mystery_role: 1
+      },
+      manualReviewRoleCounts: {
+        front_desk: 1,
+        manager: 1,
+        platform_admin: 1
+      },
+      canonicalOutputOnly: true,
       rollbackPacketPresent: true,
       publicOutputRedacted: true
     });
     expect(packet.rows.find((row) => row.currentRole === "front_desk")).toMatchObject({
       decision: "manual_review",
+      proposedRole: null,
       safeToNormalize: false
     });
     expect(packet.rows.find((row) => row.currentRole === "mystery_role")).toMatchObject({
@@ -228,9 +261,11 @@ describe("role normalization migration plan", () => {
     expect(packet.rows.filter((row) => row.decision === "eligible").every((row) =>
       row.safeToNormalize && row.rollbackInstructions.includes("snapshot profile_id and old_role")
     )).toBe(true);
+    expect(packet.rows.some((row) => String(row.proposedRole) === "shop_owner")).toBe(false);
     expect(packet.rows.every((row) => row.redactedProfileId.startsWith("profile_redacted_"))).toBe(true);
     expect(publicJson).not.toContain("11111111-2222-3333-4444-555555555555");
     expect(publicJson).not.toContain("front-desk-private-id");
+    expect(publicJson).not.toContain("\"proposedRole\":\"shop_owner\"");
     expect(publicJson).not.toContain("update public.profiles");
     expect(publicJson).not.toContain("delete from");
   });
