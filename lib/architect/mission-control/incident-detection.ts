@@ -23,7 +23,7 @@ import type {
   MissionPacketSet
 } from "@/lib/architect/mission-control/types";
 import { buildChatGptPacket, buildCodexPacket, buildIncidentPacket } from "@/lib/architect/mission-control/packets";
-import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
+import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, buildRoleTruthInventory, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
 import { buildProductOperationsRuntimeLoopProofFixture } from "@/lib/architect/mission-control/runtime-loop-proof";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -98,6 +98,8 @@ const MISSION_SYSTEMS: Array<{ key: MissionControlHealthItem["key"]; label: stri
 
 const CANONICAL_PUBLIC_PROFILE_ROLES = ["client_user", "barber_user", "shop_owner_user"] as const;
 const PROFILE_ROLE_FIELDS = ["role", "primary_onboarding_role", "user_role", "account_role", "profile_role"] as const;
+const INTERNAL_PROFILE_ROLES = ["platform_admin"] as const;
+const EXPECTED_SHOP_RELATIONSHIP_TYPES = ["freelance", "booth_rent", "commission"] as const;
 const KNOWN_RLS_DISABLED_PUBLIC_TABLE_COUNT = 28;
 
 async function selectRows<T extends JsonRecord>(
@@ -1391,6 +1393,199 @@ function buildRoleDriftMetric(profiles: TableRead) {
   );
 }
 
+function firstUsableId(row: JsonRecord, fields: string[]) {
+  return fields.map((field) => stringValue(row[field]).trim()).find(Boolean) ?? "";
+}
+
+function countByValue(values: string[]) {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function formatCounts(counts: Map<string, number>) {
+  return [...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([value, count]) => `${value}=${count}`)
+    .join(", ") || "none";
+}
+
+function relationLabel(count: number) {
+  return count === 1 ? "row" : "rows";
+}
+
+function buildProductionRoleTruthInventory(tables: {
+  profiles: TableRead;
+  clients: TableRead;
+  barbers: TableRead;
+  shops: TableRead;
+  shopBarberRelationships: TableRead;
+}) {
+  const connectedReads = [
+    ["profiles", tables.profiles],
+    ["clients", tables.clients],
+    ["barbers", tables.barbers],
+    ["shops", tables.shops],
+    ["shop_barber_relationships", tables.shopBarberRelationships]
+  ] as const;
+  const disconnectedReads = connectedReads.filter(([, read]) => !read.connected).map(([table]) => table);
+  const profileIds = new Set(tables.profiles.rows.map((row) => firstUsableId(row, ["id", "profile_id", "user_id"])).filter(Boolean));
+  const profileRoleById = new Map(
+    tables.profiles.rows
+      .map((row) => [firstUsableId(row, ["id", "profile_id", "user_id"]), stringValue(row.role).trim()] as const)
+      .filter(([id]) => Boolean(id))
+  );
+  const canonicalRoleSet = new Set<string>(CANONICAL_PUBLIC_PROFILE_ROLES);
+  const internalRoleSet = new Set<string>(INTERNAL_PROFILE_ROLES);
+  const relationshipTypeSet = new Set<string>(EXPECTED_SHOP_RELATIONSHIP_TYPES);
+  const primaryProfileRoles = tables.profiles.rows.map((row) => stringValue(row.role).trim());
+  const roleCounts = countByValue(primaryProfileRoles.filter(Boolean));
+  const nullOrMissingRoleCount = primaryProfileRoles.filter((value) => !value).length;
+  const invalidRoleCounts = countByValue(primaryProfileRoles.filter((value) => value && !canonicalRoleSet.has(value) && !internalRoleSet.has(value)));
+  const clientLinkageGaps = tables.clients.rows.filter((row) => {
+    const profileId = firstUsableId(row, ["profile_id", "user_id", "account_id"]);
+    return !profileId || !profileIds.has(profileId) || profileRoleById.get(profileId) !== "client_user";
+  }).length;
+  const barberLinkageGaps = tables.barbers.rows.filter((row) => {
+    const profileId = firstUsableId(row, ["profile_id", "user_id", "account_id"]);
+    return !profileId || !profileIds.has(profileId) || profileRoleById.get(profileId) !== "barber_user";
+  }).length;
+  const shopOwnerLinkageGaps = tables.shops.rows.filter((row) => {
+    const ownerProfileId = firstUsableId(row, ["owner_id", "owner_profile_id", "shop_owner_id", "profile_id", "user_id", "created_by"]);
+    return !ownerProfileId || !profileIds.has(ownerProfileId) || profileRoleById.get(ownerProfileId) !== "shop_owner_user";
+  }).length;
+  const relationshipTypeValues = tables.shopBarberRelationships.rows.map((row) => stringValue(row.relationship_type).trim());
+  const relationshipTypeCounts = countByValue(relationshipTypeValues.filter(Boolean));
+  const missingRelationshipTypeCount = relationshipTypeValues.filter((value) => !value).length;
+  const invalidRelationshipTypeCounts = countByValue(relationshipTypeValues.filter((value) => value && !relationshipTypeSet.has(value)));
+  const invalidRoleCount = [...invalidRoleCounts.values()].reduce((total, count) => total + count, 0);
+  const invalidRelationshipTypeCount = [...invalidRelationshipTypeCounts.values()].reduce((total, count) => total + count, 0);
+  const totalLinkageGapCount = clientLinkageGaps + barberLinkageGaps + shopOwnerLinkageGaps;
+  const missingEvidence = disconnectedReads.length
+    ? [`Disconnected read-only source table(s): ${disconnectedReads.join(", ")}.`]
+    : [];
+
+  const baseRow = {
+    currentUsageLocations: ["production Supabase read-only evidence"],
+    v1Required: true,
+    futureParked: false,
+    suggestedMigrationPath: "Read-only evidence connector only; do not normalize or mutate roles in this PR.",
+    rollbackNote: "No rollback needed because this PR performs no role writes, no migrations, and no production data mutation.",
+    evidenceSource: "Production read-only Supabase metadata; content_exposed=false; mutation_attempted=false.",
+    nextRepairLane: "security" as const,
+    accountRoleMisuse: false
+  };
+
+  return buildRoleTruthInventory({
+    evidenceSource: [
+      "Production Role Evidence Connector: profiles, clients, barbers, shops, and shop_barber_relationships were read only.",
+      `profileRoleCounts=${formatCounts(roleCounts)}.`,
+      `invalidProfileRoleCounts=${formatCounts(invalidRoleCounts)}.`,
+      `nullOrMissingProfileRoleCount=${nullOrMissingRoleCount}.`,
+      `relationshipTypeCounts=${formatCounts(relationshipTypeCounts)}.`,
+      `invalidRelationshipTypeCounts=${formatCounts(invalidRelationshipTypeCounts)}.`,
+      `missingRelationshipTypeCount=${missingRelationshipTypeCount}.`,
+      `clientLinkageGaps=${clientLinkageGaps}; barberLinkageGaps=${barberLinkageGaps}; shopOwnerLinkageGaps=${shopOwnerLinkageGaps}.`,
+      "content_exposed=false; mutation_attempted=false."
+    ].join(" "),
+    rows: [
+      ...CANONICAL_PUBLIC_PROFILE_ROLES.map((role) => ({
+        ...baseRow,
+        id: `production-profile-role-${role}`,
+        currentRoleValue: role,
+        normalizedDisplayLabel: role.replace(/_/g, " "),
+        canonicalClassification: "public_account_role" as const,
+        expectedCanonicalDestination: `profiles.role = ${role}`,
+        affectedRoleOrLane: "Production role truth",
+        userImpactRisk: "low" as const,
+        securityRisk: "low" as const,
+        currentStatus: disconnectedReads.length ? "Needs Review" as const : "Pass" as const,
+        migrationRequired: "no" as const,
+        failureMeaning: `${role} count is read from production profile metadata.`,
+        staleOrMissingEvidenceState: disconnectedReads.length ? missingEvidence : [],
+        evidenceSource: `profiles.role ${role} count=${roleCounts.get(role) ?? 0}; content_exposed=false.`
+      })),
+      ...INTERNAL_PROFILE_ROLES.map((role) => ({
+        ...baseRow,
+        id: `production-profile-role-${role}`,
+        currentRoleValue: role,
+        normalizedDisplayLabel: role.replace(/_/g, " "),
+        canonicalClassification: "internal_platform_role" as const,
+        expectedCanonicalDestination: `profiles.role = ${role} for gated Architect accounts only`,
+        affectedRoleOrLane: "Architect / Security",
+        userImpactRisk: "medium" as const,
+        securityRisk: "critical" as const,
+        currentStatus: disconnectedReads.length ? "Needs Review" as const : "Pass" as const,
+        migrationRequired: "no" as const,
+        failureMeaning: `${role} count is read from production profile metadata.`,
+        staleOrMissingEvidenceState: disconnectedReads.length ? missingEvidence : [],
+        evidenceSource: `profiles.role ${role} count=${roleCounts.get(role) ?? 0}; internal role; content_exposed=false.`
+      })),
+      {
+        ...baseRow,
+        id: "production-profile-role-invalid-or-null",
+        currentRoleValue: "invalid_or_null_profile_role",
+        normalizedDisplayLabel: "Invalid or null profile role",
+        canonicalClassification: "unknown" as const,
+        expectedCanonicalDestination: `profiles.role in ${CANONICAL_PUBLIC_PROFILE_ROLES.join(", ")} or gated ${INTERNAL_PROFILE_ROLES.join(", ")}`,
+        affectedRoleOrLane: "Security / Compliance",
+        userImpactRisk: "critical" as const,
+        securityRisk: "critical" as const,
+        currentStatus: disconnectedReads.length ? "Needs Review" as const : invalidRoleCount || nullOrMissingRoleCount ? "Failed" as const : "Pass" as const,
+        migrationRequired: invalidRoleCount || nullOrMissingRoleCount ? "unknown" as const : "no" as const,
+        failureMeaning: "Invalid or null primary profile roles are broken role truth evidence and cannot be marked Pass.",
+        staleOrMissingEvidenceState: disconnectedReads.length ? missingEvidence : invalidRoleCount || nullOrMissingRoleCount ? [
+          `invalidProfileRoleCounts=${formatCounts(invalidRoleCounts)}.`,
+          `nullOrMissingProfileRoleCount=${nullOrMissingRoleCount}.`
+        ] : [],
+        accountRoleMisuse: invalidRoleCount > 0,
+        evidenceSource: `invalidProfileRoleCounts=${formatCounts(invalidRoleCounts)}; nullOrMissingProfileRoleCount=${nullOrMissingRoleCount}; content_exposed=false.`
+      },
+      {
+        ...baseRow,
+        id: "production-client-barber-shop-linkage",
+        currentRoleValue: "client_barber_shop_linkage",
+        normalizedDisplayLabel: "Client/barber/shop owner linkage",
+        canonicalClassification: "business_relationship" as const,
+        expectedCanonicalDestination: "clients.profile_id -> client_user, barbers.profile_id -> barber_user, shops.owner_id/profile id -> shop_owner_user",
+        affectedRoleOrLane: "Product / Operations",
+        userImpactRisk: "high" as const,
+        securityRisk: "high" as const,
+        currentStatus: disconnectedReads.length ? "Needs Review" as const : totalLinkageGapCount ? "Failed" as const : "Pass" as const,
+        migrationRequired: totalLinkageGapCount ? "unknown" as const : "no" as const,
+        failureMeaning: "Broken profile/client/barber/shop owner linkage is connected evidence of role truth failure.",
+        staleOrMissingEvidenceState: disconnectedReads.length ? missingEvidence : totalLinkageGapCount ? [
+          `clientLinkageGaps=${clientLinkageGaps}.`,
+          `barberLinkageGaps=${barberLinkageGaps}.`,
+          `shopOwnerLinkageGaps=${shopOwnerLinkageGaps}.`
+        ] : [],
+        evidenceSource: `clients=${tables.clients.rows.length} ${relationLabel(tables.clients.rows.length)}; barbers=${tables.barbers.rows.length} ${relationLabel(tables.barbers.rows.length)}; shops=${tables.shops.rows.length} ${relationLabel(tables.shops.rows.length)}; clientLinkageGaps=${clientLinkageGaps}; barberLinkageGaps=${barberLinkageGaps}; shopOwnerLinkageGaps=${shopOwnerLinkageGaps}; content_exposed=false.`
+      },
+      {
+        ...baseRow,
+        id: "production-shop-barber-relationship-types",
+        currentRoleValue: "shop_barber_relationship_type",
+        normalizedDisplayLabel: "Shop/barber relationship type",
+        canonicalClassification: "business_relationship" as const,
+        expectedCanonicalDestination: `shop_barber_relationships.relationship_type in ${EXPECTED_SHOP_RELATIONSHIP_TYPES.join(", ")}`,
+        affectedRoleOrLane: "Operations / Finance",
+        userImpactRisk: "high" as const,
+        securityRisk: "medium" as const,
+        currentStatus: disconnectedReads.length ? "Needs Review" as const : invalidRelationshipTypeCount || missingRelationshipTypeCount ? "Failed" as const : "Pass" as const,
+        migrationRequired: invalidRelationshipTypeCount || missingRelationshipTypeCount ? "unknown" as const : "no" as const,
+        failureMeaning: "Invalid or missing shop/barber relationship_type values break relationship truth evidence.",
+        staleOrMissingEvidenceState: disconnectedReads.length ? missingEvidence : invalidRelationshipTypeCount || missingRelationshipTypeCount ? [
+          `invalidRelationshipTypeCounts=${formatCounts(invalidRelationshipTypeCounts)}.`,
+          `missingRelationshipTypeCount=${missingRelationshipTypeCount}.`
+        ] : [],
+        evidenceSource: `relationshipTypeCounts=${formatCounts(relationshipTypeCounts)}; invalidRelationshipTypeCounts=${formatCounts(invalidRelationshipTypeCounts)}; missingRelationshipTypeCount=${missingRelationshipTypeCount}; content_exposed=false.`
+      }
+    ]
+  });
+}
+
 function buildRlsDisabledEvidenceMetric() {
   return metricCard(
     "ceo-rls-disabled-evidence",
@@ -1626,6 +1821,13 @@ export async function buildMissionControlSnapshot(
     buildProductOperationsRuntimeLoopProofFixture(supabase)
   ]);
   const ceoPlatformMetrics = await buildCeoPlatformMetrics(supabase, incidents, checkedAt, financeEvidence);
+  const roleTruthInventory = buildProductionRoleTruthInventory({
+    profiles: await trySelectRows(supabase, "profiles", { limit: 10000 }),
+    clients: await trySelectRows(supabase, "clients", { limit: 10000 }),
+    barbers: await trySelectRows(supabase, "barbers", { limit: 10000 }),
+    shops: await trySelectRows(supabase, "shops", { limit: 10000 }),
+    shopBarberRelationships: await trySelectRows(supabase, "shop_barber_relationships", { limit: 10000 })
+  });
   const health = healthFromIncidents(incidents, checkedAt);
   const packets = Object.fromEntries(incidents.map((incident) => [incident.id, packetSet({ checkedAt, environment }, incident)]));
 
@@ -1636,7 +1838,7 @@ const foundation = buildMissionControlFoundation(
   ceoPlatformMetrics,
   deploymentRegression,
   undefined,
-  undefined,
+  roleTruthInventory,
   undefined,
   runtimeLoopFixture
 );
