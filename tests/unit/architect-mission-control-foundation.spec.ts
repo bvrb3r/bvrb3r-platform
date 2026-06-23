@@ -24,6 +24,27 @@ import {
 
 type RlsInventoryRows = NonNullable<NonNullable<Parameters<typeof buildRlsSecurityInventory>[0]>["rows"]>;
 type RoleTruthRows = NonNullable<NonNullable<Parameters<typeof buildRoleTruthInventory>[0]>["rows"]>;
+type SourceVaultEntryFixture = ReturnType<typeof buildSourceVaultInventory>["entries"][number];
+
+function connectedSourceVaultFixture(overrides: Partial<SourceVaultEntryFixture> = {}): SourceVaultEntryFixture {
+  const base = buildSourceVaultInventory().entries.find((source) => source.id === "v1-master-build-template")!;
+
+  return {
+    ...base,
+    id: "connected-v1-private-source",
+    sourceName: "Connected V1 Private Source",
+    category: "Build doctrine",
+    ingestionStatus: "ingested_metadata_only",
+    contentHash: "sha256:connected-v1-private-source-fingerprint",
+    versionDate: "2026-06-23T00:00:00.000Z",
+    scope: "v1_required",
+    critical: true,
+    rawContentCommitted: false,
+    summary: "Safe metadata proof only. Private document contents are not exposed.",
+    linkedArchitectCardIds: ["source-vault-status", "technology-source-vault-readiness"],
+    ...overrides
+  };
+}
 
 function rlsInventoryRow(overrides: Partial<RlsInventoryRows[number]> = {}): RlsInventoryRows[number] {
   return {
@@ -1525,6 +1546,88 @@ describe("architect mission control foundation", () => {
       evidenceStatus: "Failed"
     });
     expect(technologyReadiness).toMatchObject({ status: "Failed" });
+  });
+
+  it("derives private Source Vault connection metadata without exposing document content", () => {
+    const inventory = buildSourceVaultInventory([connectedSourceVaultFixture()]);
+    const connectedSource = inventory.entries[0];
+
+    expect(connectedSource.privateConnection).toMatchObject({
+      sourceKey: "connected-v1-private-source",
+      safeSourceLabel: "Connected V1 Private Source",
+      category: "Build doctrine",
+      requiredForV1: true,
+      private: true,
+      connected: true,
+      lastVerifiedAt: "2026-06-23T00:00:00.000Z",
+      fingerprint: "sha256:connected-v1-private-source-fingerprint",
+      missingCount: 0,
+      connectedCount: 1,
+      contentExposed: false
+    });
+    expect(connectedSource.summary.toLowerCase()).not.toContain("document text");
+    expect(connectedSource.summary.toLowerCase()).not.toContain("full pdf");
+    expect(inventory.summary.privateMetadataConnectedCount).toBe(1);
+    expect(inventory.summary.contentExposedCount).toBe(0);
+  });
+
+  it("allows connected safe metadata to make Source Vault Pass without private contents", () => {
+    const inventory = buildSourceVaultInventory([
+      connectedSourceVaultFixture(),
+      connectedSourceVaultFixture({
+        id: "connected-v1-private-source-two",
+        sourceName: "Connected V1 Private Source Two",
+        contentHash: "sha256:connected-v1-private-source-two-fingerprint"
+      })
+    ]);
+    const foundation = buildMissionControlFoundation([], "2026-06-23T12:00:00.000Z", [], undefined, undefined, undefined, inventory);
+    const ceoSourceVault = foundation.ceoCommandCenter.find((card) => card.id === "source-vault-status");
+    const technologySourceVault = foundation.departmentLanes.flatMap((lane) => lane.cards).find((card) => card.id === "technology-source-vault-readiness");
+
+    expect(inventory.status).toBe("Pass");
+    expect(inventory.summary.v1RequiredMissingCount).toBe(0);
+    expect(inventory.summary.privateMetadataConnectedCount).toBe(2);
+    expect(inventory.entries.every((source) => source.privateConnection.contentExposed === false)).toBe(true);
+    expect(ceoSourceVault).toMatchObject({ status: "Pass" });
+    expect(technologySourceVault).toMatchObject({ status: "Pass" });
+  });
+
+  it("keeps missing required V1 private metadata Needs Review or Blocked instead of fake Pass", () => {
+    const inventory = buildSourceVaultInventory([
+      connectedSourceVaultFixture({
+        id: "registered-required-source",
+        sourceName: "Registered Required Source",
+        ingestionStatus: "registered",
+        contentHash: "sha256:metadata-placeholder-registered-required-source"
+      })
+    ]);
+    const foundation = buildMissionControlFoundation([], "2026-06-23T12:00:00.000Z", [], undefined, undefined, undefined, inventory);
+    const source = inventory.entries[0];
+    const ceoSourceVault = foundation.ceoCommandCenter.find((card) => card.id === "source-vault-status");
+
+    expect(source.evidenceStatus).toBe("Needs Review");
+    expect(source.privateConnection.connected).toBe(false);
+    expect(source.privateConnection.missingCount).toBe(1);
+    expect(inventory.status).toBe("Needs Review");
+    expect(ceoSourceVault?.status).toBe("Needs Review");
+    expect(ceoSourceVault?.summary).toBe("Source Vault metadata is registered, but private source review is incomplete.");
+  });
+
+  it("fails Source Vault metadata when private content exposure is detected", () => {
+    const inventory = buildSourceVaultInventory([
+      connectedSourceVaultFixture({
+        id: "unsafe-private-source",
+        sourceName: "Unsafe Private Source",
+        rawContentCommitted: true
+      })
+    ]);
+    const source = inventory.entries[0];
+
+    expect(source.evidenceStatus).toBe("Failed");
+    expect(source.privateConnection.contentExposed).toBe(true);
+    expect(source.privateConnection.connected).toBe(false);
+    expect(inventory.status).toBe("Failed");
+    expect(inventory.summary.contentExposedCount).toBe(1);
   });
 
   it("parks Hive AI source doctrine outside the V1 Source Vault blocker set", () => {
