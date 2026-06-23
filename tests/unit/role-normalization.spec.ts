@@ -12,6 +12,7 @@ import {
   subtypeFromLegacyBarberRole
 } from "@/lib/auth/roles";
 import {
+  buildRoleNormalizationApprovalPacket,
   decideRoleNormalization,
   summarizeRoleNormalizationPlan
 } from "@/lib/auth/role-normalization-plan";
@@ -188,5 +189,49 @@ describe("role normalization migration plan", () => {
     expect(sql).not.toContain("delete from");
     expect(sql).not.toContain("alter table");
     expect(sql).not.toContain("create policy");
+  });
+
+  it("builds a redacted dry-run approval packet without raw private identifiers", () => {
+    const packet = buildRoleNormalizationApprovalPacket([
+      { profileId: "11111111-2222-3333-4444-555555555555", currentRole: "client", hasClientRecord: true },
+      { profileId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", currentRole: "booth_rent_barber", hasBarberRecord: true },
+      { profileId: "ffffffff-1111-2222-3333-444444444444", currentRole: "commission_barber", hasBarberRecord: true },
+      { profileId: "99999999-8888-7777-6666-555555555555", currentRole: "owner", hasOwnedShopRecord: true },
+      { profileId: "front-desk-private-id", currentRole: "front_desk" },
+      { profileId: "manager-private-id", currentRole: "manager" },
+      { profileId: "admin-private-id", currentRole: "platform_admin", primaryOnboardingRole: "platform_admin" },
+      { profileId: "missing-linkage-private-id", currentRole: "client", hasClientRecord: false },
+      { profileId: "unsupported-private-id", currentRole: "mystery_role" },
+      { profileId: "canonical-private-id", currentRole: "client_user" }
+    ]);
+    const publicJson = JSON.stringify(packet);
+
+    expect(packet).toMatchObject({
+      approvalRequired: true,
+      rawMutationExecuted: false,
+      totalAffectedCount: 9,
+      eligibleCount: 4,
+      blockedCount: 2,
+      manualReviewCount: 3,
+      noOpCount: 1,
+      rollbackPacketPresent: true,
+      publicOutputRedacted: true
+    });
+    expect(packet.rows.find((row) => row.currentRole === "front_desk")).toMatchObject({
+      decision: "manual_review",
+      safeToNormalize: false
+    });
+    expect(packet.rows.find((row) => row.currentRole === "mystery_role")).toMatchObject({
+      decision: "blocked",
+      safeToNormalize: false
+    });
+    expect(packet.rows.filter((row) => row.decision === "eligible").every((row) =>
+      row.safeToNormalize && row.rollbackInstructions.includes("snapshot profile_id and old_role")
+    )).toBe(true);
+    expect(packet.rows.every((row) => row.redactedProfileId.startsWith("profile_redacted_"))).toBe(true);
+    expect(publicJson).not.toContain("11111111-2222-3333-4444-555555555555");
+    expect(publicJson).not.toContain("front-desk-private-id");
+    expect(publicJson).not.toContain("update public.profiles");
+    expect(publicJson).not.toContain("delete from");
   });
 });

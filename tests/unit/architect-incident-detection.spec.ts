@@ -541,6 +541,9 @@ describe("architect mission incident detection", () => {
     expect(invalidRow?.evidenceSource).toContain("roleNormalizationBlocked=");
     expect(invalidRow?.evidenceSource).toContain("ambiguousRoles=");
     expect(invalidRow?.evidenceSource).toContain("rollbackPlanPresent=");
+    expect(invalidRow?.evidenceSource).toContain("rawMutationExecuted=no");
+    expect(invalidRow?.evidenceSource).toContain("approvalRequired=yes");
+    expect(invalidRow?.evidenceSource).toContain("publicOutputRedacted=yes");
     expect(ceoCard).toMatchObject({ status: "Failed" });
   });
 

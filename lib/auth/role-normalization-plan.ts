@@ -49,6 +49,40 @@ export type RoleNormalizationSummary = {
   decisions: RoleNormalizationDecision[];
 };
 
+export type RoleNormalizationApprovalDecision =
+  | "eligible"
+  | "blocked"
+  | "manual_review"
+  | "no_op";
+
+export type RoleNormalizationApprovalPacketRow = {
+  redactedProfileId: string;
+  currentRole: string;
+  proposedRole: Role | null;
+  decision: RoleNormalizationApprovalDecision;
+  reason: string;
+  requiredEvidence: string[];
+  safetyReason: string;
+  rollbackInstructions: string;
+  safeToNormalize: boolean;
+};
+
+export type RoleNormalizationApprovalPacket = {
+  planVersion: string;
+  generatedFor: "public_review";
+  approvalRequired: true;
+  rawMutationExecuted: false;
+  totalProfilesInspected: number;
+  totalAffectedCount: number;
+  eligibleCount: number;
+  blockedCount: number;
+  manualReviewCount: number;
+  noOpCount: number;
+  rollbackPacketPresent: boolean;
+  publicOutputRedacted: true;
+  rows: RoleNormalizationApprovalPacketRow[];
+};
+
 function sqlString(value: string) {
   return value.replace(/'/g, "''");
 }
@@ -219,5 +253,90 @@ export function summarizeRoleNormalizationPlan(inputs: RoleNormalizationProfileE
     unsupportedRoles,
     ambiguousRoles,
     decisions
+  };
+}
+
+function redactedProfileId(profileId: string) {
+  let hash = 5381;
+  for (const character of profileId) {
+    hash = ((hash << 5) + hash) ^ character.charCodeAt(0);
+  }
+  return `profile_redacted_${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function approvalDecisionFor(decision: RoleNormalizationDecision): RoleNormalizationApprovalDecision {
+  if (decision.status === "eligible") return "eligible";
+  if (decision.status === "no_change") return "no_op";
+  return roleRequiresManualReview(decision.currentRole) ? "manual_review" : "blocked";
+}
+
+function requiredEvidenceFor(decision: RoleNormalizationDecision) {
+  if (decision.currentRole === "client") return ["clients.profile_id link"];
+  if (decision.currentRole === "booth_rent_barber" || decision.currentRole === "commission_barber") {
+    return ["barbers.profile_id link", "relationship metadata preserved outside profiles.role"];
+  }
+  if (decision.currentRole === "owner") return ["shops.owner_profile_id link"];
+  if (roleRequiresManualReview(decision.currentRole)) return ["founder manual approval", "internal/operational role model confirmation"];
+  if (!decision.currentRole) return ["non-empty profile role"];
+  return ["approved mapping doctrine"];
+}
+
+function rollbackInstructionsFor(decision: RoleNormalizationDecision) {
+  if (decision.status !== "eligible") {
+    return "No role update is proposed for this row; rollback is not needed unless a later approved migration changes it.";
+  }
+
+  return "Before approved execution, snapshot profile_id and old_role. Roll back by restoring profiles.role from the approved backup snapshot for this redacted row.";
+}
+
+function safetyReasonFor(decision: RoleNormalizationDecision) {
+  if (decision.status === "eligible") {
+    return "Eligible only for a future founder-approved migration; this packet does not execute role mutation.";
+  }
+  if (decision.status === "no_change") {
+    return "Already canonical; no role mutation proposed.";
+  }
+  if (roleRequiresManualReview(decision.currentRole)) {
+    return "Internal or operational role must not be converted into a public account role without explicit approval.";
+  }
+  return "Required linkage or mapping evidence is missing; row remains blocked.";
+}
+
+export function buildRoleNormalizationApprovalPacket(inputs: RoleNormalizationProfileEvidence[]): RoleNormalizationApprovalPacket {
+  const summary = summarizeRoleNormalizationPlan(inputs);
+  const rows = summary.decisions.map((decision) => {
+    const packetDecision = approvalDecisionFor(decision);
+
+    return {
+      redactedProfileId: redactedProfileId(decision.profileId),
+      currentRole: decision.currentRole || "__NULL_OR_EMPTY__",
+      proposedRole: decision.targetRole,
+      decision: packetDecision,
+      reason: decision.reason,
+      requiredEvidence: requiredEvidenceFor(decision),
+      safetyReason: safetyReasonFor(decision),
+      rollbackInstructions: rollbackInstructionsFor(decision),
+      safeToNormalize: packetDecision === "eligible" && Boolean(decision.rollbackSql)
+    };
+  });
+  const manualReviewCount = rows.filter((row) => row.decision === "manual_review").length;
+  const blockedCount = rows.filter((row) => row.decision === "blocked").length;
+  const noOpCount = rows.filter((row) => row.decision === "no_op").length;
+  const eligibleCount = rows.filter((row) => row.decision === "eligible").length;
+
+  return {
+    planVersion: ROLE_NORMALIZATION_PLAN_VERSION,
+    generatedFor: "public_review",
+    approvalRequired: true,
+    rawMutationExecuted: false,
+    totalProfilesInspected: summary.totalProfilesInspected,
+    totalAffectedCount: eligibleCount + blockedCount + manualReviewCount,
+    eligibleCount,
+    blockedCount,
+    manualReviewCount,
+    noOpCount,
+    rollbackPacketPresent: rows.filter((row) => row.decision === "eligible").every((row) => row.rollbackInstructions.length > 0),
+    publicOutputRedacted: true,
+    rows
   };
 }
