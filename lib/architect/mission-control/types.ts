@@ -239,6 +239,7 @@ export type SourceVaultSummary = {
   totalSourcesRegistered: number;
   ingestedMetadataCount: number;
   missingRequiredSourceCount: number;
+  missingRequiredSourceKeys: string[];
   privateSourceRequiredCount: number;
   privateMetadataConnectedCount: number;
   privateMetadataMissingCount: number;

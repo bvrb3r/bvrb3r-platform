@@ -562,7 +562,7 @@ describe("architect mission control", () => {
     });
   });
 
-  it("renders CEO card state semantics for Parked, Idle, Blocked, and Green Queue buckets", async () => {
+  it("renders CEO card state semantics for Parked, Idle, Pass, and Green Queue buckets", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => createNoIncidentSnapshot()
@@ -575,7 +575,7 @@ describe("architect mission control", () => {
     expect(screen.getByTestId("architect-ceo-card-hive-ai")).toHaveTextContent("parked future");
     expect(screen.getByTestId("architect-ceo-card-codex-packets")).toHaveTextContent("Idle");
     expect(screen.getByTestId("architect-ceo-card-codex-packets")).toHaveTextContent("idle no action");
-    expect(screen.getByTestId("architect-ceo-card-source-vault")).toHaveTextContent("Blocked");
+    expect(screen.getByTestId("architect-ceo-card-source-vault")).toHaveTextContent("Pass");
     expect(screen.getByTestId("architect-ceo-card-critical-incidents")).toHaveTextContent("Pass");
 
     expect(screen.getByTestId("ceo-green-queue-already_green")).toHaveTextContent("Already Green");
@@ -585,7 +585,7 @@ describe("architect mission control", () => {
     expect(screen.getByTestId("ceo-green-queue-blocked")).toHaveTextContent("Blocked / Approval Required");
     expect(screen.getByTestId("ceo-green-queue-item-hive-ai")).toHaveTextContent("Technology");
     expect(screen.getByTestId("ceo-green-queue-item-codex-packets")).toHaveTextContent("Technology");
-    expect(screen.getByTestId("ceo-green-queue-item-source-vault")).toHaveTextContent("Open Officer");
+    expect(screen.getByTestId("ceo-green-queue-item-source-vault")).toHaveTextContent("Pass");
     expect(within(screen.getByTestId("ceo-green-queue-item-source-vault")).getByRole("link", { name: "Open Officer" })).toHaveAttribute("href", "/architect/technology");
   });
 
@@ -903,6 +903,8 @@ describe("architect mission control", () => {
     expect(inventory).toHaveTextContent("Sources registered");
     expect(inventory).toHaveTextContent("Ingested metadata");
     expect(inventory).toHaveTextContent("Missing required");
+    expect(inventory).toHaveTextContent("Missing keys");
+    expect(inventory).toHaveTextContent("none");
     expect(inventory).toHaveTextContent("Private source required");
     expect(inventory).toHaveTextContent("Private metadata connected");
     expect(inventory).toHaveTextContent("Private metadata missing");

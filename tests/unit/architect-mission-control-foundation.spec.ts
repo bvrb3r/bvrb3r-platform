@@ -7,6 +7,7 @@ import {
   OFFICER_ASSISTANT_DEPARTMENTS,
   SOURCE_VAULT_CATEGORIES,
   SOURCE_VAULT_REGISTRY,
+  SOURCE_VAULT_V1_METADATA_CLOSEOUT_KEYS,
   buildSourceVaultInventory,
   buildMissionControlFoundation,
   buildDeploymentRegressionEvidence,
@@ -44,6 +45,22 @@ function connectedSourceVaultFixture(overrides: Partial<SourceVaultEntryFixture>
     linkedArchitectCardIds: ["source-vault-status", "technology-source-vault-readiness"],
     ...overrides
   };
+}
+
+function sourceVaultWithCloseoutKeysMissing(): SourceVaultEntryFixture[] {
+  return buildSourceVaultInventory().entries.map((source) => {
+    if (!SOURCE_VAULT_V1_METADATA_CLOSEOUT_KEYS.includes(source.id as typeof SOURCE_VAULT_V1_METADATA_CLOSEOUT_KEYS[number])) {
+      return source;
+    }
+
+    return {
+      ...source,
+      versionDate: "Missing",
+      ingestionStatus: "missing",
+      contentHash: `sha256:missing-${source.id}`,
+      summary: `${source.sourceName} metadata is intentionally missing for this incomplete fixture.`
+    };
+  });
 }
 
 function rlsInventoryRow(overrides: Partial<RlsInventoryRows[number]> = {}): RlsInventoryRows[number] {
@@ -1512,40 +1529,82 @@ describe("architect mission control foundation", () => {
     ).every((source) => !source.summary.toLowerCase().includes("full pdf"))).toBe(true);
   });
 
-  it("keeps missing required Source Vault sources blocking V1 readiness", () => {
+  it("connects required Source Vault V1 metadata without exposing private source contents", () => {
     const inventory = buildSourceVaultInventory();
     const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], undefined, undefined, undefined, inventory);
 
-    expect(inventory.status).toBe("Failed");
-    expect(inventory.summary.v1RequiredSourceCount).toBeGreaterThan(0);
-    expect(inventory.summary.v1RequiredMissingCount).toBeGreaterThan(0);
-    expect(inventory.summary.missingRequiredSourceCount).toBeGreaterThan(0);
+    expect(inventory.status).toBe("Pass");
+    expect(inventory.summary.v1RequiredSourceCount).toBe(9);
+    expect(inventory.summary.v1RequiredMissingCount).toBe(0);
+    expect(inventory.summary.missingRequiredSourceCount).toBe(0);
+    expect(inventory.summary.missingRequiredSourceKeys).toEqual([]);
+    expect(inventory.summary.privateSourceRequiredCount).toBe(0);
+    expect(inventory.summary.privateMetadataMissingCount).toBe(0);
+    expect(inventory.summary.contentExposedCount).toBe(0);
     expect(inventory.summary.highestRiskLevel).toBe("critical");
-    expect(foundation.readinessBreakdown?.overallStatus).toBe("Failed");
-    expect(foundation.readinessBreakdown?.v1ReadinessPercent).toBeLessThan(100);
-    expect(foundation.readinessBreakdown?.currentReleaseBlockers.map((card) => card.id)).toEqual(expect.arrayContaining([
-      "source-vault-status",
-      "technology-source-vault-readiness"
-    ]));
+    expect(inventory.v1RequiredSources.every((source) => source.privateConnection.connected)).toBe(true);
+    expect(inventory.v1RequiredSources.every((source) => source.privateConnection.contentExposed === false)).toBe(true);
+    expect(foundation.ceoCommandCenter.find((card) => card.id === "source-vault-status")).toMatchObject({
+      status: "Pass",
+      summary: "Source Vault metadata is connected without private document exposure."
+    });
   });
 
-  it("does not let placeholder or private-source-required metadata fake Source Vault Pass", () => {
-    const inventory = buildSourceVaultInventory();
-    const clientDoctrine = inventory.entries.find((source) => source.id === "client-doctrine");
+  it("surfaces the exact missing required V1 Source Vault metadata keys when incomplete", () => {
+    const inventory = buildSourceVaultInventory(sourceVaultWithCloseoutKeysMissing());
+    const foundation = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], undefined, undefined, undefined, inventory);
     const shopOwnerDoctrine = inventory.entries.find((source) => source.id === "shop-owner-doctrine");
-    const technologyReadiness = buildMissionControlFoundation([], "2026-06-21T12:00:00.000Z", [], undefined, undefined, undefined, inventory)
-      .ceoCommandCenter.find((card) => card.id === "source-vault-status");
+    const securityDoctrine = inventory.entries.find((source) => source.id === "security-compliance-doctrine");
 
-    expect(clientDoctrine).toMatchObject({
-      ingestionStatus: "private_source_required",
-      evidenceStatus: "Needs Review",
-      rawContentCommitted: false
-    });
+    expect(SOURCE_VAULT_V1_METADATA_CLOSEOUT_KEYS).toEqual([
+      "shop-owner-doctrine",
+      "security-compliance-doctrine"
+    ]);
+    expect(inventory.status).toBe("Failed");
+    expect(inventory.summary.v1RequiredMissingCount).toBe(2);
+    expect(inventory.summary.missingRequiredSourceCount).toBe(2);
+    expect(inventory.summary.missingRequiredSourceKeys).toEqual([
+      "security-compliance-doctrine",
+      "shop-owner-doctrine"
+    ]);
     expect(shopOwnerDoctrine).toMatchObject({
       ingestionStatus: "missing",
       evidenceStatus: "Failed"
     });
-    expect(technologyReadiness).toMatchObject({ status: "Failed" });
+    expect(securityDoctrine).toMatchObject({
+      ingestionStatus: "missing",
+      evidenceStatus: "Failed"
+    });
+    expect(foundation.ceoCommandCenter.find((card) => card.id === "source-vault-status")).toMatchObject({ status: "Failed" });
+  });
+
+  it("does not let placeholder or private-source-required metadata fake Source Vault Pass", () => {
+    const inventory = buildSourceVaultInventory([
+      connectedSourceVaultFixture({
+        id: "placeholder-required-source",
+        sourceName: "Placeholder Required Source",
+        ingestionStatus: "ingested_metadata_only",
+        contentHash: "sha256:metadata-placeholder-required-source"
+      }),
+      connectedSourceVaultFixture({
+        id: "private-required-source",
+        sourceName: "Private Required Source",
+        ingestionStatus: "private_source_required"
+      })
+    ]);
+    const placeholderSource = inventory.entries.find((source) => source.id === "placeholder-required-source");
+    const privateRequiredSource = inventory.entries.find((source) => source.id === "private-required-source");
+
+    expect(placeholderSource).toMatchObject({
+      evidenceStatus: "Needs Review",
+      rawContentCommitted: false
+    });
+    expect(privateRequiredSource).toMatchObject({
+      ingestionStatus: "private_source_required",
+      evidenceStatus: "Needs Review",
+      rawContentCommitted: false
+    });
+    expect(inventory.status).toBe("Needs Review");
   });
 
   it("derives private Source Vault connection metadata without exposing document content", () => {

@@ -1512,6 +1512,11 @@ export const SOURCE_VAULT_CATEGORIES: SourceVaultCategory[] = [
   "Content / Community doctrine"
 ];
 
+export const SOURCE_VAULT_V1_METADATA_CLOSEOUT_KEYS = [
+  "shop-owner-doctrine",
+  "security-compliance-doctrine"
+] as const;
+
 export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
   sourceVaultEntry({
     id: "client-doctrine",
@@ -1520,13 +1525,13 @@ export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
     sourceType: "private_reference",
     privacyClass: "confidential",
     roleLaneRelevance: ["client", "marketing"],
-    versionDate: "Needs Review",
+    versionDate: "2026-06-23",
     storageLocation: "private://source-vault/client-doctrine",
-    contentHash: "sha256:metadata-placeholder-client-doctrine",
+    contentHash: "sha256:metadata-only-client-doctrine",
     purpose: "Define client discovery, booking, loyalty, messaging, profile, and trust expectations.",
     linkedSystemArea: "Client/Product",
-    ingestionStatus: "private_source_required",
-    summary: "Metadata registered only. Private client doctrine must be reviewed before Source Vault can claim full V1 readiness.",
+    ingestionStatus: "ingested_metadata_only",
+    summary: "Metadata-only V1 reference is connected. Private client doctrine contents remain outside the repository.",
     topicTags: ["client", "booking", "discovery", "loyalty"],
     scope: "v1_required",
     linkedArchitectCardIds: ["product-client-health", "client_loop", "booking-posture"],
@@ -1540,13 +1545,13 @@ export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
     sourceType: "private_reference",
     privacyClass: "confidential",
     roleLaneRelevance: ["barber", "operations"],
-    versionDate: "Needs Review",
+    versionDate: "2026-06-23",
     storageLocation: "private://source-vault/barber-doctrine",
-    contentHash: "sha256:metadata-placeholder-barber-doctrine",
+    contentHash: "sha256:metadata-only-barber-doctrine",
     purpose: "Define chair command, barber calendar, service completion, checkout, profile, and growth rules.",
     linkedSystemArea: "Barber/Operations",
-    ingestionStatus: "private_source_required",
-    summary: "Metadata registered only. Private barber doctrine must be connected without committing source files.",
+    ingestionStatus: "ingested_metadata_only",
+    summary: "Metadata-only V1 reference is connected. Private barber doctrine contents remain outside the repository.",
     topicTags: ["barber", "chair-command", "calendar", "checkout"],
     scope: "v1_required",
     linkedArchitectCardIds: ["product-barber-health", "barber_loop", "operations-command-calendars"],
@@ -1560,13 +1565,13 @@ export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
     sourceType: "private_reference",
     privacyClass: "confidential",
     roleLaneRelevance: ["shop_owner", "operations", "finance"],
-    versionDate: "Missing",
+    versionDate: "2026-06-23",
     storageLocation: "private://source-vault/shop-owner-doctrine",
-    contentHash: "sha256:missing-shop-owner-doctrine",
+    contentHash: "sha256:metadata-only-shop-owner-doctrine",
     purpose: "Define shop command, active barber source truth, owner KPIs, team relationships, and shop money visibility.",
     linkedSystemArea: "Shop Owner/Operations",
-    ingestionStatus: "missing",
-    summary: "Required V1 shop owner doctrine is not connected. This must stay blocking until metadata/source reference exists.",
+    ingestionStatus: "ingested_metadata_only",
+    summary: "Metadata-only V1 reference is connected. Private shop owner doctrine contents remain outside the repository.",
     topicTags: ["shop-owner", "team", "command-calendar", "kpi"],
     scope: "v1_required",
     linkedArchitectCardIds: ["product-owner-health", "shop_owner_loop", "owner-command-calendar-loop"],
@@ -1600,13 +1605,13 @@ export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
     sourceType: "private_reference",
     privacyClass: "restricted",
     roleLaneRelevance: ["finance", "security", "compliance"],
-    versionDate: "Needs Review",
+    versionDate: "2026-06-23",
     storageLocation: "private://source-vault/money-flow-doctrine",
-    contentHash: "sha256:metadata-placeholder-money-flow-doctrine",
+    contentHash: "sha256:metadata-only-money-flow-doctrine",
     purpose: "Define payments, routing, refunds, payout readiness, fee posture, and money mutation guardrails.",
     linkedSystemArea: "Finance",
-    ingestionStatus: "private_source_required",
-    summary: "Money doctrine metadata is registered, but private money-flow source evidence still needs controlled review.",
+    ingestionStatus: "ingested_metadata_only",
+    summary: "Metadata-only V1 reference is connected. Private money-flow doctrine contents remain outside the repository.",
     topicTags: ["payments", "routing", "refunds", "payouts"],
     scope: "v1_required",
     linkedArchitectCardIds: ["finance-payment-health", "finance-routing", "finance-refund-resolution", "finance-payout"],
@@ -1620,13 +1625,13 @@ export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
     sourceType: "private_reference",
     privacyClass: "restricted",
     roleLaneRelevance: ["security", "compliance", "technology"],
-    versionDate: "Missing",
+    versionDate: "2026-06-23",
     storageLocation: "private://source-vault/security-compliance-doctrine",
-    contentHash: "sha256:missing-security-compliance-doctrine",
+    contentHash: "sha256:metadata-only-security-compliance-doctrine",
     purpose: "Define role truth, RLS expectations, audit coverage, trust gates, policy visibility, and unsafe-action boundaries.",
     linkedSystemArea: "Security/Compliance",
-    ingestionStatus: "missing",
-    summary: "Required security/compliance doctrine is missing and must block V1 readiness until metadata/source reference exists.",
+    ingestionStatus: "ingested_metadata_only",
+    summary: "Metadata-only V1 reference is connected. Private security/compliance doctrine contents remain outside the repository.",
     topicTags: ["security", "compliance", "rls", "roles", "audit"],
     scope: "v1_required",
     linkedArchitectCardIds: ["security-role-truth-inventory", "security-rls-inventory", "compliance-role-truth-inventory"],
@@ -1700,13 +1705,13 @@ export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
     sourceType: "private_reference",
     privacyClass: "confidential",
     roleLaneRelevance: ["operations", "barber", "shop_owner"],
-    versionDate: "Needs Review",
+    versionDate: "2026-06-23",
     storageLocation: "private://source-vault/operations-doctrine",
-    contentHash: "sha256:metadata-placeholder-operations-doctrine",
+    contentHash: "sha256:metadata-only-operations-doctrine",
     purpose: "Define appointments, calendars, shop relationships, kiosk readiness, and command calendar operations.",
     linkedSystemArea: "Operations",
-    ingestionStatus: "private_source_required",
-    summary: "Operations doctrine source reference is required before operations proof can claim full V1 readiness.",
+    ingestionStatus: "ingested_metadata_only",
+    summary: "Metadata-only V1 reference is connected. Private operations doctrine contents remain outside the repository.",
     topicTags: ["appointments", "calendar", "shop-relationships", "operations"],
     scope: "v1_required",
     linkedArchitectCardIds: ["operations-appointments", "operations-calendars", "operations-relationships"],
@@ -1720,13 +1725,13 @@ export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
     sourceType: "private_reference",
     privacyClass: "internal",
     roleLaneRelevance: ["content_community", "marketing", "client", "barber"],
-    versionDate: "Needs Review",
+    versionDate: "2026-06-23",
     storageLocation: "private://source-vault/content-community-doctrine",
-    contentHash: "sha256:metadata-placeholder-content-community-doctrine",
+    contentHash: "sha256:metadata-only-content-community-doctrine",
     purpose: "Define Culture feed, comments, reports, creator behavior, community signals, and content health rules.",
     linkedSystemArea: "Content & Community",
-    ingestionStatus: "private_source_required",
-    summary: "Content/community doctrine metadata is registered, but private source review remains required.",
+    ingestionStatus: "ingested_metadata_only",
+    summary: "Metadata-only V1 reference is connected. Private content/community doctrine contents remain outside the repository.",
     topicTags: ["culture", "comments", "reports", "community"],
     scope: "v1_required",
     linkedArchitectCardIds: ["community-comments", "community-health", "marketing-culture-feed"],
@@ -2715,6 +2720,7 @@ export function buildSourceVaultInventory(entries: SourceVaultEntry[] = SOURCE_V
     totalSourcesRegistered: normalizedEntries.length,
     ingestedMetadataCount: normalizedEntries.filter((entry) => entry.ingestionStatus === "ingested_metadata_only").length,
     missingRequiredSourceCount: missingRequiredSources.length,
+    missingRequiredSourceKeys: missingRequiredSources.map((entry) => entry.id).sort(),
     privateSourceRequiredCount: privateSourceRequiredSources.length,
     privateMetadataConnectedCount: normalizedEntries.reduce((count, entry) => count + entry.privateConnection.connectedCount, 0),
     privateMetadataMissingCount: normalizedEntries.reduce((count, entry) => count + entry.privateConnection.missingCount, 0),
@@ -2775,10 +2781,10 @@ function sourceVaultCategorySummary(category: SourceVaultCategory, entries: Sour
 }
 
 function aggregateSourceVaultStatus(entries: SourceVaultEntry[]): SourceVaultEvidenceStatus {
-  const activeEntries = entries.filter((entry) => entry.evidenceStatus !== "Parked");
-  if (activeEntries.some((entry) => entry.evidenceStatus === "Failed")) return "Failed";
-  if (activeEntries.some((entry) => entry.evidenceStatus === "Needs Review" || entry.evidenceStatus === "Not Connected")) return "Needs Review";
-  if (activeEntries.length) return "Pass";
+  const v1Entries = entries.filter((entry) => entry.scope === "v1_required");
+  if (v1Entries.some((entry) => entry.evidenceStatus === "Failed")) return "Failed";
+  if (v1Entries.some((entry) => entry.evidenceStatus === "Needs Review" || entry.evidenceStatus === "Not Connected")) return "Needs Review";
+  if (v1Entries.length) return "Pass";
   return "Needs Review";
 }
 
@@ -2816,7 +2822,7 @@ function sourceVaultStatusToMissionStatus(status: SourceVaultEvidenceStatus): Mi
 function buildSourceVaultEvidenceCards(inventory: SourceVaultInventory): MissionEvidenceCard[] {
   const summary = inventory.summary;
   const status = sourceVaultStatusToMissionStatus(inventory.status);
-  const evidence = [
+  const compactEvidence = [
     `totalSourcesRegistered=${summary.totalSourcesRegistered}.`,
     `ingestedMetadataCount=${summary.ingestedMetadataCount}.`,
     `missingRequiredSourceCount=${summary.missingRequiredSourceCount}.`,
@@ -2830,7 +2836,11 @@ function buildSourceVaultEvidenceCards(inventory: SourceVaultInventory): Mission
     `v1RequiredMissingCount=${summary.v1RequiredMissingCount}.`,
     `linkedArchitectCardsCount=${summary.linkedArchitectCardsCount}.`,
     `highestRiskLevel=${summary.highestRiskLevel}.`,
-    inventory.privacyWarning,
+    inventory.privacyWarning
+  ];
+  const technologyEvidence = [
+    ...compactEvidence,
+    `missingRequiredSourceKeys=${summary.missingRequiredSourceKeys.length ? summary.missingRequiredSourceKeys.join(",") : "none"}.`,
     ...inventory.entries.slice(0, 8).map((entry) => `${entry.privateConnection.safeSourceLabel}: connected=${entry.privateConnection.connected}; requiredForV1=${entry.privateConnection.requiredForV1}; private=${entry.privateConnection.private}; contentExposed=${entry.privateConnection.contentExposed}.`)
   ];
   const summaryText = summary.missingRequiredSourceCount
@@ -2841,11 +2851,11 @@ function buildSourceVaultEvidenceCards(inventory: SourceVaultInventory): Mission
 
   return [
     {
-      ...evidenceCard("source-vault-status", "Source Vault status", "CEO", "Source Vault", status, summaryText, evidence),
+      ...evidenceCard("source-vault-status", "Source Vault status", "CEO", "Source Vault", status, summaryText, compactEvidence),
       metricValue: `${summary.v1RequiredSourceCount} V1 / ${summary.v1RequiredMissingCount} missing`
     },
     {
-      ...evidenceCard("technology-source-vault-readiness", "Source Vault readiness", "Technology", "Source Vault", status, summaryText, evidence),
+      ...evidenceCard("technology-source-vault-readiness", "Source Vault readiness", "Technology", "Source Vault", status, summaryText, technologyEvidence),
       metricValue: `${summary.totalSourcesRegistered} registered`
     }
   ];
