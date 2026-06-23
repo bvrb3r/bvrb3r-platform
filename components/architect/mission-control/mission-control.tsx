@@ -2866,6 +2866,7 @@ function SourceVaultInventoryPanel({ inventory }: { inventory?: SourceVaultInven
           ["Sources registered", summary.totalSourcesRegistered],
           ["Ingested metadata", summary.ingestedMetadataCount],
           ["Missing required", summary.missingRequiredSourceCount],
+          ["Missing keys", summary.missingRequiredSourceKeys.length ? summary.missingRequiredSourceKeys.join(", ") : "none"],
           ["Private source required", summary.privateSourceRequiredCount],
           ["Private metadata connected", summary.privateMetadataConnectedCount],
           ["Private metadata missing", summary.privateMetadataMissingCount],
