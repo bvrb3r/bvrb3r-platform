@@ -43,6 +43,10 @@ import type {
   V1RuntimeProofMatrix,
   V1RuntimeProofRow
 } from "@/lib/architect/mission-control/types";
+import {
+  AUDIT_WRITE_SPINE_SAFE_CATEGORIES,
+  buildAuditWriteSpineDryRunProof
+} from "@/lib/architect/audit-write-spine";
 
 type BooleanCheck = {
   label: string;
@@ -168,6 +172,8 @@ const V2_INFRASTRUCTURE_CARD_IDS = new Set([
   "technology-api",
   "technology-schema",
   "technology-coverage",
+  "finance-audit-write-spine",
+  "compliance-audit-write-spine",
   "security-audit-plan",
   "compliance-policy"
 ]);
@@ -1932,6 +1938,71 @@ export const AUDIT_COVERAGE_PLAN = [
 
 export function getAuditCoveragePlanEvidence() {
   return AUDIT_COVERAGE_PLAN.map((item) => `${item.stage}: ${item.requirement}`);
+}
+
+export function buildAuditWriteSpineEvidenceCard(department: Extract<MissionDepartment, "Finance" | "Compliance">): MissionEvidenceCard {
+  const lane = department === "Finance" ? "Finance" : "Compliance";
+  const proofs = [
+    buildAuditWriteSpineDryRunProof({
+      category: "finance.payment_evidence_checked",
+      action: "payment_evidence_checked",
+      actorType: "system",
+      officerLane: "Finance",
+      targetType: "mission_evidence_card",
+      targetId: "finance-payment-health",
+      metadata: { content_exposed: false },
+      occurredAt: "2026-06-23T00:00:00.000Z"
+    }),
+    buildAuditWriteSpineDryRunProof({
+      category: "finance.routing_evidence_checked",
+      action: "routing_evidence_checked",
+      actorType: "system",
+      officerLane: "Finance",
+      targetType: "mission_evidence_card",
+      targetId: "finance-routing",
+      metadata: { content_exposed: false },
+      occurredAt: "2026-06-23T00:00:00.000Z"
+    }),
+    buildAuditWriteSpineDryRunProof({
+      category: "compliance.verification_evidence_checked",
+      action: "verification_evidence_checked",
+      actorType: "system",
+      officerLane: "Compliance",
+      targetType: "mission_evidence_card",
+      targetId: "compliance-verification",
+      metadata: { content_exposed: false },
+      occurredAt: "2026-06-23T00:00:00.000Z"
+    })
+  ];
+  const invalidProofs = proofs.filter((proof) => !proof.validation.valid || proof.productionMutation || proof.wouldPersist || proof.contentExposed);
+  const status: MissionControlStatus = invalidProofs.length ? "Failed" : "Needs Review";
+  const summary = status === "Failed"
+    ? "Audit write spine dry-run validation failed and cannot support Finance/Compliance proof."
+    : "Audit write spine helper builds safe structured events, but runtime persisted audit proof is not connected yet.";
+
+  return {
+    ...evidenceCard(
+      `${department.toLowerCase()}-audit-write-spine`,
+      "Audit write spine",
+      department,
+      "Audit",
+      status,
+      summary,
+      [
+        `Safe categories registered: ${AUDIT_WRITE_SPINE_SAFE_CATEGORIES.length}.`,
+        `Dry-run proofs valid: ${proofs.length - invalidProofs.length}/${proofs.length}.`,
+        "wouldPersist=false for helper proof.",
+        "productionMutation=false for helper proof.",
+        "content_exposed=false for helper proof.",
+        "Runtime persisted audit proof: not connected.",
+        "Pass requires connected persisted audit evidence; helper proof alone stays Needs Review."
+      ]
+    ),
+    scope: "v2_infrastructure",
+    criticality: "important",
+    blocksCurrentRelease: false,
+    evidenceRequiredForPass: `${lane} audit write spine can Pass only after the helper proof and runtime persisted audit evidence are both connected.`
+  };
 }
 
 export const HIVE_AGENT_REGISTRY: HiveAgentEntry[] = [
@@ -3815,6 +3886,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("finance-payout", "Payout readiness", "Finance", "Payouts", "Needs Review", "Payout release remains blocked from repair/debug flows.", ["No payout release before completion."]),
       evidenceCard("finance-fees", "Platform fee posture", "Finance", "Fees", "Needs Review", "Fee posture needs routing math evidence.", ["No fake revenue totals."]),
       evidenceCard("finance-repair-audit-coverage", "Repair audit coverage", "Finance", "Audit", auditEvidence.status, auditEvidence.status === "Pass" ? "Finance repair audit evidence is connected." : "Repair approvals, executions, verification, and score updates require audit evidence before Finance can Pass.", [...auditEvidence.evidence, ...auditPlanEvidence]),
+      buildAuditWriteSpineEvidenceCard("Finance"),
       evidenceCard("finance-future", "Booth rent/commission future readiness", "Finance", "Future Money Models", "Needs Review", "Future money models remain approval-gated.", ["No commission or booth-rent rule mutation."])
     ],
     marketing: [
@@ -3830,6 +3902,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("compliance-trust-gates", "Client/barber/shop trust gates", "Compliance", "Trust Gates", roleDrift.status, "Trust gates depend on clean public role evidence and must not mutate roles from Architect.", roleDrift.evidence),
       complianceRoleTruth,
       evidenceCard("compliance-consent", "Consent/opt-out readiness", "Compliance", "Consent", "Needs Review", "Consent and opt-out readiness are not mutated by v1.", ["No user notification action is enabled."]),
+      buildAuditWriteSpineEvidenceCard("Compliance"),
       evidenceCard("compliance-policy", "Policy visibility", "Compliance", "Policy", "Needs Review", "Policy visibility requires source review.", ["Source Vault is registered, not ingested."])
     ],
     security: [

@@ -12,6 +12,7 @@ import {
   buildMissionControlFoundation,
   buildDeploymentRegressionEvidence,
   buildAuditSpineModel,
+  buildAuditWriteSpineEvidenceCard,
   buildMissionReadinessBreakdown,
   buildV1RuntimeProofMatrix,
   buildRlsSecurityInventory,
@@ -1267,6 +1268,38 @@ describe("architect mission control foundation", () => {
     expect(evidence.join("\n")).toContain("Repair executions");
     expect(evidence.join("\n")).toContain("Repair verification");
     expect(evidence.join("\n")).toContain("Score updates");
+  });
+
+  it("surfaces Finance and Compliance audit write spine proof without fake Pass", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-23T12:00:00.000Z");
+    const financeLane = foundation.departmentLanes.find((lane) => lane.id === "finance");
+    const complianceLane = foundation.departmentLanes.find((lane) => lane.id === "compliance");
+    const financeCard = financeLane?.cards.find((card) => card.id === "finance-audit-write-spine");
+    const complianceCard = complianceLane?.cards.find((card) => card.id === "compliance-audit-write-spine");
+    const ceoAuditWriteSpineCard = foundation.ceoCommandCenter.find((card) => card.id.includes("audit-write-spine"));
+
+    expect(financeCard).toMatchObject({
+      status: "Needs Review",
+      scope: "v2_infrastructure",
+      blocksCurrentRelease: false
+    });
+    expect(complianceCard).toMatchObject({
+      status: "Needs Review",
+      scope: "v2_infrastructure",
+      blocksCurrentRelease: false
+    });
+    expect(financeCard?.evidence.join("\n")).toContain("wouldPersist=false");
+    expect(complianceCard?.evidence.join("\n")).toContain("productionMutation=false");
+    expect(complianceCard?.evidence.join("\n")).toContain("Runtime persisted audit proof: not connected.");
+    expect(ceoAuditWriteSpineCard).toBeUndefined();
+  });
+
+  it("keeps helper-only audit write spine evidence below Pass", () => {
+    const card = buildAuditWriteSpineEvidenceCard("Finance");
+
+    expect(card.status).toBe("Needs Review");
+    expect(card.evidence.join("\n")).toContain("Pass requires connected persisted audit evidence");
+    expect(card.evidence.join("\n")).toContain("content_exposed=false");
   });
 
   it("keeps Audit Spine from Pass when no audit evidence is connected", () => {
