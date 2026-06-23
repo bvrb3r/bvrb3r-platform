@@ -172,6 +172,7 @@ const V2_INFRASTRUCTURE_CARD_IDS = new Set([
   "technology-api",
   "technology-schema",
   "technology-coverage",
+  "finance-evidence-summary",
   "finance-audit-write-spine",
   "compliance-audit-write-spine",
   "security-audit-plan",
@@ -3769,6 +3770,131 @@ function buildCeoCards(
   ];
 }
 
+function buildFinancePaymentHealthEvidenceCard(
+  paymentsCaptured: MissionEvidenceCard | undefined,
+  paymentRoutingHealth: MissionEvidenceCard | undefined,
+  validators: CoreLoopValidator[]
+): MissionEvidenceCard {
+  const validatorStatusValue = validatorStatus(validators, "payment-routing-loop");
+  const validatorEvidenceRows = validatorEvidence(validators, "payment-routing-loop");
+  const status: MissionControlStatus = paymentsCaptured?.status === "Failed" || paymentRoutingHealth?.status === "Failed"
+    ? "Failed"
+    : paymentsCaptured?.status === "Pass" && paymentRoutingHealth?.status === "Pass"
+      ? "Pass"
+      : paymentsCaptured || paymentRoutingHealth
+        ? "Needs Review"
+        : validatorStatusValue;
+  const evidence = [
+    ...(paymentsCaptured?.evidence ?? ["Captured/succeeded payment count evidence is not connected."]),
+    ...(paymentRoutingHealth?.evidence ?? validatorEvidenceRows),
+    "Payment health connector is read-only; no payment capture, charge creation, routing insert, or ledger mutation was attempted."
+  ];
+
+  return evidenceCard(
+    "finance-payment-health",
+    "Payment health",
+    "Finance",
+    "Payments",
+    status,
+    status === "Pass"
+      ? "Connected read-only payment and routing evidence reports healthy payment posture."
+      : status === "Failed"
+        ? "Connected payment or routing evidence proves a broken Finance posture."
+        : "Payment health needs connected captured-payment and routing proof before it can Pass.",
+    evidence
+  );
+}
+
+function buildFinanceStripeStatusEvidenceCard(stripeStatusEvidence?: MissionEvidenceCard): MissionEvidenceCard {
+  if (stripeStatusEvidence) {
+    return evidenceCard(
+      "finance-stripe",
+      "Stripe status",
+      "Finance",
+      "Stripe",
+      stripeStatusEvidence.status,
+      stripeStatusEvidence.status === "Pass"
+        ? "Safe Stripe metadata is connected without exposing secrets or making provider calls."
+        : stripeStatusEvidence.summary,
+      [
+        ...stripeStatusEvidence.evidence,
+        "Stripe status connector is read-only; no live Stripe API call or secret value exposure was added."
+      ]
+    );
+  }
+
+  return evidenceCard(
+    "finance-stripe",
+    "Stripe status",
+    "Finance",
+    "Stripe",
+    "Needs Review",
+    "Stripe status cannot be safely verified from connected metadata yet.",
+    [
+      "No safe connected Stripe status metadata was provided to Mission Control.",
+      "No new live Stripe API call was added.",
+      "No Stripe secret, webhook secret, payment intent, transfer, payout, or refund write path was touched."
+    ]
+  );
+}
+
+function buildFinancePayoutReadinessEvidenceCard(
+  payoutReadinessHealth: MissionEvidenceCard | undefined,
+  paymentRoutingHealth: MissionEvidenceCard | undefined
+): MissionEvidenceCard {
+  const status: MissionControlStatus = payoutReadinessHealth?.status === "Failed" || paymentRoutingHealth?.status === "Failed"
+    ? "Failed"
+    : payoutReadinessHealth?.status === "Pass" && paymentRoutingHealth?.status === "Pass"
+      ? "Pass"
+      : "Needs Review";
+
+  return evidenceCard(
+    "finance-payout",
+    "Payout readiness",
+    "Finance",
+    "Payouts",
+    status,
+    status === "Pass"
+      ? "Connected routing and payout-readiness evidence reports healthy payout posture."
+      : status === "Failed"
+        ? "Connected routing or payout-readiness evidence proves payout posture is broken."
+        : "Payout readiness needs connected routing and payout evidence before it can Pass.",
+    [
+      ...(payoutReadinessHealth?.evidence ?? ["Payout readiness evidence is not connected."]),
+      ...(paymentRoutingHealth?.evidence ?? ["Routing evidence is not connected."]),
+      "Payout readiness connector is read-only; no payout release, transfer creation, or routing mutation was attempted."
+    ]
+  );
+}
+
+function buildFinanceOfficerSummaryEvidenceCard(cards: MissionEvidenceCard[]): MissionEvidenceCard {
+  const status = aggregateStatus(cards);
+
+  return {
+    ...evidenceCard(
+      "finance-evidence-summary",
+      "Finance evidence summary",
+      "Finance",
+      "Officer Summary",
+      status,
+      status === "Pass"
+        ? "Finance officer evidence is connected and healthy across payment, Stripe, routing, payout, refund, and audit posture."
+        : status === "Failed"
+          ? "Finance officer evidence has connected failed proof that must remain visible."
+          : "Finance officer evidence still has missing, stale, or disconnected proof.",
+      [
+        ...cards.map((card) => `${card.label}: ${card.status}.`),
+        "CEO cockpit remains compact; deep Finance proof stays in the Finance officer lane.",
+        "No production data mutation, Stripe write call, refund, payout, payment-routing mutation, or ledger mutation was attempted."
+      ]
+    ),
+    scope: "v2_infrastructure",
+    criticality: "important",
+    blocksCurrentRelease: false,
+    evidenceRequiredForPass: "Finance evidence summary can Pass only when every source Finance evidence card passes from connected read-only proof."
+  };
+}
+
 function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: ArchitectIncident[], platformEvidence: MissionEvidenceCard[] = []): MissionDepartmentLane[] {
   const evidenceById = new Map(platformEvidence.map((card) => [card.id, card]));
   const platformCard = (
@@ -3794,20 +3920,30 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
   const failedRefundAttempts = evidenceById.get("ceo-failed-refund-attempts");
   const lastRefundTimestamp = evidenceById.get("ceo-last-refund-timestamp");
   const paymentRoutingHealth = evidenceById.get("ceo-payment-routing-health");
+  const paymentsCaptured = evidenceById.get("ceo-payments-captured");
+  const payoutReadinessHealth = evidenceById.get("ceo-payout-readiness-health");
+  const stripeStatusEvidence = evidenceById.get("ceo-stripe-status");
+  const financePaymentHealth = buildFinancePaymentHealthEvidenceCard(paymentsCaptured, paymentRoutingHealth, validators);
+  const financeStripeStatus = buildFinanceStripeStatusEvidenceCard(stripeStatusEvidence);
+  const financePayoutReadiness = buildFinancePayoutReadinessEvidenceCard(payoutReadinessHealth, paymentRoutingHealth);
   const refundResolutionStatus: MissionControlStatus = refundIncidents.length
     ? "Failed"
-    : activeRefundBlockers?.status === "Pass" && refundCount?.status === "Pass"
+    : activeRefundBlockers?.status === "Failed" || failedRefundAttempts?.status === "Failed"
+      ? "Failed"
+      : activeRefundBlockers?.status === "Pass"
       ? "Pass"
       : "Needs Review";
   const refundResolutionEvidence = refundIncidents.length
     ? refundIncidents.flatMap((incident) => [`${incident.headline} (${incident.targetId})`, ...incident.evidence])
-    : activeRefundBlockers && refundCount
+    : activeRefundBlockers
       ? [
         ...activeRefundBlockers.evidence,
-        ...refundCount.evidence,
+        ...(refundCount?.evidence ?? []),
         ...(totalRefunded?.evidence ?? []),
+        ...(failedRefundAttempts?.evidence ?? []),
         ...(lastRefundTimestamp?.evidence ?? []),
-        "No active cancelled/captured refund blocker incident is currently detected."
+        "No active cancelled/captured refund blocker incident is currently detected.",
+        "Refund posture is read-only; no refund execution was attempted."
       ]
       : ["No connected refund/reversal evidence bundle has proven cancelled/captured payments are resolved."];
   const auditPlanEvidence = getAuditCoveragePlanEvidence();
@@ -3854,8 +3990,8 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("operations-completion", "Service completion flow", "Operations", "Service Completion", validatorStatus(validators, "barber-calendar-loop"), "Only barbers should complete their own services.", validatorEvidence(validators, "barber-calendar-loop"))
     ],
     finance: [
-      evidenceCard("finance-payment-health", "Payment health", "Finance", "Payments", validatorStatus(validators, "payment-routing-loop"), "Payment health uses appointment/payment/routing truth.", validatorEvidence(validators, "payment-routing-loop")),
-      evidenceCard("finance-stripe", "Stripe status", "Finance", "Stripe", "Needs Review", "Stripe status requires provider truth; v1 does not mutate Stripe.", ["No Stripe/payment internals changed."]),
+      financePaymentHealth,
+      financeStripeStatus,
       evidenceCard(
         "finance-routing",
         "Routing health",
@@ -3883,8 +4019,18 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       evidenceCard("finance-failed-refund-attempts", "Failed refund attempts", "Finance", "Refund Logs", failedRefundAttempts?.status ?? "Needs Review", failedRefundAttempts?.summary ?? "Failed refund attempt evidence is not connected.", failedRefundAttempts?.evidence ?? ["Failed refund attempt evidence is not connected."]),
       evidenceCard("finance-active-refund-blockers", "Active unresolved refund blockers", "Finance", "Refund Logs", activeRefundBlockers?.status ?? "Needs Review", activeRefundBlockers?.summary ?? "Active refund blocker evidence is not connected.", activeRefundBlockers?.evidence ?? ["Active refund blocker evidence is not connected."]),
       evidenceCard("finance-last-refund-timestamp", "Last refund timestamp", "Finance", "Refund Logs", lastRefundTimestamp?.status ?? "Needs Review", lastRefundTimestamp?.summary ?? "Last refund timestamp is not connected.", lastRefundTimestamp?.evidence ?? ["Last refund timestamp evidence is not connected."]),
-      evidenceCard("finance-payout", "Payout readiness", "Finance", "Payouts", "Needs Review", "Payout release remains blocked from repair/debug flows.", ["No payout release before completion."]),
+      financePayoutReadiness,
       evidenceCard("finance-fees", "Platform fee posture", "Finance", "Fees", "Needs Review", "Fee posture needs routing math evidence.", ["No fake revenue totals."]),
+      buildFinanceOfficerSummaryEvidenceCard([
+        financePaymentHealth,
+        financeStripeStatus,
+        paymentRoutingHealth
+          ? evidenceCard("finance-routing-summary-source", "Routing health", "Finance", "Routing", paymentRoutingHealth.status, paymentRoutingHealth.summary, paymentRoutingHealth.evidence)
+          : evidenceCard("finance-routing-summary-source", "Routing health", "Finance", "Routing", validatorStatus(validators, "payment-routing-loop"), "Routing health uses payment_routing_records evidence.", validatorEvidence(validators, "payment-routing-loop")),
+        financePayoutReadiness,
+        evidenceCard("finance-refund-summary-source", "Refund posture", "Finance", "Refund Resolution", refundResolutionStatus, refundResolutionStatus === "Pass" ? "Refund posture has connected no-active-blocker proof." : refundResolutionStatus === "Failed" ? "Refund posture has connected blocker/failure proof." : "Refund posture proof is missing.", refundResolutionEvidence),
+        evidenceCard("finance-audit-summary-source", "Audit spine posture", "Finance", "Audit", auditEvidence.status, auditEvidence.summary, auditEvidence.evidence)
+      ]),
       evidenceCard("finance-repair-audit-coverage", "Repair audit coverage", "Finance", "Audit", auditEvidence.status, auditEvidence.status === "Pass" ? "Finance repair audit evidence is connected." : "Repair approvals, executions, verification, and score updates require audit evidence before Finance can Pass.", [...auditEvidence.evidence, ...auditPlanEvidence]),
       buildAuditWriteSpineEvidenceCard("Finance"),
       evidenceCard("finance-future", "Booth rent/commission future readiness", "Finance", "Future Money Models", "Needs Review", "Future money models remain approval-gated.", ["No commission or booth-rent rule mutation."])
