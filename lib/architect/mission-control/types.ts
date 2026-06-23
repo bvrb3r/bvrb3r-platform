@@ -183,6 +183,20 @@ export type SourceVaultCategory =
   | "Operations doctrine"
   | "Content / Community doctrine";
 
+export type SourceVaultPrivateConnectionMetadata = {
+  sourceKey: string;
+  safeSourceLabel: string;
+  category: SourceVaultCategory;
+  requiredForV1: boolean;
+  private: boolean;
+  connected: boolean;
+  lastVerifiedAt: string | null;
+  fingerprint: string | null;
+  missingCount: number;
+  connectedCount: number;
+  contentExposed: boolean;
+};
+
 export type SourceVaultEntry = {
   id: string;
   sourceName: string;
@@ -207,6 +221,7 @@ export type SourceVaultEntry = {
   staleOrMissingEvidenceState: string[];
   critical: boolean;
   rawContentCommitted: boolean;
+  privateConnection: SourceVaultPrivateConnectionMetadata;
 };
 
 export type SourceVaultCategorySummary = {
@@ -225,6 +240,9 @@ export type SourceVaultSummary = {
   ingestedMetadataCount: number;
   missingRequiredSourceCount: number;
   privateSourceRequiredCount: number;
+  privateMetadataConnectedCount: number;
+  privateMetadataMissingCount: number;
+  contentExposedCount: number;
   needsReviewCount: number;
   parkedFutureSourceCount: number;
   v1RequiredSourceCount: number;

@@ -1054,6 +1054,9 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
         `ingestedMetadataCount=${foundation.sourceVaultInventory.summary.ingestedMetadataCount}`,
         `missingRequiredSourceCount=${foundation.sourceVaultInventory.summary.missingRequiredSourceCount}`,
         `privateSourceRequiredCount=${foundation.sourceVaultInventory.summary.privateSourceRequiredCount}`,
+        `privateMetadataConnectedCount=${foundation.sourceVaultInventory.summary.privateMetadataConnectedCount}`,
+        `privateMetadataMissingCount=${foundation.sourceVaultInventory.summary.privateMetadataMissingCount}`,
+        `contentExposedCount=${foundation.sourceVaultInventory.summary.contentExposedCount}`,
         `parkedFutureSourceCount=${foundation.sourceVaultInventory.summary.parkedFutureSourceCount}`,
         foundation.sourceVaultInventory.privacyWarning
       ]
@@ -2808,8 +2811,14 @@ function SourceVaultEntryCard({ source }: { source: SourceVaultInventory["entrie
         <p><span className="font-black text-white/82">Privacy:</span> {source.privacyClass}</p>
         <p><span className="font-black text-white/82">Scope:</span> {source.scope}</p>
         <p><span className="font-black text-white/82">Ingestion:</span> {source.ingestionStatus}</p>
-        <p><span className="font-black text-white/82">Storage:</span> {source.storageLocation}</p>
-        <p><span className="font-black text-white/82">Hash:</span> {source.contentHash}</p>
+        <p><span className="font-black text-white/82">Source key:</span> {source.privateConnection.sourceKey}</p>
+        <p><span className="font-black text-white/82">Required for V1:</span> {source.privateConnection.requiredForV1 ? "true" : "false"}</p>
+        <p><span className="font-black text-white/82">Connected:</span> {source.privateConnection.connected ? "true" : "false"}</p>
+        <p><span className="font-black text-white/82">Last verified:</span> {source.privateConnection.lastVerifiedAt ?? "not connected"}</p>
+        <p><span className="font-black text-white/82">Fingerprint:</span> {source.privateConnection.fingerprint ?? "not connected"}</p>
+        <p><span className="font-black text-white/82">Missing count:</span> {source.privateConnection.missingCount}</p>
+        <p><span className="font-black text-white/82">Connected count:</span> {source.privateConnection.connectedCount}</p>
+        <p><span className="font-black text-white/82">Content exposed:</span> {source.privateConnection.contentExposed ? "true" : "false"}</p>
       </div>
       <p className="mt-3 text-xs leading-5 text-white/58">{source.summary}</p>
       {source.staleOrMissingEvidenceState.length ? (
@@ -2858,6 +2867,9 @@ function SourceVaultInventoryPanel({ inventory }: { inventory?: SourceVaultInven
           ["Ingested metadata", summary.ingestedMetadataCount],
           ["Missing required", summary.missingRequiredSourceCount],
           ["Private source required", summary.privateSourceRequiredCount],
+          ["Private metadata connected", summary.privateMetadataConnectedCount],
+          ["Private metadata missing", summary.privateMetadataMissingCount],
+          ["Content exposed", summary.contentExposedCount],
           ["Needs review", summary.needsReviewCount],
           ["Parked/future", summary.parkedFutureSourceCount],
           ["V1 required", summary.v1RequiredSourceCount],

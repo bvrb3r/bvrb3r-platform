@@ -36,6 +36,7 @@ import type {
   SourceVaultEntry,
   SourceVaultEvidenceStatus,
   SourceVaultInventory,
+  SourceVaultPrivateConnectionMetadata,
   SourceVaultRiskLevel,
   V1RuntimeProofGroup,
   V1RuntimeProofGroupId,
@@ -1736,15 +1737,25 @@ export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
 
 type SourceVaultEntryInput = Omit<
   SourceVaultEntry,
-  "status" | "evidenceStatus" | "failureMeaning" | "staleOrMissingEvidenceState" | "rawContentCommitted"
-> & Partial<Pick<SourceVaultEntry, "status" | "evidenceStatus" | "failureMeaning" | "staleOrMissingEvidenceState" | "rawContentCommitted">>;
+  "status" | "evidenceStatus" | "failureMeaning" | "staleOrMissingEvidenceState" | "rawContentCommitted" | "privateConnection"
+> & Partial<Pick<SourceVaultEntry, "status" | "evidenceStatus" | "failureMeaning" | "staleOrMissingEvidenceState" | "rawContentCommitted" | "privateConnection">>;
 
 function sourceVaultEntry(input: SourceVaultEntryInput): SourceVaultEntry {
-  const evidenceStatus = input.evidenceStatus ?? inferSourceVaultEntryStatus(input);
+  const rawContentCommitted = input.rawContentCommitted ?? false;
+  const privateConnection = sourceVaultPrivateConnectionMetadata({
+    ...input,
+    rawContentCommitted
+  });
+  const evidenceStatus = inferSourceVaultEntryStatus({
+    ...input,
+    rawContentCommitted,
+    privateConnection
+  });
 
   return {
     ...input,
-    rawContentCommitted: input.rawContentCommitted ?? false,
+    rawContentCommitted,
+    privateConnection,
     evidenceStatus,
     status: input.status ?? sourceVaultStatusLabel(evidenceStatus),
     failureMeaning: input.failureMeaning ?? sourceVaultFailureMeaning(input, evidenceStatus),
@@ -1752,9 +1763,37 @@ function sourceVaultEntry(input: SourceVaultEntryInput): SourceVaultEntry {
   };
 }
 
+function sourceVaultPrivateConnectionMetadata(entry: SourceVaultEntryInput): SourceVaultPrivateConnectionMetadata {
+  const requiredForV1 = entry.scope === "v1_required";
+  const privateSource = entry.privacyClass === "confidential" || entry.privacyClass === "restricted";
+  const fingerprint = entry.contentHash && !entry.contentHash.includes("missing") && !entry.contentHash.includes("placeholder")
+    ? entry.contentHash
+    : null;
+  const connected = Boolean(
+    entry.ingestionStatus === "ingested_metadata_only"
+    && fingerprint
+    && !entry.rawContentCommitted
+  );
+  const missingRequiredMetadata = requiredForV1 && !connected;
+
+  return {
+    sourceKey: entry.id,
+    safeSourceLabel: entry.sourceName,
+    category: entry.category,
+    requiredForV1,
+    private: privateSource,
+    connected,
+    lastVerifiedAt: connected ? entry.versionDate : null,
+    fingerprint,
+    missingCount: missingRequiredMetadata ? 1 : 0,
+    connectedCount: connected ? 1 : 0,
+    contentExposed: entry.rawContentCommitted ?? false
+  };
+}
+
 function inferSourceVaultEntryStatus(entry: SourceVaultEntryInput): SourceVaultEvidenceStatus {
   if (entry.scope === "parked" || entry.scope === "v3_future" || entry.ingestionStatus === "parked_future") return "Parked";
-  if ((entry.privacyClass === "confidential" || entry.privacyClass === "restricted") && entry.rawContentCommitted) return "Failed";
+  if (entry.privateConnection?.contentExposed || ((entry.privacyClass === "confidential" || entry.privacyClass === "restricted") && entry.rawContentCommitted)) return "Failed";
   if (entry.ingestionStatus === "missing") return entry.scope === "v1_required" && entry.critical ? "Failed" : "Needs Review";
   if (entry.ingestionStatus === "private_source_required") return "Needs Review";
   if (entry.ingestionStatus === "needs_review" || entry.ingestionStatus === "registered") return "Needs Review";
@@ -1770,6 +1809,8 @@ function inferSourceVaultEntryStatus(entry: SourceVaultEntryInput): SourceVaultE
       && entry.summary
       && entry.topicTags.length
       && entry.linkedArchitectCardIds.length
+      && entry.privateConnection?.connected
+      && entry.privateConnection.contentExposed === false
     );
 
     return hasRequiredMetadata ? "Pass" : "Needs Review";
@@ -1807,7 +1848,9 @@ function sourceVaultMissingEvidence(entry: SourceVaultEntryInput, status: Source
   if (entry.ingestionStatus === "private_source_required") missing.push("Private source must be reviewed from private storage; do not commit the file.");
   if (entry.ingestionStatus === "needs_review") missing.push("Metadata exists but needs source-owner review.");
   if ((entry.privacyClass === "confidential" || entry.privacyClass === "restricted") && entry.rawContentCommitted) missing.push("Confidential/restricted raw content must not be committed.");
-  if (!entry.contentHash || entry.contentHash.includes("missing")) missing.push("Checksum placeholder is missing or unresolved.");
+  if (entry.privateConnection?.contentExposed) missing.push("Private source content exposure is not allowed.");
+  if (entry.scope === "v1_required" && !entry.privateConnection?.connected) missing.push("Required V1 private connection metadata is not connected.");
+  if (!entry.contentHash || entry.contentHash.includes("missing") || entry.contentHash.includes("placeholder")) missing.push("Checksum placeholder is missing or unresolved.");
   if (!entry.linkedArchitectCardIds.length) missing.push("Linked Architect card IDs are not connected.");
 
   return missing.length ? missing : ["Source Vault evidence is incomplete."];
@@ -2673,6 +2716,9 @@ export function buildSourceVaultInventory(entries: SourceVaultEntry[] = SOURCE_V
     ingestedMetadataCount: normalizedEntries.filter((entry) => entry.ingestionStatus === "ingested_metadata_only").length,
     missingRequiredSourceCount: missingRequiredSources.length,
     privateSourceRequiredCount: privateSourceRequiredSources.length,
+    privateMetadataConnectedCount: normalizedEntries.reduce((count, entry) => count + entry.privateConnection.connectedCount, 0),
+    privateMetadataMissingCount: normalizedEntries.reduce((count, entry) => count + entry.privateConnection.missingCount, 0),
+    contentExposedCount: normalizedEntries.filter((entry) => entry.privateConnection.contentExposed).length,
     needsReviewCount: needsReviewSources.length,
     parkedFutureSourceCount: parkedFutureSources.length,
     v1RequiredSourceCount: v1RequiredSources.length,
@@ -2775,6 +2821,9 @@ function buildSourceVaultEvidenceCards(inventory: SourceVaultInventory): Mission
     `ingestedMetadataCount=${summary.ingestedMetadataCount}.`,
     `missingRequiredSourceCount=${summary.missingRequiredSourceCount}.`,
     `privateSourceRequiredCount=${summary.privateSourceRequiredCount}.`,
+    `privateMetadataConnectedCount=${summary.privateMetadataConnectedCount}.`,
+    `privateMetadataMissingCount=${summary.privateMetadataMissingCount}.`,
+    `contentExposedCount=${summary.contentExposedCount}.`,
     `needsReviewCount=${summary.needsReviewCount}.`,
     `parkedFutureSourceCount=${summary.parkedFutureSourceCount}.`,
     `v1RequiredSourceCount=${summary.v1RequiredSourceCount}.`,
@@ -2782,7 +2831,7 @@ function buildSourceVaultEvidenceCards(inventory: SourceVaultInventory): Mission
     `linkedArchitectCardsCount=${summary.linkedArchitectCardsCount}.`,
     `highestRiskLevel=${summary.highestRiskLevel}.`,
     inventory.privacyWarning,
-    ...inventory.entries.slice(0, 8).map((entry) => `${entry.sourceName}: ${entry.evidenceStatus}; ${entry.ingestionStatus}; ${entry.privacyClass}; ${entry.scope}.`)
+    ...inventory.entries.slice(0, 8).map((entry) => `${entry.privateConnection.safeSourceLabel}: connected=${entry.privateConnection.connected}; requiredForV1=${entry.privateConnection.requiredForV1}; private=${entry.privateConnection.private}; contentExposed=${entry.privateConnection.contentExposed}.`)
   ];
   const summaryText = summary.missingRequiredSourceCount
     ? `${summary.missingRequiredSourceCount} required V1 Source Vault source(s) are missing.`
