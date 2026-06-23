@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildMissionControlSnapshot, detectArchitectMissionIncidents } from "@/lib/architect/mission-control/incident-detection";
 import { buildProductOperationsRuntimeLoopProofFixtureFromTables } from "@/lib/architect/mission-control/runtime-loop-proof";
-import { APPOINTMENT_ID, ARCHITECT_USER, BARBER_ID, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
+import { APPOINTMENT_ID, ARCHITECT_USER, BARBER_ID, CLIENT_ID, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
 
 describe("architect mission incident detection", () => {
   it("builds Product and Operations runtime loop proof from read-only production tables", () => {
@@ -446,7 +446,7 @@ describe("architect mission incident detection", () => {
     expect(totalUsers).toMatchObject({ label: "Total Users", status: "Pass", metricValue: "3" });
     expect(clients).toMatchObject({ label: "Clients", status: "Pass", metricValue: "1" });
     expect(routing).toMatchObject({ label: "Payment Routing Health", status: "Failed" });
-    expect(roleDrift).toMatchObject({ label: "Role Drift Evidence", status: "Failed" });
+    expect(roleDrift).toMatchObject({ label: "Role Drift Evidence", status: "Pass" });
     expect(roleDrift?.evidence.join("\n")).toContain("Read-only evidence only; no role mutation was attempted.");
     expect(rlsDisabled).toMatchObject({ label: "RLS Disabled Evidence", status: "Failed", metricValue: "28 disabled" });
     expect(rlsDisabled?.evidence.join("\n")).toContain("no RLS enablement");
@@ -459,6 +459,121 @@ describe("architect mission incident detection", () => {
     expect(productLane?.cards.find((card) => card.id === "product-booking-ux")).toMatchObject({ status: "Pass" });
     expect(operationsLane?.cards.find((card) => card.id === "operations-calendars")).toMatchObject({ status: "Pass" });
     expect(operationsLane?.cards.find((card) => card.id === "operations-completion")).toMatchObject({ status: "Pass" });
+  });
+
+  it("connects production role metadata without exposing content or mutating role tables", async () => {
+    const base = createArchitectDebugTables();
+    const ownerProfileId = "owner-production-role";
+    const shopId = "shop-production-role";
+    const tables = createArchitectDebugTables({
+      profiles: [
+        ...base.profiles,
+        { id: ownerProfileId, email: "owner@bvrb3r.app", full_name: "Owner Evidence", role: "shop_owner_user", account_status: "active" }
+      ],
+      shops: [{ id: shopId, owner_id: ownerProfileId, status: "active", name: "Production Role Shop" }],
+      shop_barber_relationships: [{
+        id: "relationship-production-role",
+        shop_id: shopId,
+        barber_id: BARBER_ID,
+        status: "active",
+        relationship_type: "freelance"
+      }]
+    });
+    const roleTablesBefore = JSON.stringify({
+      profiles: tables.profiles,
+      clients: tables.clients,
+      barbers: tables.barbers,
+      shops: tables.shops,
+      shop_barber_relationships: tables.shop_barber_relationships
+    });
+
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(tables) as never, ARCHITECT_USER);
+    const inventory = snapshot.foundation.roleTruthInventory;
+    const securityCard = snapshot.foundation.departmentLanes
+      .find((lane) => lane.id === "security")
+      ?.cards.find((card) => card.id === "security-role-truth-inventory");
+    const ceoCard = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-role-drift-health");
+
+    expect(inventory).toMatchObject({
+      status: "Pass",
+      summary: {
+        v1CriticalDriftCount: 0,
+        unknownCount: 1
+      }
+    });
+    expect(inventory?.evidenceSource).toContain("profileRoleCounts=barber_user=1, client_user=1, platform_admin=1, shop_owner_user=1.");
+    expect(inventory?.evidenceSource).toContain("relationshipTypeCounts=freelance=1.");
+    expect(inventory?.evidenceSource).toContain("content_exposed=false");
+    expect(securityCard).toMatchObject({ status: "Pass" });
+    expect(securityCard?.evidence.join("\n")).toContain("profiles.role client_user count=1");
+    expect(securityCard?.evidence.join("\n")).toContain("content_exposed=false");
+    expect(ceoCard?.evidence.join("\n")).not.toContain("full document text");
+    expect(JSON.stringify({
+      profiles: tables.profiles,
+      clients: tables.clients,
+      barbers: tables.barbers,
+      shops: tables.shops,
+      shop_barber_relationships: tables.shop_barber_relationships
+    })).toBe(roleTablesBefore);
+  });
+
+  it("fails production role evidence when invalid or null profile roles are connected", async () => {
+    const base = createArchitectDebugTables();
+    const tables = createArchitectDebugTables({
+      profiles: [
+        ...base.profiles,
+        { id: "profile-invalid-role", email: "invalid@bvrb3r.app", role: "owner", account_status: "active" },
+        { id: "profile-null-role", email: "null@bvrb3r.app", role: null, account_status: "active" }
+      ]
+    });
+
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(tables) as never, ARCHITECT_USER);
+    const invalidRow = snapshot.foundation.roleTruthInventory?.rows.find((row) => row.id === "production-profile-role-invalid-or-null");
+    const ceoCard = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-role-drift-health");
+
+    expect(snapshot.foundation.roleTruthInventory?.status).toBe("Failed");
+    expect(invalidRow).toMatchObject({
+      currentStatus: "Failed",
+      migrationRequired: "unknown"
+    });
+    expect(invalidRow?.evidenceSource).toContain("invalidProfileRoleCounts=owner=1");
+    expect(invalidRow?.evidenceSource).toContain("nullOrMissingProfileRoleCount=1");
+    expect(ceoCard).toMatchObject({ status: "Failed" });
+  });
+
+  it("fails production role evidence on broken profile linkages and relationship types", async () => {
+    const base = createArchitectDebugTables();
+    const tables = createArchitectDebugTables({
+      clients: [{ id: CLIENT_ID, profile_id: "missing-client-profile" }],
+      barbers: [{ ...base.barbers[0], profile_id: "missing-barber-profile" }],
+      shops: [{ id: "shop-broken-owner", owner_id: "missing-owner-profile", status: "active" }],
+      shop_barber_relationships: [{
+        id: "relationship-broken-type",
+        shop_id: "shop-broken-owner",
+        barber_id: BARBER_ID,
+        status: "active",
+        relationship_type: "partner"
+      }, {
+        id: "relationship-missing-type",
+        shop_id: "shop-broken-owner",
+        barber_id: "barber-two",
+        status: "active",
+        relationship_type: null
+      }]
+    });
+
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(tables) as never, ARCHITECT_USER);
+    const linkageRow = snapshot.foundation.roleTruthInventory?.rows.find((row) => row.id === "production-client-barber-shop-linkage");
+    const relationshipTypeRow = snapshot.foundation.roleTruthInventory?.rows.find((row) => row.id === "production-shop-barber-relationship-types");
+
+    expect(snapshot.foundation.roleTruthInventory?.status).toBe("Failed");
+    expect(linkageRow).toMatchObject({ currentStatus: "Failed" });
+    expect(linkageRow?.evidenceSource).toContain("clientLinkageGaps=1");
+    expect(linkageRow?.evidenceSource).toContain("barberLinkageGaps=1");
+    expect(linkageRow?.evidenceSource).toContain("shopOwnerLinkageGaps=1");
+    expect(relationshipTypeRow).toMatchObject({ currentStatus: "Failed" });
+    expect(relationshipTypeRow?.evidenceSource).toContain("invalidRelationshipTypeCounts=partner=1");
+    expect(relationshipTypeRow?.evidenceSource).toContain("missingRelationshipTypeCount=1");
   });
 
   it("keeps Finance failed when captured cancelled appointments are unresolved", async () => {

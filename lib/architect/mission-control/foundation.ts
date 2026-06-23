@@ -3101,7 +3101,7 @@ function buildRoleTruthInventoryEvidenceCards(inventory: RoleTruthInventory): Mi
     `businessRelationshipCount=${summary.businessRelationshipCount}.`,
     `staffPermissionCount=${summary.staffPermissionCount}.`,
     `migrationRequiredCount=${summary.migrationRequiredCount}.`,
-    ...inventory.rows.slice(0, 10).map((row) => `${row.currentRoleValue}: classification=${row.canonicalClassification}; destination=${row.expectedCanonicalDestination}; status=${row.currentStatus}; misuse=${row.accountRoleMisuse ? "yes" : "no"}.`)
+    ...inventory.rows.slice(0, 10).map((row) => `${row.currentRoleValue}: classification=${row.canonicalClassification}; destination=${row.expectedCanonicalDestination}; status=${row.currentStatus}; misuse=${row.accountRoleMisuse ? "yes" : "no"}; evidence=${row.evidenceSource}.`)
   ];
 
   return [
