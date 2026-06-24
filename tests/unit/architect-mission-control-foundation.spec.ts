@@ -13,6 +13,7 @@ import {
   buildDeploymentRegressionEvidence,
   buildAuditSpineModel,
   buildAuditWriteSpineEvidenceCard,
+  buildOfficerGreenGates,
   buildMissionReadinessBreakdown,
   buildV1RuntimeProofMatrix,
   buildRlsSecurityInventory,
@@ -23,6 +24,7 @@ import {
   getOfficerCleanupEvidence,
   validateCoreLoopState
 } from "@/lib/architect/mission-control/foundation";
+import type { MissionControlStatus, MissionDepartment, MissionDepartmentLane, MissionEvidenceCard, MissionLaneId } from "@/lib/architect/mission-control/types";
 
 type RlsInventoryRows = NonNullable<NonNullable<Parameters<typeof buildRlsSecurityInventory>[0]>["rows"]>;
 type RoleTruthRows = NonNullable<NonNullable<Parameters<typeof buildRoleTruthInventory>[0]>["rows"]>;
@@ -70,6 +72,38 @@ function cardById(foundation: ReturnType<typeof buildMissionControlFoundation>, 
     ...foundation.departmentLanes.flatMap((lane) => lane.cards),
     ...foundation.coreLoopValidators
   ].find((card) => card.id === id);
+}
+
+function gateCard(
+  id: string,
+  label: string,
+  department: MissionDepartment,
+  status: MissionControlStatus,
+  summary = `${label} ${status}.`
+): MissionEvidenceCard {
+  return {
+    id,
+    label,
+    department,
+    workflow: "Officer Gate Fixture",
+    status,
+    summary,
+    evidence: status === "Pass"
+      ? [`${label} proof is connected and passing.`]
+      : status === "Failed"
+        ? [`${label} has connected failed evidence.`]
+        : [`${label} proof is not connected.`]
+  };
+}
+
+function gateLane(id: MissionLaneId, label: MissionDepartment, cards: MissionEvidenceCard[]): MissionDepartmentLane {
+  return {
+    id,
+    label,
+    purpose: `${label} test lane.`,
+    status: cards.some((card) => card.status === "Failed") ? "Failed" : cards.every((card) => card.status === "Pass") ? "Pass" : "Needs Review",
+    cards
+  };
 }
 
 function rlsInventoryRow(overrides: Partial<RlsInventoryRows[number]> = {}): RlsInventoryRows[number] {
@@ -200,6 +234,111 @@ describe("architect mission control foundation", () => {
     expect(securityLane?.cards.find((card) => card.id === "security-audit")).toMatchObject({
       status: "Needs Review"
     });
+  });
+
+  it("keeps missing officer green gate evidence as Needs Review", () => {
+    const gates = buildOfficerGreenGates([], [], []);
+    const securityGate = gates.find((gate) => gate.id === "security");
+
+    expect(securityGate).toMatchObject({
+      status: "Needs Review",
+      proofConnected: false
+    });
+    expect(securityGate?.missingEvidenceCount).toBeGreaterThan(0);
+    expect(securityGate?.blockerReasons.join("\n")).toContain("not connected");
+  });
+
+  it("keeps failed officer evidence Failed and exposes blocker reasons", () => {
+    const gates = buildOfficerGreenGates([], [
+      gateLane("security", "Security", [
+        gateCard("security-role-drift", "Profile role drift", "Security", "Failed", "Role drift is connected and failed."),
+        gateCard("security-role-truth-inventory", "Role Truth Inventory", "Security", "Pass"),
+        gateCard("security-rls-disabled", "RLS disabled tables", "Security", "Pass"),
+        gateCard("security-rls-inventory", "RLS Security Inventory", "Security", "Pass"),
+        gateCard("security-audit", "Audit trail coverage", "Security", "Pass")
+      ])
+    ]);
+    const securityGate = gates.find((gate) => gate.id === "security");
+
+    expect(securityGate).toMatchObject({
+      status: "Failed",
+      failedEvidenceCount: 1,
+      missingEvidenceCount: 0
+    });
+    expect(securityGate?.blockerReasons).toEqual(expect.arrayContaining([
+      "Profile role drift: Failed. Role drift is connected and failed."
+    ]));
+  });
+
+  it("lets Security, Compliance, and Finance green gates Pass only from connected passing proof", () => {
+    const gates = buildOfficerGreenGates([], [
+      gateLane("security", "Security", [
+        gateCard("security-role-drift", "Profile role drift", "Security", "Pass"),
+        gateCard("security-role-truth-inventory", "Role Truth Inventory", "Security", "Pass"),
+        gateCard("security-rls-disabled", "RLS disabled tables", "Security", "Pass"),
+        gateCard("security-rls-inventory", "RLS Security Inventory", "Security", "Pass"),
+        gateCard("security-audit", "Audit trail coverage", "Security", "Pass")
+      ]),
+      gateLane("compliance", "Compliance", [
+        gateCard("compliance-trust-gates", "Client/barber/shop trust gates", "Compliance", "Pass"),
+        gateCard("compliance-verification", "Verification", "Compliance", "Pass"),
+        gateCard("compliance-role-truth-inventory", "Role Truth Migration Plan", "Compliance", "Pass"),
+        gateCard("audit-spine-coverage", "Audit Spine Coverage", "Compliance", "Pass")
+      ]),
+      gateLane("finance", "Finance", [
+        gateCard("finance-payment-health", "Payment Health", "Finance", "Pass"),
+        gateCard("finance-stripe", "Stripe Status", "Finance", "Pass"),
+        gateCard("finance-payout", "Payout readiness", "Finance", "Pass"),
+        gateCard("finance-refund-resolution", "Cancelled/captured refund resolution", "Finance", "Pass")
+      ])
+    ]);
+
+    expect(gates.find((gate) => gate.id === "security")).toMatchObject({ status: "Pass", proofConnected: true, failedEvidenceCount: 0, missingEvidenceCount: 0 });
+    expect(gates.find((gate) => gate.id === "compliance")).toMatchObject({ status: "Pass", proofConnected: true, failedEvidenceCount: 0, missingEvidenceCount: 0 });
+    expect(gates.find((gate) => gate.id === "finance")).toMatchObject({ status: "Pass", proofConnected: true, failedEvidenceCount: 0, missingEvidenceCount: 0 });
+  });
+
+  it("makes Platform Health inherit the worst required officer gate without counting parked Hive AI or idle Codex Packets", () => {
+    const gates = buildOfficerGreenGates([
+      gateCard("ceo-regression-deployment-health", "Deployment / Regression proof", "Technology", "Pass"),
+      gateCard("source-vault-status", "Source Vault proof", "Technology", "Pass"),
+      gateCard("critical-incidents", "Critical incident proof", "Technology", "Pass"),
+      gateCard("hive-ai", "Hive AI", "Technology", "Needs Review"),
+      gateCard("codex-packets", "Codex Packets", "Technology", "Pass")
+    ], [
+      gateLane("security", "Security", [
+        gateCard("security-role-drift", "Profile role drift", "Security", "Failed", "Role drift is connected and failed."),
+        gateCard("security-role-truth-inventory", "Role Truth Inventory", "Security", "Pass"),
+        gateCard("security-rls-disabled", "RLS disabled tables", "Security", "Pass"),
+        gateCard("security-rls-inventory", "RLS Security Inventory", "Security", "Pass"),
+        gateCard("security-audit", "Audit trail coverage", "Security", "Pass"),
+        gateCard("security-unsafe-actions", "Action Registry proof", "Security", "Pass")
+      ]),
+      gateLane("compliance", "Compliance", [
+        gateCard("compliance-trust-gates", "Client/barber/shop trust gates", "Compliance", "Pass"),
+        gateCard("compliance-verification", "Verification", "Compliance", "Pass"),
+        gateCard("compliance-role-truth-inventory", "Role Truth Migration Plan", "Compliance", "Pass"),
+        gateCard("audit-spine-coverage", "Audit Spine Coverage", "Compliance", "Pass")
+      ]),
+      gateLane("finance", "Finance", [
+        gateCard("finance-payment-health", "Payment Health", "Finance", "Pass"),
+        gateCard("finance-stripe", "Stripe Status", "Finance", "Pass"),
+        gateCard("finance-payout", "Payout readiness", "Finance", "Pass"),
+        gateCard("finance-refund-resolution", "Cancelled/captured refund resolution", "Finance", "Pass")
+      ]),
+      gateLane("product", "Product", [gateCard("product-runtime", "Product runtime proof", "Product", "Pass")]),
+      gateLane("operations", "Operations", [gateCard("operations-runtime", "Operations runtime proof", "Operations", "Pass")]),
+      gateLane("technology", "Technology", [gateCard("technology-runtime", "Technology runtime proof", "Technology", "Pass")])
+    ]);
+    const platformGate = gates.find((gate) => gate.id === "platform_health");
+
+    expect(platformGate).toMatchObject({
+      status: "Failed",
+      failedEvidenceCount: 1
+    });
+    expect(platformGate?.sources.map((source) => source.cardId)).not.toContain("hive-ai");
+    expect(platformGate?.sources.map((source) => source.cardId)).not.toContain("codex-packets");
+    expect(platformGate?.blockerReasons.join("\n")).toContain("Security Officer Green Gate: Failed");
   });
 
   it("surfaces cleanup evidence across officer lanes without mutating production truth", () => {

@@ -29,6 +29,7 @@ import type {
   MissionEvidenceCard,
   MissionControlStatus,
   MissionLaneId,
+  OfficerGreenGate,
   RoleTruthInventory,
   RlsSecurityInventory,
   SourceVaultInventory,
@@ -431,6 +432,7 @@ type CeoOfficerStatusSummary = {
   needsReviewCount: number;
   criticalBlockerCount: number;
   proofConnected: boolean;
+  blockerReasons: string[];
 };
 
 type CeoOfficerBlockerGroup = {
@@ -813,23 +815,27 @@ function buildOfficerStatusSummaries(
   return OFFICER_LANE_IDS.map((laneId) => {
     const lane = foundation.departmentLanes.find((candidate) => candidate.id === laneId);
     const blockers = blockerGroups.find((group) => group.laneId === laneId);
+    const greenGate: OfficerGreenGate | undefined = foundation.officerGreenGates?.find((gate) => gate.laneId === laneId);
     const ownedProofGroups = getRuntimeProofGroupsForLane(laneId, runtimeProofGroups);
     const laneCards = lane?.cards ?? [];
-    const failedCount = laneCards.filter((card) => card.status === "Failed").length + (blockers?.failedCount ?? 0);
-    const needsReviewCount = laneCards.filter((card) => card.status === "Needs Review").length + (blockers?.needsReviewCount ?? 0);
-    const proofConnected = ownedProofGroups.length > 0
+    const failedCount = greenGate?.failedEvidenceCount ?? (laneCards.filter((card) => card.status === "Failed").length + (blockers?.failedCount ?? 0));
+    const needsReviewCount = greenGate?.missingEvidenceCount ?? (laneCards.filter((card) => card.status === "Needs Review").length + (blockers?.needsReviewCount ?? 0));
+    const proofConnected = typeof greenGate?.proofConnected === "boolean"
+      ? greenGate.proofConnected
+      : ownedProofGroups.length > 0
       ? ownedProofGroups.every((group) => group.proofConnected)
       : laneCards.some((card) => card.evidence.length > 0);
 
     return {
       laneId,
       label: String(lane?.label ?? labelForLane(foundation, laneId)),
-      status: worstStatus(lane?.status, blockers?.status, ...ownedProofGroups.map((group) => group.status)),
+      status: worstStatus(greenGate?.status, lane?.status, blockers?.status, ...ownedProofGroups.map((group) => group.status)),
       href: laneHref(laneId),
       failedCount,
       needsReviewCount,
       criticalBlockerCount: blockers?.criticalBlockerCount ?? 0,
-      proofConnected
+      proofConnected,
+      blockerReasons: greenGate?.blockerReasons ?? []
     };
   });
 }
@@ -1511,6 +1517,11 @@ function CeoReadinessCard({
                   <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.12em] text-white/38">
                     proof connected: {officer.proofConnected ? "yes" : "no"}
                   </p>
+                  {officer.blockerReasons[0] ? (
+                    <p data-testid={`ceo-officer-green-gate-reason-${officer.laneId}`} className="mt-2 line-clamp-2 text-[11px] leading-5 text-white/48">
+                      {officer.blockerReasons[0]}
+                    </p>
+                  ) : null}
                 </Link>
               ))}
             </div>

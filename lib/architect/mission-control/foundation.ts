@@ -24,6 +24,8 @@ import type {
   MissionLaneId,
   MissionReadinessBreakdown,
   MissionSeverity,
+  OfficerGreenGate,
+  OfficerGreenGateId,
   RoleTruthInventory,
   RoleTruthInventoryRow,
   RoleTruthRiskLevel,
@@ -2205,7 +2207,7 @@ export function buildMissionControlFoundation(
   const scopedCeoCommandCenter = scopeEvidenceCards(ceoCommandCenter);
   const preliminaryAuditSpine = buildAuditSpineModel(scopedCeoCommandCenter, baseDepartmentLanes, coreLoopValidators);
   const auditSpineCard = auditSpineEvidenceCard(preliminaryAuditSpine);
-  const departmentLanes = baseDepartmentLanes.map((lane) => {
+  const departmentLanesWithAuditSpine = baseDepartmentLanes.map((lane) => {
     if (lane.id !== "compliance") return lane;
     const cards = scopeEvidenceCards([...lane.cards, auditSpineCard]);
     return {
@@ -2214,7 +2216,9 @@ export function buildMissionControlFoundation(
       status: aggregateStatus(cards)
     };
   });
-  const auditSpine = buildAuditSpineModel(scopedCeoCommandCenter, departmentLanes, coreLoopValidators);
+  const auditSpine = buildAuditSpineModel(scopedCeoCommandCenter, departmentLanesWithAuditSpine, coreLoopValidators);
+  const officerGreenGates = buildOfficerGreenGates(scopedCeoCommandCenter, departmentLanesWithAuditSpine, coreLoopValidators);
+  const departmentLanes = addOfficerGreenGateCards(departmentLanesWithAuditSpine, officerGreenGates);
   const v1RuntimeProofMatrix = buildV1RuntimeProofMatrix(scopedCeoCommandCenter, departmentLanes, coreLoopValidators);
   const readinessBreakdown = buildMissionReadinessBreakdown(scopedCeoCommandCenter, departmentLanes, coreLoopValidators, v1RuntimeProofMatrix);
 
@@ -2224,6 +2228,7 @@ export function buildMissionControlFoundation(
     ceoCommandCenter: scopedCeoCommandCenter,
     departmentLanes,
     coreLoopValidators,
+    officerGreenGates,
     readinessBreakdown,
     v1RuntimeProofMatrix,
     deploymentRegression,
@@ -4192,6 +4197,270 @@ function aggregateStatus(cards: MissionEvidenceCard[]): MissionControlStatus {
   if (cards.some((card) => card.status === "Warning")) return "Warning";
   if (cards.length && cards.every((card) => card.status === "Pass")) return "Pass";
   return "Needs Review";
+}
+
+type OfficerGreenGateDefinition = {
+  id: OfficerGreenGateId;
+  label: string;
+  laneId: MissionLaneId;
+  officerOwner: MissionDepartment;
+  requiredEvidence: string[];
+  nextRepairLane: MissionLaneId;
+};
+
+const OFFICER_GREEN_GATE_DEFINITIONS: OfficerGreenGateDefinition[] = [
+  {
+    id: "security",
+    label: "Security Officer Green Gate",
+    laneId: "security",
+    officerOwner: "Security",
+    requiredEvidence: [
+      "Role drift evidence",
+      "Role Truth Inventory",
+      "RLS disabled-table evidence",
+      "RLS Security Inventory",
+      "Audit trail evidence"
+    ],
+    nextRepairLane: "security"
+  },
+  {
+    id: "compliance",
+    label: "Compliance Officer Green Gate",
+    laneId: "compliance",
+    officerOwner: "Compliance",
+    requiredEvidence: [
+      "Client/barber/shop-owner role health",
+      "Verification evidence",
+      "Role Truth Migration Plan",
+      "Repair audit coverage"
+    ],
+    nextRepairLane: "compliance"
+  },
+  {
+    id: "finance",
+    label: "Finance Officer Green Gate",
+    laneId: "finance",
+    officerOwner: "Finance",
+    requiredEvidence: [
+      "Payment health",
+      "Stripe status",
+      "Payout readiness",
+      "Refund evidence"
+    ],
+    nextRepairLane: "finance"
+  },
+  {
+    id: "platform_health",
+    label: "Technology / Platform Health Gate",
+    laneId: "technology",
+    officerOwner: "Technology",
+    requiredEvidence: [
+      "Deployment / Regression proof",
+      "Source Vault proof",
+      "Critical Incident proof",
+      "Action Registry proof",
+      "Required officer gates",
+      "Product / Operations / Technology required officer evidence"
+    ],
+    nextRepairLane: "technology"
+  }
+];
+
+const OFFICER_GREEN_GATE_SOURCE_IDS: Record<Exclude<OfficerGreenGateId, "platform_health">, string[]> = {
+  security: [
+    "security-role-drift",
+    "security-role-truth-inventory",
+    "security-rls-disabled",
+    "security-rls-inventory",
+    "security-audit"
+  ],
+  compliance: [
+    "compliance-trust-gates",
+    "compliance-verification",
+    "compliance-role-truth-inventory",
+    "audit-spine-coverage"
+  ],
+  finance: [
+    "finance-payment-health",
+    "finance-stripe",
+    "finance-payout",
+    "finance-refund-resolution"
+  ]
+};
+
+function gateEvidenceSource(card: MissionEvidenceCard | undefined) {
+  if (!card) return "Not connected";
+  return card.evidence.find((row) => !isMissingProofEvidence(row)) ?? card.summary;
+}
+
+function gateSourceProofConnected(card: MissionEvidenceCard | undefined) {
+  if (!card) return false;
+  if (!card.evidence.length) return false;
+  if (card.status === "Needs Review" && card.evidence.some(isMissingProofEvidence)) return false;
+  return true;
+}
+
+function gateStatusFromSources(sources: MissionEvidenceCard[]): MissionControlStatus {
+  if (sources.some((card) => card.status === "Failed")) return "Failed";
+  if (!sources.length || sources.some((card) => card.status !== "Pass" || !gateSourceProofConnected(card))) return "Needs Review";
+  return "Pass";
+}
+
+function buildOfficerGreenGateFromCards(definition: OfficerGreenGateDefinition, sourceCards: MissionEvidenceCard[]): OfficerGreenGate {
+  const sources = sourceCards.map((card) => ({
+    cardId: card.id,
+    label: card.label,
+    status: card.status,
+    proofConnected: gateSourceProofConnected(card),
+    evidenceSource: gateEvidenceSource(card),
+    blockerReason: card.status === "Pass" && gateSourceProofConnected(card) ? null : `${card.label}: ${card.status}. ${card.summary}`
+  }));
+  const missingEvidenceCount = sources.filter((source) => source.status !== "Failed" && (!source.proofConnected || source.status !== "Pass")).length;
+  const failedEvidenceCount = sources.filter((source) => source.status === "Failed").length;
+  const status = gateStatusFromSources(sourceCards);
+  const blockerReasons = sources
+    .map((source) => source.blockerReason)
+    .filter((reason): reason is string => Boolean(reason));
+
+  return {
+    ...definition,
+    status,
+    proofConnected: sourceCards.length > 0 && sources.every((source) => source.proofConnected),
+    missingEvidenceCount,
+    failedEvidenceCount,
+    blockerReasons,
+    evidenceSources: sources.map((source) => `${source.label}: ${source.evidenceSource}`),
+    summary: status === "Pass"
+      ? `${definition.label} is green from connected read-only evidence.`
+      : status === "Failed"
+        ? `${definition.label} has ${failedEvidenceCount} failed evidence source(s) and must stay Failed.`
+        : `${definition.label} has ${missingEvidenceCount} missing, stale, or incomplete evidence source(s).`,
+    sources
+  };
+}
+
+function missingGateSourceCard(cardId: string, label: string, department: MissionDepartment, workflow: string): MissionEvidenceCard {
+  return evidenceCard(
+    cardId,
+    label,
+    department,
+    workflow,
+    "Needs Review",
+    `${label} is not connected to the officer green gate.`,
+    [`${label} proof is not connected. Missing evidence remains Needs Review.`]
+  );
+}
+
+function laneStatusGateCard(lane: MissionDepartmentLane | undefined, laneId: MissionLaneId, label: MissionDepartment): MissionEvidenceCard {
+  if (!lane) {
+    return missingGateSourceCard(`platform-${laneId}-officer-status`, `${label} officer status`, label, "Officer Gate");
+  }
+
+  return evidenceCard(
+    `platform-${laneId}-officer-status`,
+    `${label} officer status`,
+    label,
+    "Officer Gate",
+    lane.status,
+    `${label} lane status is ${lane.status}.`,
+    lane.cards
+      .filter((card) => card.status !== "Pass")
+      .slice(0, 6)
+      .map((card) => `${card.label}: ${card.status}. ${card.summary}`)
+      .concat(lane.cards.some((card) => card.status !== "Pass") ? [] : [`${label} lane reports all connected cards Pass.`])
+  );
+}
+
+function officerGateEvidenceCard(gate: OfficerGreenGate): MissionEvidenceCard {
+  return {
+    ...evidenceCard(
+      `${gate.id}-officer-green-gate`,
+      gate.label,
+      gate.officerOwner,
+      "Officer Green Gate",
+      gate.status,
+      gate.summary,
+      [
+        ...gate.sources.map((source) => `${source.label}: ${source.status}; connected=${source.proofConnected ? "yes" : "no"}; source=${source.evidenceSource}.`),
+        ...gate.blockerReasons.map((reason) => `Blocker: ${reason}`),
+        "Green gate is read-only; no production SQL, RLS policy change, role normalization, money mutation, Stripe call, payout, refund, or repair execution was attempted."
+      ]
+    ),
+    metricValue: `${gate.failedEvidenceCount} failed / ${gate.missingEvidenceCount} review`,
+    scope: "v1_required",
+    criticality: "critical",
+    blocksCurrentRelease: true,
+    evidenceRequiredForPass: `${gate.label} can Pass only when every required source is connected and Pass. Missing proof stays Needs Review; failed proof stays Failed.`
+  };
+}
+
+export function buildOfficerGreenGates(
+  ceoCommandCenter: MissionEvidenceCard[] = [],
+  departmentLanes: MissionDepartmentLane[] = [],
+  coreLoopValidators: CoreLoopValidator[] = []
+): OfficerGreenGate[] {
+  const evidenceById = new Map<string, MissionEvidenceCard>();
+  for (const card of [
+    ...scopeEvidenceCards(ceoCommandCenter),
+    ...departmentLanes.flatMap((lane) => scopeEvidenceCards(lane.cards)),
+    ...scopeEvidenceCards(coreLoopValidators)
+  ]) {
+    evidenceById.set(card.id, card);
+  }
+
+  const gateDefinitionById = new Map(OFFICER_GREEN_GATE_DEFINITIONS.map((definition) => [definition.id, definition]));
+  const securityGate = buildOfficerGreenGateFromCards(gateDefinitionById.get("security")!, OFFICER_GREEN_GATE_SOURCE_IDS.security.map((cardId) =>
+    evidenceById.get(cardId) ?? missingGateSourceCard(cardId, cardId, "Security", "Officer Gate")
+  ));
+  const complianceGate = buildOfficerGreenGateFromCards(gateDefinitionById.get("compliance")!, OFFICER_GREEN_GATE_SOURCE_IDS.compliance.map((cardId) =>
+    evidenceById.get(cardId) ?? missingGateSourceCard(cardId, cardId, "Compliance", "Officer Gate")
+  ));
+  const financeGate = buildOfficerGreenGateFromCards(gateDefinitionById.get("finance")!, OFFICER_GREEN_GATE_SOURCE_IDS.finance.map((cardId) =>
+    evidenceById.get(cardId) ?? missingGateSourceCard(cardId, cardId, "Finance", "Officer Gate")
+  ));
+  const productLane = departmentLanes.find((lane) => lane.id === "product");
+  const operationsLane = departmentLanes.find((lane) => lane.id === "operations");
+  const technologyLane = departmentLanes.find((lane) => lane.id === "technology");
+  const platformGate = buildOfficerGreenGateFromCards(gateDefinitionById.get("platform_health")!, [
+    evidenceById.get("ceo-regression-deployment-health") ?? missingGateSourceCard("ceo-regression-deployment-health", "Deployment / Regression proof", "Technology", "Deployment"),
+    evidenceById.get("source-vault-status") ?? missingGateSourceCard("source-vault-status", "Source Vault proof", "Technology", "Source Vault"),
+    evidenceById.get("critical-incidents") ?? evidenceById.get("ceo-critical-incidents") ?? missingGateSourceCard("critical-incidents", "Critical Incident proof", "Technology", "Incidents"),
+    evidenceById.get("security-unsafe-actions") ?? missingGateSourceCard("security-unsafe-actions", "Action Registry proof", "Security", "Action Registry"),
+    officerGateEvidenceCard(securityGate),
+    officerGateEvidenceCard(complianceGate),
+    officerGateEvidenceCard(financeGate),
+    laneStatusGateCard(productLane, "product", "Product"),
+    laneStatusGateCard(operationsLane, "operations", "Operations"),
+    laneStatusGateCard(technologyLane, "technology", "Technology")
+  ]);
+
+  return [securityGate, complianceGate, financeGate, platformGate];
+}
+
+function addOfficerGreenGateCards(lanes: MissionDepartmentLane[], gates: OfficerGreenGate[]): MissionDepartmentLane[] {
+  const gateCards = gates.map(officerGateEvidenceCard);
+  return lanes.map((lane) => {
+    const cardsForLane = gateCards.filter((card) => departmentLaneIdForFoundation(card.department) === lane.id);
+    if (!cardsForLane.length) return lane;
+    const cards = scopeEvidenceCards([...cardsForLane, ...lane.cards]);
+    return {
+      ...lane,
+      cards,
+      status: aggregateStatus(cards)
+    };
+  });
+}
+
+function departmentLaneIdForFoundation(department: MissionDepartment): MissionLaneId {
+  if (department === "Product") return "product";
+  if (department === "Technology") return "technology";
+  if (department === "Operations") return "operations";
+  if (department === "Finance") return "finance";
+  if (department === "Marketing") return "marketing";
+  if (department === "Compliance") return "compliance";
+  if (department === "Security") return "security";
+  if (department === "Content & Community") return "content_community";
+  return "ceo";
 }
 
 function incidentDefinition(
