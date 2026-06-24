@@ -25,7 +25,7 @@ const targetTables = [
   "public_username_audit_events"
 ];
 
-const privateIdentityTables = targetTables.filter((tableName) => tableName !== "public_usernames");
+const protectedRawTables = targetTables;
 
 const forbiddenMoneyTables = [
   "payments",
@@ -135,7 +135,12 @@ describe("RLS batch 5 identity/core support migration", () => {
     expect(normalizedSql).not.toMatch(/update\s+public\.profiles\s+set\s+role/i);
     expect(normalizedSql).not.toMatch(/alter\s+table\s+public\.profiles/i);
     expect(normalizedSql).not.toMatch(/insert\s+into\s+public\.profiles/i);
+    for (const roleList of Array.from(sql.matchAll(/p\.role::text\s+in\s*\(([^)]*)\)/gi)).map((match) => match[1])) {
+      expect(roleList).not.toMatch(/'owner'/i);
+      expect(roleList).not.toMatch(/'shop_owner'/i);
+    }
     expect(sql).not.toMatch(/p\.role::text in \([^)]*'shop_owner'/i);
+    expect(sql).toContain("p.role::text = 'shop_owner_user'");
     expect(sql).toContain("p.primary_onboarding_role::text = 'shop_owner'");
   });
 
@@ -172,12 +177,12 @@ describe("RLS batch 5 identity/core support migration", () => {
     expect(normalizedSql).not.toContain("auth.role() = 'authenticated'");
   });
 
-  it("does not expose private identity/support tables to anon", () => {
-    for (const tableName of privateIdentityTables) {
+  it("does not expose protected raw identity/support tables to anon", () => {
+    for (const tableName of protectedRawTables) {
       expect(policiesFor(tableName).join("\n")).not.toMatch(/to anon/i);
     }
 
-    expect(policyFor("public_usernames", "public usernames public lookup batch 5")).toMatch(/to anon, authenticated/i);
+    expect(policiesFor("public_usernames").join("\n")).not.toMatch(/to anon, authenticated/i);
   });
 
   it("does not add physical removal policies", () => {
@@ -281,11 +286,13 @@ describe("RLS batch 5 identity/core support migration", () => {
     expect(updatePolicy).toContain("private.rls_batch_5_is_barber_owner(public.blocked_times.barber_id)");
   });
 
-  it("keeps public username lookup public but does not grant direct username writes", () => {
-    const policy = policyFor("public_usernames", "public usernames public lookup batch 5");
-    expect(policy).toContain("owner_type in ('client', 'barber', 'shop')");
-    expect(policy).toContain("nullif(btrim(username), '') is not null");
-    expect(policy).toContain("nullif(btrim(owner_id), '') is not null");
+  it("keeps raw public usernames owner/admin scoped and not anon-readable", () => {
+    const policy = policyFor("public_usernames", "public usernames owner admin select batch 5");
+    expect(policy).toMatch(/to authenticated/i);
+    expect(policy).not.toMatch(/to anon/i);
+    expect(policy).toContain("private.rls_batch_5_owns_public_username(public.public_usernames.owner_type, public.public_usernames.owner_id)");
+    expect(policy).toContain("private.rls_batch_5_is_platform_admin()");
+    expect(sql).toContain("Public profile routing needs a separate public-safe lookup surface that does not expose raw owner_id.");
     expect(policiesFor("public_usernames").join("\n")).not.toMatch(/for insert|for update/i);
   });
 

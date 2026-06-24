@@ -58,7 +58,7 @@ as $$
     from public.profiles p
     where p.id = auth.uid()
       and (
-        p.role::text in ('shop_owner_user', 'owner')
+        p.role::text = 'shop_owner_user'
         or p.primary_onboarding_role::text = 'shop_owner'
       )
   );
@@ -171,7 +171,7 @@ as $$
       select 1
       from public.profiles p
       where p.id = auth.uid()
-        and p.role::text in ('shop_owner_user', 'owner', 'manager', 'front_desk')
+        and p.role::text in ('shop_owner_user', 'manager', 'front_desk')
     )
     and (
       private.rls_batch_5_is_shop_owner_reference(p_shop_reference, p_location_id)
@@ -550,14 +550,14 @@ create policy "blocked times barber update batch 5"
   );
 
 drop policy if exists "public usernames public lookup batch 5" on public.public_usernames;
-create policy "public usernames public lookup batch 5"
+drop policy if exists "public usernames owner admin select batch 5" on public.public_usernames;
+create policy "public usernames owner admin select batch 5"
   on public.public_usernames
   for select
-  to anon, authenticated
+  to authenticated
   using (
-    owner_type in ('client', 'barber', 'shop')
-    and nullif(btrim(username), '') is not null
-    and nullif(btrim(owner_id), '') is not null
+    private.rls_batch_5_owns_public_username(public.public_usernames.owner_type, public.public_usernames.owner_id)
+    or private.rls_batch_5_is_platform_admin()
   );
 
 drop policy if exists "public username audit owner admin select batch 5" on public.public_username_audit_events;
@@ -590,7 +590,7 @@ comment on table public.barber_working_hours is
 comment on table public.blocked_times is
   'PR32 RLS target: blocked times are barber-owned for direct writes and shop/operator readable by active scope.';
 comment on table public.public_usernames is
-  'PR32 public identity registry: public usernames are mutable lookup/display handles; stable owner ids remain authority.';
+  'PR32 public identity registry: raw public_usernames is owner/platform-admin scoped because owner_id is stable authority. Public profile routing needs a separate public-safe lookup surface that does not expose raw owner_id.';
 comment on table public.public_username_audit_events is
   'PR32 username audit registry: username history is owner/platform_admin scoped and is not anon-readable.';
 
