@@ -384,6 +384,34 @@ export type V1RuntimeProofMatrix = {
   needsReviewGroupCount: number;
 };
 
+export type OfficerGreenGateId = "security" | "compliance" | "finance" | "platform_health";
+
+export type OfficerGreenGateSource = {
+  cardId: string;
+  label: string;
+  status: MissionControlStatus;
+  proofConnected: boolean;
+  evidenceSource: string;
+  blockerReason: string | null;
+};
+
+export type OfficerGreenGate = {
+  id: OfficerGreenGateId;
+  label: string;
+  laneId: MissionLaneId;
+  officerOwner: MissionDepartment;
+  status: MissionControlStatus;
+  proofConnected: boolean;
+  missingEvidenceCount: number;
+  failedEvidenceCount: number;
+  blockerReasons: string[];
+  requiredEvidence: string[];
+  evidenceSources: string[];
+  nextRepairLane: MissionLaneId;
+  summary: string;
+  sources: OfficerGreenGateSource[];
+};
+
 export type DeploymentRegressionEvidenceStatus = MissionControlStatus | "Not Connected";
 export type DeploymentRegressionEvidenceFreshness = "fresh" | "stale" | "missing";
 
@@ -597,6 +625,7 @@ export type MissionControlFoundation = {
   ceoCommandCenter: MissionEvidenceCard[];
   departmentLanes: MissionDepartmentLane[];
   coreLoopValidators: CoreLoopValidator[];
+  officerGreenGates?: OfficerGreenGate[];
   readinessBreakdown?: MissionReadinessBreakdown;
   v1RuntimeProofMatrix?: V1RuntimeProofMatrix;
   deploymentRegression?: DeploymentRegressionEvidence;
