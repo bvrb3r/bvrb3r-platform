@@ -343,7 +343,7 @@ create policy "walk in queue shop operator select"
   on public.walk_in_queue
   for select
   to authenticated
-  using (private.is_booking_shop_operator(coalesce(public.walk_in_queue.shop_id, public.walk_in_queue.location_id)));
+  using (private.is_booking_shop_operator(public.walk_in_queue.location_id));
 
 create policy "walk in queue platform admin select"
   on public.walk_in_queue

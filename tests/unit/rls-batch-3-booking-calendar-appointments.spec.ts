@@ -174,6 +174,8 @@ describe("RLS batch 3 booking/calendar/appointment migration", () => {
     expect(sql).toContain("private.is_booking_client(public.appointments.client_id)");
     expect(sql).toContain("private.is_booking_barber(public.appointments.barber_id)");
     expect(sql).toContain("private.is_booking_shop_operator(coalesce(public.appointments.shop_id, public.appointments.location_id))");
+    expect(sql).toContain("private.is_booking_shop_operator(public.walk_in_queue.location_id)");
+    expect(sql).not.toContain("public.walk_in_queue.shop_id");
     expect(sql).toContain("private.is_booking_platform_admin()");
     expect(sql).not.toMatch(/for select\s+to authenticated\s+using\s*\(\s*true\s*\)/i);
     expect(normalizedSql).not.toContain("auth.role() = 'authenticated'");
