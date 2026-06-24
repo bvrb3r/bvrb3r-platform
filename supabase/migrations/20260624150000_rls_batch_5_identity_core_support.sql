@@ -58,7 +58,7 @@ as $$
     from public.profiles p
     where p.id = auth.uid()
       and (
-        p.role::text in ('shop_owner_user', 'owner', 'shop_owner')
+        p.role::text in ('shop_owner_user', 'owner')
         or p.primary_onboarding_role::text = 'shop_owner'
       )
   );
@@ -171,7 +171,7 @@ as $$
       select 1
       from public.profiles p
       where p.id = auth.uid()
-        and p.role::text in ('shop_owner_user', 'owner', 'shop_owner', 'manager', 'front_desk')
+        and p.role::text in ('shop_owner_user', 'owner', 'manager', 'front_desk')
     )
     and (
       private.rls_batch_5_is_shop_owner_reference(p_shop_reference, p_location_id)
@@ -424,7 +424,7 @@ create policy "shop team invites scoped select batch 5"
     barber_profile_id = auth.uid()
     or invited_by_profile_id = auth.uid()
     or requested_by_profile_id = auth.uid()
-    or private.rls_batch_5_is_shop_operator_reference(null, public.shop_team_invites.shop_id)
+    or private.rls_batch_5_is_shop_operator_reference(public.shop_team_invites.shop_id)
     or private.rls_batch_5_is_platform_admin()
   );
 
@@ -435,8 +435,8 @@ create policy "shop team invites scoped insert batch 5"
   to authenticated
   with check (
     (
-      private.rls_batch_5_is_shop_owner_reference(null, public.shop_team_invites.shop_id)
-      or private.rls_batch_5_is_shop_operator_reference(null, public.shop_team_invites.shop_id)
+      private.rls_batch_5_is_shop_owner_reference(public.shop_team_invites.shop_id)
+      or private.rls_batch_5_is_shop_operator_reference(public.shop_team_invites.shop_id)
     )
     and (invited_by_profile_id is null or invited_by_profile_id = auth.uid())
     and (requested_by_profile_id is null or requested_by_profile_id = auth.uid())
@@ -451,14 +451,14 @@ create policy "shop team invites scoped update batch 5"
     barber_profile_id = auth.uid()
     or invited_by_profile_id = auth.uid()
     or requested_by_profile_id = auth.uid()
-    or private.rls_batch_5_is_shop_operator_reference(null, public.shop_team_invites.shop_id)
+    or private.rls_batch_5_is_shop_operator_reference(public.shop_team_invites.shop_id)
     or private.rls_batch_5_is_platform_admin()
   )
   with check (
     barber_profile_id = auth.uid()
     or invited_by_profile_id = auth.uid()
     or requested_by_profile_id = auth.uid()
-    or private.rls_batch_5_is_shop_operator_reference(null, public.shop_team_invites.shop_id)
+    or private.rls_batch_5_is_shop_operator_reference(public.shop_team_invites.shop_id)
     or private.rls_batch_5_is_platform_admin()
   );
 

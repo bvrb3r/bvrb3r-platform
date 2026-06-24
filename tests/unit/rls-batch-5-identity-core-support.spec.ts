@@ -135,6 +135,8 @@ describe("RLS batch 5 identity/core support migration", () => {
     expect(normalizedSql).not.toMatch(/update\s+public\.profiles\s+set\s+role/i);
     expect(normalizedSql).not.toMatch(/alter\s+table\s+public\.profiles/i);
     expect(normalizedSql).not.toMatch(/insert\s+into\s+public\.profiles/i);
+    expect(sql).not.toMatch(/p\.role::text in \([^)]*'shop_owner'/i);
+    expect(sql).toContain("p.primary_onboarding_role::text = 'shop_owner'");
   });
 
   it("does not execute data mutations against production rows", () => {
@@ -238,9 +240,16 @@ describe("RLS batch 5 identity/core support migration", () => {
     expect(selectPolicy).toContain("barber_profile_id = auth.uid()");
     expect(selectPolicy).toContain("invited_by_profile_id = auth.uid()");
     expect(selectPolicy).toContain("requested_by_profile_id = auth.uid()");
-    expect(selectPolicy).toContain("private.rls_batch_5_is_shop_operator_reference(null, public.shop_team_invites.shop_id)");
-    expect(insertPolicy).toContain("private.rls_batch_5_is_shop_owner_reference(null, public.shop_team_invites.shop_id)");
+    expect(selectPolicy).toContain("private.rls_batch_5_is_shop_operator_reference(public.shop_team_invites.shop_id)");
+    expect(insertPolicy).toContain("private.rls_batch_5_is_shop_owner_reference(public.shop_team_invites.shop_id)");
     expect(updatePolicy).toContain("barber_profile_id = auth.uid()");
+  });
+
+  it("passes shop_team_invites.shop_id as the shop reference helper argument", () => {
+    expect(sql).not.toContain("rls_batch_5_is_shop_operator_reference(null, public.shop_team_invites.shop_id)");
+    expect(sql).not.toContain("rls_batch_5_is_shop_owner_reference(null, public.shop_team_invites.shop_id)");
+    expect(sql).toContain("rls_batch_5_is_shop_operator_reference(public.shop_team_invites.shop_id)");
+    expect(sql).toContain("rls_batch_5_is_shop_owner_reference(public.shop_team_invites.shop_id)");
   });
 
   it("scopes barber shop memberships to barber self, shop operator, or admin", () => {
