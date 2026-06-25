@@ -590,6 +590,78 @@ describe("architect mission control", () => {
     expect(within(screen.getByTestId("ceo-green-queue-item-source-vault")).getByRole("link", { name: "Open Officer" })).toHaveAttribute("href", "/architect/technology");
   });
 
+  it("moves Platform Health to Needs Proof when upstream gate proof is review-only", async () => {
+    const snapshot = createAllPassSnapshot();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...snapshot,
+        foundation: {
+          ...snapshot.foundation,
+          officerGreenGates: [{
+            id: "platform_health",
+            label: "Technology / Platform Health Gate",
+            laneId: "technology",
+            officerOwner: "Technology",
+            requiredEvidence: ["Deployment / Regression proof"],
+            nextRepairLane: "technology",
+            status: "Needs Review",
+            proofConnected: false,
+            missingEvidenceCount: 1,
+            failedEvidenceCount: 0,
+            blockerReasons: ["Deployment / Regression proof: Needs Review. Validation proof is stale."],
+            evidenceSources: ["Deployment / Regression proof: Validation proof is stale."],
+            summary: "Technology / Platform Health Gate has 1 missing, stale, or incomplete evidence source(s).",
+            sources: []
+          }]
+        }
+      })
+    });
+
+    render(<ArchitectMissionControl />);
+
+    await screen.findByTestId("ceo-green-queue");
+    expect(screen.getByTestId("architect-ceo-card-platform-health")).toHaveTextContent("Needs Review");
+    expect(screen.getByTestId("ceo-green-queue-needs_proof")).toHaveTextContent("Platform Health");
+    expect(screen.getByTestId("ceo-green-queue-needs_repair")).not.toHaveTextContent("Platform Health");
+  });
+
+  it("moves Platform Health to Needs Repair only when upstream gate evidence failed", async () => {
+    const snapshot = createAllPassSnapshot();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...snapshot,
+        foundation: {
+          ...snapshot.foundation,
+          officerGreenGates: [{
+            id: "platform_health",
+            label: "Technology / Platform Health Gate",
+            laneId: "technology",
+            officerOwner: "Technology",
+            requiredEvidence: ["Security Officer Green Gate"],
+            nextRepairLane: "technology",
+            status: "Failed",
+            proofConnected: true,
+            missingEvidenceCount: 0,
+            failedEvidenceCount: 1,
+            blockerReasons: ["Security Officer Green Gate: Failed. Role drift failed."],
+            evidenceSources: ["Security Officer Green Gate: Role drift failed."],
+            summary: "Technology / Platform Health Gate has 1 failed evidence source(s) and must stay Failed.",
+            sources: []
+          }]
+        }
+      })
+    });
+
+    render(<ArchitectMissionControl />);
+
+    await screen.findByTestId("ceo-green-queue");
+    expect(screen.getByTestId("architect-ceo-card-platform-health")).toHaveTextContent("Failed");
+    expect(screen.getByTestId("ceo-green-queue-needs_repair")).toHaveTextContent("Platform Health");
+    expect(screen.getByTestId("ceo-green-queue-needs_proof")).not.toHaveTextContent("Platform Health");
+  });
+
   it("moves resolved payment routing evidence out of Needs Repair without making Finance fully Pass", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,

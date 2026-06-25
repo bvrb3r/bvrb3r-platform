@@ -106,6 +106,95 @@ function gateLane(id: MissionLaneId, label: MissionDepartment, cards: MissionEvi
   };
 }
 
+const PLATFORM_SECURITY_CARDS = [
+  ["security-role-drift", "Profile role drift"],
+  ["security-role-truth-inventory", "Role Truth Inventory"],
+  ["security-rls-disabled", "RLS disabled tables"],
+  ["security-rls-inventory", "RLS Security Inventory"],
+  ["security-audit", "Audit trail coverage"],
+  ["security-unsafe-actions", "Action Registry proof"]
+] as const;
+
+const PLATFORM_COMPLIANCE_CARDS = [
+  ["compliance-trust-gates", "Client/barber/shop trust gates"],
+  ["compliance-verification", "Verification"],
+  ["compliance-role-truth-inventory", "Role Truth Migration Plan"],
+  ["audit-spine-coverage", "Audit Spine Coverage"]
+] as const;
+
+const PLATFORM_FINANCE_CARDS = [
+  ["finance-payment-health", "Payment Health"],
+  ["finance-stripe", "Stripe Status"],
+  ["finance-payout", "Payout readiness"],
+  ["finance-refund-resolution", "Cancelled/captured refund resolution"]
+] as const;
+
+const PLATFORM_PRODUCT_CARDS = [
+  ["product-client-health", "Client lane health"],
+  ["product-barber-health", "Barber lane health"],
+  ["product-owner-health", "Owner lane health"],
+  ["product-culture-loop", "Culture loop health"],
+  ["product-booking-ux", "Booking UX health"]
+] as const;
+
+const PLATFORM_OPERATIONS_CARDS = [
+  ["operations-appointments", "Appointments"],
+  ["operations-calendars", "Calendars"],
+  ["operations-relationships", "Shop relationships"],
+  ["operations-command-calendars", "Owner/barber command calendars"],
+  ["operations-completion", "Service completion flow"]
+] as const;
+
+const PLATFORM_TECHNOLOGY_CARDS = [
+  ["technology-deployments", "Deployments"],
+  ["technology-current-commit-proof", "Current commit proof"],
+  ["technology-current-deploy-proof", "Current deploy proof"],
+  ["technology-deployment-status-proof", "Vercel deployment status proof"],
+  ["technology-build-tests", "Build/test status"],
+  ["technology-rls-disabled", "RLS disabled tables"],
+  ["technology-source-vault-readiness", "Source Vault readiness"],
+  ["technology-coverage", "Regression coverage"]
+] as const;
+
+function gateCardsFrom(entries: readonly (readonly [string, string])[], department: MissionDepartment, overrides: Record<string, MissionControlStatus> = {}) {
+  return entries.map(([id, label]) => gateCard(id, label, department, overrides[id] ?? "Pass"));
+}
+
+function platformHealthGate(overrides: {
+  ceo?: Record<string, MissionControlStatus>;
+  security?: Record<string, MissionControlStatus>;
+  compliance?: Record<string, MissionControlStatus>;
+  finance?: Record<string, MissionControlStatus>;
+  product?: Record<string, MissionControlStatus>;
+  operations?: Record<string, MissionControlStatus>;
+  technology?: Record<string, MissionControlStatus>;
+} = {}) {
+  return buildOfficerGreenGates([
+    gateCard("ceo-regression-deployment-health", "Deployment / Regression proof", "Technology", overrides.ceo?.["ceo-regression-deployment-health"] ?? "Pass"),
+    gateCard("source-vault-status", "Source Vault proof", "Technology", overrides.ceo?.["source-vault-status"] ?? "Pass"),
+    gateCard("critical-incidents", "Critical incident proof", "Technology", overrides.ceo?.["critical-incidents"] ?? "Pass"),
+    gateCard("hive-ai", "Hive AI", "Technology", "Needs Review"),
+    gateCard("codex-packets", "Codex Packets", "Technology", "Pass")
+  ], [
+    gateLane("security", "Security", gateCardsFrom(PLATFORM_SECURITY_CARDS, "Security", overrides.security)),
+    gateLane("compliance", "Compliance", gateCardsFrom(PLATFORM_COMPLIANCE_CARDS, "Compliance", overrides.compliance)),
+    gateLane("finance", "Finance", gateCardsFrom(PLATFORM_FINANCE_CARDS, "Finance", overrides.finance)),
+    gateLane("product", "Product", [
+      ...gateCardsFrom(PLATFORM_PRODUCT_CARDS, "Product", overrides.product),
+      gateCard("product-feature-readiness", "Feature readiness", "Product", "Needs Review")
+    ]),
+    gateLane("operations", "Operations", [
+      ...gateCardsFrom(PLATFORM_OPERATIONS_CARDS, "Operations", overrides.operations),
+      gateCard("operations-kiosk", "Kiosk readiness", "Operations", "Needs Review")
+    ]),
+    gateLane("technology", "Technology", [
+      gateCard("platform_health-officer-green-gate", "Technology / Platform Health Gate", "Technology", "Failed"),
+      ...gateCardsFrom(PLATFORM_TECHNOLOGY_CARDS, "Technology", overrides.technology),
+      gateCard("technology-api", "API health", "Technology", "Needs Review")
+    ])
+  ]).find((gate) => gate.id === "platform_health")!;
+}
+
 function rlsInventoryRow(overrides: Partial<RlsInventoryRows[number]> = {}): RlsInventoryRows[number] {
   return {
     id: "rls-test-table",
@@ -339,6 +428,79 @@ describe("architect mission control foundation", () => {
     expect(platformGate?.sources.map((source) => source.cardId)).not.toContain("hive-ai");
     expect(platformGate?.sources.map((source) => source.cardId)).not.toContain("codex-packets");
     expect(platformGate?.blockerReasons.join("\n")).toContain("Security Officer Green Gate: Failed");
+  });
+
+  it("lets Platform Health Pass only when every required upstream source passes", () => {
+    const platformGate = platformHealthGate();
+
+    expect(platformGate).toMatchObject({
+      status: "Pass",
+      proofConnected: true,
+      failedEvidenceCount: 0,
+      missingEvidenceCount: 0
+    });
+    expect(platformGate.sources.map((source) => source.cardId)).toEqual(expect.arrayContaining([
+      "ceo-regression-deployment-health",
+      "source-vault-status",
+      "critical-incidents",
+      "security-officer-green-gate",
+      "compliance-officer-green-gate",
+      "finance-officer-green-gate",
+      "platform-product-required-evidence",
+      "platform-operations-required-evidence",
+      "platform-technology-required-evidence"
+    ]));
+  });
+
+  it.each([
+    ["Security Officer Green Gate", { security: { "security-role-drift": "Failed" as const } }],
+    ["Compliance Officer Green Gate", { compliance: { "compliance-verification": "Failed" as const } }],
+    ["Finance Officer Green Gate", { finance: { "finance-refund-resolution": "Failed" as const } }]
+  ])("fails Platform Health when %s fails", (_label, overrides) => {
+    const platformGate = platformHealthGate(overrides);
+
+    expect(platformGate).toMatchObject({ status: "Failed" });
+    expect(platformGate.failedEvidenceCount).toBeGreaterThan(0);
+    expect(platformGate.blockerReasons.join("\n")).toContain("Officer Green Gate: Failed");
+  });
+
+  it.each([
+    ["Product", { product: { "product-booking-ux": "Failed" as const } }, "Booking UX health"],
+    ["Operations", { operations: { "operations-completion": "Failed" as const } }, "Service completion flow"],
+    ["Technology", { technology: { "technology-coverage": "Failed" as const } }, "Regression coverage"]
+  ])("fails Platform Health when %s required evidence fails", (_label, overrides, expectedSource) => {
+    const platformGate = platformHealthGate(overrides);
+
+    expect(platformGate).toMatchObject({ status: "Failed" });
+    expect(platformGate.blockerReasons.join("\n")).toContain(expectedSource);
+  });
+
+  it("keeps Platform Health Needs Review when required proof is missing or stale but nothing fails", () => {
+    const platformGate = platformHealthGate({
+      technology: { "technology-coverage": "Needs Review" }
+    });
+
+    expect(platformGate).toMatchObject({
+      status: "Needs Review",
+      failedEvidenceCount: 0
+    });
+    expect(platformGate.blockerReasons.join("\n")).toContain("Regression coverage");
+    expect(platformGate.blockerReasons.join("\n")).toContain("Needs Review");
+  });
+
+  it("does not count Hive AI, Codex Packets, parked placeholders, idle placeholders, or itself as upstream blockers", () => {
+    const platformGate = platformHealthGate();
+    const sourceIds = platformGate.sources.map((source) => source.cardId);
+    const blockerReasons = platformGate.blockerReasons.join("\n");
+
+    expect(sourceIds).not.toContain("hive-ai");
+    expect(sourceIds).not.toContain("codex-packets");
+    expect(sourceIds).not.toContain("operations-kiosk");
+    expect(sourceIds).not.toContain("product-feature-readiness");
+    expect(sourceIds).not.toContain("technology-api");
+    expect(sourceIds).not.toContain("platform_health-officer-green-gate");
+    expect(blockerReasons).not.toContain("Hive AI");
+    expect(blockerReasons).not.toContain("Codex Packets");
   });
 
   it("surfaces cleanup evidence across officer lanes without mutating production truth", () => {

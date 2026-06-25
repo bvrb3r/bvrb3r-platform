@@ -4324,6 +4324,33 @@ const OFFICER_GREEN_GATE_SOURCE_IDS: Record<Exclude<OfficerGreenGateId, "platfor
   ]
 };
 
+const PLATFORM_HEALTH_LANE_SOURCE_IDS: Partial<Record<MissionLaneId, string[]>> = {
+  product: [
+    "product-client-health",
+    "product-barber-health",
+    "product-owner-health",
+    "product-culture-loop",
+    "product-booking-ux"
+  ],
+  operations: [
+    "operations-appointments",
+    "operations-calendars",
+    "operations-relationships",
+    "operations-command-calendars",
+    "operations-completion"
+  ],
+  technology: [
+    "technology-deployments",
+    "technology-current-commit-proof",
+    "technology-current-deploy-proof",
+    "technology-deployment-status-proof",
+    "technology-build-tests",
+    "technology-rls-disabled",
+    "technology-source-vault-readiness",
+    "technology-coverage"
+  ]
+};
+
 function gateEvidenceSource(card: MissionEvidenceCard | undefined) {
   if (!card) return "Not connected";
   return card.evidence.find((row) => !isMissingProofEvidence(row)) ?? card.summary;
@@ -4387,23 +4414,34 @@ function missingGateSourceCard(cardId: string, label: string, department: Missio
   );
 }
 
-function laneStatusGateCard(lane: MissionDepartmentLane | undefined, laneId: MissionLaneId, label: MissionDepartment): MissionEvidenceCard {
-  if (!lane) {
-    return missingGateSourceCard(`platform-${laneId}-officer-status`, `${label} officer status`, label, "Officer Gate");
+function platformLaneRequiredEvidenceCard(lane: MissionDepartmentLane | undefined, laneId: MissionLaneId, label: MissionDepartment): MissionEvidenceCard {
+  const sourceIds = PLATFORM_HEALTH_LANE_SOURCE_IDS[laneId] ?? [];
+  if (!lane || !sourceIds.length) {
+    return missingGateSourceCard(`platform-${laneId}-required-evidence`, `${label} required evidence`, label, "Platform Health");
   }
 
+  const sourceCards = sourceIds.map((cardId) =>
+    lane.cards.find((card) => card.id === cardId) ?? missingGateSourceCard(cardId, cardId, label, "Platform Health")
+  ).filter((card) => card.id !== "platform_health-officer-green-gate" && card.id !== "platform-health");
+  const status = gateStatusFromSources(sourceCards);
+  const failedSources = sourceCards.filter((card) => card.status === "Failed");
+  const reviewSources = sourceCards.filter((card) => card.status !== "Failed" && (card.status !== "Pass" || !gateSourceProofConnected(card)));
+  const sourceNames = (items: MissionEvidenceCard[]) => items.map((card) => card.label).join(", ");
   return evidenceCard(
-    `platform-${laneId}-officer-status`,
-    `${label} officer status`,
+    `platform-${laneId}-required-evidence`,
+    `${label} required evidence`,
     label,
-    "Officer Gate",
-    lane.status,
-    `${label} lane status is ${lane.status}.`,
-    lane.cards
-      .filter((card) => card.status !== "Pass")
-      .slice(0, 6)
-      .map((card) => `${card.label}: ${card.status}. ${card.summary}`)
-      .concat(lane.cards.some((card) => card.status !== "Pass") ? [] : [`${label} lane reports all connected cards Pass.`])
+    "Platform Health",
+    status,
+    status === "Pass"
+      ? `${label} required evidence is connected and passing.`
+      : status === "Failed"
+        ? `${label} required evidence has failed upstream source(s): ${sourceNames(failedSources)}.`
+        : `${label} required evidence has missing, stale, disconnected, or incomplete upstream source(s): ${sourceNames(reviewSources)}.`,
+    [
+      ...sourceCards.map((card) => `${card.label}: ${card.status}; connected=${gateSourceProofConnected(card) ? "yes" : "no"}. ${card.summary}`),
+      "Platform Health reads required upstream evidence only; parked/future, idle, and Platform Health self-cards are excluded."
+    ]
   );
 }
 
@@ -4465,9 +4503,9 @@ export function buildOfficerGreenGates(
     officerGateEvidenceCard(securityGate),
     officerGateEvidenceCard(complianceGate),
     officerGateEvidenceCard(financeGate),
-    laneStatusGateCard(productLane, "product", "Product"),
-    laneStatusGateCard(operationsLane, "operations", "Operations"),
-    laneStatusGateCard(technologyLane, "technology", "Technology")
+    platformLaneRequiredEvidenceCard(productLane, "product", "Product"),
+    platformLaneRequiredEvidenceCard(operationsLane, "operations", "Operations"),
+    platformLaneRequiredEvidenceCard(technologyLane, "technology", "Technology")
   ]);
 
   return [securityGate, complianceGate, financeGate, platformGate];
