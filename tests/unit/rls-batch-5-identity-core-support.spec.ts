@@ -11,6 +11,7 @@ const migrationPath = path.join(
 
 const sql = readFileSync(migrationPath, "utf8");
 const normalizedSql = sql.replace(/\s+/g, " ").toLowerCase();
+const normalizedLineSql = sql.replace(/\r\n/g, "\n");
 
 const targetTables = [
   "clients",
@@ -219,9 +220,9 @@ describe("RLS batch 5 identity/core support migration", () => {
   });
 
   it("requires location rows to resolve back to the owned shop before owner scope passes", () => {
-    expect(sql).toContain("left join public.locations l\n        on l.reference_code = s.id");
-    expect(sql).not.toContain("on l.reference_code = s.id\n        or l.id = p_location_id");
-    expect(sql).toContain("(p_location_id is not null and l.id = p_location_id)");
+    expect(normalizedLineSql).toContain("left join public.locations l\n        on l.reference_code = s.id");
+    expect(normalizedLineSql).not.toContain("on l.reference_code = s.id\n        or l.id = p_location_id");
+    expect(normalizedLineSql).toContain("(p_location_id is not null and l.id = p_location_id)");
   });
 
   it("replaces staff_locations owner bootstrap with self, owner/operator, and admin scoped access", () => {
