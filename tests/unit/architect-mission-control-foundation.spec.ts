@@ -118,7 +118,7 @@ const PLATFORM_SECURITY_CARDS = [
 const PLATFORM_COMPLIANCE_CARDS = [
   ["compliance-trust-gates", "Client/barber/shop trust gates"],
   ["compliance-verification", "Verification"],
-  ["compliance-role-truth-inventory", "Role Truth Migration Plan"],
+  ["compliance-role-truth-inventory", "Role Truth Evidence"],
   ["audit-spine-coverage", "Audit Spine Coverage"]
 ] as const;
 
@@ -371,7 +371,7 @@ describe("architect mission control foundation", () => {
       gateLane("compliance", "Compliance", [
         gateCard("compliance-trust-gates", "Client/barber/shop trust gates", "Compliance", "Pass"),
         gateCard("compliance-verification", "Verification", "Compliance", "Pass"),
-        gateCard("compliance-role-truth-inventory", "Role Truth Migration Plan", "Compliance", "Pass"),
+        gateCard("compliance-role-truth-inventory", "Role Truth Evidence", "Compliance", "Pass"),
         gateCard("audit-spine-coverage", "Audit Spine Coverage", "Compliance", "Pass")
       ]),
       gateLane("finance", "Finance", [
@@ -406,7 +406,7 @@ describe("architect mission control foundation", () => {
       gateLane("compliance", "Compliance", [
         gateCard("compliance-trust-gates", "Client/barber/shop trust gates", "Compliance", "Pass"),
         gateCard("compliance-verification", "Verification", "Compliance", "Pass"),
-        gateCard("compliance-role-truth-inventory", "Role Truth Migration Plan", "Compliance", "Pass"),
+        gateCard("compliance-role-truth-inventory", "Role Truth Evidence", "Compliance", "Pass"),
         gateCard("audit-spine-coverage", "Audit Spine Coverage", "Compliance", "Pass")
       ]),
       gateLane("finance", "Finance", [

@@ -3175,17 +3175,17 @@ function buildRoleTruthInventoryEvidenceCards(inventory: RoleTruthInventory): Mi
     {
       ...evidenceCard(
         "compliance-role-truth-inventory",
-        "Role Truth Migration Plan",
+        "Role Truth Evidence",
         "Compliance",
         "Role Truth",
         inventoryStatus,
-        "Compliance role truth requires a migration plan before role normalization can be approved.",
+        "Compliance role truth evidence separates executed normalization proof, remaining review rows, and blocked legacy drift.",
         [
           ...driftEvidence,
           ...inventory.migrationRequiredRoles.slice(0, 8).map((row) => `${row.currentRoleValue} -> ${row.expectedCanonicalDestination}; rollback=${row.rollbackNote}`)
         ]
       ),
-      metricValue: `${summary.migrationRequiredCount} migration review`
+      metricValue: `${summary.migrationRequiredCount} review`
     }
   ];
 }
@@ -3950,7 +3950,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
   });
   const roleDrift = platformCard("ceo-role-drift-health", "Role Drift Evidence", "Security", "Role Drift", "Profile role drift evidence is not connected.");
   const roleTruth = platformCard("security-role-truth-inventory", "Role Truth Inventory", "Security", "Role Truth", "Role truth inventory is not connected.");
-  const complianceRoleTruth = platformCard("compliance-role-truth-inventory", "Role Truth Migration Plan", "Compliance", "Role Truth", "Role truth migration plan is not connected.");
+  const complianceRoleTruth = platformCard("compliance-role-truth-inventory", "Role Truth Evidence", "Compliance", "Role Truth", "Role truth evidence is not connected.");
   const rlsDisabled = platformCard("ceo-rls-disabled-evidence", "RLS Disabled Evidence", "Security", "Supabase RLS", "RLS disabled table evidence is not connected.");
   const rlsInventory = platformCard("security-rls-inventory", "RLS Security Inventory", "Security", "Supabase RLS", "RLS inventory evidence is not connected.");
   const auditEvidence = platformCard("ceo-audit-log-evidence", "Audit Evidence", "Security", "Audit", "Audit trail evidence is not connected.");
@@ -4267,7 +4267,7 @@ const OFFICER_GREEN_GATE_DEFINITIONS: OfficerGreenGateDefinition[] = [
     requiredEvidence: [
       "Client/barber/shop-owner role health",
       "Verification evidence",
-      "Role Truth Migration Plan",
+      "Role Truth Evidence",
       "Repair audit coverage"
     ],
     nextRepairLane: "compliance"
