@@ -531,13 +531,18 @@ export type RlsSecurityInventoryRow = {
 
 export type RlsSecurityInventorySummary = {
   totalTablesInventoried: number;
+  totalPublicTablesInspected: number | null;
   v1CriticalTableCount: number;
   rlsEnabledCount: number;
   rlsDisabledCount: number;
+  rlsDisabledTableNames: string[];
   unknownPostureCount: number;
   v1CriticalDisabledCount: number;
   needsReviewCount: number;
   parkedFutureCount: number;
+  disabledEvidenceConnected: boolean;
+  disabledEvidenceCurrent: boolean;
+  disabledEvidenceCheckedAt: string | null;
   highestRiskLevel: RlsRiskLevel;
   nextRepairLane: MissionLaneId;
 };

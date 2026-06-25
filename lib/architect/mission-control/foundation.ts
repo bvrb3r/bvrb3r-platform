@@ -247,6 +247,11 @@ type RlsSecurityInventoryRowInput = Omit<
 type RlsSecurityInventoryInput = {
   rows?: RlsSecurityInventoryRowInput[];
   productionDisabledPublicTableCount?: number;
+  productionDisabledPublicTableNames?: string[];
+  totalPublicTablesInspected?: number | null;
+  disabledEvidenceConnected?: boolean;
+  disabledEvidenceCurrent?: boolean;
+  disabledEvidenceCheckedAt?: string | null;
   evidenceSource?: string;
 };
 
@@ -2625,7 +2630,15 @@ export function buildRlsSecurityInventory(input: RlsSecurityInventoryInput = {})
   const parkedFutureTables = rows.filter((row) => row.futureParked || row.currentStatus === "Parked");
   const rlsDisabledCount = Math.max(disabledRows.length, productionDisabledPublicTableCount);
   const v1CriticalDisabledCount = Math.max(disabledRows.filter((row) => row.v1Required).length, productionDisabledPublicTableCount);
-  const status: RlsSecurityInventoryStatus = rlsDisabledCount > 0 || rows.some((row) => row.currentStatus === "Failed")
+  const disabledEvidenceConnected = input.disabledEvidenceConnected ?? (typeof input.productionDisabledPublicTableCount === "number" || productionDisabledPublicTableCount > 0);
+  const disabledEvidenceCurrent = input.disabledEvidenceCurrent ?? disabledEvidenceConnected;
+  const rlsDisabledTableNames = Array.from(new Set([
+    ...(input.productionDisabledPublicTableNames ?? []),
+    ...disabledRows.map((row) => `${row.schemaName}.${row.tableName}`)
+  ])).sort();
+  const status: RlsSecurityInventoryStatus = !rows.length || !disabledEvidenceConnected || !disabledEvidenceCurrent
+    ? "Needs Review"
+    : rlsDisabledCount > 0 || rows.some((row) => row.currentStatus === "Failed")
     ? "Failed"
     : needsReviewRows.length
       ? "Needs Review"
@@ -2634,13 +2647,18 @@ export function buildRlsSecurityInventory(input: RlsSecurityInventoryInput = {})
         : "Pass";
   const summary = {
     totalTablesInventoried: rows.length,
+    totalPublicTablesInspected: input.totalPublicTablesInspected ?? (rows.length || null),
     v1CriticalTableCount: v1CriticalRows.length,
     rlsEnabledCount: rows.filter((row) => row.rlsEnabled === "yes").length,
     rlsDisabledCount,
+    rlsDisabledTableNames,
     unknownPostureCount: unknownRows.length,
     v1CriticalDisabledCount,
     needsReviewCount: needsReviewRows.length,
     parkedFutureCount: parkedFutureTables.length,
+    disabledEvidenceConnected,
+    disabledEvidenceCurrent,
+    disabledEvidenceCheckedAt: input.disabledEvidenceCheckedAt ?? null,
     highestRiskLevel: highestRlsRiskLevel(rows, productionDisabledPublicTableCount),
     nextRepairLane: firstRlsRepairLane(rows) ?? "security"
   };
@@ -2735,19 +2753,31 @@ function rlsInventoryStatusToMissionStatus(status: RlsSecurityInventoryStatus): 
 function buildRlsSecurityInventoryEvidenceCards(inventory: RlsSecurityInventory): MissionEvidenceCard[] {
   const summary = inventory.summary;
   const inventoryStatus = rlsInventoryStatusToMissionStatus(inventory.status);
+  const disabledEvidenceStatus: MissionControlStatus = !summary.disabledEvidenceConnected || !summary.disabledEvidenceCurrent
+    ? "Needs Review"
+    : summary.rlsDisabledCount > 0
+      ? "Failed"
+      : "Pass";
   const disabledEvidence = [
+    `totalPublicTablesInspected=${summary.totalPublicTablesInspected ?? "not connected"}.`,
     `${summary.rlsDisabledCount} public Supabase table(s) reported RLS disabled.`,
+    `disabledTableNames=${summary.rlsDisabledTableNames.length ? summary.rlsDisabledTableNames.join(",") : "none"}.`,
     `${summary.v1CriticalDisabledCount} V1 critical disabled/unresolved disabled table signal(s).`,
     `${summary.unknownPostureCount} named V1 table posture row(s) still need production RLS/policy proof.`,
+    `disabledEvidenceConnected=${summary.disabledEvidenceConnected ? "yes" : "no"}.`,
+    `disabledEvidenceCurrent=${summary.disabledEvidenceCurrent ? "yes" : "no"}.`,
+    `disabledEvidenceCheckedAt=${summary.disabledEvidenceCheckedAt ?? "not connected"}.`,
     `highestRiskLevel=${summary.highestRiskLevel}.`,
     `evidenceSource=${inventory.evidenceSource}.`,
     "Read-only inventory only; no RLS enablement, policy mutation, migration, or production data change was attempted."
   ];
   const inventoryEvidence = [
     `totalTablesInventoried=${summary.totalTablesInventoried}.`,
+    `totalPublicTablesInspected=${summary.totalPublicTablesInspected ?? "not connected"}.`,
     `v1CriticalTableCount=${summary.v1CriticalTableCount}.`,
     `rlsEnabledCount=${summary.rlsEnabledCount}.`,
     `rlsDisabledCount=${summary.rlsDisabledCount}.`,
+    `disabledTableNames=${summary.rlsDisabledTableNames.length ? summary.rlsDisabledTableNames.join(",") : "none"}.`,
     `unknownPostureCount=${summary.unknownPostureCount}.`,
     `parkedFutureCount=${summary.parkedFutureCount}.`,
     ...inventory.rows.slice(0, 8).map((row) => `${row.schemaName}.${row.tableName}: RLS=${row.rlsEnabled}; policies=${row.policyCount ?? "unknown"}; status=${row.currentStatus}; risk=${row.currentRiskLevel}.`)
@@ -2760,13 +2790,15 @@ function buildRlsSecurityInventoryEvidenceCards(inventory: RlsSecurityInventory)
         "RLS Disabled Evidence",
         "CEO",
         "Security",
-        summary.rlsDisabledCount > 0 ? "Failed" : inventoryStatus,
-        summary.rlsDisabledCount > 0
+        disabledEvidenceStatus,
+        disabledEvidenceStatus === "Failed"
           ? "Public Supabase RLS disabled evidence remains release-blocking."
-          : "No disabled-table evidence is connected, but policy proof still controls Pass.",
+          : disabledEvidenceStatus === "Pass"
+            ? "Current read-only metadata reports zero public tables with RLS disabled."
+            : "RLS disabled-table evidence is missing, stale, or disconnected.",
         disabledEvidence
       ),
-      metricValue: summary.rlsDisabledCount > 0 ? `${summary.rlsDisabledCount} disabled` : inventoryStatus
+      metricValue: disabledEvidenceStatus === "Failed" ? `${summary.rlsDisabledCount} disabled` : disabledEvidenceStatus
     },
     {
       ...evidenceCard(
@@ -2785,10 +2817,12 @@ function buildRlsSecurityInventoryEvidenceCards(inventory: RlsSecurityInventory)
       "RLS disabled tables",
       "Security",
       "Supabase RLS",
-      summary.rlsDisabledCount > 0 ? "Failed" : inventoryStatus,
-      summary.rlsDisabledCount > 0
+      disabledEvidenceStatus,
+      disabledEvidenceStatus === "Failed"
         ? `${summary.rlsDisabledCount} public Supabase table(s) have disabled or unresolved disabled RLS evidence.`
-        : "RLS disabled count is clean; policy proof still controls table-level Pass.",
+        : disabledEvidenceStatus === "Pass"
+          ? "Current read-only metadata reports zero disabled public RLS tables."
+          : "Disabled public-table evidence is missing, stale, or disconnected.",
       disabledEvidence
     ),
     evidenceCard(
@@ -2796,10 +2830,12 @@ function buildRlsSecurityInventoryEvidenceCards(inventory: RlsSecurityInventory)
       "RLS disabled tables",
       "Technology",
       "Supabase RLS",
-      summary.rlsDisabledCount > 0 ? "Failed" : inventoryStatus,
-      summary.rlsDisabledCount > 0
+      disabledEvidenceStatus,
+      disabledEvidenceStatus === "Failed"
         ? "Database security proof is blocked by disabled public-table evidence."
-        : "Database security proof has no disabled RLS evidence connected.",
+        : disabledEvidenceStatus === "Pass"
+          ? "Database security proof has current zero-disabled public-table evidence."
+          : "Database security proof needs current disabled public-table evidence.",
       disabledEvidence
     )
   ];

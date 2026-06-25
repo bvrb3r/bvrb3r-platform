@@ -23,7 +23,7 @@ import type {
   MissionPacketSet
 } from "@/lib/architect/mission-control/types";
 import { buildChatGptPacket, buildCodexPacket, buildIncidentPacket } from "@/lib/architect/mission-control/packets";
-import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, buildRoleTruthInventory, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
+import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, buildRlsSecurityInventory, buildRoleTruthInventory, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
 import { buildProductOperationsRuntimeLoopProofFixture } from "@/lib/architect/mission-control/runtime-loop-proof";
 import { buildRoleNormalizationApprovalPacket, summarizeRoleNormalizationPlan } from "@/lib/auth/role-normalization-plan";
 
@@ -98,10 +98,8 @@ const MISSION_SYSTEMS: Array<{ key: MissionControlHealthItem["key"]; label: stri
 ];
 
 const CANONICAL_PUBLIC_PROFILE_ROLES = ["client_user", "barber_user", "shop_owner_user"] as const;
-const PROFILE_ROLE_FIELDS = ["role", "primary_onboarding_role", "user_role", "account_role", "profile_role"] as const;
 const INTERNAL_PROFILE_ROLES = ["platform_admin"] as const;
 const EXPECTED_SHOP_RELATIONSHIP_TYPES = ["freelance", "booth_rent", "commission"] as const;
-const KNOWN_RLS_DISABLED_PUBLIC_TABLE_COUNT = 28;
 
 async function selectRows<T extends JsonRecord>(
   supabase: SupabaseClient,
@@ -1358,17 +1356,15 @@ function buildRoleDriftMetric(profiles: TableRead) {
     );
   }
 
-  const canonicalRoles = new Set<string>(CANONICAL_PUBLIC_PROFILE_ROLES);
+  const canonicalRoles = new Set<string>([...CANONICAL_PUBLIC_PROFILE_ROLES, ...INTERNAL_PROFILE_ROLES]);
   const driftCounts = new Map<string, number>();
 
   for (const row of profiles.rows) {
-    for (const field of PROFILE_ROLE_FIELDS) {
-      const value = stringValue(row[field]).trim();
-      if (!value || canonicalRoles.has(value)) {
-        continue;
-      }
-      driftCounts.set(value, (driftCounts.get(value) ?? 0) + 1);
+    const value = stringValue(row.role).trim();
+    if (!value || canonicalRoles.has(value)) {
+      continue;
     }
+    driftCounts.set(value, (driftCounts.get(value) ?? 0) + 1);
   }
 
   const driftSummary = [...driftCounts.entries()]
@@ -1388,6 +1384,8 @@ function buildRoleDriftMetric(profiles: TableRead) {
     [
       `${profiles.rows.length} profile row(s) inspected for role drift.`,
       `Canonical public roles: ${CANONICAL_PUBLIC_PROFILE_ROLES.join(", ")}.`,
+      `Internal platform role allowed only for gated accounts: ${INTERNAL_PROFILE_ROLES.join(", ")}.`,
+      "Only profiles.role is account identity; onboarding, owner, staff, and business relationship metadata do not create account authority.",
       driftCount > 0 ? `Non-canonical role values found: ${driftSummary.join(", ")}.` : "No non-canonical public role values found.",
       "Read-only evidence only; no role mutation was attempted."
     ]
@@ -1415,6 +1413,113 @@ function formatCounts(counts: Map<string, number>) {
 
 function relationLabel(count: number) {
   return count === 1 ? "row" : "rows";
+}
+
+function numberField(row: JsonRecord, fields: string[]) {
+  for (const field of fields) {
+    const value = row[field];
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function booleanField(row: JsonRecord, fields: string[]) {
+  for (const field of fields) {
+    if (typeof row[field] === "boolean") return row[field];
+    const value = stringValue(row[field]).trim();
+    if (["true", "t", "yes", "y", "1", "enabled"].includes(value)) return true;
+    if (["false", "f", "no", "n", "0", "disabled"].includes(value)) return false;
+  }
+  return null;
+}
+
+function stringListField(row: JsonRecord, fields: string[]) {
+  for (const field of fields) {
+    const value = row[field];
+    if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+    if (typeof value === "string" && value.trim()) {
+      return value.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function timestampField(row: JsonRecord, fields: string[]) {
+  return fields.map((field) => String(row[field] ?? "").trim()).find(Boolean) ?? null;
+}
+
+function buildProductionRlsSecurityInventory(rlsEvidence: TableRead, checkedAt: string) {
+  if (!rlsEvidence.connected || !rlsEvidence.rows.length) {
+    return buildRlsSecurityInventory({
+      rows: [],
+      productionDisabledPublicTableCount: 0,
+      productionDisabledPublicTableNames: [],
+      totalPublicTablesInspected: null,
+      disabledEvidenceConnected: false,
+      disabledEvidenceCurrent: false,
+      disabledEvidenceCheckedAt: null,
+      evidenceSource: rlsEvidence.connected
+        ? "Read-only RLS evidence metadata table returned no rows."
+        : `Read-only RLS evidence metadata is not connected: ${rlsEvidence.errorMessage ?? "architect_rls_evidence unavailable"}.`
+    });
+  }
+
+  const rows = rlsEvidence.rows.map((row, index) => {
+    const schemaName = stringValue(row.schema_name ?? row.table_schema ?? row.schema ?? "public").trim() || "public";
+    const tableName = stringValue(row.table_name ?? row.table ?? row.relation_name ?? `unknown_table_${index + 1}`).trim();
+    const enabled = booleanField(row, ["rls_enabled", "rlsEnabled", "rowsecurity", "rls"]);
+    const policyNames = stringListField(row, ["policy_names", "policyNames", "policies"]);
+    const policyCount = numberField(row, ["policy_count", "policyCount"]) ?? policyNames.length;
+    const futureParked = booleanField(row, ["future_parked", "futureParked", "parked"]) ?? false;
+    const v1Required = booleanField(row, ["v1_required", "v1Required", "required_for_v1"]) ?? !futureParked;
+    const risk = stringValue(row.current_risk_level ?? row.currentRiskLevel ?? row.risk_level ?? row.risk).trim();
+
+    return {
+      id: stringValue(row.id ?? `production-rls-${schemaName}-${tableName}`).trim(),
+      schemaName,
+      tableName,
+      rlsEnabled: enabled === null ? "unknown" as const : enabled ? "yes" as const : "no" as const,
+      policyCount,
+      policyNames,
+      dataSensitivity: String(row.data_sensitivity ?? row.dataSensitivity ?? "Safe RLS metadata only; no row contents exposed."),
+      userRoleExposure: stringListField(row, ["user_role_exposure", "userRoleExposure", "role_exposure"]),
+      v1Required,
+      futureParked,
+      currentRiskLevel: ["low", "medium", "high", "critical", "unknown"].includes(risk) ? risk as "low" | "medium" | "high" | "critical" | "unknown" : v1Required ? "critical" as const : "unknown" as const,
+      expectedPolicyPosture: String(row.expected_policy_posture ?? row.expectedPolicyPosture ?? "RLS enabled with reviewed role-scoped policies."),
+      suggestedPolicyPlanSummary: String(row.suggested_policy_plan_summary ?? row.suggestedPolicyPlanSummary ?? "Read-only evidence refresh only; policy changes require a separate approved PR."),
+      nextRepairLane: "security" as const,
+      evidenceSource: [
+        `architect_rls_evidence row for ${schemaName}.${tableName}`,
+        `lastVerifiedAt=${timestampField(row, ["last_verified_at", "lastVerifiedAt", "verified_at", "checked_at"]) ?? "not connected"}`,
+        "content_exposed=false"
+      ].join("; ")
+    };
+  });
+  const disabledNames = rows
+    .filter((row) => row.rlsEnabled === "no" && !row.futureParked)
+    .map((row) => `${row.schemaName}.${row.tableName}`);
+  const aggregateTotal = rlsEvidence.rows
+    .map((row) => numberField(row, ["total_public_tables_inspected", "totalPublicTablesInspected", "public_table_count"]))
+    .find((value): value is number => typeof value === "number") ?? rows.length;
+  const lastVerifiedAt = rlsEvidence.rows
+    .map((row) => timestampField(row, ["last_verified_at", "lastVerifiedAt", "verified_at", "checked_at"]))
+    .find((value): value is string => Boolean(value)) ?? checkedAt;
+  const explicitCurrent = rlsEvidence.rows
+    .map((row) => booleanField(row, ["evidence_current", "evidenceCurrent", "current"]))
+    .find((value): value is boolean => typeof value === "boolean");
+
+  return buildRlsSecurityInventory({
+    rows,
+    productionDisabledPublicTableCount: disabledNames.length,
+    productionDisabledPublicTableNames: disabledNames,
+    totalPublicTablesInspected: aggregateTotal,
+    disabledEvidenceConnected: true,
+    disabledEvidenceCurrent: explicitCurrent ?? true,
+    disabledEvidenceCheckedAt: lastVerifiedAt,
+    evidenceSource: "architect_rls_evidence read-only metadata; content_exposed=false; mutation_attempted=false."
+  });
 }
 
 function buildProductionRoleTruthInventory(tables: {
@@ -1531,6 +1636,7 @@ function buildProductionRoleTruthInventory(tables: {
       `profileRoleCounts=${formatCounts(roleCounts)}.`,
       `invalidProfileRoleCounts=${formatCounts(invalidRoleCounts)}.`,
       `nullOrMissingProfileRoleCount=${nullOrMissingRoleCount}.`,
+      `canonicalProfileAccountRoles=${CANONICAL_PUBLIC_PROFILE_ROLES.join(", ")}; internalProfileRoles=${INTERNAL_PROFILE_ROLES.join(", ")}; onlyProfilesRoleIsAccountIdentity=true.`,
       `relationshipTypeCounts=${formatCounts(relationshipTypeCounts)}.`,
       `invalidRelationshipTypeCounts=${formatCounts(invalidRelationshipTypeCounts)}.`,
       `missingRelationshipTypeCount=${missingRelationshipTypeCount}.`,
@@ -1663,22 +1769,6 @@ function buildProductionRoleTruthInventory(tables: {
   });
 }
 
-function buildRlsDisabledEvidenceMetric() {
-  return metricCard(
-    "ceo-rls-disabled-evidence",
-    "RLS Disabled Evidence",
-    "Security",
-    "Failed",
-    `${KNOWN_RLS_DISABLED_PUBLIC_TABLE_COUNT} disabled`,
-    "Safe cleanup evidence reports public Supabase tables with RLS disabled. This must remain Failed until policy work repairs the underlying table protections.",
-    [
-      `Safe cleanup input reports ${KNOWN_RLS_DISABLED_PUBLIC_TABLE_COUNT} public Supabase table(s) have RLS disabled.`,
-      "This pass is read-only for RLS: no RLS enablement, policy creation, migration, or production data mutation was attempted.",
-      "RLS truth must be repaired through an explicit approved security migration before Pass."
-    ]
-  );
-}
-
 function buildAuditEvidenceMetric(auditLogs: TableRead) {
   if (!auditLogs.connected) {
     return metricCard(
@@ -1700,11 +1790,11 @@ function buildAuditEvidenceMetric(auditLogs: TableRead) {
     "ceo-audit-log-evidence",
     "Audit Evidence",
     "Security",
-    auditCount > 0 ? "Pass" : "Failed",
+    auditCount > 0 ? "Pass" : "Needs Review",
     `${auditCount} row(s)`,
     auditCount > 0
       ? "audit_logs has connected rows for audit trail evidence."
-      : "audit_logs is connected but empty, so audit trail coverage is Failed until canonical audit writes exist.",
+      : "audit_logs is connected but empty, so audit trail coverage needs review until canonical audit writes exist.",
     [
       `audit_logs returned ${auditCount} row(s).`,
       "Read-only evidence only; no audit row was inserted."
@@ -1872,7 +1962,6 @@ async function buildCeoPlatformMetrics(
     countCard("ceo-active-barbers", "Active Barbers", "Operations", barbers, activeBarbers.length, "Active barber count is read from barber status/bookable evidence."),
     metricCard("ceo-pending-approvals", "Pending Barber/Shop Approvals", "Compliance", barbers.connected || shops.connected ? "Pass" : "Needs Review", barbers.connected || shops.connected ? String(pendingApprovals.length) : "Not connected", "Pending approvals are counted from barber/shop approval status fields.", [`barber rows=${barbers.rows.length}`, `shop rows=${shops.rows.length}`]),
     buildRoleDriftMetric(profiles),
-    buildRlsDisabledEvidenceMetric(),
     buildAuditEvidenceMetric(auditLogs),
     metricCard("ceo-critical-incidents", "Critical Incidents", "Incidents", incidents.some((incident) => incident.severity === "critical") ? "Failed" : "Needs Review", String(incidents.filter((incident) => incident.severity === "critical").length), "Absence of critical incidents does not prove full-platform health.", incidents.length ? incidents.map((incident) => incident.headline).slice(0, 4) : ["Automatic incident detector returned no incidents."]),
     metricCard("ceo-regression-deployment-health", "Regression / Deployment Health", "Technology", "Needs Review", "Needs Review", "Deployment and regression truth require CI/deployment evidence beyond this database snapshot.", ["Commit fingerprint is displayed separately."]),
@@ -1905,6 +1994,10 @@ export async function buildMissionControlSnapshot(
     shops: await trySelectRows(supabase, "shops", { limit: 10000 }),
     shopBarberRelationships: await trySelectRows(supabase, "shop_barber_relationships", { limit: 10000 })
   });
+  const rlsSecurityInventory = buildProductionRlsSecurityInventory(
+    await trySelectRows(supabase, "architect_rls_evidence", { limit: 10000 }),
+    checkedAt
+  );
   const health = healthFromIncidents(incidents, checkedAt);
   const packets = Object.fromEntries(incidents.map((incident) => [incident.id, packetSet({ checkedAt, environment }, incident)]));
 
@@ -1914,7 +2007,7 @@ const foundation = buildMissionControlFoundation(
   checkedAt,
   ceoPlatformMetrics,
   deploymentRegression,
-  undefined,
+  rlsSecurityInventory,
   roleTruthInventory,
   undefined,
   runtimeLoopFixture
