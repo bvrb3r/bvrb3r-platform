@@ -1018,6 +1018,8 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
   const runtimeProofMatrix = foundation.v1RuntimeProofMatrix ?? buildV1RuntimeProofMatrix(foundation.ceoCommandCenter, foundation.departmentLanes, foundation.coreLoopValidators);
   const readiness = foundation.readinessBreakdown
     ?? buildMissionReadinessBreakdown(foundation.ceoCommandCenter, foundation.departmentLanes, foundation.coreLoopValidators, runtimeProofMatrix);
+  const platformGate = foundation.officerGreenGates?.find((gate) => gate.id === "platform_health");
+  const platformHealthStatus = platformGate?.status ?? readiness.overallStatus;
   const platform = findCeoCard(foundation, "overall-platform-status");
   const money = findCeoCard(foundation, "ceo-platform-fees");
   const totalUsers = findCeoCard(foundation, "ceo-total-users");
@@ -1105,22 +1107,28 @@ function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: Mi
     compactCard({
       id: "platform-health",
       label: "Platform Health",
-      status: readiness.overallStatus,
-      value: readiness.overallStatus,
-      summary: readiness.overallStatus === "Failed"
-        ? "Required officer evidence includes failed blockers. Platform Health inherits the worst V1-required officer state."
-        : metricSummary(platform),
+      status: platformHealthStatus,
+      value: platformHealthStatus,
+      summary: platformGate
+        ? platformGate.summary
+        : readiness.overallStatus === "Failed"
+          ? "Required officer evidence includes failed blockers. Platform Health inherits the worst V1-required officer state."
+          : metricSummary(platform),
       evidence: [
+        ...(platformGate?.evidenceSources ?? []),
+        ...(platformGate?.blockerReasons.map((reason) => `Blocker: ${reason}`) ?? []),
         ...cardEvidence(platform),
         `v1RequiredFailedCount=${readiness.v1RequiredFailedCount}`,
         `v1RequiredNeedsReviewCount=${readiness.v1RequiredNeedsReviewCount}`
       ],
       href: "/architect/technology",
-      stateType: readiness.overallStatus === "Failed" ? "failed_evidence" : readiness.overallStatus === "Pass" ? "pass_evidence" : "needs_proof",
-      requiredAction: readiness.overallStatus === "Failed"
+      stateType: platformHealthStatus === "Failed" ? "failed_evidence" : platformHealthStatus === "Pass" ? "pass_evidence" : "needs_proof",
+      requiredAction: platformHealthStatus === "Failed"
         ? "Open the failed officer lanes and clear V1-required blockers before Platform Health can go green."
+        : platformHealthStatus === "Needs Review"
+          ? "Connect missing, stale, or incomplete upstream Platform Health proof before this can go green."
         : undefined,
-      nextOfficerLane: readiness.overallStatus === "Failed"
+      nextOfficerLane: platformHealthStatus === "Failed"
         ? officerLaneForCard(readiness.currentReleaseBlockers.find((card) => card.status === "Failed") ?? platform ?? {
             id: "platform-health",
             label: "Platform Health",
