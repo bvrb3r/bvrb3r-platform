@@ -448,13 +448,15 @@ describe("architect mission incident detection", () => {
     expect(routing).toMatchObject({ label: "Payment Routing Health", status: "Failed" });
     expect(roleDrift).toMatchObject({ label: "Role Drift Evidence", status: "Pass" });
     expect(roleDrift?.evidence.join("\n")).toContain("Read-only evidence only; no role mutation was attempted.");
-    expect(rlsDisabled).toMatchObject({ label: "RLS Disabled Evidence", status: "Failed", metricValue: "28 disabled" });
+    expect(rlsDisabled).toMatchObject({ label: "RLS Disabled Evidence", status: "Pass", metricValue: "Pass" });
+    expect(rlsDisabled?.evidence.join("\n")).toContain("totalPublicTablesInspected=3");
+    expect(rlsDisabled?.evidence.join("\n")).toContain("disabledTableNames=none");
     expect(rlsDisabled?.evidence.join("\n")).toContain("no RLS enablement");
-    expect(auditEvidence).toMatchObject({ label: "Audit Evidence", status: "Failed", metricValue: "0 row(s)" });
-    expect(securityLane?.cards.find((card) => card.id === "security-rls-disabled")).toMatchObject({ status: "Failed" });
-    expect(securityLane?.cards.find((card) => card.id === "security-audit")).toMatchObject({ status: "Failed" });
+    expect(auditEvidence).toMatchObject({ label: "Audit Evidence", status: "Needs Review", metricValue: "0 row(s)" });
+    expect(securityLane?.cards.find((card) => card.id === "security-rls-disabled")).toMatchObject({ status: "Pass" });
+    expect(securityLane?.cards.find((card) => card.id === "security-audit")).toMatchObject({ status: "Needs Review" });
     expect(securityLane?.cards.find((card) => card.id === "security-audit-plan")?.evidence.join("\\n")).toContain("Repair approvals");
-    expect(financeLane?.cards.find((card) => card.id === "finance-repair-audit-coverage")).toMatchObject({ status: "Failed" });
+    expect(financeLane?.cards.find((card) => card.id === "finance-repair-audit-coverage")).toMatchObject({ status: "Needs Review" });
     expect(productLane?.cards.find((card) => card.id === "product-client-health")).toMatchObject({ status: "Needs Review" });
     expect(productLane?.cards.find((card) => card.id === "product-booking-ux")).toMatchObject({ status: "Pass" });
     expect(operationsLane?.cards.find((card) => card.id === "operations-calendars")).toMatchObject({ status: "Pass" });
@@ -515,6 +517,78 @@ describe("architect mission incident detection", () => {
       shops: tables.shops,
       shop_barber_relationships: tables.shop_barber_relationships
     })).toBe(roleTablesBefore);
+  });
+
+  it("keeps RLS disabled evidence Needs Review when safe metadata is missing", async () => {
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(createArchitectDebugTables({
+      architect_rls_evidence: []
+    })) as never, ARCHITECT_USER);
+    const rlsDisabled = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-rls-disabled-evidence");
+    const securityGate = snapshot.foundation.officerGreenGates?.find((gate) => gate.id === "security");
+
+    expect(rlsDisabled).toMatchObject({ status: "Needs Review", metricValue: "Needs Review" });
+    expect(rlsDisabled?.evidence.join("\n")).toContain("disabledEvidenceConnected=no");
+    expect(securityGate).toMatchObject({ status: "Needs Review" });
+  });
+
+  it("fails RLS disabled evidence when metadata reports disabled public tables by name", async () => {
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(createArchitectDebugTables({
+      architect_rls_evidence: [{
+        id: "rls-payments",
+        schema_name: "public",
+        table_name: "payments",
+        rls_enabled: false,
+        policy_count: 0,
+        policy_names: [],
+        total_public_tables_inspected: 42,
+        last_verified_at: "2026-06-25T12:00:00.000Z",
+        evidence_current: true
+      }]
+    })) as never, ARCHITECT_USER);
+    const rlsDisabled = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-rls-disabled-evidence");
+
+    expect(rlsDisabled).toMatchObject({ status: "Failed", metricValue: "1 disabled" });
+    expect(rlsDisabled?.evidence.join("\n")).toContain("disabledTableNames=public.payments");
+    expect(snapshot.foundation.officerGreenGates?.find((gate) => gate.id === "security")).toMatchObject({ status: "Failed" });
+  });
+
+  it("keeps stale RLS metadata in Needs Review even when disabled count is zero", async () => {
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(createArchitectDebugTables({
+      architect_rls_evidence: [{
+        id: "rls-profiles",
+        schema_name: "public",
+        table_name: "profiles",
+        rls_enabled: true,
+        policy_count: 1,
+        policy_names: ["profiles_self_read"],
+        total_public_tables_inspected: 1,
+        last_verified_at: "2026-06-20T12:00:00.000Z",
+        evidence_current: false
+      }]
+    })) as never, ARCHITECT_USER);
+    const rlsDisabled = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-rls-disabled-evidence");
+
+    expect(rlsDisabled).toMatchObject({ status: "Needs Review", metricValue: "Needs Review" });
+    expect(rlsDisabled?.evidence.join("\n")).toContain("disabledEvidenceCurrent=no");
+  });
+
+  it("flags shop_owner and owner as account-role drift without treating owner metadata as authority", async () => {
+    const base = createArchitectDebugTables();
+    const tables = createArchitectDebugTables({
+      profiles: [
+        ...base.profiles,
+        { id: "legacy-shop-owner", role: "shop_owner", account_status: "active" },
+        { id: "legacy-owner", role: "owner", account_status: "active" },
+        { id: "owner-metadata-only", role: "shop_owner_user", owner_id: "business-owner-id", account_status: "active" }
+      ]
+    });
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(tables) as never, ARCHITECT_USER);
+    const roleDrift = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-role-drift-health");
+
+    expect(roleDrift).toMatchObject({ status: "Failed", metricValue: "1 critical drift" });
+    expect(roleDrift?.evidence.join("\n")).toContain("invalidProfileRoleCounts=owner=1, shop_owner=1");
+    expect(roleDrift?.evidence.join("\n")).toContain("onlyProfilesRoleIsAccountIdentity=true");
+    expect(roleDrift?.evidence.join("\n")).not.toContain("owner_id=business-owner-id");
   });
 
   it("surfaces the authenticated role normalization approval packet as aggregate metadata only", async () => {
@@ -866,8 +940,8 @@ describe("architect mission incident detection", () => {
     expect(routingCard?.evidence.join("\n")).toContain("proposedInsertCount=0");
     expect(routingCard?.evidence.join("\n")).toContain("proposedUpdateCount=0");
     expect(financeLane?.cards.find((card) => card.id === "finance-routing")).toMatchObject({ status: "Pass" });
-    expect(financeLane?.cards.find((card) => card.id === "finance-repair-audit-coverage")).toMatchObject({ status: "Failed" });
-    expect(financeLane?.status).toBe("Failed");
+    expect(financeLane?.cards.find((card) => card.id === "finance-repair-audit-coverage")).toMatchObject({ status: "Needs Review" });
+    expect(financeLane?.status).toBe("Needs Review");
   });
 
   it("keeps missing routing evidence as a repair-needed failure", async () => {

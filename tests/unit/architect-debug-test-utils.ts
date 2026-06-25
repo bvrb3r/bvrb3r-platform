@@ -145,6 +145,40 @@ export function createArchitectDebugTables(overrides: Partial<Tables> = {}): Tab
     architect_debug_sessions: [],
     architect_repair_audit_logs: [],
     architect_validation_runs: [],
+    architect_rls_evidence: [{
+      id: "rls-profiles",
+      schema_name: "public",
+      table_name: "profiles",
+      rls_enabled: true,
+      policy_count: 2,
+      policy_names: ["profiles_self_read", "profiles_self_update"],
+      total_public_tables_inspected: 3,
+      last_verified_at: "2026-06-25T12:00:00.000Z",
+      evidence_current: true,
+      data_sensitivity: "Account role metadata; content_exposed=false"
+    }, {
+      id: "rls-appointments",
+      schema_name: "public",
+      table_name: "appointments",
+      rls_enabled: true,
+      policy_count: 2,
+      policy_names: ["appointments_participant_read", "appointments_server_write"],
+      total_public_tables_inspected: 3,
+      last_verified_at: "2026-06-25T12:00:00.000Z",
+      evidence_current: true,
+      data_sensitivity: "Booking lifecycle metadata; content_exposed=false"
+    }, {
+      id: "rls-audit-logs",
+      schema_name: "public",
+      table_name: "audit_logs",
+      rls_enabled: true,
+      policy_count: 1,
+      policy_names: ["audit_logs_platform_admin_read"],
+      total_public_tables_inspected: 3,
+      last_verified_at: "2026-06-25T12:00:00.000Z",
+      evidence_current: true,
+      data_sensitivity: "Audit metadata; content_exposed=false"
+    }],
     "information_schema.columns": schemaRows,
     "information_schema.check_constraints": [{
       constraint_name: "payment_routing_records_payout_readiness_status_check",
