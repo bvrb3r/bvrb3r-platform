@@ -9,6 +9,7 @@ export default async function ClientDashboardPage() {
     <ClientAppShell activeTab="home" mode="client">
       <ClientHomeScreen
         isSignedInClient
+        clientId={user.clientId}
         displayName={user.canonicalFullName ?? user.name}
       />
     </ClientAppShell>

@@ -125,13 +125,15 @@ vi.mock("@/components/client-experience/client-app-shell", () => ({
 vi.mock("@/components/client-experience/client-home-screen", () => ({
   ClientHomeScreen: ({
     isSignedInClient,
+    clientId,
     displayName
   }: {
     isSignedInClient: boolean;
+    clientId?: string;
     displayName: string;
   }) => (
     <div data-testid="client-home-screen-stub">
-      {displayName}|{String(isSignedInClient)}
+      {displayName}|{String(isSignedInClient)}|{clientId ?? "missing-client-id"}
     </div>
   )
 }));
@@ -398,8 +400,24 @@ describe("dashboard role pages", () => {
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client_user"]);
     expect(screen.getByTestId("client-app-shell-stub")).toBeInTheDocument();
-    expect(screen.getByTestId("client-home-screen-stub")).toHaveTextContent("Jordan Ellis|true");
+    expect(screen.getByTestId("client-home-screen-stub")).toHaveTextContent("Jordan Ellis|true|client-jordan");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
+  });
+
+  it("does not render client dashboard state for non-client roles", async () => {
+    getAuthorizedUserMock.mockRejectedValueOnce(new Error("REDIRECT:/dashboard/barber"));
+
+    await expect(ClientDashboardPage()).rejects.toThrow("REDIRECT:/dashboard/barber");
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client_user"]);
+    expect(screen.queryByTestId("client-home-screen-stub")).not.toBeInTheDocument();
+  });
+
+  it("protects unauthenticated client dashboard access through the shared auth guard", async () => {
+    getAuthorizedUserMock.mockRejectedValueOnce(new Error("REDIRECT:/login"));
+
+    await expect(ClientDashboardPage()).rejects.toThrow("REDIRECT:/login");
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client_user"]);
+    expect(screen.queryByTestId("client-home-screen-stub")).not.toBeInTheDocument();
   });
 
   it("renders the client culture route", async () => {
