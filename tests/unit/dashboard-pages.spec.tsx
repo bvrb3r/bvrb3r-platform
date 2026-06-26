@@ -278,9 +278,25 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.queryByRole("heading", { name: "Home" })).not.toBeInTheDocument();
     expect(screen.queryByText("Your calendar, chair status, money posture, and next move.")).not.toBeInTheDocument();
-    expect(screen.getByTestId("barber-calendar-screen-stub")).toHaveTextContent("Blaze King");
+    expect(screen.getByTestId("barber-workspace-stub")).toHaveTextContent("Blaze King");
     expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Professional account");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
+  });
+
+  it("does not render barber dashboard state for non-barber roles", async () => {
+    getAuthorizedUserMock.mockRejectedValueOnce(new Error("REDIRECT:/dashboard/client"));
+
+    await expect(BarberDashboardPage()).rejects.toThrow("REDIRECT:/dashboard/client");
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
+    expect(screen.queryByTestId("barber-workspace-stub")).not.toBeInTheDocument();
+  });
+
+  it("protects unauthenticated barber dashboard access through the shared auth guard", async () => {
+    getAuthorizedUserMock.mockRejectedValueOnce(new Error("REDIRECT:/login"));
+
+    await expect(BarberDashboardPage()).rejects.toThrow("REDIRECT:/login");
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
+    expect(screen.queryByTestId("barber-workspace-stub")).not.toBeInTheDocument();
   });
 
   it("renders the barber calendar route", async () => {

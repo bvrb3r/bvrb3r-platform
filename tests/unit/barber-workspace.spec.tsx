@@ -377,7 +377,8 @@ describe("barber workspace", () => {
   it("renders the Phase 5 today-first barber lane from canonical overview truth", () => {
     render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="booth_rent" />);
 
-    expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(screen.getByText("BVRB3R")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ready when you are, Blaze." })).toBeInTheDocument();
     expect(screen.getByText("Next client")).toBeInTheDocument();
     expect(screen.getAllByText("Jordan Ellis").length).toBeGreaterThan(0);
     expect(screen.getByText("Payout status")).toBeInTheDocument();
@@ -387,6 +388,8 @@ describe("barber workspace", () => {
     expect(screen.getByText("Today's schedule")).toBeInTheDocument();
     expect(screen.getByText("Chair status")).toBeInTheDocument();
     expect(screen.getByText("Quick actions")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View next appointment" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add service" })).toBeInTheDocument();
     expect(screen.queryByTestId("barber-culture-entry")).not.toBeInTheDocument();
     expect(screen.queryByText("Culture Feed")).not.toBeInTheDocument();
     expect(screen.queryByText("Post cuts, discover styles, follow barbers, and turn attention into bookings.")).not.toBeInTheDocument();
@@ -458,9 +461,51 @@ describe("barber workspace", () => {
 
     render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="booth_rent" />);
 
-    expect(screen.getByText(/No appointments are on today's barber calendar yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/No appointments are on this barber's live day sheet yet/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/No appointments yet today. Share your profile or open more availability./i).length).toBeGreaterThan(1);
+    expect(screen.getByText("Money details will appear after completed paid appointments.")).toBeInTheDocument();
     expect(screen.getByText(/No meaningful revenue gap is currently derived/i)).toBeInTheDocument();
+  });
+
+  it("does not render raw UUIDs, reference codes, debug labels, or fake money posture to barbers", () => {
+    useBarberOverviewQueryMock.mockReturnValue({
+      data: buildOverview({
+        earnings: {
+          businessDate: "2026-04-21",
+          todayBookings: 0,
+          clientsRebookedToday: 0,
+          upcomingBookings: 0,
+          completedServices: 0,
+          grossSales: 0,
+          tips: 0,
+          averageTicket: 0,
+          outstandingCheckoutCount: 0
+        },
+        nextAppointment: null,
+        todayAppointments: []
+      }),
+      isLoading: false,
+      error: null
+    });
+    useBarberFintechReadinessQueryMock.mockReturnValue({
+      data: {
+        connectedAccount: { operationalStatus: "restricted" },
+        routingSummary: {
+          readyForPayoutAmount: 0,
+          blockedPaymentsCount: 1,
+          blockedReasons: ["Payout setup needed before BVRB3R Pay payouts."]
+        }
+      }
+    });
+
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Barber" />);
+
+    expect(screen.getByText("Not available")).toBeInTheDocument();
+    expect(screen.getAllByText("Payout setup needed before BVRB3R Pay payouts.").length).toBeGreaterThan(0);
+    expect(screen.queryByText("barber-blaze")).not.toBeInTheDocument();
+    expect(screen.queryByText("loc-ybor")).not.toBeInTheDocument();
+    expect(screen.queryByText("srv-fade")).not.toBeInTheDocument();
+    expect(screen.queryByText("checked_in")).not.toBeInTheDocument();
+    expect(screen.queryByText("$0.00", { exact: false })).not.toBeInTheDocument();
   });
 
   it("renders booking and payout blockers when trust/compliance gates are not clear", () => {
