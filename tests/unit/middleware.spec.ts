@@ -40,6 +40,14 @@ describe("phase 0 auth middleware", () => {
     expect(response.headers.get("location")).toBe("https://bvrb3r.app/login?redirect=%2Fdashboard%2Fclient");
   });
 
+  it("keeps preview protected-route redirects on the preview origin", async () => {
+    getUserMock.mockResolvedValue({ data: { user: null }, error: null });
+
+    const response = await middleware(new NextRequest("https://bvrb3r-preview.vercel.app/dashboard/barber"));
+
+    expect(response.headers.get("location")).toBe("https://bvrb3r-preview.vercel.app/login?redirect=%2Fdashboard%2Fbarber");
+  });
+
   it("allows authenticated private route access through to server-side role guards", async () => {
     getUserMock.mockResolvedValue({
       data: {

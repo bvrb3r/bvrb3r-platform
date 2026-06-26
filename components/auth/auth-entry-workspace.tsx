@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getDemoLauncherAccounts } from "@/lib/auth/demo-auth";
 import { clearBrowserAccountState } from "@/lib/auth/session-isolation";
+import { normalizeSafePostAuthReturnPath } from "@/lib/auth/post-auth-return";
 import {
   SIGNUP_ROLE_INTENT_METADATA_KEY,
   SIGNUP_ROLE_OPTIONS,
@@ -95,7 +96,10 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
   const [isPending, startTransition] = useTransition();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const unlockKiosk = getUnlockShopId(searchParams);
-  const nextPath: Route = "/post-auth";
+  const nextPath = useMemo(
+    () => normalizeSafePostAuthReturnPath(searchParams.get("redirect")) ?? "/post-auth",
+    [searchParams]
+  ) as Route;
   const isProductionAuth = Boolean(supabase);
   const title = mode === "login"
     ? "Continue into your BVRB3R lane."
@@ -149,7 +153,11 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
       }
     }
 
-    const redirectTo = `${window.location.origin}/auth/callback`;
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    if (nextPath !== "/post-auth") {
+      callbackUrl.searchParams.set("next", nextPath);
+    }
+    const redirectTo = callbackUrl.toString();
     clearBrowserAccountState();
     console.info("[auth] OAuth sign-in started", {
       provider,

@@ -6,6 +6,7 @@ import {
   buildRuntimeUserFromProductionAuth,
   ensureCanonicalProfileForAuthUser
 } from "@/lib/auth/production-identity";
+import { resolveSafePostAuthReturnPath } from "@/lib/auth/post-auth-return";
 import { SIGNUP_ROLE_INTENT_COOKIE } from "@/lib/auth/signup-role-intent";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
 
@@ -170,12 +171,16 @@ export async function GET(request: Request) {
     await ensureCanonicalProfileForAuthUser(identityUser);
     await applySignupRoleIntentForAuthUser(identityUser, signupRoleIntent);
     const runtimeUser = await buildRuntimeUserFromProductionAuth(identityUser);
-    const destination = await resolvePostAuthDestination(runtimeUser);
+    const fallbackDestination = await resolvePostAuthDestination(runtimeUser);
+    const requestedDestination = resolveSafePostAuthReturnPath(runtimeUser, requestUrl.searchParams.get("next"));
+    const destination = requestedDestination ?? fallbackDestination;
 
     console.info("[auth] OAuth callback next path resolved", {
       requestId,
       userId: authUser.id,
-      destination
+      destination,
+      fallbackDestination,
+      requestedDestination
     });
 
     return redirectWithAuthCookies(new URL(destination, requestUrl.origin), authCookiesToSet, {
