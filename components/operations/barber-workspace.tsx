@@ -53,6 +53,10 @@ function formatStatusLabel(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
 }
 
+function firstName(value: string) {
+  return value.trim().split(/\s+/)[0] || "there";
+}
+
 function buildStatusForm(status: BarberStatusView): StatusFormState {
   return {
     liveStatus: status.liveStatus,
@@ -140,6 +144,12 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
   const initialLoading = overviewQuery.isLoading && !payload;
   const overviewError = overviewQuery.error ? getReadableActionError(overviewQuery.error as BarberApiError) : null;
   const latestPayout = payoutsQuery.data?.recentExecutions?.[0] ?? null;
+  const hasCompletedPaidAppointments = Boolean((payload?.earnings.completedServices ?? 0) > 0 || (payload?.earnings.grossSales ?? 0) > 0);
+  const payoutBlocked = Boolean(
+    (payoutGate && !payoutGate.allowed)
+      || (readinessQuery.data?.routingSummary.blockedPaymentsCount ?? 0) > 0
+      || readinessQuery.data?.connectedAccount.operationalStatus !== "payout_ready"
+  );
 
   useEffect(() => {
     if (!payload?.status) {
@@ -244,13 +254,13 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
     <div className="space-y-4" data-testid="barber-workspace">
       <Card className="rounded-[32px] p-6">
         <PageHeader
-          label="Today"
-          title={barberName}
-          subtitle="Chair status, next client, money pulse, and open gaps."
+          label="BVRB3R"
+          title={`Ready when you are, ${firstName(barberName)}.`}
+          subtitle="Fill your chair, serve the next client, protect checkout, and grow your public barber profile."
           action={
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-right">
               <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">{formatLongDate(businessDate)}</p>
-              <p className="mt-2 text-sm text-white/78">{payload?.status.currentShopLabel ?? "Assigned chair territory"}</p>
+              <p className="mt-2 text-sm text-white/78">{payload?.status.currentShopLabel ?? "Chair setup pending"}</p>
               <StatusBadge className="mt-2 inline-flex">{payload?.status.liveStatusLabel ?? barberTitle}</StatusBadge>
             </div>
           }
@@ -266,7 +276,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="surface-label">Chair status</p>
-              <p className="mt-2 text-sm text-white/58">Keep live chair posture visible inside Calendar so the next move is obvious the moment the barber opens the app.</p>
+              <p className="mt-2 text-sm text-white/58">Use real status data only. Walk-ins stay blocked until your saved chair setup supports them.</p>
             </div>
             <span className={`status-pill ${getLiveStatusTone(payload?.status.liveStatus ?? "offline")}`}>
               {payload?.status.liveStatusLabel ?? "Offline"}
@@ -353,16 +363,22 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="surface-label">Quick actions</p>
-              <p className="mt-2 text-sm text-white/58">Calendar stays fast: jump straight into the next barber action without making any extra tab feel primary.</p>
+              <p className="mt-2 text-sm text-white/58">Your next move uses existing routes or explains why setup is still required.</p>
             </div>
             <WalletCards className="h-5 w-5 text-[#baff69]" />
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <Button type="button" className="h-11 px-4" onClick={() => router.push("/dashboard/barber")}>Open calendar</Button>
-            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}>Checkout</Button>
-            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber")}>Block time</Button>
-            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/profile")}>Edit profile</Button>
+            {nextAppointment ? (
+              <Button type="button" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}>View next appointment</Button>
+            ) : payload?.earnings.outstandingCheckoutCount ? (
+              <Button type="button" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}>Checkout client</Button>
+            ) : (
+              <Button type="button" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/availability")}>Set availability</Button>
+            )}
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/services")}>Add service</Button>
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Open calendar</Button>
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/profile")}>Complete profile</Button>
             <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/messages")}>Messages</Button>
             <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/more?section=settings")}>Open More</Button>
           </div>
@@ -381,9 +397,9 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
               detail={`${payload?.earnings.completedServices ?? 0} completed and ${payload?.earnings.upcomingBookings ?? 0} active.`}
             />
             <DataStatCard
-              label="Earned today"
-              value={currency(payload?.earnings.grossSales ?? 0)}
-              detail={`Tips ${currency(payload?.earnings.tips ?? 0)} | Avg ticket ${currency(payload?.earnings.averageTicket ?? 0)}`}
+              label="Money posture"
+              value={hasCompletedPaidAppointments ? currency(payload?.earnings.grossSales ?? 0) : "Not available"}
+              detail={hasCompletedPaidAppointments ? `Tips ${currency(payload?.earnings.tips ?? 0)} from completed paid appointments.` : "Money details will appear after completed paid appointments."}
             />
             <DataStatCard
               label="Booked on calendar"
@@ -392,8 +408,8 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
             />
             <DataStatCard
               label="Payout status"
-              value={currency(readinessQuery.data?.routingSummary.readyForPayoutAmount ?? 0)}
-              detail={latestPayout ? `Latest payout ${formatStatusLabel(latestPayout.executionStatus)}.` : `${readinessQuery.data?.routingSummary.blockedPaymentsCount ?? 0} payout blockers on file.`}
+              value={payoutBlocked ? "Setup needed" : currency(readinessQuery.data?.routingSummary.readyForPayoutAmount ?? 0)}
+              detail={payoutBlocked ? "Payout setup needed before BVRB3R Pay payouts." : latestPayout ? `Latest payout ${formatStatusLabel(latestPayout.executionStatus)}.` : "Payout readiness is backed by current connected account evidence."}
             />
           </>
         )}
@@ -428,7 +444,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
               </div>
             </div>
           ) : (
-            <div className="mt-4 rounded-[24px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/58">No appointments are on today&apos;s barber calendar yet. Use the calendar to set working hours, add blocked time, and keep the next real booking easy to take.</div>
+            <div className="mt-4 rounded-[24px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/58">No appointments yet today. Share your profile or open more availability.</div>
           )}
         </Card>
 
@@ -508,7 +524,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
                 </div>
               </div>
             );
-          }) : <div className="rounded-[24px] border border-dashed border-white/10 bg-black/18 p-6 text-sm leading-7 text-white/58">No appointments are on this barber&apos;s live day sheet yet. Open the calendar to set availability, block time, and stay ready for the next real booking.</div>}
+          }) : <div className="rounded-[24px] border border-dashed border-white/10 bg-black/18 p-6 text-sm leading-7 text-white/58">No appointments yet today. Share your profile or open more availability.</div>}
         </div>
       </Card>
 

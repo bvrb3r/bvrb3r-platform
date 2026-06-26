@@ -110,6 +110,57 @@ describe("auth callback exchange route", () => {
     expect(response.headers.get("location")).toBe("https://bvrb3r.app/verify-contact");
   });
 
+  it("returns a barber OAuth login to the preview barber dashboard when the preserved next path is role-allowed", async () => {
+    exchangeCodeForSessionMock.mockResolvedValue({ error: null });
+    buildRuntimeUserFromProductionAuthMock.mockResolvedValue({
+      id: "auth-user-1",
+      role: "barber_user",
+      email: "fresh@bvrb3r.app",
+      password: "",
+      name: "Fresh Barber",
+      title: "Barber",
+      phone: "+18135550155",
+      locationIds: [],
+      accountStatus: "active",
+      barberId: "barber-fresh",
+      emailVerified: true,
+      phoneVerified: true
+    });
+    resolvePostAuthDestinationMock.mockResolvedValue("/dashboard/barber");
+
+    const response = await getAuthCallbackExchange(
+      new Request("https://bvrb3r-platform-preview.vercel.app/auth/callback/exchange?code=oauth-code&next=%2Fdashboard%2Fbarber")
+    );
+
+    expect(resolvePostAuthDestinationMock).toHaveBeenCalled();
+    expect(response.headers.get("location")).toBe("https://bvrb3r-platform-preview.vercel.app/dashboard/barber");
+  });
+
+  it("ignores a preserved barber next path when the resolved user is a client", async () => {
+    exchangeCodeForSessionMock.mockResolvedValue({ error: null });
+    buildRuntimeUserFromProductionAuthMock.mockResolvedValue({
+      id: "auth-user-1",
+      role: "client_user",
+      email: "fresh@bvrb3r.app",
+      password: "",
+      name: "Fresh Client",
+      title: "Client",
+      phone: "+18135550155",
+      locationIds: [],
+      accountStatus: "active",
+      clientId: "client-fresh",
+      emailVerified: true,
+      phoneVerified: true
+    });
+    resolvePostAuthDestinationMock.mockResolvedValue("/dashboard/client");
+
+    const response = await getAuthCallbackExchange(
+      new Request("https://bvrb3r-platform-preview.vercel.app/auth/callback/exchange?code=oauth-code&next=%2Fdashboard%2Fbarber")
+    );
+
+    expect(response.headers.get("location")).toBe("https://bvrb3r-platform-preview.vercel.app/dashboard/client");
+  });
+
   it("applies a preserved signup role intent cookie before post-auth routing", async () => {
     exchangeCodeForSessionMock.mockResolvedValue({ error: null });
     cookiesMock.mockResolvedValue({

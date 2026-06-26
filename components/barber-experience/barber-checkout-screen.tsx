@@ -17,7 +17,6 @@ import { useMarketplaceServiceCatalog } from "@/lib/marketplace/client";
 import { useBarberOverviewQuery } from "@/lib/operations/barber-client";
 import { cn } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
-import type { Role } from "@/types/domain";
 
 const sectionIdMap = {
   appointments: "barber-checkout-appointments",
@@ -118,7 +117,6 @@ export function BarberCheckoutScreen({
   initialSection
 }: {
   barberName: string;
-  barberRole: Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">;
   initialSection?: string;
 }) {
   const overviewQuery = useBarberOverviewQuery();
@@ -782,7 +780,7 @@ export function BarberCheckoutScreen({
                 <span>{formatCheckoutCents(reviewQuote.platformFeeCents)}</span>
               </div>
               <div className="flex justify-between gap-4 text-sm font-semibold text-white/62">
-                <span>Estimated barber payout</span>
+                <span>Server quote barber payout</span>
                 <span>{formatCheckoutCents(reviewQuote.barberPayoutCents)}</span>
               </div>
               {reviewQuote.shopSplitCents > 0 ? (
@@ -797,7 +795,7 @@ export function BarberCheckoutScreen({
                   <span className="text-[#a3ff12]">{formatCheckoutCents(reviewQuote.totalCents)}</span>
                 </div>
                 <p className="mt-2 text-xs font-semibold text-white/40">
-                  {reviewQuote.relationshipType.replace("_", " ")} sale. Payout becomes eligible after successful payment.
+                  {reviewQuote.relationshipType.replace("_", " ")} sale. Payout readiness is confirmed only after the server records successful payment and routing evidence.
                 </p>
               </div>
             </div>

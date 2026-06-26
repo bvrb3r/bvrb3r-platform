@@ -121,6 +121,18 @@ describe("post-auth routing", () => {
     expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
   });
 
+  it("does not let an extra client row override canonical barber role truth", async () => {
+    const destination = await resolvePostAuthDestination(buildUser({
+      role: "barber_user",
+      primaryOnboardingRole: undefined,
+      clientId: "client-phillip",
+      barberId: "barber-phillip"
+    }));
+
+    expect(destination).toBe("/dashboard/barber");
+    expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
+  });
+
   it("routes canonical owner roles to the owner dashboard without reading onboarding state tables", async () => {
     const destination = await resolvePostAuthDestination(buildUser({
       role: "owner",
@@ -150,6 +162,19 @@ describe("post-auth routing", () => {
     const destination = await resolvePostAuthDestination(buildUser({
       primaryOnboardingRole: undefined,
       clientId: undefined,
+      barberId: undefined,
+      ownedShopId: undefined
+    }));
+
+    expect(destination).toBe("/role-select");
+    expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
+  });
+
+  it("does not silently default missing role truth to the client dashboard", async () => {
+    const destination = await resolvePostAuthDestination(buildUser({
+      role: undefined as unknown as UserAccount["role"],
+      primaryOnboardingRole: undefined,
+      clientId: "client-row-without-profile-role",
       barberId: undefined,
       ownedShopId: undefined
     }));

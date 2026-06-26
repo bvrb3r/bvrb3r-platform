@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { replaceMock, signInWithOAuthMock, signUpMock, createSupabaseBrowserClientMock } = vi.hoisted(() => ({
+const { replaceMock, searchParamsMock, signInWithOAuthMock, signUpMock, createSupabaseBrowserClientMock } = vi.hoisted(() => ({
   replaceMock: vi.fn(),
+  searchParamsMock: vi.fn(() => new URLSearchParams()),
   signInWithOAuthMock: vi.fn(),
   signUpMock: vi.fn(),
   createSupabaseBrowserClientMock: vi.fn()
@@ -12,7 +13,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({
     replace: replaceMock
   }),
-  useSearchParams: () => new URLSearchParams()
+  useSearchParams: () => searchParamsMock()
 }));
 
 vi.mock("@/lib/supabase/browser", () => ({
@@ -24,6 +25,8 @@ import { AuthEntryWorkspace } from "@/components/auth/auth-entry-workspace";
 describe("auth entry workspace", () => {
   beforeEach(() => {
     replaceMock.mockReset();
+    searchParamsMock.mockReset();
+    searchParamsMock.mockReturnValue(new URLSearchParams());
     signInWithOAuthMock.mockReset();
     signUpMock.mockReset();
     createSupabaseBrowserClientMock.mockReset();
@@ -38,6 +41,44 @@ describe("auth entry workspace", () => {
     });
     signInWithOAuthMock.mockResolvedValue({ error: null });
     signUpMock.mockResolvedValue({ data: { session: null }, error: null });
+  });
+
+  it("preserves a safe protected-route redirect in the OAuth callback next parameter", async () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams({ redirect: "/dashboard/barber" }));
+    render(<AuthEntryWorkspace mode="login" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
+
+    await waitFor(() => {
+      expect(signInWithOAuthMock).toHaveBeenCalledWith({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=%2Fdashboard%2Fbarber`,
+          queryParams: {
+            prompt: "select_account"
+          }
+        }
+      });
+    });
+  });
+
+  it("drops unsafe external redirect values before starting OAuth", async () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams({ redirect: "https://www.bvrb3r.app/dashboard/client" }));
+    render(<AuthEntryWorkspace mode="login" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
+
+    await waitFor(() => {
+      expect(signInWithOAuthMock).toHaveBeenCalledWith({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            prompt: "select_account"
+          }
+        }
+      });
+    });
   });
 
   it("starts Google OAuth with account selection and no stale browser auth state", async () => {

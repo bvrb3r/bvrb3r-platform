@@ -76,7 +76,6 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
       />
     );
 
@@ -140,7 +139,6 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
         initialSection="services"
       />
     );
@@ -169,14 +167,14 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
       />
     );
 
     fireEvent.click(screen.getByRole("button", { name: /5\s*JKL/ }));
     fireEvent.click(screen.getByRole("button", { name: /Review Sale/ }));
 
-    expect(await screen.findByText("Estimated barber payout")).toBeInTheDocument();
+    expect(await screen.findByText("Server quote barber payout")).toBeInTheDocument();
+    expect(screen.getByText(/Payout readiness is confirmed only after the server records successful payment and routing evidence./)).toBeInTheDocument();
     expect(screen.getByText("$4.75")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Charge $5.00" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/barber/pos-sales/quote", expect.objectContaining({
@@ -205,7 +203,6 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
       />
     );
 
@@ -243,7 +240,6 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
       />
     );
 
@@ -284,7 +280,6 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
       />
     );
 
@@ -333,7 +328,6 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
       />
     );
 
@@ -386,7 +380,6 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
       />
     );
 
@@ -467,7 +460,6 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
       />
     );
 
@@ -536,7 +528,6 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
       />
     );
 
@@ -557,7 +548,6 @@ describe("BarberCheckoutScreen", () => {
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
-        barberRole="booth_rent_barber"
         initialSection="appointments"
       />
     );
