@@ -79,7 +79,27 @@ function formatStatusLabel(status?: string | null) {
     return "Pending";
   }
 
-  return status.replaceAll("_", " ");
+  if (status === "cancelled" || status === "canceled") {
+    return "Canceled";
+  }
+  if (status === "no_show") {
+    return "No-show";
+  }
+  if (status === "checked_in") {
+    return "Checked in";
+  }
+  if (status === "in_service") {
+    return "In service";
+  }
+  if (status === "pending_payment") {
+    return "Payment pending";
+  }
+
+  return status
+    .replaceAll("_", " ")
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function getLocationLabel(location?: Location | { name?: string | null; neighborhood?: string | null; city?: string | null; state?: string | null; address?: string | null; }) {
@@ -138,6 +158,145 @@ type HistoryAppointment = ClientBookingsResponse["history"][number];
 
 function isCancelledAppointmentStatus(status?: string | null) {
   return status === "cancelled" || status === "canceled";
+}
+
+function isCompletedAppointmentStatus(status?: string | null) {
+  return status === "completed" || status === "service_completed";
+}
+
+function isClosedWithoutCompletedService(status?: string | null) {
+  return isCancelledAppointmentStatus(status) || status === "no_show" || status === "refunded" || status === "disputed";
+}
+
+function getClientStatusTone(status?: string | null): "green" | "danger" | "neutral" {
+  if (isCompletedAppointmentStatus(status)) {
+    return "green";
+  }
+  if (isCancelledAppointmentStatus(status) || status === "no_show" || status === "refunded" || status === "disputed") {
+    return "danger";
+  }
+  return "neutral";
+}
+
+function getReceiptPosture(appointment: HistoryAppointment) {
+  const hasReceiptProof = Boolean(appointment.receipt || appointment.breakdown || appointment.moneyTimeline);
+  const amount = appointment.receipt?.totals.total ?? appointment.breakdown?.total ?? appointment.grandTotal ?? appointment.totalAmount;
+
+  if (appointment.moneyTimeline?.paymentStatus) {
+    return {
+      amount,
+      label: `Payment ${formatStatusLabel(appointment.moneyTimeline.paymentStatus)}`,
+      detail: "Receipt proof is connected from payment records.",
+      hasReceiptProof
+    };
+  }
+
+  if (appointment.receipt || appointment.breakdown) {
+    return {
+      amount,
+      label: "Receipt proof available",
+      detail: "Receipt details are connected from server records.",
+      hasReceiptProof
+    };
+  }
+
+  if (appointment.balanceDue > 0) {
+    return {
+      amount,
+      label: "Payment still due",
+      detail: `${currency(appointment.balanceDue)} remains due before the receipt can be final.`,
+      hasReceiptProof: false
+    };
+  }
+
+  if (isCompletedAppointmentStatus(appointment.status)) {
+    return {
+      amount,
+      label: "Payment proof verifying",
+      detail: "The appointment is complete; final receipt proof is still syncing from server records.",
+      hasReceiptProof: false
+    };
+  }
+
+  return {
+    amount,
+    label: "Receipt unavailable",
+    detail: "Receipt proof is not available for this appointment state.",
+    hasReceiptProof: false
+  };
+}
+
+function getReviewGate(appointment: HistoryAppointment) {
+  if (appointment.review) {
+    return {
+      label: "Review already submitted",
+      detail: "This completed appointment already has a verified appointment review.",
+      canOpen: true,
+      actionLabel: "View review"
+    };
+  }
+
+  if (isCompletedAppointmentStatus(appointment.status) && appointment.canReview) {
+    return {
+      label: "Review ready",
+      detail: "This completed appointment is eligible for one verified review.",
+      canOpen: true,
+      actionLabel: "Leave a verified review"
+    };
+  }
+
+  if (isClosedWithoutCompletedService(appointment.status)) {
+    return {
+      label: "Review unavailable for this appointment",
+      detail: "Reviews open only after completed service evidence.",
+      canOpen: false,
+      actionLabel: null
+    };
+  }
+
+  return {
+    label: "Review available after service completion",
+    detail: "The server must confirm completed service before review opens.",
+    canOpen: false,
+    actionLabel: null
+  };
+}
+
+function getRebookGate(appointment: HistoryAppointment) {
+  if (!isCompletedAppointmentStatus(appointment.status)) {
+    return {
+      canRebook: false,
+      label: "Book again unlocks after completed service.",
+      href: null
+    };
+  }
+
+  if (!appointment.barberId) {
+    return {
+      canRebook: false,
+      label: "Barber not currently bookable.",
+      href: null
+    };
+  }
+
+  if (!appointment.serviceId) {
+    return {
+      canRebook: false,
+      label: "Service no longer bookable.",
+      href: null
+    };
+  }
+
+  return {
+    canRebook: true,
+    label: "Choose a new time.",
+    href: buildMarketplaceBookingHref({
+      barberId: appointment.barberId,
+      locationId: appointment.locationId,
+      serviceId: appointment.serviceId,
+      sourceKind: "client_dashboard"
+    })
+  };
 }
 
 function isCancellationSuccess(result?: {
@@ -416,7 +575,7 @@ export function ClientBookingsScreen() {
       <div className="grid gap-3 sm:grid-cols-3" aria-label="Activity snapshot">
         {[
           { label: "Upcoming", value: upcomingAppointments.length, detail: "Booked visits" },
-          { label: "Receipts", value: history.length + posReceipts.length, detail: "Paid records" },
+          { label: "Receipts", value: history.length + posReceipts.length, detail: "Receipt records" },
           { label: "Reviews", value: history.filter((appointment) => appointment.canReview || appointment.review).length, detail: "Ready or posted" }
         ].map((item) => (
           <div key={item.label} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
@@ -497,7 +656,7 @@ export function ClientBookingsScreen() {
                               ? formatStatusLabel(latestBookingPayment.paymentStatus)
                               : outstandingBalance > 0
                                 ? `${currency(outstandingBalance)} due`
-                                : "Paid"}
+                                : "Payment proof verifying"}
                           </p>
                         </div>
                       </div>
@@ -654,9 +813,9 @@ export function ClientBookingsScreen() {
               const isReceiptOpen = expandedReceipts[appointment.id] ?? false;
               const isReviewOpen = expandedReviews[appointment.id] ?? false;
               const reviewDraft = getReviewDraft(appointment.id);
-              const paymentStatus = appointment.moneyTimeline?.paymentStatus
-                ?? (appointment.balanceDue > 0 ? "pending" : "paid");
-              const reviewStatusLabel = appointment.review ? "Reviewed" : appointment.canReview ? "Review ready" : "Review unavailable";
+              const receiptPosture = getReceiptPosture(appointment);
+              const reviewGate = getReviewGate(appointment);
+              const rebookGate = getRebookGate(appointment);
 
               return (
                 <article
@@ -681,7 +840,7 @@ export function ClientBookingsScreen() {
                           </p>
                           <p className="mt-1 text-sm leading-6 text-white/58">{getLocationLabel(location)}</p>
                         </div>
-                        <StatusBadge tone="green" className="uppercase tracking-[0.16em]">
+                        <StatusBadge tone={getClientStatusTone(appointment.status)} className="uppercase tracking-[0.16em]">
                           {formatStatusLabel(appointment.status)}
                         </StatusBadge>
                       </div>
@@ -696,13 +855,14 @@ export function ClientBookingsScreen() {
                           <p className="mt-3 text-lg font-semibold text-white">{formatAppointmentTime(appointment.start)}</p>
                         </div>
                         <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                          <p className="surface-label">Total paid</p>
-                          <p className="mt-3 text-lg font-semibold text-white">{currency(appointment.receipt?.totals.total ?? appointment.breakdown?.total ?? appointment.grandTotal ?? appointment.totalAmount)}</p>
-                          <p className="mt-1 text-sm text-white/54">{formatStatusLabel(paymentStatus)}</p>
+                          <p className="surface-label">Receipt</p>
+                          <p className="mt-3 text-lg font-semibold text-white">{currency(receiptPosture.amount)}</p>
+                          <p className="mt-1 text-sm text-white/54">{receiptPosture.label}</p>
                         </div>
                         <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                           <p className="surface-label">Review</p>
-                          <p className="mt-3 text-lg font-semibold text-white">{reviewStatusLabel}</p>
+                          <p className="mt-3 text-lg font-semibold text-white">{reviewGate.label}</p>
+                          <p className="mt-1 text-sm text-white/54">{reviewGate.detail}</p>
                         </div>
                       </div>
 
@@ -715,27 +875,41 @@ export function ClientBookingsScreen() {
                           >
                             View Receipt
                           </button>
-                        ) : null}
-                        <ClientActionLink href={getBookAgainHref(appointment)} size="md">
-                          Book Again
-                        </ClientActionLink>
+                        ) : (
+                          <span className="status-pill min-h-10 text-white/64">
+                            {receiptPosture.label}
+                          </span>
+                        )}
+                        {rebookGate.canRebook && rebookGate.href ? (
+                          <ClientActionLink href={rebookGate.href} size="md">
+                            Book again
+                          </ClientActionLink>
+                        ) : (
+                          <span className="status-pill min-h-10 text-white/64">
+                            {rebookGate.label}
+                          </span>
+                        )}
                         {appointment.review ? (
                           <button
                             type="button"
                             onClick={() => setExpandedReviews((current) => ({ ...current, [appointment.id]: !isReviewOpen }))}
                             className={getClientActionClassName({ size: "md", variant: "outline" })}
                           >
-                            View Review
+                            {reviewGate.actionLabel}
                           </button>
-                        ) : appointment.canReview ? (
+                        ) : reviewGate.canOpen ? (
                           <button
                             type="button"
                             onClick={() => setExpandedReviews((current) => ({ ...current, [appointment.id]: !isReviewOpen }))}
                             className={getClientActionClassName({ size: "md", variant: "outline" })}
                           >
-                            Leave Review
+                            {reviewGate.actionLabel}
                           </button>
-                        ) : null}
+                        ) : (
+                          <span className="status-pill min-h-10 text-white/64">
+                            {reviewGate.label}
+                          </span>
+                        )}
                       </div>
 
                       {hasReceiptDetail && isReceiptOpen ? (
@@ -779,10 +953,10 @@ export function ClientBookingsScreen() {
                               Total paid {currency(appointment.receipt?.totals.total ?? appointment.breakdown?.total ?? appointment.totalAmount)}
                             </span>
                             <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2">
-                              {appointment.moneyTimeline?.paymentStatus ? `Payment ${formatStatusLabel(appointment.moneyTimeline.paymentStatus)}` : "Payment settled"}
+                              {appointment.moneyTimeline?.paymentStatus ? `Payment ${formatStatusLabel(appointment.moneyTimeline.paymentStatus)}` : "Payment proof verifying"}
                             </span>
                             <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2">
-                              {appointment.breakdown?.payoutStatus ? `Payout ${formatStatusLabel(appointment.breakdown.payoutStatus)}` : "Refund status not available"}
+                              Provider payout posture is separate from your client receipt.
                             </span>
                           </div>
                         </div>
@@ -803,13 +977,13 @@ export function ClientBookingsScreen() {
                         </div>
                       ) : null}
 
-                      {!appointment.review && appointment.canReview && isReviewOpen ? (
+                      {!appointment.review && reviewGate.canOpen && isReviewOpen ? (
                         <div className="mt-5 rounded-[24px] border border-white/10 bg-black/22 p-4">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-[#d7ffab]">Leave a review</p>
+                              <p className="text-[10px] uppercase tracking-[0.18em] text-[#d7ffab]">Leave a verified review</p>
                               <p className="mt-2 text-sm leading-7 text-white/62">
-                                Share how the visit went and help the next client trust the chair.
+                                Share how the completed appointment went and help the next client trust the chair.
                               </p>
                             </div>
                             <div className="flex flex-wrap gap-2">
@@ -872,7 +1046,7 @@ export function ClientBookingsScreen() {
                                 className: "disabled:cursor-not-allowed disabled:opacity-60"
                               })}
                             >
-                              {submitReviewMutation.isPending ? "Saving..." : "Submit Review"}
+                              {submitReviewMutation.isPending ? "Saving..." : "Submit verified review"}
                             </button>
                             <button
                               type="button"

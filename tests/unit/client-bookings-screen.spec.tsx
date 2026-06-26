@@ -246,8 +246,192 @@ describe("client bookings screen", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Message Barber" })).toHaveAttribute("href", "/dashboard/client/messages");
     expect(screen.getByRole("button", { name: "View Receipt" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Book Again" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Book again" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Leave a verified review" })).toBeInTheDocument();
     expect(screen.queryByText("Choose your go-to barber")).not.toBeInTheDocument();
+  });
+
+  it("does not fake paid, settled, or payout-released receipt proof when payment evidence is missing", () => {
+    useClientBookingsQueryMock.mockReturnValue({
+      data: {
+        favoriteBarber: null,
+        upcoming: [],
+        nextAppointment: null,
+        nextAppointmentPayment: null,
+        history: [
+          {
+            id: "appt-no-proof",
+            barberId: "barber-wave",
+            serviceId: "srv-signature",
+            locationId: "loc-ybor",
+            status: "completed",
+            start: "2026-04-18T14:00:00.000Z",
+            totalAmount: 55,
+            grandTotal: 65,
+            balanceDue: 0,
+            canReview: true,
+            review: null,
+            view: {
+              barber: { name: "Wave Carter" },
+              service: { name: "Signature Precision Cut" },
+              location: {
+                name: "Centro Ybor Flagship",
+                neighborhood: "Ybor City",
+                city: "Tampa",
+                state: "FL",
+                address: "1600 7th Ave"
+              }
+            },
+            receipt: null,
+            breakdown: null,
+            moneyTimeline: null
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientBookingsScreen />);
+
+    expect(screen.getAllByText("Payment proof verifying").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "View Receipt" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Payment settled")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Payout released/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Paid")).not.toBeInTheDocument();
+  });
+
+  it("gates review and rebook actions for cancelled visits even if stale canReview data is present", () => {
+    useClientBookingsQueryMock.mockReturnValue({
+      data: {
+        favoriteBarber: null,
+        upcoming: [],
+        nextAppointment: null,
+        nextAppointmentPayment: null,
+        history: [
+          {
+            id: "appt-cancelled-history",
+            barberId: "barber-wave",
+            serviceId: "srv-signature",
+            locationId: "loc-ybor",
+            status: "cancelled",
+            start: "2026-04-18T14:00:00.000Z",
+            totalAmount: 55,
+            grandTotal: 65,
+            balanceDue: 0,
+            canReview: true,
+            review: null,
+            view: {
+              barber: { name: "Wave Carter" },
+              service: { name: "Signature Precision Cut" },
+              location: {
+                name: "Centro Ybor Flagship",
+                neighborhood: "Ybor City",
+                city: "Tampa",
+                state: "FL",
+                address: "1600 7th Ave"
+              }
+            },
+            receipt: null,
+            breakdown: null,
+            moneyTimeline: null
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientBookingsScreen />);
+
+    expect(screen.getAllByText("Review unavailable for this appointment").length).toBeGreaterThan(0);
+    expect(screen.getByText("Book again unlocks after completed service.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Leave a verified review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Book again" })).not.toBeInTheDocument();
+  });
+
+  it("shows already reviewed completed appointments without reopening the review prompt", () => {
+    useClientBookingsQueryMock.mockReturnValue({
+      data: {
+        favoriteBarber: null,
+        upcoming: [],
+        nextAppointment: null,
+        nextAppointmentPayment: null,
+        history: [
+          {
+            id: "appt-reviewed",
+            barberId: "barber-wave",
+            serviceId: "srv-signature",
+            locationId: "loc-ybor",
+            status: "completed",
+            start: "2026-04-18T14:00:00.000Z",
+            totalAmount: 55,
+            grandTotal: 65,
+            balanceDue: 0,
+            canReview: false,
+            review: {
+              id: "review-1",
+              rating: 5,
+              message: "Excellent visit.",
+              createdAt: "2026-04-18T15:00:00.000Z"
+            },
+            view: {
+              barber: { name: "Wave Carter" },
+              service: { name: "Signature Precision Cut" },
+              location: {
+                name: "Centro Ybor Flagship",
+                neighborhood: "Ybor City",
+                city: "Tampa",
+                state: "FL",
+                address: "1600 7th Ave"
+              }
+            },
+            receipt: null,
+            breakdown: null,
+            moneyTimeline: null
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientBookingsScreen />);
+
+    expect(screen.getByText("Review already submitted")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View review" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Leave a verified review" })).not.toBeInTheDocument();
+  });
+
+  it("submits a verified appointment review only from an eligible completed appointment", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({
+      review: {
+        id: "review-2",
+        rating: 5,
+        message: "Clean finish.",
+        createdAt: "2026-04-18T15:00:00.000Z"
+      }
+    });
+    useSubmitClientReviewMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+
+    render(<ClientBookingsScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave a verified review" }));
+    expect(screen.getAllByText("Leave a verified review").length).toBeGreaterThan(1);
+    fireEvent.change(screen.getByPlaceholderText("What stood out about this visit?"), {
+      target: { value: "Clean finish." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit verified review" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      appointmentId: "appt-past",
+      rating: 5,
+      message: "Clean finish."
+    }));
+    expect(await screen.findByText("Review saved. Your feedback now lives on the barber profile.")).toBeInTheDocument();
   });
 
   it("shows clean empty states when no upcoming or past appointments exist", () => {
@@ -351,7 +535,7 @@ describe("client bookings screen", () => {
     expect(screen.queryByText("Appointment could not be cancelled. Refresh and try again.")).not.toBeInTheDocument();
     expect(screen.queryByText("Cancel this appointment?")).not.toBeInTheDocument();
     expect(screen.getByText("No upcoming appointments")).toBeInTheDocument();
-    expect(screen.getByText("cancelled")).toBeInTheDocument();
+    expect(screen.getByText("Canceled")).toBeInTheDocument();
   });
 
   it("does not show a false cancellation error when the latest appointment is already cancelled", async () => {
@@ -379,7 +563,7 @@ describe("client bookings screen", () => {
     expect(screen.queryByText("Appointment could not be cancelled. Refresh and try again.")).not.toBeInTheDocument();
     expect(screen.queryByText("Cancel this appointment?")).not.toBeInTheDocument();
     expect(screen.getByText("No upcoming appointments")).toBeInTheDocument();
-    expect(screen.getByText("cancelled")).toBeInTheDocument();
+    expect(screen.getByText("Canceled")).toBeInTheDocument();
   });
 
   it("keeps the confirmation panel open and shows a visible error when cancellation fails", async () => {
