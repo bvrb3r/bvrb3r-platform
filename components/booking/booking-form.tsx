@@ -146,6 +146,34 @@ function splitServices(services: Service[]) {
   };
 }
 
+function getServiceBookability(service: Service) {
+  if (service.isActive === false) {
+    return { bookable: false, reason: "This service is paused right now." };
+  }
+
+  if (service.isBookable === false) {
+    return { bookable: false, reason: "This service is not taking online bookings right now." };
+  }
+
+  if (!Number.isFinite(service.price) || service.price < 0) {
+    return { bookable: false, reason: "Price needs review before this can be booked." };
+  }
+
+  if (!Number.isFinite(service.durationMin) || service.durationMin <= 0) {
+    return { bookable: false, reason: "Duration needs review before this can be booked." };
+  }
+
+  return { bookable: true, reason: null };
+}
+
+function getServicePriceLabel(service: Service) {
+  return Number.isFinite(service.price) && service.price >= 0 ? currency(service.price) : "Price needs review";
+}
+
+function getServiceDurationLabel(service: Service) {
+  return Number.isFinite(service.durationMin) && service.durationMin > 0 ? `${service.durationMin} min` : "Duration needs review";
+}
+
 function getPointsBlockedReasonCopy(input: {
   hasService: boolean;
   orderTotal: number;
@@ -336,6 +364,30 @@ function groupSlotsByDate<T extends { startsAt: string }>(slots: T[], timeZone?:
   }, {});
 }
 
+function findExactBookableSlot<T extends { startsAt: string }>(slots: T[], selectedAppointmentTime?: string | null) {
+  if (!selectedAppointmentTime) {
+    return null;
+  }
+
+  return slots.find((slot) => slot.startsAt === selectedAppointmentTime) ?? null;
+}
+
+function getBookingSubmitError(error: BookingApiError) {
+  if (error.code === "schedule_conflict" || error.status === 409) {
+    return "Slot no longer available. Try another time.";
+  }
+
+  if (error.status === 401) {
+    return "Sign in as a client to confirm this booking.";
+  }
+
+  if (/payment|card|authorization|confirm/i.test(error.message ?? "")) {
+    return "Payment could not be confirmed. Check your card or try another saved payment method.";
+  }
+
+  return getReadableActionError(error);
+}
+
 function readBookingDraft(): Partial<BookingDraft> | null {
   if (typeof window === "undefined") {
     return null;
@@ -517,14 +569,18 @@ export function BookingForm() {
   const barberProfileQuery = useBarberProfileQuery(currentBarberResult?.barberId);
   const serviceCatalog = barberProfileQuery.data?.services.map((entry) => entry.service) ?? [];
   const { primary: primaryServices, addOns } = splitServices(serviceCatalog);
+  const bookablePrimaryServices = useMemo(
+    () => primaryServices.filter((service) => getServiceBookability(service).bookable),
+    [primaryServices]
+  );
 
   useEffect(() => {
-    const nextService = resolveBookableService(primaryServices, preselectedServiceId || form.getValues("serviceId"));
+    const nextService = resolveBookableService(bookablePrimaryServices, preselectedServiceId || form.getValues("serviceId"));
     const nextServiceId = nextService?.id ?? "";
     if (form.getValues("serviceId") !== nextServiceId) {
       form.setValue("serviceId", nextServiceId);
     }
-  }, [form, preselectedServiceId, primaryServices, watchServiceId]);
+  }, [bookablePrimaryServices, form, preselectedServiceId, watchServiceId]);
 
   useEffect(() => {
     const nextAddOn = resolveBookableAddOn(addOns, form.getValues("addOnId"));
@@ -535,7 +591,7 @@ export function BookingForm() {
   }, [addOns, form, watchAddOnId]);
 
   const resolvedBarberId = currentBarberResult?.barberId ?? "";
-  const currentService = resolveBookableService(primaryServices, watchServiceId) ?? undefined;
+  const currentService = resolveBookableService(bookablePrimaryServices, watchServiceId) ?? undefined;
   const resolvedServiceId = currentService?.id ?? "";
   const barberCanonicalLocationId = currentBarberResult?.locationId
     ?? barberProfileQuery.data?.profile.shopId
@@ -813,7 +869,7 @@ export function BookingForm() {
         serviceId: resolvedServiceId,
         addOnIds: bookingAddOnIds,
         barberId: resolvedBarberId || undefined,
-        appointmentTime: resolveBookableSlot(availableSlots, form.getValues("appointmentTime"))?.startsAt ?? undefined,
+        appointmentTime: findExactBookableSlot(availableSlots, form.getValues("appointmentTime"))?.startsAt ?? undefined,
         promotionId: selection.promotionId,
         promotionCode: normalizedPromotionCode || undefined
       });
@@ -850,7 +906,7 @@ export function BookingForm() {
       return;
     }
 
-    const resolvedSlot = resolveBookableSlot(availableSlots, values.appointmentTime);
+    const resolvedSlot = findExactBookableSlot(availableSlots, values.appointmentTime);
     if (!resolvedLocationId || !resolvedBarberId || !resolvedServiceId || !resolvedSlot) {
       setStatusUpdate({
         tone: "error",
@@ -895,6 +951,11 @@ export function BookingForm() {
           }
         : undefined;
 
+      setStatusUpdate({
+        tone: "info",
+        message: "Confirming booking. Payment is verifying through the secure server route."
+      });
+
       const result = await bookingMutation.mutateAsync({
         locationId: resolvedLocationId,
         barberId: resolvedBarberId,
@@ -919,17 +980,22 @@ export function BookingForm() {
       });
 
       setConfirmationId(result.appointment.id);
-      setConfirmationPaymentStatus("captured");
+      setConfirmationPaymentStatus("verifying");
       setConfirmationPaymentLabel(selectedPaymentMethod.label);
       clearBookingDraft();
       setStatusUpdate({
         tone: "success",
         message: sourceKind || isCultureSource
-          ? "Booking confirmed and payment secured."
-          : "Appointment confirmed and payment secured. The booking is now live across client, barber, and shop operations."
+          ? "Booking confirmed. Payment is verifying on the server."
+          : "Appointment created. Payment is verifying on the server and Activity will show the receipt state."
       });
     } catch (error) {
-      setStatusUpdate({ tone: "error", message: getReadableActionError(error as BookingApiError) });
+      const bookingError = error as BookingApiError;
+      if (bookingError.code === "schedule_conflict" || bookingError.status === 409) {
+        form.setValue("appointmentTime", "");
+        setBookingStep("time");
+      }
+      setStatusUpdate({ tone: "error", message: getBookingSubmitError(bookingError) });
     }
   }
 
@@ -998,7 +1064,7 @@ export function BookingForm() {
     setStatusUpdate(null);
   }
 
-  const selectedSlot = resolveBookableSlot(availableSlots, watchAppointmentTime) ?? undefined;
+  const selectedSlot = findExactBookableSlot(availableSlots, watchAppointmentTime) ?? undefined;
   const selectedSlotLabel = selectedSlot ? selectedSlot.label || dateLabel(selectedSlot.startsAt) : "Choose a time";
   const activeStepIndex = getStepIndex(bookingStep);
   const serviceReady = Boolean(currentService);
@@ -1060,8 +1126,8 @@ export function BookingForm() {
             </div>
           </div>
           <p className="mt-5 text-sm leading-7 text-white/62">
-            Confirmation {confirmationId}. {confirmationPaymentStatus === "captured" && confirmationPaymentLabel
-              ? `${confirmationPaymentLabel} was charged for this booking.`
+            Confirmation {confirmationId}. {confirmationPaymentStatus === "verifying" && confirmationPaymentLabel
+              ? `${confirmationPaymentLabel} is verifying through the server. Activity will show the final receipt state.`
               : "Payment status will update in Activity."}
           </p>
           <div className="mt-7 grid gap-3 sm:grid-cols-3">
@@ -1133,7 +1199,7 @@ export function BookingForm() {
               <div>
                 <p className="surface-label text-[#d7ffab]">Step 1</p>
                 <h3 id="booking-service-step" className="mt-2 text-2xl font-semibold text-white">Choose service</h3>
-                <p className="mt-2 text-sm text-white/58">Only active services from this barber are shown.</p>
+                <p className="mt-2 text-sm text-white/58">Choose an active online-bookable service. Blocked services explain what needs attention.</p>
               </div>
 
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
@@ -1158,18 +1224,26 @@ export function BookingForm() {
               ) : primaryServices.length ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {primaryServices.map((service) => {
-                    const selected = service.id === watchServiceId;
+                    const bookability = getServiceBookability(service);
+                    const selected = bookability.bookable && service.id === watchServiceId;
                     return (
                       <button
                         key={service.id}
                         type="button"
+                        disabled={!bookability.bookable}
+                        aria-disabled={!bookability.bookable}
                         className={cn(
                           "rounded-[24px] border p-4 text-left transition",
                           selected
                             ? "border-[#7CFF00]/34 bg-[#7CFF00]/10 shadow-[0_16px_30px_rgba(124,255,0,0.08)]"
-                            : "border-white/8 bg-black/20 hover:border-[#7CFF00]/22"
+                            : bookability.bookable
+                              ? "border-white/8 bg-black/20 hover:border-[#7CFF00]/22"
+                              : "border-white/[0.06] bg-black/12 opacity-70"
                         )}
                         onClick={() => {
+                          if (!bookability.bookable) {
+                            return;
+                          }
                           form.setValue("serviceId", service.id);
                           setStatusUpdate(null);
                         }}
@@ -1182,8 +1256,13 @@ export function BookingForm() {
                           {selected ? <CheckCircle2 className="h-5 w-5 shrink-0 text-[#d7ffab]" /> : null}
                         </div>
                         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-white/68">
-                          <span className="rounded-full border border-white/8 bg-black/24 px-3 py-1.5">{currency(service.price)}</span>
-                          <span className="rounded-full border border-white/8 bg-black/24 px-3 py-1.5">{service.durationMin} min</span>
+                          <span className="rounded-full border border-white/8 bg-black/24 px-3 py-1.5">{getServicePriceLabel(service)}</span>
+                          <span className="rounded-full border border-white/8 bg-black/24 px-3 py-1.5">{getServiceDurationLabel(service)}</span>
+                          {!bookability.bookable ? (
+                            <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1.5 text-amber-100">
+                              {bookability.reason}
+                            </span>
+                          ) : null}
                         </div>
                       </button>
                     );
@@ -1191,7 +1270,11 @@ export function BookingForm() {
                 </div>
               ) : (
                 <div className="empty-state-panel rounded-[24px] p-5 text-sm text-white/58">
-                  No active services are available for this barber yet.
+                  <p className="text-lg font-semibold text-white">No bookable services yet.</p>
+                  <p className="mt-2 leading-7">This barber has not published an active service clients can book. Choose another barber or check back later.</p>
+                  <Link href="/dashboard/client/search" className="mt-4 inline-flex h-11 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                    Back to search
+                  </Link>
                 </div>
               )}
 
@@ -1301,10 +1384,13 @@ export function BookingForm() {
               </div>
 
               {availabilityQuery.isLoading && !availableSlots.length ? (
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-white/62">Checking available times...</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
                   <Skeleton className="h-16 rounded-[22px]" />
                   <Skeleton className="h-16 rounded-[22px]" />
                   <Skeleton className="h-16 rounded-[22px]" />
+                  </div>
                 </div>
               ) : selectedDateSlots.length ? (
                 <div className="space-y-4">
@@ -1387,7 +1473,7 @@ export function BookingForm() {
               <div>
                 <p className="surface-label text-[#d7ffab]">Step 3</p>
                 <h3 id="booking-review-step" className="mt-2 text-2xl font-semibold text-white">Review appointment</h3>
-                <p className="mt-2 text-sm text-white/58">Nothing is booked until you tap Book Appointment.</p>
+                <p className="mt-2 text-sm text-white/58">Nothing is booked until the secure server confirmation finishes.</p>
               </div>
 
               <div className="grid gap-3 text-sm text-white/72">
@@ -1567,6 +1653,15 @@ export function BookingForm() {
               />
 
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <p className="surface-label">Booking confirmation</p>
+                <div className="mt-3 grid gap-2 text-sm leading-6 text-white/64">
+                  <p>{selectedPaymentMethod ? "Payment method ready." : "Needs payment method."}</p>
+                  <p>Appointment confirmation appears only after the server creates the appointment.</p>
+                  <p>Payment status comes from server and Stripe evidence, not this screen.</p>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Price breakdown</p>
                 <div className="mt-4 space-y-3 text-sm text-white/72">
                   <div className="flex items-center justify-between gap-3">
@@ -1617,7 +1712,7 @@ export function BookingForm() {
                   Back
                 </Button>
                 <Button className="h-12 px-6" disabled={bookingMutation.isPending || waitlistPending || isInitialLoading || paymentSetupPending || !reviewReady}>
-                  {bookingMutation.isPending ? "Booking appointment..." : "Book Appointment"}
+                  {bookingMutation.isPending ? "Confirming booking..." : "Confirm booking"}
                 </Button>
               </div>
             </section>

@@ -453,6 +453,8 @@ describe("booking form", () => {
     expect(screen.getAllByText("Phils chair").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2172 University Square Mall, Tampa, FL 33612").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Signature Precision Cut/ })).toBeInTheDocument();
+    expect(screen.getAllByText("$40").length).toBeGreaterThan(0);
+    expect(screen.getByText("45 min")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("heading", { name: "Pick date and time" })).toBeInTheDocument();
@@ -473,7 +475,89 @@ describe("booking form", () => {
     expect(screen.getByText(/4242/)).toBeInTheDocument();
     expect(screen.getByText("Exp 12/29")).toBeInTheDocument();
     expect(screen.queryByText("Add a payment method before booking.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
+    expect(screen.getByText("Payment method ready.")).toBeInTheDocument();
+    expect(screen.getByText("Appointment confirmation appears only after the server creates the appointment.")).toBeInTheDocument();
+    expect(screen.getByText("Payment status comes from server and Stripe evidence, not this screen.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm booking" })).toBeEnabled();
+  });
+
+  it("blocks inactive and unbookable services with client-facing reasons", async () => {
+    useBarberProfileQueryMock.mockReturnValue({
+      data: {
+        profile: { username: "wave" },
+        shopLocations: [
+          {
+            id: "loc-ybor",
+            name: "Phils chair",
+            address: "2172 University Square Mall",
+            city: "Tampa",
+            state: "FL",
+            postalCode: "33612"
+          }
+        ],
+        services: [
+          {
+            service: {
+              id: "srv-paused",
+              name: "Paused Cut",
+              category: "Signature",
+              description: "Paused for now.",
+              durationMin: 45,
+              bufferMin: 10,
+              price: 40,
+              deposit: 10,
+              fullPrepay: false,
+              shopId: "loc-ybor",
+              isActive: false
+            }
+          },
+          {
+            service: {
+              id: "srv-private",
+              name: "Private Consultation",
+              category: "Signature",
+              description: "Not online bookable.",
+              durationMin: 30,
+              bufferMin: 0,
+              price: 25,
+              deposit: 0,
+              fullPrepay: false,
+              shopId: "loc-ybor",
+              isBookable: false
+            }
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<BookingForm />);
+
+    expect(screen.getByRole("button", { name: /Paused Cut/ })).toBeDisabled();
+    expect(screen.getByText("This service is paused right now.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Private Consultation/ })).toBeDisabled();
+    expect(screen.getByText("This service is not taking online bookings right now.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+  });
+
+  it("shows a safe next action when the barber has no bookable services", async () => {
+    useBarberProfileQueryMock.mockReturnValue({
+      data: {
+        profile: { username: "wave" },
+        shopLocations: [],
+        services: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<BookingForm />);
+
+    expect(screen.getByText("No bookable services yet.")).toBeInTheDocument();
+    expect(screen.getByText("This barber has not published an active service clients can book. Choose another barber or check back later.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to search" })).toHaveAttribute("href", "/dashboard/client/search");
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
   });
 
   it("keeps date controls visible and review gated when the selected date has no slots", async () => {
@@ -510,6 +594,20 @@ describe("booking form", () => {
     expect(continueButton).toBeDisabled();
     expect(continueButton.className).toContain("bg-[rgba(255,255,255,0.035)]");
     expect(continueButton.className).not.toContain("bg-[linear-gradient");
+  });
+
+  it("shows an explicit loading state while availability proof is loading", async () => {
+    useBarberAvailabilityQueryMock.mockReturnValue({
+      data: null,
+      isLoading: true,
+      error: null
+    });
+
+    render(<BookingForm />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(screen.getByText("Checking available times...")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Review" })).toBeDisabled();
   });
 
   it("renders clean date rail availability states and selected time styling", async () => {
@@ -652,7 +750,7 @@ describe("booking form", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Continue to Review" }));
     expect(await screen.findByText("Payment method")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Book Appointment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm booking" }));
 
     await waitFor(() => {
       expect(mutateBookingMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -827,7 +925,7 @@ describe("booking form", () => {
 
     expect(screen.getByText("phil stripe card")).toBeInTheDocument();
     expect(screen.getByText("Default for bookings")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Confirm booking" })).toBeEnabled();
   });
 
   it("keeps the saved default card selected without starting setup intent", async () => {
@@ -880,7 +978,7 @@ describe("booking form", () => {
     expect(screen.getAllByText("Saved payment method could not be loaded. Refresh or manage wallet.").length).toBeGreaterThan(0);
     expect(screen.queryByText("Add a payment method to complete booking.")).not.toBeInTheDocument();
     expect(screen.queryByText("Secure card fields are unavailable until payment setup starts.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Confirm booking" })).toBeDisabled();
     await waitFor(() => {
       expect(createSetupMock).not.toHaveBeenCalled();
     });
@@ -902,6 +1000,13 @@ describe("booking form", () => {
     expect(screen.queryByText("Deposit reserved")).not.toBeInTheDocument();
     expect(screen.queryByText("Remaining at checkout")).not.toBeInTheDocument();
     expect(screen.queryByText("Selected time")).not.toBeInTheDocument();
+    expect(screen.queryByText("payment_intent")).not.toBeInTheDocument();
+    expect(screen.queryByText("payment_routing_records")).not.toBeInTheDocument();
+    expect(screen.queryByText("provider_payment_method_id")).not.toBeInTheDocument();
+    expect(screen.queryByText("service_reference")).not.toBeInTheDocument();
+    expect(screen.queryByText("barber_reference")).not.toBeInTheDocument();
+    expect(screen.queryByText("appointment_status_history")).not.toBeInTheDocument();
+    expect(screen.queryByText("payout_readiness_status")).not.toBeInTheDocument();
 
     const summary = screen.getByText("Booking Summary").closest("div");
     expect(summary?.textContent).not.toContain("BVR Points");
@@ -964,7 +1069,7 @@ describe("booking form", () => {
     await advanceToReview();
 
     expect(screen.getByText("Jordan Ellis")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Book Appointment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm booking" }));
 
     await waitFor(() => {
       expect(mutateBookingMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -981,8 +1086,20 @@ describe("booking form", () => {
     });
 
     expect(await screen.findByText("Appointment booked")).toBeInTheDocument();
-    expect(screen.getByText("Confirmation appt-live-1. Visa ending in 4242 was charged for this booking.")).toBeInTheDocument();
+    expect(screen.getByText("Confirmation appt-live-1. Visa ending in 4242 is verifying through the server. Activity will show the final receipt state.")).toBeInTheDocument();
     expect(mutatePaymentMock).not.toHaveBeenCalled();
+  });
+
+  it("disables confirmation while the server booking request is in progress", async () => {
+    useCreateBookingMutationMock.mockReturnValue({
+      isPending: true,
+      mutateAsync: vi.fn()
+    });
+
+    render(<BookingForm />);
+    await advanceToReview();
+
+    expect(screen.getByRole("button", { name: "Confirming booking..." })).toBeDisabled();
   });
 
   it("uses the public barber username on client-facing booking surfaces", async () => {
@@ -1004,12 +1121,33 @@ describe("booking form", () => {
     render(<BookingForm />);
     await advanceToReview();
 
-    fireEvent.click(screen.getByRole("button", { name: "Book Appointment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm booking" }));
 
     await waitFor(() => {
       expect(mutateBookingMock).toHaveBeenCalledTimes(1);
     });
-    expect(screen.getByText("Payment authorization failed")).toBeInTheDocument();
+    expect(screen.getByText("Payment could not be confirmed. Check your card or try another saved payment method.")).toBeInTheDocument();
+    expect(screen.queryByText("Appointment booked")).not.toBeInTheDocument();
+  });
+
+  it("returns to time selection when the selected slot is no longer available", async () => {
+    const mutateBookingMock = vi.fn().mockRejectedValue(Object.assign(
+      new Error("The selected time is no longer available with this barber."),
+      { status: 409, code: "schedule_conflict" }
+    ));
+
+    useCreateBookingMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: mutateBookingMock
+    });
+
+    render(<BookingForm />);
+    await advanceToReview();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm booking" }));
+
+    expect(await screen.findByText("Slot no longer available. Try another time.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Pick date and time" })).toBeInTheDocument();
     expect(screen.queryByText("Appointment booked")).not.toBeInTheDocument();
   });
 
@@ -1039,7 +1177,7 @@ describe("booking form", () => {
     await advanceToReview();
 
     expect(screen.getByText("Jordan Ellis")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Book Appointment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm booking" }));
 
     await waitFor(() => {
       expect(mutateBookingMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -1070,7 +1208,7 @@ describe("booking form", () => {
     expect(screen.queryByText("Stripe secure card entry")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Manage payment methods" })).toHaveAttribute("href", "/dashboard/client/profile?section=wallet");
     expect(screen.queryByRole("link", { name: "Open wallet" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Confirm booking" })).toBeDisabled();
   });
 
   it("saves an inline card and enables booking without leaving the flow", async () => {
@@ -1122,7 +1260,7 @@ describe("booking form", () => {
     expect(stripeMockState.elementsOptions.length).toBeGreaterThan(0);
     expect(stripeMockState.elementsOptions.every((options) => options === undefined)).toBe(true);
 
-    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Confirm booking" })).toBeDisabled();
 
     expect(screen.getByRole("button", { name: "Save card" })).toBeDisabled();
     fireEvent.change(screen.getByTestId("postal-code-input"), {
@@ -1165,6 +1303,6 @@ describe("booking form", () => {
     expect(await screen.findByText("Phil Stripe Card")).toBeInTheDocument();
     expect(screen.getByText(/4242/)).toBeInTheDocument();
     expect(screen.getByText("Exp 04/28")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Confirm booking" })).toBeEnabled();
   });
 });
