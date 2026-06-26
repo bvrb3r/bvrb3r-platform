@@ -490,12 +490,17 @@ export function OwnerMoneyWorkspace() {
   );
 
   const analyticsRevenue = analyticsInRange.reduce((sum, row) => sum + row.revenueTotal, 0);
+  const appointmentRevenue = completedAppointments.reduce((sum, appointment) => sum + sumCompletedAppointmentRevenue(appointment), 0);
   const hasAnalyticsRevenue = analyticsInRange.length > 0;
+  const hasSummaryRevenueProof = selectedRange === "day" && typeof summary?.revenueToday === "number" && ((summary.completedCount ?? 0) > 0 || summary.revenueToday > 0);
+  const hasAppointmentRevenueProof = completedAppointments.length > 0;
   const totalRevenue = hasAnalyticsRevenue
     ? analyticsRevenue
-    : selectedRange === "day"
-      ? summary?.revenueToday ?? 0
-      : 0;
+    : hasSummaryRevenueProof
+      ? summary?.revenueToday ?? null
+      : hasAppointmentRevenueProof
+        ? appointmentRevenue
+        : null;
   const previousRevenue = previousAnalytics.reduce((sum, row) => sum + row.revenueTotal, 0);
   const previousLabel = selectedRange === "week"
     ? "last week"
@@ -504,7 +509,13 @@ export function OwnerMoneyWorkspace() {
       : selectedRange === "year"
         ? "last year"
         : "yesterday";
-  const trend = getTrendCopy(totalRevenue, previousRevenue, previousLabel);
+  const trend = totalRevenue === null
+    ? {
+        available: false,
+        positive: null as boolean | null,
+        text: "Revenue appears after completed paid appointments"
+      }
+    : getTrendCopy(totalRevenue, previousRevenue, previousLabel);
 
   const chartPoints = useMemo<ChartPoint[]>(() => {
     if (!analyticsInRange.length) {
@@ -565,7 +576,7 @@ export function OwnerMoneyWorkspace() {
   const appointmentTrend = previousAppointmentCount > 0
     ? `${appointmentCount >= previousAppointmentCount ? "up" : "down"} ${Math.abs(((appointmentCount - previousAppointmentCount) / previousAppointmentCount) * 100).toFixed(1)}%`
     : undefined;
-  const avgTicket = appointmentCount > 0 ? totalRevenue / appointmentCount : null;
+  const avgTicket = appointmentCount > 0 && totalRevenue !== null ? totalRevenue / appointmentCount : null;
   const noShowCount = appointmentsInRange.filter((appointment) => appointment.status === "no_show").length;
   const noShowRate = appointmentsInRange.length ? (noShowCount / appointmentsInRange.length) * 100 : null;
 
@@ -661,13 +672,13 @@ export function OwnerMoneyWorkspace() {
         </div>
         <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Booth rent</p>
-          <p className="mt-3 text-lg font-black text-white">Coming next</p>
-          <p className="mt-2 text-sm leading-6 text-white/56">Separate invoices, not service payout deductions.</p>
+          <p className="mt-3 text-lg font-black text-amber-200">Needs implementation</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Separate invoices are parked until a proven booth-rent flow exists.</p>
         </div>
         <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Commission</p>
-          <p className="mt-3 text-lg font-black text-white">Future split lane</p>
-          <p className="mt-2 text-sm leading-6 text-white/56">Will use real relationship rules when wired.</p>
+          <p className="mt-3 text-lg font-black text-amber-200">Needs implementation</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Commission display stays read-only until relationship proof is connected.</p>
         </div>
       </GlassCard>
 
@@ -678,8 +689,8 @@ export function OwnerMoneyWorkspace() {
             {isInitialLoading ? (
               <Skeleton className="mt-6 h-16 w-72" />
             ) : (
-              <p className="mt-6 text-6xl font-black leading-none tracking-[-0.08em] text-[#A3FF12] drop-shadow-[0_0_28px_rgba(163,255,18,0.26)] sm:text-7xl" data-display="true">
-                {currency(totalRevenue)}
+              <p className={cn("mt-6 text-5xl font-black leading-none tracking-[-0.08em] drop-shadow-[0_0_28px_rgba(163,255,18,0.18)] sm:text-7xl", totalRevenue === null ? "text-amber-200" : "text-[#A3FF12]")} data-display="true">
+                {totalRevenue === null ? "Needs Review" : currency(totalRevenue)}
               </p>
             )}
             <p className={cn("mt-5 inline-flex items-center gap-2 text-lg font-extrabold", trend.positive === false ? "text-red-300" : trend.available ? "text-[#A3FF12]" : "text-white/54")}>

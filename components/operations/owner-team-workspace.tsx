@@ -188,6 +188,32 @@ function formatStatusLabel(value: string) {
   return value.replaceAll("_", " ");
 }
 
+function formatMoneyPostureLabel(value: string) {
+  switch (value) {
+    case "payout_ready":
+    case "ready":
+      return "Payout setup connected";
+    case "needs_attention":
+    case "restricted":
+    case "blocked":
+      return "Needs review";
+    case "not_ready":
+    case "pending":
+      return "Payout setup needed";
+    default:
+      return value.replaceAll("_", " ");
+  }
+}
+
+function getShopLocationLine(location?: { neighborhood?: string | null; city?: string | null; state?: string | null } | null) {
+  if (!location) {
+    return "Shop location needs setup";
+  }
+
+  const locality = [location.neighborhood, location.city].filter(Boolean).join(" | ");
+  return [locality, location.state].filter(Boolean).join(", ") || "Shop location needs setup";
+}
+
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -418,7 +444,14 @@ export function OwnerTeamWorkspace() {
   const barbers = useMemo(() => shopQuery.data?.barbers ?? [], [shopQuery.data?.barbers]);
   const activeBarbers = useMemo(() => shopQuery.data?.activeBarbers ?? [], [shopQuery.data?.activeBarbers]);
   const appointments = useMemo(() => shopQuery.data?.appointments ?? [], [shopQuery.data?.appointments]);
-  const ownerKioskShopId = relationshipDirectoryQuery.data?.shop.id ?? shopQuery.data?.locations?.[0]?.id ?? null;
+  const primaryShopLocation = shopQuery.data?.locations?.[0] ?? null;
+  const shopIdentity = relationshipDirectoryQuery.data?.shop ?? null;
+  const ownerKioskShopId = shopIdentity?.id ?? primaryShopLocation?.id ?? null;
+  const shopIdentityLabel = shopIdentity?.label ?? primaryShopLocation?.label ?? primaryShopLocation?.name ?? "Shop setup needed";
+  const shopIdentityLine = getShopLocationLine(primaryShopLocation);
+  const shopSetupNote = shopIdentity?.setupNote ?? (!ownerKioskShopId ? "Finish shop setup to unlock team, schedule, and kiosk controls." : null);
+  const shopStatusLabel = ownerKioskShopId ? "Shop connected" : "Needs setup";
+  const shopStatusDetail = shopSetupNote ?? "Owner Home is reading this shop from the existing owner scope.";
   const memberships = useMemo(() => fintechQuery.data?.memberships ?? [], [fintechQuery.data?.memberships]);
   const barberAccounts = useMemo(() => fintechQuery.data?.barbers ?? [], [fintechQuery.data?.barbers]);
   const activeBarberIds = useMemo(() => new Set(activeBarbers.map((barber) => barber.id)), [activeBarbers]);
@@ -462,7 +495,7 @@ export function OwnerTeamWorkspace() {
         utilization: statusKind === "pending" ? null : barber.utilization,
         rating,
         nextAppointmentStart: barber.nextAppointmentStart,
-        payoutStatus: formatStatusLabel(account?.operationalStatus ?? "not_ready"),
+        payoutStatus: formatMoneyPostureLabel(account?.operationalStatus ?? "not_ready"),
         payoutReadinessStatus: formatStatusLabel(payoutReadinessStatus),
         payoutBlockReason,
         currentShopLabel,
@@ -658,11 +691,11 @@ export function OwnerTeamWorkspace() {
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[38rem] xl:grid-cols-4">
               <Link
-                href="/dashboard/owner/schedule?action=add-appointment"
+                href="/dashboard/owner/schedule"
                 className={commandButtonPrimaryClassName}
               >
                 <CalendarPlus className={commandButtonIconClassName} />
-                Add Appointment
+                Open Schedule
               </Link>
               <Link
                 href="/dashboard/owner/culture"
@@ -788,6 +821,25 @@ export function OwnerTeamWorkspace() {
                 <p className="mt-1 text-xs leading-5 text-white/50">{detail}</p>
               </div>
             ))}
+          </div>
+
+          <div className="grid gap-3 rounded-[22px] border border-white/8 bg-black/24 p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr] md:items-center" data-testid="owner-shop-identity-card">
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#A3FF12]">Shop identity</p>
+              <h3 className="mt-2 truncate text-2xl font-black tracking-[-0.04em] text-white">{shopIdentityLabel}</h3>
+              <p className="mt-1 text-sm font-semibold text-white/58">{shopIdentityLine}</p>
+            </div>
+            <div className="rounded-[18px] border border-white/8 bg-white/[0.035] p-4">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Shop status</p>
+              <p className={cn("mt-2 text-lg font-black", ownerKioskShopId ? "text-[#A3FF12]" : "text-amber-300")}>{shopStatusLabel}</p>
+              <p className="mt-1 text-xs leading-5 text-white/50">{shopStatusDetail}</p>
+            </div>
+            <Link
+              href="/dashboard/owner/more?section=profile"
+              className="inline-flex min-h-12 items-center justify-center rounded-[16px] border border-[#A3FF12]/36 px-4 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10"
+            >
+              Open Settings
+            </Link>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

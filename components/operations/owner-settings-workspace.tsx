@@ -140,6 +140,25 @@ function formatConnectedStatus(status?: string) {
   return status?.replaceAll("_", " ") || "Not connected";
 }
 
+function formatOwnerReadinessLabel(status?: string | null) {
+  switch (status) {
+    case "approved":
+    case "public":
+      return "Visible";
+    case "under_review":
+      return "Needs Review";
+    case "pending":
+    case "submitted":
+      return "Pending";
+    case "rejected":
+      return "Blocked";
+    case "hidden":
+      return "Hidden";
+    default:
+      return "Needs setup";
+  }
+}
+
 function getStripeStatus({
   operationalStatus,
   payoutsEnabled,
@@ -494,7 +513,7 @@ export function OwnerSettingsWorkspace({
       subtitle: "Manage booth rent, commission splits, pricing rules, caps, and platform fees",
       href: "/dashboard/owner/money?view=fintech",
       icon: <CircleDollarSign className="h-5 w-5" />,
-      status: blockedRoutingCount ? "Needs review" : "Protected",
+      status: blockedRoutingCount ? "Needs review" : "Read-only",
       tone: blockedRoutingCount ? "yellow" : "green"
     },
     {
@@ -512,7 +531,7 @@ export function OwnerSettingsWorkspace({
     {
       title: "Team & Roles",
       subtitle: "Manage team roles, permissions, booth rent barbers, commission barbers, and active members",
-      href: "/onboarding/owner/team",
+      href: "/dashboard/owner/team",
       icon: <Users className="h-5 w-5" />,
       status: membershipCount ? `${membershipCount} linked` : "Not set",
       tone: membershipCount ? "green" : "muted"
@@ -916,7 +935,7 @@ export function OwnerSettingsWorkspace({
                         <p className="text-lg font-black text-white">{barber.name}</p>
                         <p className="mt-1 text-sm text-white/56">{barber.email || barber.username || "No public contact"}</p>
                         <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-white/42">
-                          {barber.appApprovalStatus} / {barber.visibilityState ?? "hidden"}
+                          {formatOwnerReadinessLabel(barber.appApprovalStatus)} / {formatOwnerReadinessLabel(barber.visibilityState)}
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {(barber.readinessLabels ?? []).map((label) => (

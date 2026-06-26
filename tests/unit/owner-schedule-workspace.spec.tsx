@@ -103,5 +103,35 @@ describe("owner schedule workspace", () => {
 
     expect(screen.getByText("No chairs or barbers assigned yet.")).toBeInTheDocument();
     expect(screen.getByText("Invite barbers to connect your shop team, then configure shop chairs to build the schedule.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Invite Barber" })).toHaveAttribute("href", "/dashboard/owner/team");
+    expect(screen.getByRole("link", { name: "Configure Shop Hours" })).toHaveAttribute("href", "/dashboard/owner/more?section=shop-hours");
+  });
+
+  it("routes missing schedule-data actions to existing owner surfaces", () => {
+    useShopDashboardQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        appointments: [],
+        barbers: [
+          {
+            id: "barber-maya",
+            name: "Maya Cole",
+            completedCount: 0,
+            bookedCount: 0,
+            utilization: 0,
+            liveAppointmentCount: 0,
+            nextAppointmentStart: null
+          }
+        ]
+      }
+    });
+
+    render(<OwnerScheduleWorkspace />);
+
+    expect(screen.getByText("No schedule data for this day.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Set Shop Hours" })).toHaveAttribute("href", "/dashboard/owner/more?section=shop-hours");
+    expect(screen.getByRole("link", { name: "Review Team" })).toHaveAttribute("href", "/dashboard/owner/team");
+    expect(screen.queryByRole("link", { name: "Add Availability" })).not.toBeInTheDocument();
   });
 });

@@ -237,6 +237,8 @@ describe("owner money workspace", () => {
 
     render(<OwnerMoneyWorkspace />);
 
+    expect(screen.getByText("Needs Review")).toBeInTheDocument();
+    expect(screen.getByText("Revenue appears after completed paid appointments")).toBeInTheDocument();
     expect(screen.getByText("Revenue chart unavailable")).toBeInTheDocument();
     expect(screen.getByText("Split breakdown unavailable.")).toBeInTheDocument();
     expect(screen.getByText("No transactions yet.")).toBeInTheDocument();

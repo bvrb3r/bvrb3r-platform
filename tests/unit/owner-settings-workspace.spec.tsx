@@ -574,7 +574,7 @@ describe("owner More workspace", () => {
     render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), appApprovalStatus: "approved", shopApprovalStatus: "approved" }} />);
 
     expect(screen.getByText("Team & Roles")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Team & Roles/ })).toHaveAttribute("href", "/onboarding/owner/team");
+    expect(screen.getByRole("link", { name: /Team & Roles/ })).toHaveAttribute("href", "/dashboard/owner/team");
     expect(screen.queryByRole("heading", { name: "Invite barber" })).not.toBeInTheDocument();
   });
 });
