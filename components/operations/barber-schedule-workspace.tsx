@@ -529,7 +529,7 @@ function AppointmentCard({
               onCompleteRequest(appointment);
             }}
           >
-            {isCompleting ? "Completing..." : "Complete Service"}
+            {isCompleting ? "Completing service..." : "Complete service"}
           </ActionButton>
         ) : null}
         {canComplete && !isPaid ? (
@@ -594,7 +594,7 @@ function CompleteServiceConfirmation({
           Complete this service?
         </h3>
         <p className="mt-3 text-sm leading-6 text-white/62">
-          This will mark the appointment completed and make the payment eligible for routing according to BVRB3R rules.
+          This marks the appointment completed through the server. Payment/routing evidence will update from server records; payout release is not triggered here.
         </p>
         <div className="mt-4 rounded-[20px] border border-white/8 bg-black/24 p-4">
           <p className="text-base font-extrabold text-white">{appointment.display.clientName}</p>
@@ -606,7 +606,7 @@ function CompleteServiceConfirmation({
             Cancel
           </ActionButton>
           <ActionButton type="button" className="min-h-11 px-4" disabled={isPending} onClick={() => void onConfirm()}>
-            {isPending ? "Completing..." : "Complete Service"}
+            {isPending ? "Completing service..." : "Complete service"}
           </ActionButton>
         </div>
       </div>
@@ -799,7 +799,7 @@ function AppointmentDetailsModal({
               <p className="mt-2 text-sm font-semibold text-[#d7ffab]">{serviceComplete ? "Service complete" : isPaid ? "Service not complete" : appointment.financial.latestStatusLabel}</p>
               {serviceComplete && payoutEligible ? (
                 <p className="mt-2 text-sm font-semibold text-white/72">
-                  Payout eligible{expectedPayoutLabel ? ` - ${expectedPayoutLabel}` : ""}
+                  Payout posture is evidence-based{expectedPayoutLabel ? ` - ${expectedPayoutLabel}` : ""}
                 </p>
               ) : null}
             </div>
@@ -870,7 +870,7 @@ function AppointmentDetailsModal({
             <div className="grid gap-2 sm:grid-cols-2">
               {canCompleteAppointment(appointment) ? (
                 <ActionButton type="button" className="min-h-11 px-4" disabled={pendingAction === "service_complete"} onClick={() => void onAction("service_complete")}>
-                  {pendingAction === "service_complete" ? "Completing..." : "Complete Service"}
+                  {pendingAction === "service_complete" ? "Completing service..." : "Complete service"}
                 </ActionButton>
               ) : null}
               {canCancelAppointment(appointment) ? (
@@ -1122,7 +1122,7 @@ export function BarberScheduleWorkspace({
 
   async function runAppointmentAction(appointment: BarberOperationalAppointment, action: AppointmentDetailAction, options: { closeDetailsOnComplete?: boolean; closeConfirmationOnComplete?: boolean } = {}) {
     const successMessage = action === "service_complete"
-      ? "Service completed. Payout is now eligible."
+      ? "Service completed. Payment/routing evidence will update from server records."
       : action === "cancel"
         ? "Appointment canceled."
         : "Appointment marked as no-show.";
@@ -1169,7 +1169,7 @@ export function BarberScheduleWorkspace({
           display: {
             statusLabel: getTier1StatusLabel(nextStatus),
             lifecycleDetail: nextStatus === "completed"
-              ? "Service completed and payout eligibility refreshed."
+              ? "Service completed. Payout posture is evidence-based."
               : appointment.display.lifecycleDetail
           },
           financial: financialOverride
@@ -1219,7 +1219,7 @@ export function BarberScheduleWorkspace({
       });
       setStatusUpdate({
         tone: "error",
-        message: action === "service_complete" ? "Couldn't complete service. Try again." : actionErrorMessage
+        message: action === "service_complete" ? "Completion failed. Refresh and try again." : actionErrorMessage
       });
     } finally {
       setPendingAppointmentId(null);
