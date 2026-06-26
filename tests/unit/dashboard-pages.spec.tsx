@@ -270,7 +270,7 @@ describe("dashboard role pages", () => {
     expect(screen.getByTestId("front-desk-workspace-stub")).toHaveTextContent("loc-ybor");
   });
 
-  it("renders the dedicated barber workspace for barber routes", async () => {
+  it("renders the approved calendar-backed barber home for barber routes", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
 
     render(await BarberDashboardPage());
@@ -278,7 +278,8 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.queryByRole("heading", { name: "Home" })).not.toBeInTheDocument();
     expect(screen.queryByText("Your calendar, chair status, money posture, and next move.")).not.toBeInTheDocument();
-    expect(screen.getByTestId("barber-workspace-stub")).toHaveTextContent("Blaze King");
+    expect(screen.getByTestId("barber-calendar-screen-stub")).toHaveTextContent("Blaze King");
+    expect(screen.queryByTestId("barber-workspace-stub")).not.toBeInTheDocument();
     expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Professional account");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
   });
@@ -289,6 +290,7 @@ describe("dashboard role pages", () => {
     await expect(BarberDashboardPage()).rejects.toThrow("REDIRECT:/dashboard/client");
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.queryByTestId("barber-workspace-stub")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("barber-calendar-screen-stub")).not.toBeInTheDocument();
   });
 
   it("protects unauthenticated barber dashboard access through the shared auth guard", async () => {
@@ -297,6 +299,7 @@ describe("dashboard role pages", () => {
     await expect(BarberDashboardPage()).rejects.toThrow("REDIRECT:/login");
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.queryByTestId("barber-workspace-stub")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("barber-calendar-screen-stub")).not.toBeInTheDocument();
   });
 
   it("renders the barber calendar route", async () => {
