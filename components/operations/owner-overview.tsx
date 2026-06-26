@@ -618,7 +618,7 @@ export function OwnerOverview() {
           </Link>
           <Link href="/dashboard/owner/schedule?filter=open-slots" className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[20px] border border-[#A3FF12]/40 bg-black/25 px-5 text-lg font-extrabold text-[#A3FF12] transition hover:-translate-y-0.5 hover:bg-[#A3FF12]/10">
             <Rocket className="h-5 w-5" />
-            Boost Availability
+            Review Capacity
           </Link>
           <Link href="/dashboard/owner/schedule" className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[20px] border border-[#A3FF12]/40 bg-black/25 px-5 text-lg font-extrabold text-[#A3FF12] transition hover:-translate-y-0.5 hover:bg-[#A3FF12]/10">
             <CalendarDays className="h-5 w-5" />

@@ -644,7 +644,7 @@ export function OwnerScheduleWorkspace() {
             title="No chairs or barbers assigned yet."
             detail="Invite barbers to connect your shop team, then configure shop chairs to build the schedule."
           >
-            <Link href="/onboarding/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
+            <Link href="/dashboard/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
               Invite Barber
             </Link>
             <Link href="/dashboard/owner/more?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
@@ -659,8 +659,8 @@ export function OwnerScheduleWorkspace() {
             <Link href="/dashboard/owner/more?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
               Set Shop Hours
             </Link>
-            <Link href="/dashboard/owner/more?section=availability" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
-              Add Availability
+            <Link href="/dashboard/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
+              Review Team
             </Link>
           </EmptyState>
         ) : (

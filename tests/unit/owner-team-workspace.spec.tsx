@@ -425,17 +425,17 @@ describe("owner team workspace", () => {
     expect(commandCalendar.getAllByText("14").length).toBeGreaterThan(0);
     expect(commandCalendar.getByText("18%")).toBeInTheDocument();
     expect(commandCalendar.queryByText("29%")).not.toBeInTheDocument();
-    const ownerAddAppointment = screen.getByRole("link", { name: /Add Appointment/i });
-    expect(ownerAddAppointment).toHaveAttribute("href", "/dashboard/owner/schedule?action=add-appointment");
-    expect(ownerAddAppointment).toHaveClass("min-h-11");
-    expect(ownerAddAppointment).toHaveClass("w-full");
-    expect(ownerAddAppointment).toHaveClass("bg-[#A3FF12]");
-    expect(ownerAddAppointment).toHaveClass("text-[#050505]");
+    const ownerOpenSchedule = screen.getByRole("link", { name: /Open Schedule/i });
+    expect(ownerOpenSchedule).toHaveAttribute("href", "/dashboard/owner/schedule");
+    expect(ownerOpenSchedule).toHaveClass("min-h-11");
+    expect(ownerOpenSchedule).toHaveClass("w-full");
+    expect(ownerOpenSchedule).toHaveClass("bg-[#A3FF12]");
+    expect(ownerOpenSchedule).toHaveClass("text-[#050505]");
     const ownerOpenCulture = screen.getByRole("link", { name: /Open Culture/i });
     expect(ownerOpenCulture).toHaveAttribute("href", "/dashboard/owner/culture");
     const kioskModeAction = screen.getByRole("button", { name: "Kiosk Mode" });
     const ownerAddBarbers = screen.getByRole("button", { name: /Add Barbers/i });
-    expect(ownerAddAppointment.compareDocumentPosition(ownerOpenCulture) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(ownerOpenSchedule.compareDocumentPosition(ownerOpenCulture) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(ownerOpenCulture.compareDocumentPosition(kioskModeAction) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(kioskModeAction.compareDocumentPosition(ownerAddBarbers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(kioskModeAction).toHaveClass("rounded-[8px]");
@@ -447,6 +447,12 @@ describe("owner team workspace", () => {
     });
     expect(screen.queryByRole("dialog", { name: "Enter kiosk PIN" })).not.toBeInTheDocument();
     expect(screen.getByTestId("shop-command-calendar").compareDocumentPosition(screen.getByTestId("barbers-summary"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const shopIdentityCard = within(screen.getByTestId("owner-shop-identity-card"));
+    expect(shopIdentityCard.getByText("Shop identity")).toBeInTheDocument();
+    expect(shopIdentityCard.getByText("BVRB3R Ybor")).toBeInTheDocument();
+    expect(shopIdentityCard.getByText("Shop status")).toBeInTheDocument();
+    expect(shopIdentityCard.getByText("Shop connected")).toBeInTheDocument();
+    expect(shopIdentityCard.getByRole("link", { name: "Open Settings" })).toHaveAttribute("href", "/dashboard/owner/more?section=profile");
     expect(screen.getByTestId("barbers-summary").compareDocumentPosition(screen.getByTestId("owner-daily-timeline"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.queryByTestId("owner-home-culture-entry")).not.toBeInTheDocument();
     expect(screen.queryByTestId("team-relationship-queue")).not.toBeInTheDocument();
@@ -487,7 +493,8 @@ describe("owner team workspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Maya Cole/i }));
     expect(screen.getByText("Working or available in today's shop lane.")).toBeInTheDocument();
-    expect(screen.getByText("Account health: payout ready")).toBeInTheDocument();
+    expect(screen.getByText("Account health: Payout setup connected")).toBeInTheDocument();
+    expect(screen.queryByText("Account health: payout ready")).not.toBeInTheDocument();
   });
 
   it("shows a clean empty state when no barbers are attached to the owner scope", () => {
@@ -523,7 +530,51 @@ describe("owner team workspace", () => {
 
     expect(screen.getByText("No active barbers yet.")).toBeInTheDocument();
     expect(screen.getByText("Invite a barber to begin tracking team performance.")).toBeInTheDocument();
+    expect(screen.getByTestId("owner-shop-identity-card")).toHaveTextContent("BVRB3R Ybor");
     expect(within(screen.getByTestId("shop-command-calendar")).getByRole("button", { name: /Add Barbers/i })).toBeInTheDocument();
+  });
+
+  it("shows shop setup-required state when no owner shop identity is connected", () => {
+    useShopDashboardQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        barbers: [],
+        appointments: [],
+        locations: []
+      }
+    });
+    useFintechManagementQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        summary: {
+          totalAccounts: 0,
+          readyAccounts: 0,
+          blockedAccounts: 0,
+          needsAttentionAccounts: 0,
+          notReadyAccounts: 0,
+          blockedRoutingRecords: 0,
+          readyForPayoutAmount: 0
+        },
+        shops: [],
+        barbers: [],
+        memberships: [],
+        blockedPayments: []
+      }
+    });
+    useOwnerTeamInviteDirectoryQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: undefined
+    });
+
+    render(<OwnerTeamWorkspace />);
+
+    const shopIdentityCard = screen.getByTestId("owner-shop-identity-card");
+    expect(shopIdentityCard).toHaveTextContent("Shop setup needed");
+    expect(shopIdentityCard).toHaveTextContent("Finish shop setup to unlock team, schedule, and kiosk controls.");
+    expect(within(shopIdentityCard).getByRole("link", { name: "Open Settings" })).toHaveAttribute("href", "/dashboard/owner/more?section=profile");
   });
 
   it("counts accepted active shop relationships even when payout membership hydration is empty", () => {
