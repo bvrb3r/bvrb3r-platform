@@ -32,7 +32,7 @@ const SHOP_READY_POSTURES = new Set(["verified", "approved", "active"]);
 export function buildOnboardingReadiness(context: OnboardingReadinessContext = {}): OnboardingReadinessResult {
   const roleScope = resolveRoleScope(context.role, context.authenticated);
   const publicGuest = buildPublicGuestSection(context);
-  const browse = buildBrowseSection(context);
+  const browse = buildBrowseSection();
   const account = buildAccountSection(context, roleScope);
   const booking = buildBookingSection(context);
   const culture = buildCultureSection(context, account.status);
@@ -116,7 +116,7 @@ function buildPublicGuestSection(context: OnboardingReadinessContext): Readiness
   });
 }
 
-function buildBrowseSection(_context: OnboardingReadinessContext): ReadinessSection {
+function buildBrowseSection(): ReadinessSection {
   return buildSection({
     key: "browse",
     status: "pass",
