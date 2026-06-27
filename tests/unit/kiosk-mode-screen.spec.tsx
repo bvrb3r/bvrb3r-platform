@@ -127,27 +127,28 @@ describe("kiosk mode screen", () => {
     render(<KioskModeScreen shopId="loc-ybor" />);
 
     expect(screen.getByText("BVRB3R Ybor")).toBeInTheDocument();
-    expect(screen.getByText("Next available barber")).toBeInTheDocument();
-    expect(screen.getByText("I already have a barber")).toBeInTheDocument();
-    expect(screen.getByText("I already have an appointment")).toBeInTheDocument();
+    expect(screen.getByText("Book next available")).toBeInTheDocument();
+    expect(screen.getByText("Pick a barber")).toBeInTheDocument();
+    expect(screen.getByText("Join the walk-in queue")).toBeInTheDocument();
   });
 
   it("moves into the booking intake flow", () => {
     render(<KioskModeScreen shopId="loc-ybor" />);
 
-    fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByText("Book next available").closest("button") as HTMLButtonElement);
 
     expect(screen.getByText("BVRB3R Username")).toBeInTheDocument();
     expect(screen.getByText("Full name")).toBeInTheDocument();
-    expect(screen.getByText("Preferred barber")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Book next opening" })).toBeInTheDocument();
+    expect(screen.queryByText("Preferred barber")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Accept kiosk booking policy")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Book next eligible opening" })).toBeInTheDocument();
     expect(pushMock).toHaveBeenCalledWith("/kiosk/loc-ybor?mode=booking");
   });
 
   it("renders username before private intake fields", () => {
     render(<KioskModeScreen shopId="loc-ybor" />);
 
-    fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByText("Book next available").closest("button") as HTMLButtonElement);
 
     const username = screen.getByText("BVRB3R Username");
     const fullName = screen.getByText("Full name");
@@ -195,7 +196,7 @@ describe("kiosk mode screen", () => {
 
     render(<KioskModeScreen shopId="loc-ybor" />);
 
-    fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByText("Book next available").closest("button") as HTMLButtonElement);
 
     expect(screen.getByText("@phillipmcgee")).toBeInTheDocument();
     expect(screen.getByText("Phillip McGee - Tampa, FL - CLIENT")).toBeInTheDocument();
@@ -210,7 +211,7 @@ describe("kiosk mode screen", () => {
     expect(screen.queryByText("Phone number")).not.toBeInTheDocument();
     expect(screen.queryByText("Email")).not.toBeInTheDocument();
     expect(screen.getByText("Service")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Book next opening" }));
+    fireEvent.click(screen.getByRole("button", { name: "Book next eligible opening" }));
 
     await waitFor(() => {
       expect(bookingMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -229,6 +230,146 @@ describe("kiosk mode screen", () => {
     }));
   });
 
+  it("routes Pick a Barber into the selected barber kiosk without exposing private data", () => {
+    render(<KioskModeScreen shopId="loc-ybor" />);
+
+    fireEvent.click(screen.getByText("Pick a barber").closest("button") as HTMLButtonElement);
+
+    expect(screen.getByText("Choose a public chair")).toBeInTheDocument();
+    expect(screen.getByText("Blaze King")).toBeInTheDocument();
+    expect(screen.getByText("Available")).toBeInTheDocument();
+    expect(screen.queryByText(/stripe_customer_id/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/payment_routing_records/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/profiles.role/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Open barber kiosk").closest("button") as HTMLButtonElement);
+
+    expect(pushMock).toHaveBeenCalledWith("/kiosk/barber/barber-blaze");
+  });
+
+  it("blocks Next Available when no eligible walk-in barber exists", () => {
+    useKioskPayloadQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        shop: {
+          shopId: "loc-ybor",
+          shopName: "BVRB3R Ybor",
+          subtitle: "Check in or book your appointment",
+          locationLabel: "Ybor City, Tampa"
+        },
+        services: [
+          { id: "srv-cut", name: "Signature Cut", category: "Cut" }
+        ],
+        barbers: [
+          {
+            id: "barber-paused",
+            name: "Paused Barber",
+            liveStatusLabel: "On break",
+            nextAvailableAt: null,
+            acceptsWalkIns: false,
+            waitDisplayLabel: "Schedule Ahead Only",
+            estimatedWaitMinutes: null
+          }
+        ],
+        queue: {
+          activeCount: 0,
+          averageWaitMinutes: 0,
+          kioskEntriesToday: 0,
+          waitEstimateUpdatedAt: "2026-03-27T15:00:00.000Z"
+        },
+        defaults: {
+          autoResetSeconds: 10,
+          bookingMode: "next_available"
+        }
+      }
+    });
+
+    render(<KioskModeScreen shopId="loc-ybor" />);
+
+    expect(screen.queryByRole("button", { name: /Book next available/i })).not.toBeInTheDocument();
+    expect(screen.getByText("No eligible barber is available for walk-ins right now.")).toBeInTheDocument();
+  });
+
+  it("requires policy acceptance for new kiosk booking capture", async () => {
+    const bookingMock = vi.fn().mockResolvedValue({
+      appointmentId: "appt-1",
+      confirmationCode: "BVR123",
+      barberId: "barber-blaze",
+      barberName: "Blaze King",
+      serviceId: "srv-cut",
+      serviceName: "Signature Cut",
+      startsAt: "2026-03-27T15:00:00.000Z",
+      shopLabel: "BVRB3R Ybor",
+      waitDisplayLabel: "About 10 min"
+    });
+    useKioskBookingMutationMock.mockReturnValue({
+      isPending: false,
+      error: null,
+      mutateAsync: bookingMock
+    });
+
+    render(<KioskModeScreen shopId="loc-ybor" />);
+
+    fireEvent.click(screen.getByText("Book next available").closest("button") as HTMLButtonElement);
+    fireEvent.change(screen.getByLabelText("BVRB3R Username"), { target: { value: "@newclient" } });
+    fireEvent.change(screen.getByPlaceholderText("Jordan Ellis"), { target: { value: "Jordan Ellis" } });
+    fireEvent.change(screen.getByPlaceholderText("(813) 555-0101"), { target: { value: "(813) 555-0101" } });
+    fireEvent.change(screen.getByPlaceholderText("name@example.com"), { target: { value: "jordan@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Book next eligible opening" }));
+
+    expect(await screen.findByText("Accept the kiosk booking policy before confirming.")).toBeInTheDocument();
+    expect(bookingMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("Accept kiosk booking policy"));
+    fireEvent.click(screen.getByRole("button", { name: "Book next eligible opening" }));
+
+    await waitFor(() => {
+      expect(bookingMock).toHaveBeenCalledWith(expect.objectContaining({
+        fullName: "Jordan Ellis",
+        phone: "(813) 555-0101",
+        email: "jordan@example.com",
+        publicUsername: "@newclient",
+        kioskAction: "book_next_opening"
+      }));
+    });
+  });
+
+  it("requires policy acceptance before creating a walk-in queue entry", async () => {
+    const waitlistMock = vi.fn().mockResolvedValue({
+      entryId: "queue-1",
+      queuePosition: 1,
+      statusLabel: "Active",
+      estimatedWaitMinutes: 10,
+      shopLabel: "BVRB3R Ybor"
+    });
+    useKioskWaitlistMutationMock.mockReturnValue({
+      isPending: false,
+      error: null,
+      mutateAsync: waitlistMock
+    });
+
+    render(<KioskModeScreen shopId="loc-ybor" />);
+
+    fireEvent.click(screen.getByText("Join the walk-in queue").closest("button") as HTMLButtonElement);
+    fireEvent.change(screen.getByPlaceholderText("Jordan Ellis"), { target: { value: "Jordan Ellis" } });
+    fireEvent.change(screen.getByPlaceholderText("(813) 555-0101"), { target: { value: "(813) 555-0101" } });
+    fireEvent.click(screen.getByRole("button", { name: "Join walk-in queue" }));
+
+    expect(await screen.findByText("Accept the kiosk walk-in policy before joining the queue.")).toBeInTheDocument();
+    expect(waitlistMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("Accept kiosk walk-in policy"));
+    fireEvent.click(screen.getByRole("button", { name: "Join walk-in queue" }));
+
+    await waitFor(() => {
+      expect(waitlistMock).toHaveBeenCalledWith(expect.objectContaining({
+        fullName: "Jordan Ellis",
+        phone: "(813) 555-0101"
+      }));
+    });
+  });
+
   it("shows loading and no-match username states", () => {
     useKioskClientSearchQueryMock.mockReturnValue({
       data: { results: [] },
@@ -237,7 +378,7 @@ describe("kiosk mode screen", () => {
     });
 
     const { rerender } = render(<KioskModeScreen shopId="loc-ybor" />);
-    fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByText("Book next available").closest("button") as HTMLButtonElement);
     fireEvent.change(screen.getByLabelText("BVRB3R Username"), { target: { value: "@zz" } });
 
     expect(screen.getByText("Searching BVRB3R profiles...")).toBeInTheDocument();
@@ -334,8 +475,8 @@ describe("kiosk mode screen", () => {
   it("shows clear validation if required booking fields are missing", async () => {
     render(<KioskModeScreen shopId="loc-ybor" />);
 
-    fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
-    fireEvent.click(screen.getByRole("button", { name: "Book next opening" }));
+    fireEvent.click(screen.getByText("Book next available").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByRole("button", { name: "Book next eligible opening" }));
 
     expect(await screen.findByText("Choose your BVRB3R username before confirming.")).toBeInTheDocument();
   });

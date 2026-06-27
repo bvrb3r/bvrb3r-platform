@@ -236,6 +236,11 @@ function sortFastestChairCandidates(barbers: QueueBarberOptionView[]) {
   });
 }
 
+export function isEligibleWalkInBarber(barber: QueueBarberOptionView) {
+  const status = barber.liveStatus.toLowerCase();
+  return barber.isOnline && barber.acceptsWalkIns && !["offline", "on_break", "away"].includes(status);
+}
+
 function emptyQueuePayload(): QueueWorkspacePayload {
   return {
     summary: {
@@ -275,11 +280,13 @@ async function resolveFastestBookableSlot(input: {
   scheduledAt?: string;
 }) {
   const candidates = input.preferredBarberId
-    ? input.barbers.filter((barber) => barber.id === input.preferredBarberId)
-    : sortFastestChairCandidates(input.barbers);
+    ? input.barbers
+      .filter((barber) => barber.id === input.preferredBarberId)
+      .filter((barber) => input.scheduledAt ? true : isEligibleWalkInBarber(barber))
+    : sortFastestChairCandidates(input.scheduledAt ? input.barbers : input.barbers.filter(isEligibleWalkInBarber));
 
   if (!candidates.length) {
-    throw new KioskServiceError("No eligible barber is available for kiosk booking right now.", 409);
+    throw new KioskServiceError("No eligible barber is available for walk-ins right now.", 409);
   }
 
   const slotPayloads = await Promise.all(
@@ -362,7 +369,8 @@ export async function getKioskPayload(shopId: string): Promise<KioskPayload> {
     queue: {
       activeCount: queuePayload.summary.activeCount,
       averageWaitMinutes: queuePayload.summary.averageWaitMinutes,
-      kioskEntriesToday
+      kioskEntriesToday,
+      waitEstimateUpdatedAt: new Date().toISOString()
     },
     defaults: {
       autoResetSeconds: KIOSK_AUTO_RESET_SECONDS,
@@ -420,7 +428,8 @@ export async function getBarberKioskPayload(barberId: string): Promise<KioskPayl
     queue: {
       activeCount: 0,
       averageWaitMinutes: availability?.slots.length ? 0 : 10,
-      kioskEntriesToday: 0
+      kioskEntriesToday: 0,
+      waitEstimateUpdatedAt: new Date().toISOString()
     },
     defaults: {
       autoResetSeconds: KIOSK_AUTO_RESET_SECONDS,

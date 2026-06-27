@@ -20,7 +20,7 @@ import {
 } from "@/lib/kiosk/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
-type KioskStep = "welcome" | "booking" | "walk_in";
+type KioskStep = "welcome" | "booking" | "pick_barber" | "walk_in";
 
 type BookingFormState = {
   fullName: string;
@@ -32,6 +32,7 @@ type BookingFormState = {
   preferredBarberId: string;
   kioskAction: "book_next_opening" | "schedule_ahead";
   scheduledAt: string;
+  policyAccepted: boolean;
 };
 
 type WalkInFormState = {
@@ -39,6 +40,7 @@ type WalkInFormState = {
   phone: string;
   email: string;
   serviceId: string;
+  policyAccepted: boolean;
 };
 
 type SuccessState =
@@ -76,9 +78,33 @@ function formatTime(iso: string) {
   }).format(new Date(iso));
 }
 
+function formatLastRefreshed(iso?: string) {
+  if (!iso) {
+    return "Refresh available";
+  }
+
+  return `Last refreshed ${formatTime(iso)}`;
+}
+
+function isCleanPhone(value: string) {
+  return value.replace(/\D/g, "").length >= 7;
+}
+
+function isCleanEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function isUnavailableWaitLabel(label?: string) {
+  return ["not available today", "schedule ahead only"].includes(label?.toLowerCase() ?? "");
+}
+
 function getStepFromMode(mode: string | null): KioskStep {
   if (mode === "booking") {
     return "booking";
+  }
+
+  if (mode === "pick-barber" || mode === "pick_barber") {
+    return "pick_barber";
   }
 
   if (mode === "walk-in" || mode === "walk_in") {
@@ -113,13 +139,15 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     serviceId: "",
     preferredBarberId: "",
     kioskAction: "book_next_opening",
-    scheduledAt: ""
+    scheduledAt: "",
+    policyAccepted: false
   });
   const walkInFormRef = useRef<WalkInFormState>({
     fullName: "",
     phone: "",
     email: "",
-    serviceId: ""
+    serviceId: "",
+    policyAccepted: false
   });
   const [bookingForm, setBookingForm] = useState<BookingFormState>(bookingFormRef.current);
   const [walkInForm, setWalkInForm] = useState<WalkInFormState>(walkInFormRef.current);
@@ -129,9 +157,24 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
   const formError = bookingMutation.error || waitlistMutation.error;
   const autoResetSeconds = payload?.defaults.autoResetSeconds ?? 10;
   const isSubmitting = bookingMutation.isPending || waitlistMutation.isPending;
-  const hasBookableKioskOptions = Boolean(payload?.services.length && payload.barbers.length);
-  const selectedBarber = payload?.barbers.find((barber) => barber.id === bookingForm.preferredBarberId) ?? payload?.barbers[0];
-  const waitLabel = selectedBarber?.waitDisplayLabel ?? (payload?.queue.averageWaitMinutes ? `${payload.queue.averageWaitMinutes} min average wait` : "Ready now");
+  const hasServiceOptions = Boolean(payload?.services.length);
+  const eligibleWalkInBarbers = useMemo(
+    () => (payload?.barbers ?? []).filter((barber) => barber.acceptsWalkIns && !isUnavailableWaitLabel(barber.waitDisplayLabel)),
+    [payload?.barbers]
+  );
+  const pickableBarbers = useMemo(
+    () => (payload?.barbers ?? []).filter((barber) => !isUnavailableWaitLabel(barber.waitDisplayLabel)),
+    [payload?.barbers]
+  );
+  const hasEligibleNextAvailable = hasServiceOptions && eligibleWalkInBarbers.length > 0;
+  const hasPickableBarbers = hasServiceOptions && pickableBarbers.length > 0;
+  const hasBookableKioskOptions = hasServiceOptions && (hasEligibleNextAvailable || hasPickableBarbers);
+  const selectedBarber = payload?.barbers.find((barber) => barber.id === bookingForm.preferredBarberId)
+    ?? eligibleWalkInBarbers[0]
+    ?? payload?.barbers[0];
+  const waitLabel = selectedBarber?.waitDisplayLabel
+    ?? (payload?.queue.averageWaitMinutes ? `About ${payload.queue.averageWaitMinutes} min average wait` : "Wait time unavailable");
+  const waitStateLabel = isUnavailableWaitLabel(waitLabel) || waitLabel === "Wait time unavailable" ? "Wait unavailable" : "Estimated wait";
   const clientSearchResults = clientSearchQuery.data?.results ?? [];
   const usernameSearchLength = bookingForm.publicUsername.trim().replace(/^@+/, "").length;
 
@@ -177,6 +220,30 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
           window.clearInterval(intervalId);
           setSuccess(null);
           setStep("welcome");
+          const defaultServiceId = payload?.services[0]?.id ?? "";
+          const nextBookingForm = {
+            fullName: "",
+            phone: "",
+            email: "",
+            publicUsername: "",
+            selectedProfileId: "",
+            serviceId: defaultServiceId,
+            preferredBarberId: "",
+            kioskAction: "book_next_opening" as const,
+            scheduledAt: "",
+            policyAccepted: false
+          };
+          const nextWalkInForm = {
+            fullName: "",
+            phone: "",
+            email: "",
+            serviceId: defaultServiceId,
+            policyAccepted: false
+          };
+          bookingFormRef.current = nextBookingForm;
+          walkInFormRef.current = nextWalkInForm;
+          setBookingForm(nextBookingForm);
+          setWalkInForm(nextWalkInForm);
           router.replace((scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`) as Route);
           return null;
         }
@@ -188,24 +255,64 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [autoResetSeconds, router, scope, shopId, success]);
+  }, [autoResetSeconds, payload?.services, router, scope, shopId, success]);
+
+  function resetFormsToDefaults() {
+    const defaultServiceId = payload?.services[0]?.id ?? "";
+    const nextBookingForm = {
+      fullName: "",
+      phone: "",
+      email: "",
+      publicUsername: "",
+      selectedProfileId: "",
+      serviceId: defaultServiceId,
+      preferredBarberId: "",
+      kioskAction: "book_next_opening" as const,
+      scheduledAt: "",
+      policyAccepted: false
+    };
+    const nextWalkInForm = {
+      fullName: "",
+      phone: "",
+      email: "",
+      serviceId: defaultServiceId,
+      policyAccepted: false
+    };
+    bookingFormRef.current = nextBookingForm;
+    walkInFormRef.current = nextWalkInForm;
+    setBookingForm(nextBookingForm);
+    setWalkInForm(nextWalkInForm);
+  }
 
   const queueLabel = useMemo(() => {
     if (!payload) {
       return "";
     }
 
-    if (payload.queue.activeCount) {
-      return `${payload.queue.activeCount} guests waiting - ${payload.queue.averageWaitMinutes} min average wait`;
+    if (!hasServiceOptions) {
+      return "Services need setup";
     }
 
-    return "Fastest chair routing is ready right now";
-  }, [payload]);
+    if (!eligibleWalkInBarbers.length) {
+      return "No eligible walk-in barber right now";
+    }
+
+    if (payload.queue.activeCount && payload.queue.averageWaitMinutes > 0) {
+      return `${payload.queue.activeCount} guests waiting - about ${payload.queue.averageWaitMinutes} min average wait`;
+    }
+
+    if (payload.queue.activeCount) {
+      return `${payload.queue.activeCount} guests waiting - wait estimate unavailable`;
+    }
+
+    return "No active walk-in wait right now";
+  }, [eligibleWalkInBarbers.length, hasServiceOptions, payload]);
 
   function resetToWelcome() {
     setInteractionError(null);
     setSuccess(null);
     setStep("welcome");
+    resetFormsToDefaults();
     router.replace((scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`) as Route);
   }
 
@@ -214,7 +321,8 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     setSuccess(null);
     setStep(nextStep);
     const basePath = scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`;
-    router.push(`${basePath}?mode=${nextStep === "walk_in" ? "walk-in" : "booking"}` as Route);
+    const modeValue = nextStep === "walk_in" ? "walk-in" : nextStep === "pick_barber" ? "pick-barber" : "booking";
+    router.push(`${basePath}?mode=${modeValue}` as Route);
   }
 
   function handleUnlock() {
@@ -236,6 +344,11 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
   }
 
   async function handleBookingSubmit() {
+    if (bookingForm.kioskAction === "book_next_opening" && !bookingForm.preferredBarberId && !hasEligibleNextAvailable) {
+      setInteractionError("No eligible barber is available for walk-ins right now.");
+      return;
+    }
+
     if (!bookingForm.selectedProfileId && !bookingForm.publicUsername.trim()) {
       setInteractionError("Choose your BVRB3R username before confirming.");
       return;
@@ -243,6 +356,21 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
 
     if (!bookingForm.selectedProfileId && (!bookingForm.fullName.trim() || !bookingForm.phone.trim() || !bookingForm.email.trim())) {
       setInteractionError("Add your full name, phone number, email, and service before booking.");
+      return;
+    }
+
+    if (!bookingForm.selectedProfileId && !isCleanPhone(bookingForm.phone)) {
+      setInteractionError("Enter a valid phone number for booking updates.");
+      return;
+    }
+
+    if (!bookingForm.selectedProfileId && !isCleanEmail(bookingForm.email)) {
+      setInteractionError("Enter a valid email address for booking updates.");
+      return;
+    }
+
+    if (!bookingForm.selectedProfileId && !bookingForm.policyAccepted) {
+      setInteractionError("Accept the kiosk booking policy before confirming.");
       return;
     }
 
@@ -276,9 +404,11 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
       email: "",
       publicUsername: "",
       selectedProfileId: "",
+      serviceId: payload?.services[0]?.id ?? "",
       preferredBarberId: "",
       kioskAction: "book_next_opening",
-      scheduledAt: ""
+      scheduledAt: "",
+      policyAccepted: false
     };
     setBookingForm(bookingFormRef.current);
     setSuccess({
@@ -295,6 +425,21 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
       return;
     }
 
+    if (!isCleanPhone(walkInForm.phone)) {
+      setInteractionError("Enter a valid phone number for queue updates.");
+      return;
+    }
+
+    if (walkInForm.email.trim() && !isCleanEmail(walkInForm.email)) {
+      setInteractionError("Enter a valid email address or leave email blank for the walk-in queue.");
+      return;
+    }
+
+    if (!walkInForm.policyAccepted) {
+      setInteractionError("Accept the kiosk walk-in policy before joining the queue.");
+      return;
+    }
+
     setInteractionError(null);
     const result = await waitlistMutation.mutateAsync({
       fullName: walkInForm.fullName.trim(),
@@ -307,16 +452,18 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
       ...walkInFormRef.current,
       fullName: "",
       phone: "",
-      email: ""
+      email: "",
+      serviceId: payload?.services[0]?.id ?? "",
+      policyAccepted: false
     };
     setWalkInForm(walkInFormRef.current);
     setSuccess({
       kind: "walk_in",
       title: `You are #${result.queuePosition} in line`,
       detail: result.bestBarberName
-        ? `${result.bestBarberName} is the fastest available chair right now.`
-        : "The shop will route you to the fastest available chair.",
-      helper: `Estimated wait ${result.estimatedWaitMinutes} minutes`
+        ? `${result.bestBarberName} is the current best eligible chair.`
+        : "The shop will route you using the current walk-in queue.",
+      helper: `Estimated wait ${result.estimatedWaitMinutes} minutes. Queue position came from the server.`
     });
   }
 
@@ -430,76 +577,126 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
 
               {step === "welcome" ? (
                 hasBookableKioskOptions ? (
-                  <div className="relative z-10 mt-8 grid gap-4 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBookingForm((current) => ({ ...current, kioskAction: "book_next_opening", preferredBarberId: "" }));
-                        openStep("booking");
-                      }}
-                      className="rounded-[32px] border border-[#cfff93]/28 bg-[linear-gradient(135deg,rgba(124,255,0,0.16),rgba(16,16,16,0.96))] p-6 text-left transition hover:-translate-y-0.5 hover:border-[#cfff93]/40"
-                      style={{ pointerEvents: "auto" }}
-                    >
-                      <p className="surface-label text-[#d7ffab]">{scope === "barber" ? "Book next opening" : "Next available barber"}</p>
-                      <h2 className="mt-3 wrap-safe text-3xl font-semibold">Reserve the fastest open chair</h2>
-                      <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">
-                        {scope === "barber"
-                          ? "Enter your info, pick your service, and reserve the next available time with this barber."
-                          : "Enter your info, pick your service, and the shop will place you into the fastest available booking slot."}
-                      </p>
-                    </button>
-                    {scope === "shop" ? (
+                  <div className="relative z-10 mt-8 space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {hasEligibleNextAvailable ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBookingForm((current) => ({ ...current, kioskAction: "book_next_opening", preferredBarberId: "" }));
+                            openStep("booking");
+                          }}
+                          className="rounded-[32px] border border-[#cfff93]/28 bg-[linear-gradient(135deg,rgba(124,255,0,0.16),rgba(16,16,16,0.96))] p-6 text-left transition hover:-translate-y-0.5 hover:border-[#cfff93]/40"
+                          style={{ pointerEvents: "auto" }}
+                        >
+                          <p className="surface-label text-[#d7ffab]">{scope === "barber" ? "Book next opening" : "Book next available"}</p>
+                          <h2 className="mt-3 wrap-safe text-3xl font-semibold">Reserve the next eligible chair</h2>
+                          <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">
+                            {scope === "barber"
+                              ? "Enter your info, pick your service, and reserve the next available time with this barber."
+                              : "The shop uses current walk-in eligibility and availability. This does not move a rotation marker unless the backend does it."}
+                          </p>
+                          <p className="mt-4 text-xs uppercase tracking-[0.2em] text-white/42">{formatLastRefreshed(payload.queue.waitEstimateUpdatedAt)}</p>
+                        </button>
+                      ) : (
+                        <div className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left">
+                          <p className="surface-label text-white/48">Book next available</p>
+                          <h2 className="mt-3 wrap-safe text-3xl font-semibold">No eligible barber is available for walk-ins right now.</h2>
+                          <p className="mt-4 wrap-safe text-sm leading-7 text-white/62">Ask the front desk for help or schedule ahead with a barber who has bookable time.</p>
+                        </div>
+                      )}
+                      {scope === "shop" && hasPickableBarbers ? (
+                        <button
+                          type="button"
+                          onClick={() => openStep("pick_barber")}
+                          className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
+                          style={{ pointerEvents: "auto" }}
+                        >
+                          <p className="surface-label">Pick a barber</p>
+                          <h2 className="mt-3 wrap-safe text-3xl font-semibold">Choose your chair</h2>
+                          <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">See public-safe barber names and wait posture, then continue into that barber kiosk.</p>
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <button
                         type="button"
                         onClick={() => {
-                          setBookingForm((current) => ({ ...current, kioskAction: "book_next_opening" }));
+                          setBookingForm((current) => ({ ...current, kioskAction: "schedule_ahead", preferredBarberId: "" }));
                           openStep("booking");
                         }}
                         className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
                         style={{ pointerEvents: "auto" }}
                       >
-                        <p className="surface-label">I already have a barber</p>
-                        <h2 className="mt-3 wrap-safe text-3xl font-semibold">Choose a barber</h2>
-                        <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Pick from active shop barbers, then confirm your service and wait time.</p>
+                        <p className="surface-label">Schedule {scope === "shop" ? "for later" : "ahead"}</p>
+                        <h2 className="mt-3 wrap-safe text-3xl font-semibold">Pick a future time</h2>
+                        <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Choose your service and confirm a future slot before anything is booked.</p>
                       </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBookingForm((current) => ({ ...current, kioskAction: "schedule_ahead" }));
-                        openStep("booking");
-                      }}
-                      className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
-                      style={{ pointerEvents: "auto" }}
-                    >
-                      <p className="surface-label">Schedule {scope === "shop" ? "for later" : "ahead"}</p>
-                      <h2 className="mt-3 wrap-safe text-3xl font-semibold">Pick a future time</h2>
-                      <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Choose your service and confirm a future slot before anything is booked.</p>
-                    </button>
-                    {scope === "shop" ? (
-                      <button
-                        type="button"
-                        onClick={() => openStep("walk_in")}
-                        className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
-                        style={{ pointerEvents: "auto" }}
-                      >
-                        <p className="surface-label">I already have an appointment</p>
-                        <h2 className="mt-3 wrap-safe text-3xl font-semibold">Check in</h2>
-                        <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Find today&apos;s appointment or ask the front desk for help if it cannot be found.</p>
-                      </button>
-                    ) : null}
+                      {scope === "shop" ? (
+                        <button
+                          type="button"
+                          onClick={() => openStep("walk_in")}
+                          className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
+                          style={{ pointerEvents: "auto" }}
+                        >
+                          <p className="surface-label">Walk-in queue</p>
+                          <h2 className="mt-3 wrap-safe text-3xl font-semibold">Join the walk-in queue</h2>
+                          <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Add your info and service. Queue position appears only after the server creates the entry.</p>
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 ) : (
                   <div className="mt-8 rounded-[30px] border border-white/8 bg-black/22 p-6">
                     <p className="surface-label text-[#d7ffab]">Kiosk unavailable</p>
                     <h2 className="mt-3 wrap-safe text-3xl font-semibold">
-                      {scope === "shop" ? "No active barbers available for kiosk booking." : "No services are available for kiosk booking."}
+                      {!hasServiceOptions
+                        ? "No services are available for kiosk booking."
+                        : scope === "shop"
+                          ? "No eligible barber is available for walk-ins right now."
+                          : "This barber does not have a bookable kiosk opening right now."}
                     </h2>
                     <p className="mt-4 wrap-safe text-sm leading-7 text-white/62">
                       Need help? Ask the barber or front desk.
                     </p>
                   </div>
                 )
+              ) : null}
+
+              {step === "pick_barber" ? (
+                <div className="mt-8 space-y-4">
+                  <div className="rounded-[26px] border border-white/8 bg-black/20 p-5">
+                    <p className="surface-label text-[#d7ffab]">Pick a barber</p>
+                    <h2 className="mt-3 wrap-safe text-3xl font-semibold">Choose a public chair</h2>
+                    <p className="mt-3 text-sm leading-7 text-white/62">This list only shows public-safe barber identity and current wait posture. It does not expose contact, payout, or team settings.</p>
+                  </div>
+                  {pickableBarbers.length ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {pickableBarbers.map((barber) => (
+                        <button
+                          key={barber.id}
+                          type="button"
+                          className="rounded-[26px] border border-white/8 bg-black/20 p-5 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16"
+                          style={{ pointerEvents: "auto" }}
+                          onClick={() => router.push(`/kiosk/barber/${barber.id}` as Route)}
+                        >
+                          <p className="surface-label text-white/48">{barber.liveStatusLabel}</p>
+                          <h3 className="mt-3 wrap-safe text-2xl font-semibold text-white">{barber.name}</h3>
+                          <p className="mt-3 text-sm leading-6 text-white/62">{barber.waitDisplayLabel ?? "Wait time unavailable"}</p>
+                          <span className="mt-4 inline-flex rounded-full border border-[#7CFF00]/16 bg-[#7CFF00]/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d7ffab]">
+                            Open barber kiosk
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-[26px] border border-white/8 bg-black/20 p-5">
+                      <h3 className="wrap-safe text-2xl font-semibold">No public bookable barber is available right now.</h3>
+                      <p className="mt-3 text-sm leading-7 text-white/62">Ask the front desk for help or try schedule ahead.</p>
+                    </div>
+                  )}
+                  <Button variant="secondary" disabled={isSubmitting} onClick={resetToWelcome}>Back to kiosk home</Button>
+                </div>
               ) : null}
 
               {step === "booking" ? (
@@ -567,7 +764,8 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                                 selectedProfileId: "",
                                 fullName: "",
                                 phone: "",
-                                email: ""
+                                email: "",
+                                policyAccepted: false
                               }));
                             }}
                           >
@@ -587,18 +785,33 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         </div>
                         <div>
                           <label className="mb-3 block surface-label">Phone number</label>
-                          <Input value={bookingForm.phone} onChange={(event) => {
+                          <Input inputMode="tel" value={bookingForm.phone} onChange={(event) => {
                             setInteractionError(null);
                             setBookingForm((current) => ({ ...current, phone: event.target.value }));
                           }} placeholder="(813) 555-0101" />
                         </div>
                         <div>
                           <label className="mb-3 block surface-label">Email</label>
-                          <Input value={bookingForm.email} onChange={(event) => {
+                          <Input type="email" value={bookingForm.email} onChange={(event) => {
                             setInteractionError(null);
                             setBookingForm((current) => ({ ...current, email: event.target.value }));
                           }} placeholder="name@example.com" />
                         </div>
+                        <label className="flex items-start gap-3 rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/62">
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 accent-[#7CFF00]"
+                            checked={bookingForm.policyAccepted}
+                            onChange={(event) => {
+                              setInteractionError(null);
+                              setBookingForm((current) => ({ ...current, policyAccepted: event.target.checked }));
+                            }}
+                            aria-label="Accept kiosk booking policy"
+                          />
+                          <span>
+                            I agree this kiosk can use my contact info for this booking. This does not sign me into a public account or expose my private contact details.
+                          </span>
+                        </label>
                       </>
                     )}
                   </div>
@@ -614,19 +827,19 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         ))}
                       </Select>
                     </div>
-                    {payload.defaults.allowChooseBarber !== false ? (
-                    <div>
-                      <label className="mb-3 block surface-label">Preferred barber</label>
-                      <Select value={bookingForm.preferredBarberId} onChange={(event) => {
-                        setInteractionError(null);
-                        setBookingForm((current) => ({ ...current, preferredBarberId: event.target.value }));
-                      }}>
-                        <option value="">Fastest available barber</option>
-                        {payload.barbers.map((barber) => (
-                          <option key={barber.id} value={barber.id}>{barber.name} - {barber.liveStatusLabel}</option>
-                        ))}
-                      </Select>
-                    </div>
+                    {payload.defaults.allowChooseBarber !== false && bookingForm.kioskAction === "schedule_ahead" ? (
+                      <div>
+                        <label className="mb-3 block surface-label">Preferred barber</label>
+                        <Select value={bookingForm.preferredBarberId} onChange={(event) => {
+                          setInteractionError(null);
+                          setBookingForm((current) => ({ ...current, preferredBarberId: event.target.value }));
+                        }}>
+                          <option value="">Any eligible barber</option>
+                          {pickableBarbers.map((barber) => (
+                            <option key={barber.id} value={barber.id}>{barber.name} - {barber.liveStatusLabel}</option>
+                          ))}
+                        </Select>
+                      </div>
                     ) : null}
                     {bookingForm.kioskAction === "schedule_ahead" ? (
                       <div>
@@ -642,19 +855,26 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                       </div>
                     ) : null}
                     <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4 text-sm leading-6 text-white/70">
-                      <p className="surface-label text-[#d7ffab]">Estimated wait</p>
+                      <p className="surface-label text-[#d7ffab]">{waitStateLabel}</p>
                       <p className="mt-2 text-2xl font-semibold text-white">{waitLabel}</p>
-                      <p className="mt-2 wrap-safe text-white/56">You will review and confirm before an appointment is created.</p>
+                      <p className="mt-2 wrap-safe text-white/56">{formatLastRefreshed(payload.queue.waitEstimateUpdatedAt)}. You will review and confirm before an appointment is created.</p>
+                      <button
+                        type="button"
+                        className="mt-3 text-xs font-black uppercase tracking-[0.18em] text-white/58 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                        onClick={() => void kioskQuery.refetch?.()}
+                      >
+                        Refresh wait estimate
+                      </button>
                     </div>
                     <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/62">
-                      Booking stays on the existing booking rail, requires this confirmation step, and uses canonical availability before creating an appointment.
+                      Booking stays on the existing booking rail, requires this confirmation step, and uses canonical availability before creating an appointment. If payment is required, the server must confirm it or the booking will fail safely.
                     </div>
                   </div>
                   <div className="lg:col-span-2 flex flex-wrap gap-2">
                     <Button disabled={isSubmitting} onClick={() => void handleBookingSubmit()}>
-                      {bookingMutation.isPending ? "Booking..." : bookingForm.kioskAction === "schedule_ahead" ? "Schedule appointment" : "Book next opening"}
+                      {bookingMutation.isPending ? "Booking..." : bookingForm.kioskAction === "schedule_ahead" ? "Schedule appointment" : "Book next eligible opening"}
                     </Button>
-                    <Button variant="secondary" disabled={isSubmitting} onClick={resetToWelcome}>Back</Button>
+                    <Button variant="secondary" disabled={isSubmitting} onClick={resetToWelcome}>Cancel and reset</Button>
                   </div>
                 </div>
               ) : null}
@@ -671,18 +891,33 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                     </div>
                     <div>
                       <label className="mb-3 block surface-label">Phone number</label>
-                      <Input value={walkInForm.phone} onChange={(event) => {
+                      <Input inputMode="tel" value={walkInForm.phone} onChange={(event) => {
                         setInteractionError(null);
                         setWalkInForm((current) => ({ ...current, phone: event.target.value }));
                       }} placeholder="(813) 555-0101" />
                     </div>
                     <div>
                       <label className="mb-3 block surface-label">Email</label>
-                      <Input value={walkInForm.email} onChange={(event) => {
+                      <Input type="email" value={walkInForm.email} onChange={(event) => {
                         setInteractionError(null);
                         setWalkInForm((current) => ({ ...current, email: event.target.value }));
                       }} placeholder="name@example.com" />
                     </div>
+                    <label className="flex items-start gap-3 rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/62">
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 accent-[#7CFF00]"
+                        checked={walkInForm.policyAccepted}
+                        onChange={(event) => {
+                          setInteractionError(null);
+                          setWalkInForm((current) => ({ ...current, policyAccepted: event.target.checked }));
+                        }}
+                        aria-label="Accept kiosk walk-in policy"
+                      />
+                      <span>
+                        I agree this kiosk can use my contact info for queue updates. Queue position is confirmed only after the server creates the walk-in entry.
+                      </span>
+                    </label>
                   </div>
                   <div className="space-y-4">
                     <div>
@@ -699,16 +934,17 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                     <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4 text-sm leading-6 text-white/70">
                       <div className="flex items-center gap-2 text-[#d7ffab]">
                         <Phone className="h-4 w-4" />
-                        Fastest chair routing
+                        Walk-in routing
                       </div>
                       <p className="mt-3 wrap-safe">{queueLabel}</p>
+                      <p className="mt-2 text-xs uppercase tracking-[0.18em] text-white/42">{formatLastRefreshed(payload.queue.waitEstimateUpdatedAt)}</p>
                     </div>
                   </div>
                   <div className="lg:col-span-2 flex flex-wrap gap-2">
                     <Button disabled={isSubmitting} onClick={() => void handleWalkInSubmit()}>
                       {waitlistMutation.isPending ? "Joining..." : "Join walk-in queue"}
                     </Button>
-                    <Button variant="secondary" disabled={isSubmitting} onClick={resetToWelcome}>Back</Button>
+                    <Button variant="secondary" disabled={isSubmitting} onClick={resetToWelcome}>Cancel and reset</Button>
                   </div>
                 </div>
               ) : null}
