@@ -77,9 +77,9 @@ describe("public shop profile", () => {
     expect(screen.getByText("1600 7th Ave, Tampa, FL 33612")).toBeInTheDocument();
     expect(screen.getByText("1 approved barber")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Book" }).length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "Message" })).toHaveAttribute("href", "/workspace/messages?shop=shop-tampa");
-    expect(screen.getByRole("button", { name: "Following" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Support" })).toHaveAttribute("href", "/bookings?support=1&shop=shop-tampa");
+    expect(screen.queryByRole("button", { name: "Following" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(screen.getByText("Active team")).toBeInTheDocument();
     expect(screen.getAllByText("philforsure").length).toBeGreaterThan(0);

@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import type { Route } from "next";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -56,6 +57,7 @@ const bookingSchema = z.object({
   appointmentTime: z.string().min(1),
   clientName: z.string().min(2),
   clientPhone: z.string().min(10),
+  clientEmail: z.string().optional(),
   acknowledgePolicy: z.boolean().refine((value) => value, "Please accept the cancellation policy.")
 });
 
@@ -63,7 +65,7 @@ type BookingValues = z.infer<typeof bookingSchema>;
 type BookingStep = "service" | "time" | "review";
 type BookingDraft = Pick<
   BookingValues,
-  "locationId" | "barberId" | "serviceId" | "addOnId" | "appointmentTime" | "clientName" | "clientPhone"
+  "locationId" | "barberId" | "serviceId" | "addOnId" | "appointmentTime" | "clientName" | "clientPhone" | "clientEmail"
 >;
 
 function toMarketplaceSource(value: string | null): MarketplaceSourceKind | undefined {
@@ -88,6 +90,22 @@ function toAiRecommendationType(value: string | null): AiRecommendationType | un
   }
 
   return undefined;
+}
+
+function normalizePhoneDigits(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function isValidBookingPhone(value: string) {
+  return normalizePhoneDigits(value).length >= 10;
+}
+
+function normalizeBookingEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function isValidBookingEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeBookingEmail(value));
 }
 
 function getSourceLabel(sourceKind?: MarketplaceSourceKind, isCultureSource = false) {
@@ -350,10 +368,11 @@ function getSlotPeriod(iso: string, timeZone?: string): "Morning" | "Afternoon" 
 
 function getCurrentBookingRoute() {
   if (typeof window === "undefined") {
-    return undefined;
+    return "/booking/new";
   }
 
-  return `${window.location.pathname}${window.location.search}`;
+  const route = `${window.location.pathname}${window.location.search}`;
+  return route === "/" ? "/booking/new" : route;
 }
 
 function groupSlotsByDate<T extends { startsAt: string }>(slots: T[], timeZone?: string) {
@@ -422,17 +441,18 @@ function clearBookingDraft() {
   window.localStorage.removeItem(BOOKING_DRAFT_STORAGE_KEY);
 }
 
-export function BookingForm() {
+export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } = {}) {
+  const isGuestMode = mode === "guest";
   const searchParams = useSearchParams();
   const { isOnline } = usePwa();
   const { selectedLocationId, selectedBarberId, setLocation, setBarber } = useBookingStore();
   const bookingMutation = useCreateBookingMutation();
-  const paymentMethodsQuery = usePaymentMethodsQuery();
+  const paymentMethodsQuery = usePaymentMethodsQuery(undefined, !isGuestMode);
   const analyticsMutation = useMarketplaceAnalyticsMutation();
   const waitlistMutation = useMarketplaceWaitlistMutation();
-  const membershipQuery = useClientMembershipQuery();
-  const clientHomeQuery = useClientHomeQuery();
-  const pointsBalanceQuery = useClientPointsBalanceQuery();
+  const membershipQuery = useClientMembershipQuery(!isGuestMode);
+  const clientHomeQuery = useClientHomeQuery(!isGuestMode);
+  const pointsBalanceQuery = useClientPointsBalanceQuery(!isGuestMode);
   const ctaTrackedRef = useRef<string | null>(null);
   const [confirmationId, setConfirmationId] = useState("");
   const [confirmationPaymentStatus, setConfirmationPaymentStatus] = useState<string | null>(null);
@@ -490,7 +510,8 @@ export function BookingForm() {
       appointmentTime: preselectedAppointmentTime,
       clientName: "",
       clientPhone: "",
-      acknowledgePolicy: true
+      clientEmail: "",
+      acknowledgePolicy: !isGuestMode
     }
   });
 
@@ -501,14 +522,18 @@ export function BookingForm() {
   const watchAppointmentTime = form.watch("appointmentTime");
   const watchClientName = form.watch("clientName");
   const watchClientPhone = form.watch("clientPhone");
+  const watchClientEmail = form.watch("clientEmail") ?? "";
+  const watchAcknowledgePolicy = form.watch("acknowledgePolicy");
   const clientContact = clientHomeQuery.data?.client;
   const profileClientName = clientContact?.fullName?.trim() ?? "";
   const profileClientPhone = clientContact?.phone?.trim() ?? "";
   const profileClientEmail = clientContact?.email?.trim() ?? "";
   const resolvedClientName = watchClientName.trim() || profileClientName;
   const resolvedClientPhone = watchClientPhone.trim() || profileClientPhone;
+  const resolvedClientEmail = watchClientEmail.trim() || profileClientEmail;
   const hasClientName = resolvedClientName.length >= 2;
-  const hasClientPhone = resolvedClientPhone.length >= 10;
+  const hasClientPhone = isValidBookingPhone(resolvedClientPhone);
+  const hasClientEmail = !isGuestMode || isValidBookingEmail(resolvedClientEmail);
 
   useEffect(() => {
     const draft = readBookingDraft();
@@ -529,7 +554,8 @@ export function BookingForm() {
       appointmentTime: nextAppointmentTime,
       clientName: draft.clientName || form.getValues("clientName"),
       clientPhone: draft.clientPhone || form.getValues("clientPhone"),
-      acknowledgePolicy: true
+      clientEmail: draft.clientEmail || form.getValues("clientEmail") || "",
+      acknowledgePolicy: !isGuestMode
     });
 
     if (nextLocationId) {
@@ -539,7 +565,7 @@ export function BookingForm() {
     if (nextBarberId) {
       setBarber(nextBarberId);
     }
-  }, [form, preselectedAppointmentTime, preselectedBarberId, preselectedLocationId, preselectedServiceId, setBarber, setLocation]);
+  }, [form, isGuestMode, preselectedAppointmentTime, preselectedBarberId, preselectedLocationId, preselectedServiceId, setBarber, setLocation]);
 
   useEffect(() => {
     if (profileClientName && !form.getValues("clientName")) {
@@ -616,7 +642,7 @@ export function BookingForm() {
     serviceId: resolvedServiceId || undefined,
     addOnIds: bookingAddOnIds,
     barberId: resolvedBarberId || undefined
-  });
+  }, !isGuestMode);
 
   useEffect(() => {
     if (resolvedLocationId && form.getValues("locationId") !== resolvedLocationId) {
@@ -803,11 +829,16 @@ export function BookingForm() {
   }, [pointsRedemptionPreview.maxRedeemablePoints]);
 
   useEffect(() => {
+    if (isGuestMode) {
+      setSelectedPaymentMethodId("");
+      return;
+    }
+
     const nextMethodId = defaultPaymentMethod?.id ?? "";
     if (!selectedPaymentMethodId || !paymentMethods.some((method) => method.id === selectedPaymentMethodId)) {
       setSelectedPaymentMethodId(nextMethodId);
     }
-  }, [defaultPaymentMethod?.id, paymentMethods, selectedPaymentMethodId]);
+  }, [defaultPaymentMethod?.id, isGuestMode, paymentMethods, selectedPaymentMethodId]);
 
   useEffect(() => {
     writeBookingDraft({
@@ -817,9 +848,10 @@ export function BookingForm() {
       addOnId: watchAddOnId,
       appointmentTime: watchAppointmentTime,
       clientName: watchClientName,
-      clientPhone: watchClientPhone
+      clientPhone: watchClientPhone,
+      clientEmail: watchClientEmail
     });
-  }, [watchAddOnId, watchAppointmentTime, watchBarberId, watchClientName, watchClientPhone, watchLocationId, watchServiceId]);
+  }, [watchAddOnId, watchAppointmentTime, watchBarberId, watchClientEmail, watchClientName, watchClientPhone, watchLocationId, watchServiceId]);
 
   const currentShop = shops.find((shop) => shop.id === resolvedLocationId) ?? (!resolvedBarberId ? shops[0] : undefined);
   const profileLocation = barberProfileQuery.data?.shopLocations.find((location) => location.id === resolvedLocationId)
@@ -846,6 +878,11 @@ export function BookingForm() {
   const offlineMessage = "You’re offline. Review your booking details now, then reconnect to confirm the chair or join the waitlist.";
 
   async function applyPromotion(selection: { promotionId?: string; promotionCode?: string }) {
+    if (isGuestMode) {
+      setPromotionFeedback({ tone: "info", message: "Promo codes require a signed-in client account for now." });
+      return null;
+    }
+
     const normalizedPromotionCode = selection.promotionCode?.trim().toUpperCase() ?? "";
 
     if (!selection.promotionId && !normalizedPromotionCode) {
@@ -915,7 +952,32 @@ export function BookingForm() {
       return;
     }
 
-    if (!selectedPaymentMethod) {
+    const normalizedClientEmail = normalizeBookingEmail(values.clientEmail ?? "");
+    if (isGuestMode) {
+      if (!isValidBookingEmail(normalizedClientEmail)) {
+        setStatusUpdate({
+          tone: "error",
+          message: "Enter a valid email so support can look up this guest booking."
+        });
+        return;
+      }
+
+      if (!isValidBookingPhone(values.clientPhone)) {
+        setStatusUpdate({
+          tone: "error",
+          message: "Enter a valid phone number for guest booking support."
+        });
+        return;
+      }
+
+      if (displayedQuote.grandTotal > 0) {
+        setStatusUpdate({
+          tone: "error",
+          message: "This appointment requires payment due today. Sign in or create an account to add a payment method before booking."
+        });
+        return;
+      }
+    } else if (!selectedPaymentMethod) {
       setStatusUpdate({
         tone: "error",
         message: "Save a payment method before booking."
@@ -936,7 +998,7 @@ export function BookingForm() {
 
       console.log("[booking] payment_method_selected", {
         reference: "payment_method_selected",
-        paymentMethodIdPresent: Boolean(selectedPaymentMethod.id),
+        paymentMethodIdPresent: Boolean(selectedPaymentMethod?.id),
         belongsToClient: null,
         providerPaymentMethodPresent: null,
         providerCustomerPresent: null
@@ -953,7 +1015,9 @@ export function BookingForm() {
 
       setStatusUpdate({
         tone: "info",
-        message: "Confirming booking. Payment is verifying through the secure server route."
+        message: isGuestMode
+          ? "Confirming booking through the secure server route."
+          : "Confirming booking. Payment is verifying through the secure server route."
       });
 
       const result = await bookingMutation.mutateAsync({
@@ -964,8 +1028,9 @@ export function BookingForm() {
         appointmentTime: resolvedSlot.startsAt,
         clientName: values.clientName,
         clientPhone: values.clientPhone,
-        paymentMethodId: selectedPaymentMethod.id,
-        pointsToRedeem: pointsRedemptionPreview.approvedPoints || undefined,
+        clientEmail: isGuestMode ? normalizedClientEmail : undefined,
+        paymentMethodId: selectedPaymentMethod?.id,
+        pointsToRedeem: !isGuestMode ? pointsRedemptionPreview.approvedPoints || undefined : undefined,
         sourceKind,
         matchedFrom,
         discoveryQuery: query,
@@ -979,13 +1044,15 @@ export function BookingForm() {
         ...(finalCultureAttribution ? { cultureAttribution: finalCultureAttribution } : {})
       });
 
-      setConfirmationId(result.appointment.id);
+      setConfirmationId(result.appointment.confirmationCode ?? result.appointment.id);
       setConfirmationPaymentStatus("verifying");
-      setConfirmationPaymentLabel(selectedPaymentMethod.label);
+      setConfirmationPaymentLabel(isGuestMode ? null : selectedPaymentMethod?.label ?? null);
       clearBookingDraft();
       setStatusUpdate({
         tone: "success",
-        message: sourceKind || isCultureSource
+        message: isGuestMode
+          ? "Booking confirmed. Keep your confirmation code for support and lookup."
+          : sourceKind || isCultureSource
           ? "Booking confirmed. Payment is verifying on the server."
           : "Appointment created. Payment is verifying on the server and Activity will show the receipt state."
       });
@@ -1069,7 +1136,9 @@ export function BookingForm() {
   const activeStepIndex = getStepIndex(bookingStep);
   const serviceReady = Boolean(currentService);
   const timeReady = Boolean(selectedSlot);
-  const reviewReady = serviceReady && timeReady && Boolean(selectedPaymentMethod) && hasClientName && hasClientPhone && isOnline && !paymentSetupPending;
+  const guestPaymentReady = !isGuestMode || displayedQuote.grandTotal <= 0;
+  const paymentRequirementSatisfied = isGuestMode ? guestPaymentReady : Boolean(selectedPaymentMethod);
+  const reviewReady = serviceReady && timeReady && paymentRequirementSatisfied && hasClientName && hasClientPhone && hasClientEmail && Boolean(watchAcknowledgePolicy) && isOnline && !paymentSetupPending;
 
   function continueToTime() {
     if (!currentService) {
@@ -1090,6 +1159,10 @@ export function BookingForm() {
   }
 
   if (confirmationId) {
+    const bookingLookupHref = `/bookings?confirmation=${encodeURIComponent(confirmationId)}` as Route;
+    const supportHref = `mailto:support@bvrb3r.app?subject=${encodeURIComponent(`Booking support ${confirmationId}`)}&body=${encodeURIComponent("Need help with this booking. Confirmation: " + confirmationId)}`;
+    const accountHref = `/login?redirect=${encodeURIComponent(bookingLookupHref)}` as Route;
+
     return (
       <div className="mx-auto max-w-3xl">
         <Card className="rounded-[34px] p-6 sm:p-8">
@@ -1126,20 +1199,41 @@ export function BookingForm() {
             </div>
           </div>
           <p className="mt-5 text-sm leading-7 text-white/62">
-            Confirmation {confirmationId}. {confirmationPaymentStatus === "verifying" && confirmationPaymentLabel
-              ? `${confirmationPaymentLabel} is verifying through the server. Activity will show the final receipt state.`
-              : "Payment status will update in Activity."}
+            Confirmation {confirmationId}. {isGuestMode
+              ? "Keep this code. Support can look up your appointment with your email, phone, confirmation code, and appointment time. Receipt status is verifying."
+              : confirmationPaymentStatus === "verifying" && confirmationPaymentLabel
+                ? `${confirmationPaymentLabel} is verifying through the server. Activity will show the final receipt state.`
+                : "Payment status will update in Activity."}
           </p>
           <div className="mt-7 grid gap-3 sm:grid-cols-3">
-            <Link href="/dashboard/client/activity" className="inline-flex h-12 items-center justify-center rounded-full bg-[#7CFF00] px-5 text-sm font-semibold text-black transition hover:bg-[#baff69]">
-              View Appointment
-            </Link>
-            <Link href="/dashboard/client/messages" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
-              Message Barber
-            </Link>
-            <Link href="/dashboard/client" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
-              Back Home
-            </Link>
+            {isGuestMode ? (
+              <>
+                <Link href={bookingLookupHref} className="inline-flex h-12 items-center justify-center rounded-full bg-[#7CFF00] px-5 text-sm font-semibold text-black transition hover:bg-[#baff69]">
+                  Look up booking
+                </Link>
+                <a href={supportHref} className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                  Contact support
+                </a>
+                <Link href={accountHref} className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                  Create or sign in
+                </Link>
+                <Link href="/discover?entry=guest" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab] sm:col-span-3">
+                  Back to marketplace
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/dashboard/client/activity" className="inline-flex h-12 items-center justify-center rounded-full bg-[#7CFF00] px-5 text-sm font-semibold text-black transition hover:bg-[#baff69]">
+                  View Appointment
+                </Link>
+                <Link href="/dashboard/client/messages" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                  Message Barber
+                </Link>
+                <Link href="/dashboard/client" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                  Back Home
+                </Link>
+              </>
+            )}
           </div>
         </Card>
       </div>
@@ -1498,6 +1592,8 @@ export function BookingForm() {
                 </div>
               </div>
 
+              {!isGuestMode ? (
+                <>
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="surface-label">Offers & promo codes</p>
@@ -1612,10 +1708,37 @@ export function BookingForm() {
                   <p className="mt-3 text-sm text-white/52">{pointsBlockedCopy}</p>
                 ) : null}
               </div>
+                </>
+              ) : (
+                <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
+                  <p className="surface-label text-[#d7ffab]">Guest booking identity</p>
+                  <p className="mt-3 text-sm leading-7 text-white/68">
+                    Guests can book without full onboarding. Your email and phone stay private and are used only for confirmation, lookup, and support.
+                  </p>
+                </div>
+              )}
 
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Contact</p>
-                {hasClientName && hasClientPhone ? (
+                {isGuestMode ? (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="surface-label mb-3 block" htmlFor="guest-booking-client-name">Full name</label>
+                      <Input id="guest-booking-client-name" autoComplete="name" {...form.register("clientName")} />
+                      {form.formState.errors.clientName ? <p className="mt-2 text-sm text-rose-200">{form.formState.errors.clientName.message}</p> : null}
+                    </div>
+                    <div>
+                      <label className="surface-label mb-3 block" htmlFor="guest-booking-client-phone">Phone</label>
+                      <Input id="guest-booking-client-phone" type="tel" inputMode="tel" autoComplete="tel" {...form.register("clientPhone")} />
+                      {watchClientPhone && !hasClientPhone ? <p className="mt-2 text-sm text-rose-200">Enter a valid phone number.</p> : null}
+                    </div>
+                    <div>
+                      <label className="surface-label mb-3 block" htmlFor="guest-booking-client-email">Email</label>
+                      <Input id="guest-booking-client-email" type="email" inputMode="email" autoComplete="email" {...form.register("clientEmail")} />
+                      {watchClientEmail && !hasClientEmail ? <p className="mt-2 text-sm text-rose-200">Enter a valid email address.</p> : null}
+                    </div>
+                  </div>
+                ) : hasClientName && hasClientPhone ? (
                   <div className="mt-3 space-y-1 text-sm leading-6 text-white/72">
                     <p className="font-medium text-white">{resolvedClientName}</p>
                     <p>{resolvedClientPhone}</p>
@@ -1637,25 +1760,47 @@ export function BookingForm() {
                 )}
               </div>
 
-              <InlineBookingPaymentMethod
-                paymentMethods={paymentMethods}
-                selectedPaymentMethodId={selectedPaymentMethodId}
-                selectedPaymentMethod={selectedPaymentMethod ?? null}
-                totalDue={displayedQuote.grandTotal}
-                isLoading={paymentMethodsQuery.isLoading && !paymentMethods.length}
-                errorMessage={paymentMethodsError}
-                onSelectPaymentMethod={setSelectedPaymentMethodId}
-                onSavedPaymentMethod={(method) => {
-                  setInlineSavedPaymentMethod(method);
-                  setSelectedPaymentMethodId(method.id);
-                }}
-                onPendingChange={setPaymentSetupPending}
-              />
+              {isGuestMode ? (
+                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                  <p className="surface-label">Guest payment posture</p>
+                  <div className="mt-3 grid gap-2 text-sm leading-6 text-white/64">
+                    {displayedQuote.grandTotal > 0 ? (
+                      <>
+                        <p className="font-semibold text-rose-100">This appointment requires {currency(displayedQuote.grandTotal)} due today.</p>
+                        <p>Guest online payment setup is not connected yet. Sign in or create an account to add a payment method before booking.</p>
+                        <Link href={`/login?redirect=${encodeURIComponent(getCurrentBookingRoute())}` as Route} className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full bg-[#7CFF00] px-5 text-sm font-semibold text-black transition hover:bg-[#baff69]">
+                          Sign in to continue
+                        </Link>
+                      </>
+                    ) : (
+                      <>
+                        <p>No payment is due on this screen.</p>
+                        <p>Receipt and payment status still come from server records, not this page.</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <InlineBookingPaymentMethod
+                  paymentMethods={paymentMethods}
+                  selectedPaymentMethodId={selectedPaymentMethodId}
+                  selectedPaymentMethod={selectedPaymentMethod ?? null}
+                  totalDue={displayedQuote.grandTotal}
+                  isLoading={paymentMethodsQuery.isLoading && !paymentMethods.length}
+                  errorMessage={paymentMethodsError}
+                  onSelectPaymentMethod={setSelectedPaymentMethodId}
+                  onSavedPaymentMethod={(method) => {
+                    setInlineSavedPaymentMethod(method);
+                    setSelectedPaymentMethodId(method.id);
+                  }}
+                  onPendingChange={setPaymentSetupPending}
+                />
+              )}
 
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Booking confirmation</p>
                 <div className="mt-3 grid gap-2 text-sm leading-6 text-white/64">
-                  <p>{selectedPaymentMethod ? "Payment method ready." : "Needs payment method."}</p>
+                  <p>{isGuestMode ? (guestPaymentReady ? "Guest booking identity ready." : "Guest payment setup required.") : selectedPaymentMethod ? "Payment method ready." : "Needs payment method."}</p>
                   <p>Appointment confirmation appears only after the server creates the appointment.</p>
                   <p>Payment status comes from server and Stripe evidence, not this screen.</p>
                 </div>
@@ -1700,7 +1845,7 @@ export function BookingForm() {
               </div>
 
               <label className="flex items-start gap-3 rounded-[24px] border border-white/8 bg-black/20 p-5 text-sm leading-7 text-white/72">
-                <input type="checkbox" className="mt-1 accent-[#7CFF00]" defaultChecked {...form.register("acknowledgePolicy")} />
+                <input type="checkbox" className="mt-1 accent-[#7CFF00]" {...form.register("acknowledgePolicy")} />
                 <span>I acknowledge the cancellation policy.</span>
               </label>
               {form.formState.errors.acknowledgePolicy ? (

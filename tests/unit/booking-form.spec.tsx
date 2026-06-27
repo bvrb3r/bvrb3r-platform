@@ -481,6 +481,124 @@ describe("booking form", () => {
     expect(screen.getByRole("button", { name: "Confirm booking" })).toBeEnabled();
   });
 
+  it("blocks paid guest booking without calling payment setup or fake booking success", async () => {
+    useClientHomeQueryMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: null
+    });
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: {
+        methods: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<BookingForm mode="guest" />);
+
+    await advanceToReview();
+
+    expect(useClientHomeQueryMock).toHaveBeenCalledWith(false);
+    expect(usePaymentMethodsQueryMock).toHaveBeenCalledWith(undefined, false);
+    expect(screen.queryByText("Offers & promo codes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Rewards")).not.toBeInTheDocument();
+    expect(screen.getByText("Guest booking identity")).toBeInTheDocument();
+    expect(screen.getByText("This appointment requires $40 due today.")).toBeInTheDocument();
+    expect(screen.getByText("Guest online payment setup is not connected yet. Sign in or create an account to add a payment method before booking.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in to continue" })).toHaveAttribute("href", "/login?redirect=%2Fbooking%2Fnew");
+
+    fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Guest Booker" } });
+    fireEvent.change(screen.getByLabelText("Phone"), { target: { value: "(813) 555-0199" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "guest@example.com" } });
+    fireEvent.click(screen.getByLabelText("I acknowledge the cancellation policy."));
+
+    expect(screen.getByRole("button", { name: "Confirm booking" })).toBeDisabled();
+    expect(useCreateSavedPaymentMethodSetupMutationMock).not.toHaveBeenCalled();
+  });
+
+  it("submits zero-due guest booking identity and shows public lookup support actions after server success", async () => {
+    const createBooking = vi.fn().mockResolvedValue({
+      appointment: {
+        id: "appt-guest",
+        confirmationCode: "BVRGUEST1"
+      }
+    });
+    useCreateBookingMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: createBooking
+    });
+    useClientHomeQueryMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: null
+    });
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: {
+        methods: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useBarberProfileQueryMock.mockReturnValue({
+      data: {
+        profile: { username: "wave" },
+        shopLocations: [
+          {
+            id: "loc-ybor",
+            name: "Phils chair",
+            address: "2172 University Square Mall",
+            city: "Tampa",
+            state: "FL",
+            postalCode: "33612"
+          }
+        ],
+        services: [
+          {
+            service: {
+              id: "srv-free",
+              name: "Consultation",
+              category: "Signature",
+              description: "A no-charge booking.",
+              durationMin: 15,
+              bufferMin: 0,
+              price: 0,
+              deposit: 0,
+              fullPrepay: false,
+              shopId: "loc-ybor"
+            }
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<BookingForm mode="guest" />);
+
+    await advanceToReview();
+    fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Guest Booker" } });
+    fireEvent.change(screen.getByLabelText("Phone"), { target: { value: "(813) 555-0199" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "Guest@Example.COM" } });
+    fireEvent.click(screen.getByLabelText("I acknowledge the cancellation policy."));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm booking" }));
+
+    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      serviceId: "srv-free",
+      clientName: "Guest Booker",
+      clientPhone: "(813) 555-0199",
+      clientEmail: "guest@example.com",
+      paymentMethodId: undefined,
+      pointsToRedeem: undefined
+    })));
+    expect(await screen.findByText("Confirmation BVRGUEST1. Keep this code. Support can look up your appointment with your email, phone, confirmation code, and appointment time. Receipt status is verifying.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Look up booking" })).toHaveAttribute("href", "/bookings?confirmation=BVRGUEST1");
+    expect(screen.getByRole("link", { name: "Contact support" })).toHaveAttribute("href", expect.stringContaining("mailto:support@bvrb3r.app"));
+    expect(screen.getByRole("link", { name: "Create or sign in" })).toHaveAttribute("href", "/login?redirect=%2Fbookings%3Fconfirmation%3DBVRGUEST1");
+    expect(screen.queryByRole("link", { name: "View Appointment" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Back Home" })).not.toBeInTheDocument();
+  });
+
   it("blocks inactive and unbookable services with client-facing reasons", async () => {
     useBarberProfileQueryMock.mockReturnValue({
       data: {

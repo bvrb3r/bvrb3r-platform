@@ -23,6 +23,7 @@ export default async function DiscoveryPage({
   return (
     <ClientAppShell activeTab="search" mode={context.isGuest ? "guest" : "client"}>
       <ClientSearchScreen
+        mode={context.isGuest ? "guest" : "client"}
         clientId={context.clientId}
         initialType={params.type === "shops" ? "shops" : "barbers"}
         initialQuery={params.q ?? ""}

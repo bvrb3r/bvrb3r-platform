@@ -436,6 +436,15 @@ describe("client search screen", () => {
     expect(screen.getByTestId("client-search-debug")).toHaveTextContent("Barber count");
   });
 
+  it("hides internal discovery debug details in guest discovery mode", () => {
+    render(<ClientSearchScreen mode="guest" routeBase="/discover" />);
+
+    expect(screen.getByText("Find the right barber.")).toBeInTheDocument();
+    expect(screen.queryByTestId("client-search-debug")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /View Shop/i })).toHaveAttribute("href", "/shop/loc-ybor");
+    expect(useMarketplaceDiscoveryMock).toHaveBeenLastCalledWith(expect.any(Object), undefined);
+  });
+
   it("shows a specific discovery failure instead of the generic action error", () => {
     useMarketplaceDiscoveryMock.mockReturnValue({
       data: undefined,

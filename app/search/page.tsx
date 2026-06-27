@@ -15,5 +15,5 @@ export default async function SearchPage({
     }
   }
 
-  redirect((`/dashboard/client/search${nextParams.size ? `?${nextParams.toString()}` : ""}`) as Route);
+  redirect((`/discover${nextParams.size ? `?${nextParams.toString()}` : ""}`) as Route);
 }

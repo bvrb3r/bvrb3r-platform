@@ -138,6 +138,7 @@ function MarketplaceFeedCard({
 }
 
 export function ClientSearchScreen({
+  mode = "client",
   clientId,
   initialType = "barbers",
   initialQuery = "",
@@ -150,6 +151,7 @@ export function ClientSearchScreen({
   initialVerifiedOnly = false,
   routeBase = "/search"
 }: {
+  mode?: "client" | "guest";
   clientId?: string;
   initialType?: ClientSearchType;
   initialQuery?: string;
@@ -266,7 +268,7 @@ export function ClientSearchScreen({
     return source.filter((result) => (result.galleryPreviewUrls?.length ?? 0) > 0 || Boolean(result.profilePhotoUrl)).slice(0, 8);
   }, [barberResults, visibleBarbers]);
   const errorMessage = discoveryQuery.error ? getReadableActionError(discoveryQuery.error as MarketplaceApiError) : null;
-  const debugEnabled = process.env.NODE_ENV !== "production";
+  const debugEnabled = process.env.NODE_ENV !== "production" && mode !== "guest" && routeBase === "/dashboard/client/search";
   const hasKnownBookableBarbers = Boolean(barberResults.length || defaultBarberResults.length);
   const barberEmptyState = hasSubmittedDirectSearch && hasActiveSearchQuery
     ? {

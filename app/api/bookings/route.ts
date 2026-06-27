@@ -18,6 +18,7 @@ const bookingSchema = z.object({
   appointmentTime: z.string().min(1),
   clientName: z.string().min(2),
   clientPhone: z.string().min(7),
+  clientEmail: z.string().trim().email().optional(),
   paymentMethodId: z.string().min(1).optional(),
   pointsToRedeem: z.number().int().min(0).optional(),
   sourceKind: z.enum(["direct", "discovery", "public_profile", "haircut_now", "client_dashboard"]).optional(),
@@ -190,6 +191,10 @@ function logBookingRouteFailure(stage: string, error: unknown, details: Record<s
   });
 }
 
+function normalizeBookingEmail(value?: string | null) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
 export async function POST(request: NextRequest) {
   logBookingRouteStage("booking_request_received");
   const parsed = bookingSchema.safeParse(await request.json());
@@ -208,6 +213,7 @@ export async function POST(request: NextRequest) {
       aiRecommendationId,
       aiRecommendationType,
       cultureAttribution,
+      clientEmail,
       ...bookingInput
     } = parsed.data;
     const normalizedCultureAttribution = cultureAttribution
@@ -219,10 +225,30 @@ export async function POST(request: NextRequest) {
         }
       : undefined;
     const clientContext = await getClientExperienceContext();
+    const isGuestBooking = Boolean(clientContext.isGuest);
+    if (!isGuestBooking && !clientContext.isSignedInClient) {
+      return NextResponse.json(
+        { error: "Booking is available to guests or signed-in client accounts only.", code: "role_not_allowed" },
+        { status: 403 }
+      );
+    }
+
+    const submittedClientEmail = normalizeBookingEmail(clientEmail);
+    if (isGuestBooking && !submittedClientEmail) {
+      return NextResponse.json(
+        { error: "Guest bookings require an email for confirmation and support lookup.", code: "guest_email_required" },
+        { status: 400 }
+      );
+    }
+
+    const actorEmail = isGuestBooking
+      ? submittedClientEmail
+      : clientContext.activeClient?.email ?? clientContext.viewer.email;
     logBookingRouteStage("auth_user_resolved", {
       authUserIdPresent: Boolean(clientContext.viewer.id),
       actorRole: clientContext.viewer.role,
-      clientContextClientIdPresent: Boolean(clientContext.clientId)
+      clientContextClientIdPresent: Boolean(clientContext.clientId),
+      guestBooking: isGuestBooking
     });
     console.info("[bookings] booking_payment_payload_received", {
       paymentMethodIdPresent: Boolean(bookingInput.paymentMethodId?.trim()),
@@ -234,12 +260,12 @@ export async function POST(request: NextRequest) {
     const provider = await getLiveOperationsProvider();
     const result = await provider.createBooking({
       ...bookingInput,
-      clientId: clientContext.clientId || undefined,
-      pointsUserId: isClientRole(clientContext.viewer.role) ? clientContext.viewer.id : undefined,
+      clientId: isGuestBooking ? undefined : clientContext.clientId || undefined,
+      pointsUserId: !isGuestBooking && isClientRole(clientContext.viewer.role) ? clientContext.viewer.id : undefined,
       actorRole: "client",
-      actorEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
-      actorProfileId: isClientRole(clientContext.viewer.role) ? clientContext.viewer.id : undefined,
-      createdBy: clientContext.viewer.id,
+      actorEmail,
+      actorProfileId: !isGuestBooking && isClientRole(clientContext.viewer.role) ? clientContext.viewer.id : undefined,
+      createdBy: isGuestBooking ? undefined : clientContext.viewer.id,
       bookingSource: normalizedCultureAttribution ? "culture" : sourceKind ?? "booking"
     });
     await recordBookingCreatedPlatformEvent({
@@ -259,7 +285,7 @@ export async function POST(request: NextRequest) {
       await queueBookingCreatedNotifications({
         appointment: result.appointment,
         clientName: bookingInput.clientName,
-        clientEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
+        clientEmail: actorEmail,
         barberUsername,
         barberName,
         serviceName,
@@ -281,8 +307,8 @@ export async function POST(request: NextRequest) {
           appointmentId: result.appointment.id,
           barberId: result.appointment.barberId,
           username: barberUsername,
-          clientId: result.appointment.clientId,
-          clientEmail: undefined,
+          clientId: isGuestBooking ? undefined : result.appointment.clientId,
+          clientEmail: actorEmail,
           locationId: result.appointment.locationId,
           sourceKind,
           matchedFrom,
@@ -292,10 +318,12 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await recordReferralBookingProgress({
-        clientId: result.appointment.clientId,
-        appointmentId: result.appointment.id
-      });
+      if (!isGuestBooking) {
+        await recordReferralBookingProgress({
+          clientId: result.appointment.clientId,
+          appointmentId: result.appointment.id
+        });
+      }
     } catch {}
 
     if (aiRecommendationId && aiRecommendationType) {

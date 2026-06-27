@@ -270,6 +270,7 @@ export interface CreateBookingPayload {
   appointmentTime: string;
   clientName: string;
   clientPhone: string;
+  clientEmail?: string;
   paymentMethodId?: string;
   pointsToRedeem?: number;
   sourceKind?: "direct" | "discovery" | "public_profile" | "haircut_now" | "client_dashboard";
@@ -377,10 +378,11 @@ function refreshClientCancellationViews(queryClient: ReturnType<typeof useQueryC
   }
 }
 
-export function useClientHomeQuery() {
+export function useClientHomeQuery(enabled = true) {
   return useQuery({
     queryKey: ["client-home"],
-    queryFn: () => requestJson<ClientHomeResponse>("/api/client/home")
+    queryFn: () => requestJson<ClientHomeResponse>("/api/client/home"),
+    enabled
   });
 }
 

@@ -1,4 +1,5 @@
 ﻿import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createHash } from "node:crypto";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { ensureRecurringBooking } from "@/lib/booking/recurring";
 import {
@@ -638,6 +639,15 @@ function uniqDefined(values: Array<string | null | undefined>) {
     .filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
 }
 
+function normalizeGuestBookingEmail(value?: string | null) {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) ? normalized : "";
+}
+
+function guestClientReferenceFromEmail(email: string) {
+  return `guest-${createHash("sha1").update(email).digest("hex").slice(0, 18)}`;
+}
+
 async function readCanonicalBarberByIdentifier(
   supabase: SupabaseClient,
   identifier: string | null | undefined
@@ -928,6 +938,7 @@ async function ensureClientPreferencesForResolvedClient(
   input: {
     client: CanonicalClientRow;
     profile: CanonicalClientProfileRow | null;
+    email?: string | null;
   }
 ) {
   const clientReference = input.client.reference_code ?? input.client.id;
@@ -935,7 +946,7 @@ async function ensureClientPreferencesForResolvedClient(
     .from("client_preferences")
     .upsert({
       client_reference: clientReference,
-      client_email: input.profile?.email ?? "",
+      client_email: input.profile?.email ?? input.email ?? "",
       client_id: input.client.id,
       updated_at: new Date().toISOString()
     }, { onConflict: "client_reference" });
@@ -1063,11 +1074,52 @@ export async function resolveBookingClient(
   }
 
   if (!client) {
+    const guestEmail = normalizeGuestBookingEmail(input.actorEmail);
+    if (guestEmail) {
+      const clientReference = input.clientId && !isUuid(input.clientId)
+        ? input.clientId
+        : guestClientReferenceFromEmail(guestEmail);
+      const clientId = canonicalClientUuid(clientReference);
+      const existing = await readCanonicalClientByIdentifier(supabase, clientReference)
+        ?? await readCanonicalClientByIdentifier(supabase, clientId);
+
+      if (existing) {
+        client = existing;
+      } else {
+        const insertResult = await supabase
+          .from("clients")
+          .insert({
+            id: clientId,
+            profile_id: null,
+            reference_code: clientReference,
+            loyalty_points: 0,
+            retention_tag: "new"
+          })
+          .select("id, reference_code, profile_id")
+          .single();
+
+        if (insertResult.error) {
+          const fallbackClient = await readCanonicalClientByIdentifier(supabase, clientReference)
+            ?? await readCanonicalClientByIdentifier(supabase, clientId);
+          if (!fallbackClient) {
+            throw insertResult.error;
+          }
+          client = fallbackClient;
+        } else {
+          client = insertResult.data as CanonicalClientRow;
+        }
+      }
+      resolvedBy = "created";
+    }
+  }
+
+  if (!client) {
     return null;
   }
 
   profile = profile ?? await readClientProfileById(supabase, client.profile_id);
-  await ensureClientPreferencesForResolvedClient(supabase, { client, profile });
+  const resolvedEmail = profile?.email ?? normalizeGuestBookingEmail(input.actorEmail) ?? input.actorEmail ?? "";
+  await ensureClientPreferencesForResolvedClient(supabase, { client, profile, email: resolvedEmail });
   console.info("[live-provider] booking_client_resolution", {
     actorProfileIdPresent: Boolean(actorProfileId),
     requestClientIdPresent: Boolean(input.clientId?.trim()),
@@ -1084,7 +1136,7 @@ export async function resolveBookingClient(
     userId: client.profile_id,
     referenceCode: client.reference_code,
     name: profile?.full_name ?? input.clientName,
-    email: profile?.email ?? input.actorEmail ?? "",
+    email: resolvedEmail,
     phone: profile?.phone ?? input.clientPhone,
     client,
     profile
