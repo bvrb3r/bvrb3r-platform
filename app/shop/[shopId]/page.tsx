@@ -17,7 +17,7 @@ export default async function PublicShopProfilePage({ params }: { params: Promis
 
   return (
     <ClientAppShell activeTab="search" mode={context.isGuest ? "guest" : "client"}>
-      <PublicShopProfile payload={payload} viewerCanFavorite={context.isSignedInClient && context.viewer.role === "client"} />
+      <PublicShopProfile payload={payload} viewerCanFavorite={context.isSignedInClient} />
     </ClientAppShell>
   );
 }

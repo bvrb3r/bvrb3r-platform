@@ -167,6 +167,129 @@ describe("bookings route", () => {
     }));
   });
 
+  it("creates a guest booking with submitted email and no signed-in client actor fields", async () => {
+    getClientExperienceContextMock.mockResolvedValue({
+      viewer: {
+        id: "guest-user",
+        role: "client_user",
+        email: "guest@bvrb3r.local"
+      },
+      activeClient: null,
+      clientId: "",
+      isSignedInClient: false,
+      isGuest: true
+    });
+    createBookingMock.mockResolvedValue({
+      appointment: {
+        ...appointmentFixture,
+        id: "appt-guest",
+        confirmationCode: "BVRGUEST1",
+        clientId: "guest-client-row"
+      }
+    });
+
+    const response = await postBooking(new NextRequest("https://bvrb3r.demo/api/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        locationId: "loc-ybor",
+        barberId: "barber-blaze",
+        serviceId: "srv-signature",
+        addOnIds: [],
+        appointmentTime: "2026-03-23T14:00:00-04:00",
+        clientName: "Guest Booker",
+        clientPhone: "(813) 555-0199",
+        clientEmail: " Guest@Example.COM ",
+        sourceKind: "public_profile",
+        barberUsername: "blazereed"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.appointment.confirmationCode).toBe("BVRGUEST1");
+    expect(createBookingMock).toHaveBeenCalledWith(expect.objectContaining({
+      clientId: undefined,
+      pointsUserId: undefined,
+      actorRole: "client",
+      actorEmail: "guest@example.com",
+      actorProfileId: undefined,
+      createdBy: undefined,
+      bookingSource: "public_profile"
+    }));
+    expect(queueBookingCreatedNotificationsMock).toHaveBeenCalledWith(expect.objectContaining({
+      clientName: "Guest Booker",
+      clientEmail: "guest@example.com"
+    }));
+    expect(recordBookingCreatedMock).toHaveBeenCalledWith(expect.objectContaining({
+      appointmentId: "appt-guest",
+      clientId: undefined,
+      clientEmail: "guest@example.com",
+      sourceKind: "public_profile"
+    }));
+    expect(recordReferralBookingProgressMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects guest booking requests without a valid email", async () => {
+    getClientExperienceContextMock.mockResolvedValue({
+      viewer: {
+        id: "guest-user",
+        role: "client_user",
+        email: "guest@bvrb3r.local"
+      },
+      activeClient: null,
+      clientId: "",
+      isSignedInClient: false,
+      isGuest: true
+    });
+
+    const response = await postBooking(new NextRequest("https://bvrb3r.demo/api/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        locationId: "loc-ybor",
+        barberId: "barber-blaze",
+        serviceId: "srv-signature",
+        addOnIds: [],
+        appointmentTime: "2026-03-23T14:00:00-04:00",
+        clientName: "Guest Booker",
+        clientPhone: "(813) 555-0199"
+      })
+    }));
+
+    expect(response.status).toBe(400);
+    expect(createBookingMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks signed-in non-client sessions instead of silently booking as a guest", async () => {
+    getClientExperienceContextMock.mockResolvedValue({
+      viewer: {
+        id: "22222222-2222-4222-8222-222222222222",
+        role: "barber_user",
+        email: "barber@bvrb3r.demo"
+      },
+      activeClient: null,
+      clientId: "",
+      isSignedInClient: false,
+      isGuest: false
+    });
+
+    const response = await postBooking(new NextRequest("https://bvrb3r.demo/api/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        locationId: "loc-ybor",
+        barberId: "barber-blaze",
+        serviceId: "srv-signature",
+        addOnIds: [],
+        appointmentTime: "2026-03-23T14:00:00-04:00",
+        clientName: "Jordan Ellis",
+        clientPhone: "(813) 555-0190",
+        clientEmail: "jordan@example.com"
+      })
+    }));
+
+    expect(response.status).toBe(403);
+    expect(createBookingMock).not.toHaveBeenCalled();
+  });
+
   it("preserves Culture booking attribution without using marketplace source enums", async () => {
     createBookingMock.mockResolvedValue({
       appointment: {

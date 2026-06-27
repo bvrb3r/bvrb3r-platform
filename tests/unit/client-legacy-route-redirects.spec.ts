@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement, type ReactNode } from "react";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 
-const { redirectMock, getAuthorizedUserMock } = vi.hoisted(() => ({
+const { redirectMock, getAuthorizedUserMock, getClientExperienceContextMock } = vi.hoisted(() => ({
   redirectMock: vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);
   }),
-  getAuthorizedUserMock: vi.fn()
+  getAuthorizedUserMock: vi.fn(),
+  getClientExperienceContextMock: vi.fn()
 }));
 
 vi.mock("next/navigation", () => ({
@@ -14,6 +16,19 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth/guards", () => ({
   getAuthorizedUser: getAuthorizedUserMock
+}));
+
+vi.mock("@/lib/client-experience/session", () => ({
+  getClientExperienceContext: getClientExperienceContextMock
+}));
+
+vi.mock("@/components/client-experience/client-app-shell", () => ({
+  ClientAppShell: ({ children }: { children: ReactNode }) => createElement("div", null, children)
+}));
+
+vi.mock("@/components/booking/guest-booking-lookup", () => ({
+  GuestBookingLookup: ({ initialConfirmation }: { initialConfirmation?: string }) =>
+    createElement("div", { "data-testid": "guest-booking-lookup" }, initialConfirmation)
 }));
 
 import SearchPage from "@/app/search/page";
@@ -31,9 +46,21 @@ describe("client legacy route redirects", () => {
   beforeEach(() => {
     redirectMock.mockClear();
     getAuthorizedUserMock.mockReset();
+    getClientExperienceContextMock.mockReset();
+    getClientExperienceContextMock.mockResolvedValue({
+      viewer: {
+        id: "guest-user",
+        role: "client_user",
+        email: "guest@bvrb3r.local"
+      },
+      activeClient: null,
+      clientId: "",
+      isSignedInClient: false,
+      isGuest: true
+    });
   });
 
-  it("redirects legacy search into the canonical client search route", async () => {
+  it("redirects legacy search into the public discovery route", async () => {
     await expect(
       SearchPage({
         searchParams: Promise.resolve({
@@ -42,10 +69,35 @@ describe("client legacy route redirects", () => {
           availability: "today"
         })
       })
-    ).rejects.toThrow("REDIRECT:/dashboard/client/search?q=fade&locationId=loc-ybor&availability=today");
+    ).rejects.toThrow("REDIRECT:/discover?q=fade&locationId=loc-ybor&availability=today");
   });
 
-  it("redirects legacy bookings into client activity and preserves query state", async () => {
+  it("renders public booking lookup for guests without redirecting into client activity", async () => {
+    const result = await BookingsPage({
+      searchParams: Promise.resolve({
+        confirmation: "BVRGUEST1"
+      })
+    });
+
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(result).toBeTruthy();
+  });
+
+  it("redirects signed-in client bookings into client activity and preserves query state", async () => {
+    getClientExperienceContextMock.mockResolvedValue({
+      viewer: {
+        id: "11111111-1111-4111-8111-111111111111",
+        role: "client_user",
+        email: "client@bvrb3r.demo"
+      },
+      activeClient: {
+        email: "client@bvrb3r.demo"
+      },
+      clientId: "client-jordan",
+      isSignedInClient: true,
+      isGuest: false
+    });
+
     await expect(
       BookingsPage({
         searchParams: Promise.resolve({

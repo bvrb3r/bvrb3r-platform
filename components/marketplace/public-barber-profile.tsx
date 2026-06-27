@@ -237,7 +237,7 @@ export function PublicBarberProfile({
         <TrustItem icon={<ShieldCheck className="h-4 w-4" aria-hidden="true" />} label={isVerified ? "Verified barber" : "Profile active"} value={isVerified ? verificationBadges[0] : "BVRB3R profile"} />
         <TrustItem icon={<CalendarDays className="h-4 w-4" aria-hidden="true" />} label="Next opening" value={nextOpening} />
         <TrustItem icon={<MapPin className="h-4 w-4" aria-hidden="true" />} label="Location" value={serviceLocation} />
-        <TrustItem icon={<CreditCard className="h-4 w-4" aria-hidden="true" />} label="Payments" value="Card-on-file supported" />
+        <TrustItem icon={<CreditCard className="h-4 w-4" aria-hidden="true" />} label="Payments" value="Verified during booking" />
         <TrustItem icon={<Star className="h-4 w-4 fill-current" aria-hidden="true" />} label="Rating" value={`${reviewScore.toFixed(1)} from ${reviewCount} reviews`} />
       </section>
 

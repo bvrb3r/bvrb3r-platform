@@ -168,4 +168,31 @@ describe("booking client resolution", () => {
       client_reference: "client-wallet"
     });
   });
+
+  it("creates a nullable-profile guest client from submitted booking email", async () => {
+    const resolver = createBookingClientResolverSupabaseStub({});
+
+    const resolved = await resolveBookingClient(resolver.supabase as never, {
+      actorEmail: "Guest.Booker@Example.COM",
+      clientName: "Guest Booker",
+      clientPhone: "(813) 555-0199"
+    });
+
+    expect(resolved?.profileId).toBeNull();
+    expect(resolved?.name).toBe("Guest Booker");
+    expect(resolved?.email).toBe("guest.booker@example.com");
+    expect(resolved?.phone).toBe("(813) 555-0199");
+    expect(resolver.tables.clients).toHaveLength(1);
+    expect(resolver.tables.clients[0]).toMatchObject({
+      profile_id: null,
+      loyalty_points: 0,
+      retention_tag: "new"
+    });
+    expect(String(resolver.tables.clients[0].reference_code)).toMatch(/^guest-[a-f0-9]{18}$/);
+    expect(resolver.tables.client_preferences[0]).toMatchObject({
+      client_id: resolved?.clientId,
+      client_email: "guest.booker@example.com",
+      client_reference: resolved?.referenceCode
+    });
+  });
 });

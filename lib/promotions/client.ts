@@ -58,7 +58,7 @@ export function useClientPromotionsQuery(params: {
   serviceId?: string;
   addOnIds?: string[];
   barberId?: string;
-}) {
+}, enabled = true) {
   const queryString = toQueryString({
     shopId: params.shopId,
     serviceId: params.serviceId,
@@ -69,7 +69,7 @@ export function useClientPromotionsQuery(params: {
   return useQuery({
     queryKey: ["client-promotions", params],
     queryFn: () => requestJson<ClientPromotionsResponse>(`/api/client/promotions${queryString ? `?${queryString}` : ""}`),
-    enabled: Boolean(params.shopId && params.serviceId)
+    enabled: enabled && Boolean(params.shopId && params.serviceId)
   });
 }
 

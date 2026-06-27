@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { CalendarDays, Clock3, MapPin, MessageCircle, Scissors, Share2, ShieldCheck, Star, UsersRound } from "lucide-react";
+import { CalendarDays, Clock3, MapPin, MessageCircle, Scissors, ShieldCheck, Star, UsersRound } from "lucide-react";
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
 import { PublicShopFavoriteAction } from "@/components/marketplace/public-shop-favorite-action";
 import { Card } from "@/components/ui/card";
@@ -29,7 +29,8 @@ export function PublicShopProfile({
   const { shop, barbers, services } = payload;
   const gallery = shop.gallery ?? [];
   const address = formatPublicShopLocation(shop) || "Add shop address.";
-  const shopBookingHref = shop.bookHref ?? `/dashboard/client/search?type=shops&q=${encodeURIComponent(shop.name)}`;
+  const shopBookingHref = shop.bookHref ?? `/discover?type=shops&q=${encodeURIComponent(shop.name)}`;
+  const supportHref = `/bookings?support=1&shop=${encodeURIComponent(shop.id)}`;
 
   return (
     <div className="space-y-4" data-testid="public-shop-profile">
@@ -100,20 +101,12 @@ export function PublicShopProfile({
               Book
             </MarketplaceTrackedActionLink>
             <Link
-              href={`/workspace/messages?shop=${encodeURIComponent(shop.id)}` as Route}
+              href={supportHref as Route}
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]"
             >
               <MessageCircle className="h-4 w-4" />
-              Message
+              Support
             </Link>
-            <button type="button" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]">
-              <UsersRound className="h-4 w-4" />
-              Following
-            </button>
-            <button type="button" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]">
-              <Share2 className="h-4 w-4" />
-              Share
-            </button>
             <PublicShopFavoriteAction shopId={shop.id} canFavorite={viewerCanFavorite} />
           </div>
         </div>
