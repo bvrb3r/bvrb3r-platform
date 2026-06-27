@@ -24,16 +24,6 @@ const clientAccount: OnboardingReadinessContext = {
   trustRulesAccepted: true
 };
 
-const bookingReady = {
-  selectedProviderId: "barber-wave",
-  selectedServiceId: "srv-cut",
-  selectedTime: "2026-08-01T15:00:00.000Z",
-  paymentRequired: true,
-  paymentMethodReference: "provider-payment-method-reference",
-  policyAccepted: true,
-  serverProofConnected: true
-};
-
 const barberAccount: OnboardingReadinessContext = {
   authenticated: true,
   authMethodConnected: true,
@@ -328,8 +318,8 @@ describe("onboarding readiness engine", () => {
   });
 
   it("keeps missing requirement labels human-readable", () => {
-    const result = buildOnboardingReadiness({ authenticated: true, role: "client_user" });
-    const labels = result.missingCriticalRequirements.map((requirement) => requirement.label).join(" ");
+    const result = buildOnboardingReadiness({ authenticated: true, role: "guest_user" });
+    const labels = result.readiness.account.missingRequirements.map((requirement) => requirement.label).join(" ");
 
     expect(labels).toContain("Choose Client, Barber, or Shop Owner");
     expect(labels).not.toMatch(/profiles\.role|client_user|barber_user|shop_owner_user|guest_user|payment_routing_records/);
