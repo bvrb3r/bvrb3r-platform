@@ -141,14 +141,14 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
 
     if (mode === "signup") {
       if (!signupRole) {
-        setErrorMessage("Choose your role before continuing.");
+        setErrorMessage("Choose your lane before continuing.");
         return;
       }
 
       try {
         await persistSignupRoleIntent(signupRole);
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Unable to save your signup role.");
+        setErrorMessage(error instanceof Error ? error.message : "Unable to save your signup lane.");
         return;
       }
     }
@@ -200,7 +200,7 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
     }
 
     if (mode === "signup" && !selectedRole) {
-      setErrorMessage("Choose your role before creating the account.");
+      setErrorMessage("Choose your lane before creating the account.");
       return;
     }
 
@@ -300,7 +300,7 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
               <Input name="password" placeholder="Password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} />
               {mode === "signup" ? (
                 <fieldset className="grid gap-3 rounded-[22px] border border-white/8 bg-black/20 p-3">
-                  <legend className="px-1 text-sm font-medium text-white/78">Choose your role</legend>
+                  <legend className="px-1 text-sm font-medium text-white/78">Choose your lane</legend>
                   <div className="grid gap-2 sm:grid-cols-3">
                     {SIGNUP_ROLE_OPTIONS.map((option) => {
                       const selected = signupRole === option.value;

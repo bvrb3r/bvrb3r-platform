@@ -299,7 +299,8 @@ export function ClientSearchScreen({
         title: "No live shops yet.",
         body: "Approved shops appear here after the shop is set up and at least one approved barber is bookable.",
         actionLabel: "Refresh Search"
-      };
+    };
+  const isGuest = mode === "guest";
 
   function syncRoute(
     nextQuery: string,
@@ -442,11 +443,16 @@ export function ClientSearchScreen({
     <div className="space-y-4" data-testid="client-search-screen">
       <Card className="rounded-[34px] border-white/10 bg-[linear-gradient(180deg,rgba(17,17,17,0.96),rgba(6,6,6,0.98))] p-5 shadow-[0_26px_60px_rgba(0,0,0,0.24)] sm:p-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,255,0,0.12),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.06),transparent_26%)]" />
-        <div className="relative">
+        <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <PageHeader
-            title="Find the right barber."
-            subtitle="Search live barbers and shops."
+            title={isGuest ? "Guest Culture Feed" : "Find the right barber."}
+            subtitle={isGuest ? "Discover barbers. See the culture. Book what you like." : "Search live barbers and shops."}
           />
+          {isGuest ? (
+            <Link href="/signup?lane=client" className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#7cff00] px-5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-black transition hover:bg-[#b7ff58]">
+              Join BVRB3R
+            </Link>
+          ) : null}
         </div>
       </Card>
 
@@ -466,9 +472,22 @@ export function ClientSearchScreen({
       <ClientSectionBlock
         eyebrow="Filters"
         title="Filters"
-        subtitle="Tap once to tighten the search."
+        subtitle={isGuest ? "All, Barbers, Shops." : "Tap once to tighten the search."}
       >
         <div className="flex flex-wrap gap-2">
+          {isGuest ? (
+            <>
+              <FilterChip active={!prefersShopDiscovery && !hasActiveSearchQuery} onClick={() => router.replace("/discover?entry=guest")}>
+                All
+              </FilterChip>
+              <FilterChip active={!prefersShopDiscovery} onClick={() => router.replace("/discover?entry=guest&type=barbers")}>
+                Barbers
+              </FilterChip>
+              <FilterChip active={prefersShopDiscovery} onClick={() => router.replace("/discover?entry=guest&type=shops")}>
+                Shops
+              </FilterChip>
+            </>
+          ) : null}
           {serviceFilters.map((filter) => (
             <FilterChip
               key={filter.query}

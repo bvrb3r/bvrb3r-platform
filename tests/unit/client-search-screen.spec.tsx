@@ -439,7 +439,9 @@ describe("client search screen", () => {
   it("hides internal discovery debug details in guest discovery mode", () => {
     render(<ClientSearchScreen mode="guest" routeBase="/discover" />);
 
-    expect(screen.getByText("Find the right barber.")).toBeInTheDocument();
+    expect(screen.getByText("Guest Culture Feed")).toBeInTheDocument();
+    expect(screen.getByText("Discover barbers. See the culture. Book what you like.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Join BVRB3R" })).toHaveAttribute("href", "/signup?lane=client");
     expect(screen.queryByTestId("client-search-debug")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /View Shop/i })).toHaveAttribute("href", "/shop/loc-ybor");
     expect(useMarketplaceDiscoveryMock).toHaveBeenLastCalledWith(expect.any(Object), undefined);

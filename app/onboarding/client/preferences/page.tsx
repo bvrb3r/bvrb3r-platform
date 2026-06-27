@@ -1,6 +1,6 @@
-import { OnboardingStepWorkspace } from "@/components/onboarding/onboarding-step-workspace";
+import { ClientOnboardingWorkspace } from "@/components/onboarding/client-onboarding-workspace";
 
 export default function ClientPreferencesOnboardingPage() {
-  return <OnboardingStepWorkspace role="client" step="client_preferences" />;
+  return <ClientOnboardingWorkspace step="client_preferences" />;
 }
 

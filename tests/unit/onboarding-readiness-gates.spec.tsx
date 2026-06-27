@@ -23,7 +23,7 @@ describe("onboarding readiness UI gates", () => {
     expect(screen.getByTestId("onboarding-readiness-summary")).toBeInTheDocument();
     expect(screen.getByText("Readiness")).toBeInTheDocument();
     expect(screen.getByText("Next best action")).toBeInTheDocument();
-    expect(screen.getByText("Choose Client, Barber, or Shop Owner")).toBeInTheDocument();
+    expect(screen.getByText("Add your name")).toBeInTheDocument();
     expect(screen.getByText("Setup needed before dashboard")).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/profiles\.role|client_user|barber_user|shop_owner_user|guest_user/);
     expect(container.textContent).not.toMatch(/payment_intent|payment_routing_records|payout_readiness_status|stripe_account_id/);

@@ -28,8 +28,8 @@ export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
             <Link href="/login" className="rounded-full border border-white/10 bg-black/25 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
               Log in
             </Link>
-            <Link href="/signup" className="hidden rounded-full bg-[#7cff00] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-[#b7ff58] sm:inline-flex">
-              Create account
+            <Link href="/signup?lane=client" className="hidden rounded-full bg-[#7cff00] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-[#b7ff58] sm:inline-flex">
+              Join BVRB3R
             </Link>
           </div>
         ) : (
