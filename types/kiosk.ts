@@ -21,6 +21,7 @@ export interface KioskBarberOption {
   acceptsWalkIns: boolean;
   waitDisplayLabel?: string;
   estimatedWaitMinutes?: number | null;
+  estimatedStartTime?: string | null;
 }
 
 export interface KioskPayload {
@@ -31,6 +32,7 @@ export interface KioskPayload {
     activeCount: number;
     averageWaitMinutes: number;
     kioskEntriesToday: number;
+    waitEstimateUpdatedAt?: string;
   };
   defaults: {
     autoResetSeconds: number;
