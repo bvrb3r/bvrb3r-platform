@@ -32,6 +32,7 @@ import {
 } from "@/lib/stripe/billing";
 import { StripeConnectError } from "@/lib/stripe/connect";
 import { getPlatformSubscriptionPlan } from "@/lib/monetization/platform-subscriptions";
+import { syncServerEntitlementFromStripeSubscription } from "@/lib/entitlements/stripe-webhook";
 import type { EngagementState } from "@/types/engagement";
 import type {
   BarberRevenueIntelligenceView,
@@ -2166,6 +2167,16 @@ export async function processStripeBillingWebhookEvent(event: Stripe.Event) {
     }
 
     const subscription = await retrieveStripeSubscription(typeof session.subscription === "string" ? session.subscription : session.subscription.id);
+    const entitlementSync = await syncServerEntitlementFromStripeSubscription({
+      supabase,
+      subscription,
+      session,
+      eventId: event.id
+    });
+    if (entitlementSync.handled) {
+      return { handled: true };
+    }
+
     await syncClientSubscriptionRowFromStripe(supabase, {
       clientReference: session.client_reference_id ?? session.metadata?.clientReference ?? null,
       providerCustomerId: typeof session.customer === "string" ? session.customer : session.customer?.id ?? null,
@@ -2180,6 +2191,15 @@ export async function processStripeBillingWebhookEvent(event: Stripe.Event) {
     || event.type === "customer.subscription.deleted"
   ) {
     const subscription = event.data.object as Stripe.Subscription;
+    const entitlementSync = await syncServerEntitlementFromStripeSubscription({
+      supabase,
+      subscription,
+      eventId: event.id
+    });
+    if (entitlementSync.handled) {
+      return { handled: true };
+    }
+
     const platformRow = await resolvePlatformSubscriptionRowForStripe(supabase, {
       providerSubscriptionId: subscription.id,
       subjectType: subscription.metadata.subjectType ?? null,
@@ -2212,6 +2232,15 @@ export async function processStripeBillingWebhookEvent(event: Stripe.Event) {
     }
 
     const subscription = await retrieveStripeSubscription(subscriptionId);
+    const entitlementSync = await syncServerEntitlementFromStripeSubscription({
+      supabase,
+      subscription,
+      eventId: event.id
+    });
+    if (entitlementSync.handled) {
+      return { handled: true };
+    }
+
     const platformRow = await resolvePlatformSubscriptionRowForStripe(supabase, {
       providerSubscriptionId: subscriptionId,
       subjectType: subscription.metadata.subjectType ?? null,
