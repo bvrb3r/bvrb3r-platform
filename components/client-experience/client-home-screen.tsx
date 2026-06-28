@@ -12,6 +12,7 @@ import {
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
 import { ClientGetCutNowAction } from "@/components/client-experience/client-get-cut-now-action";
+import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { ClientShopDiscoveryCard } from "@/components/client-experience/client-shop-discovery-card";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
@@ -27,6 +28,7 @@ import {
 import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
+import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 
 function RailSkeleton() {
   return (
@@ -152,11 +154,13 @@ function humanAppointmentStatus(status?: string | null) {
 
 export function ClientHomeScreen({
   clientId,
-  displayName
+  displayName,
+  paywallSummary
 }: {
   clientId?: string;
   isSignedInClient: boolean;
   displayName: string;
+  paywallSummary?: ClientPaywallSummary;
 }) {
   const homeQuery = useClientHomeQuery();
   const bookingsQuery = useClientBookingsQuery();
@@ -251,6 +255,7 @@ export function ClientHomeScreen({
       </Card>
 
       {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
+      {paywallSummary ? <ClientPlanAccessCard summary={paywallSummary} compact /> : null}
 
       <ClientSectionBlock
         eyebrow="Barbers"

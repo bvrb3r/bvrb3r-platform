@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 
 const {
   replaceMock,
@@ -66,6 +67,26 @@ vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => 
 }));
 
 import { ClientSearchScreen } from "@/components/client-experience/client-search-screen";
+
+const freeClientPaywallSummary: ClientPaywallSummary = {
+  currentPlanLabel: "Free",
+  billingLabel: "No paid billing cycle connected",
+  statusLabel: "Free access active",
+  statusTone: "neutral",
+  serverEvidenceLabel: "Server default",
+  freeBookingAvailable: true,
+  lockedFeatureCount: 6,
+  needsReviewCount: 0,
+  upgradeActionLabel: "Review plan access",
+  upgradeHref: "/dashboard/client/more?section=wallet",
+  checkoutUrl: null,
+  portalUrl: null,
+  features: {
+    free: [],
+    pro: [],
+    elite: []
+  }
+};
 
 const phillipResult = {
   barberId: "barber-phillip",
@@ -207,9 +228,11 @@ describe("client search screen", () => {
   });
 
   it("renders the refined search header, compact filters, and discovery sections", () => {
-    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" paywallSummary={freeClientPaywallSummary} />);
 
     expect(screen.getByText("Find the right barber.")).toBeInTheDocument();
+    expect(screen.getByTestId("client-plan-access-card")).toBeInTheDocument();
+    expect(screen.getByText("Free booking, search, discovery, account, and activity stay open. Pro and Elite tools unlock only from server entitlement proof.")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Search barber or shop name")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Haircuts" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Available Now" })).toBeInTheDocument();

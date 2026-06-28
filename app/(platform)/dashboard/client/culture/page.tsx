@@ -2,6 +2,7 @@ import { ClientAppShell } from "@/components/client-experience/client-app-shell"
 import { ClientCultureScreen } from "@/components/client-experience/client-culture-screen";
 import { listCultureFeed, type CultureFeedResponse } from "@/lib/culture/service";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
+import { resolveClientPaywallSummaryForUser } from "@/lib/entitlements/client-paywall";
 
 async function loadClientCultureFeed(): Promise<CultureFeedResponse> {
   try {
@@ -22,10 +23,13 @@ async function loadClientCultureFeed(): Promise<CultureFeedResponse> {
 export default async function ClientCultureDashboardPage() {
   const context = await getClientExperienceContext();
   const feed = await loadClientCultureFeed();
+  const paywallSummary = context.isSignedInClient
+    ? await resolveClientPaywallSummaryForUser({ user: context.viewer })
+    : undefined;
 
   return (
     <ClientAppShell activeTab="culture" mode={context.isGuest ? "guest" : "client"}>
-      <ClientCultureScreen feed={feed} />
+      <ClientCultureScreen feed={feed} paywallSummary={paywallSummary} />
     </ClientAppShell>
   );
 }

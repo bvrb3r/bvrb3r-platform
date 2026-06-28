@@ -6,6 +6,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Clock3, RefreshCw, ShieldCheck, Star } from "lucide-react";
 import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
+import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
 import { ClientPrimarySearchBar } from "@/components/client-experience/client-primary-search-bar";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { ClientShopDiscoveryCard } from "@/components/client-experience/client-shop-discovery-card";
@@ -19,6 +20,7 @@ import {
   type MarketplaceApiError
 } from "@/lib/marketplace/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
+import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 import type { DiscoveryResult, RecommendedShopView } from "@/types/domain";
 
 type AvailabilityFilter = "any" | "today" | "now";
@@ -149,7 +151,8 @@ export function ClientSearchScreen({
   initialAvailability = "any",
   initialSpecialty = "",
   initialVerifiedOnly = false,
-  routeBase = "/search"
+  routeBase = "/search",
+  paywallSummary
 }: {
   mode?: "client" | "guest";
   clientId?: string;
@@ -163,6 +166,7 @@ export function ClientSearchScreen({
   initialSpecialty?: string;
   initialVerifiedOnly?: boolean;
   routeBase?: "/search" | "/discover" | "/dashboard/client/search";
+  paywallSummary?: ClientPaywallSummary;
 }) {
   const router = useRouter();
   const homeQuery = useClientHomeQuery();
@@ -523,6 +527,8 @@ export function ClientSearchScreen({
           </FilterChip>
         </div>
       </ClientSectionBlock>
+
+      {paywallSummary ? <ClientPlanAccessCard summary={paywallSummary} compact /> : null}
 
       {prefersShopDiscovery ? shopsSection : barbersSection}
       {prefersShopDiscovery ? barbersSection : shopsSection}

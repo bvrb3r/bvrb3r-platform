@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 
 const {
   useClientHomeQueryMock,
@@ -55,6 +56,26 @@ vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => 
 }));
 
 import { ClientHomeScreen } from "@/components/client-experience/client-home-screen";
+
+const freeClientPaywallSummary: ClientPaywallSummary = {
+  currentPlanLabel: "Free",
+  billingLabel: "No paid billing cycle connected",
+  statusLabel: "Free access active",
+  statusTone: "neutral",
+  serverEvidenceLabel: "Server default",
+  freeBookingAvailable: true,
+  lockedFeatureCount: 6,
+  needsReviewCount: 0,
+  upgradeActionLabel: "Review plan access",
+  upgradeHref: "/dashboard/client/more?section=wallet",
+  checkoutUrl: null,
+  portalUrl: null,
+  features: {
+    free: [],
+    pro: [],
+    elite: []
+  }
+};
 
 describe("client home screen", () => {
   beforeEach(() => {
@@ -206,9 +227,13 @@ describe("client home screen", () => {
   });
 
   it("renders fast booking, honest favorites, recommendations, culture entry, recent activity, and compact upcoming appointment", () => {
-    render(<ClientHomeScreen isSignedInClient clientId="client-jordan" displayName="Jordan Ellis" />);
+    render(<ClientHomeScreen isSignedInClient clientId="client-jordan" displayName="Jordan Ellis" paywallSummary={freeClientPaywallSummary} />);
 
     expect(screen.getByRole("button", { name: "Get a Cut Now" })).toBeInTheDocument();
+    expect(screen.getByTestId("client-plan-access-card")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Free client access" })).toBeInTheDocument();
+    expect(screen.getByText("Free booking, search, discovery, account, and activity stay open. Pro and Elite tools unlock only from server entitlement proof.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Checkout/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Find a Barber" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Find a Barber Shop" })).not.toBeInTheDocument();
     expect(screen.queryByText("Home focus")).not.toBeInTheDocument();

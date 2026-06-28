@@ -4,6 +4,7 @@ import { StripeDebugCard } from "@/components/debug/stripe-debug-card";
 import { ensureClientProfileForUser, getClientProfilePayload, type ClientProfilePayload } from "@/lib/booking/platform-service";
 import { isClientRole } from "@/lib/auth/roles";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
+import { resolveClientPaywallSummaryForUser } from "@/lib/entitlements/client-paywall";
 
 function emptyClientProfilePayload(): ClientProfilePayload {
   return {
@@ -73,6 +74,10 @@ export default async function ClientProfileDashboardPage({
   }
 
   let payload: ClientProfilePayload;
+  const paywallSummary = context.isSignedInClient && isClientRole(context.viewer.role)
+    ? await resolveClientPaywallSummaryForUser({ user: context.viewer })
+    : undefined;
+
   try {
     payload = await getClientProfilePayload(clientId);
   } catch (error) {
@@ -96,6 +101,7 @@ export default async function ClientProfileDashboardPage({
         authPhone={context.viewer.phone}
         emailVerified={context.viewer.emailVerified}
         phoneVerified={context.viewer.phoneVerified}
+        paywallSummary={paywallSummary}
       />
     </ClientAppShell>
   );

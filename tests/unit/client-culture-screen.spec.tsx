@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CultureFeedItem, CultureFeedModule } from "@/lib/culture/service";
+import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: ComponentProps<"a"> & { children?: ReactNode; href: string }) => (
@@ -10,6 +11,26 @@ vi.mock("next/link", () => ({
 }));
 
 import { ClientCultureScreen } from "@/components/client-experience/client-culture-screen";
+
+const freeClientPaywallSummary: ClientPaywallSummary = {
+  currentPlanLabel: "Free",
+  billingLabel: "No paid billing cycle connected",
+  statusLabel: "Free access active",
+  statusTone: "neutral",
+  serverEvidenceLabel: "Server default",
+  freeBookingAvailable: true,
+  lockedFeatureCount: 6,
+  needsReviewCount: 0,
+  upgradeActionLabel: "Review plan access",
+  upgradeHref: "/dashboard/client/more?section=wallet",
+  checkoutUrl: null,
+  portalUrl: null,
+  features: {
+    free: [],
+    pro: [],
+    elite: []
+  }
+};
 
 function culturePost(id: string, overrides: Partial<CultureFeedItem> = {}): CultureFeedItem {
   return {
@@ -112,10 +133,11 @@ describe("client culture screen", () => {
   });
 
   it("renders only the minimal social pulse header above the feed", () => {
-    render(<ClientCultureScreen feed={{ items: [culturePost("post-1")], cursor: null, hasMore: false }} />);
+    render(<ClientCultureScreen feed={{ items: [culturePost("post-1")], cursor: null, hasMore: false }} paywallSummary={freeClientPaywallSummary} />);
 
     expect(screen.getByText("Feed")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Culture pulse" })).toBeInTheDocument();
+    expect(screen.getByTestId("client-plan-access-card")).toBeInTheDocument();
     expect(screen.getByText("Live feed")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Culture" })).not.toBeInTheDocument();
     expect(screen.queryByText("Client Culture")).not.toBeInTheDocument();

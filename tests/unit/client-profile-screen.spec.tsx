@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
+import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 
 const {
   useProfileMediaWorkspaceQueryMock,
@@ -93,6 +94,53 @@ vi.mock("@/components/auth/logout-button", () => ({
 }));
 
 import { ClientProfileScreen } from "@/components/client-experience/client-profile-screen";
+
+const freeClientPaywallSummary: ClientPaywallSummary = {
+  currentPlanLabel: "Free",
+  billingLabel: "No paid billing cycle connected",
+  statusLabel: "Free access active",
+  statusTone: "neutral",
+  serverEvidenceLabel: "Server default",
+  freeBookingAvailable: true,
+  lockedFeatureCount: 6,
+  needsReviewCount: 0,
+  upgradeActionLabel: "Review plan access",
+  upgradeHref: "/dashboard/client/more?section=wallet",
+  checkoutUrl: null,
+  portalUrl: null,
+  features: {
+    free: [{
+      id: "client-basic-booking",
+      title: "Basic booking, search, and discovery",
+      description: "Search barbers, view shops, book eligible services, and manage activity.",
+      requiredPlanLabel: "Free",
+      state: "available",
+      stateLabel: "Available",
+      reason: "Free client essentials remain available.",
+      evidenceSource: "Server entitlement registry"
+    }],
+    pro: [{
+      id: "client-priority-rebooking",
+      title: "Priority rebooking preferences",
+      description: "Reserved for faster rebooking preferences after server-verified Pro access.",
+      requiredPlanLabel: "Pro",
+      state: "locked",
+      stateLabel: "Upgrade required",
+      reason: "Paid feature requires server-verified Pro or Elite entitlement.",
+      evidenceSource: "Server entitlement registry"
+    }],
+    elite: [{
+      id: "client-premium-filters",
+      title: "Premium discovery filters",
+      description: "Reserved for deeper discovery filters after server-verified Elite access.",
+      requiredPlanLabel: "Elite",
+      state: "locked",
+      stateLabel: "Upgrade required",
+      reason: "Paid feature requires server-verified Pro or Elite entitlement.",
+      evidenceSource: "Server entitlement registry"
+    }]
+  }
+};
 
 describe("client profile screen", () => {
   beforeEach(() => {
@@ -361,6 +409,7 @@ describe("client profile screen", () => {
       expect(screen.queryByText(label)).not.toBeInTheDocument();
     });
     expect(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method for bookings, auto-booking, subscriptions, tools, ads, and promotions/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
+    expect(screen.getByRole("link", { name: /Plan Access Free booking stays open. Pro and Elite tools require server-verified plan access. Needs review/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
     expect(screen.getByRole("link", { name: /Stripe Connect Creator-only/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
     expect(screen.getByRole("link", { name: /Creator Payouts Locked until approved. All creator payout information/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
     expect(screen.getByRole("link", { name: /Rewards Points, credits, loyalty progress, and referrals/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
@@ -390,6 +439,40 @@ describe("client profile screen", () => {
     expect(screen.queryByText("Account settings")).not.toBeInTheDocument();
     expect(screen.queryByText("Account status")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+  });
+
+  it("renders wallet plan access from server entitlement summary without checkout or portal actions", () => {
+    render(
+      <ClientProfileScreen
+        isSignedInClient
+        initialSection="wallet"
+        authEmail="jordan@bvrb3r.app"
+        payload={( {
+          client: {
+            clientReference: "client-jordan",
+            fullName: "Jordan Ellis",
+            email: "jordan@bvrb3r.app",
+            phone: "8135550190"
+          },
+          favoriteBarber: null,
+          preferredShops: [],
+          notificationPreference: null,
+          routine: null,
+          paymentMethods: []
+        } as unknown as ClientProfilePayload )}
+        paywallSummary={freeClientPaywallSummary}
+      />
+    );
+
+    expect(screen.getByTestId("client-plan-access-card")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Free client access" })).toBeInTheDocument();
+    expect(screen.getByText("Basic booking, search, and discovery")).toBeInTheDocument();
+    expect(screen.getByText("Priority rebooking preferences")).toBeInTheDocument();
+    expect(screen.getByText("Premium discovery filters")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review plan access" })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
+    expect(screen.queryByRole("link", { name: /Checkout/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Billing portal/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/stripe customer/i)).not.toBeInTheDocument();
   });
 
   it("shows clean empty states for preferences and rewards when canonical data is absent", () => {
