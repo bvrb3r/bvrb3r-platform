@@ -49,7 +49,7 @@ describe("server session health", () => {
     expect(result.mode).toBe("supabase");
     expect(result.authenticated).toBe(true);
     expect(result.email).toBe("client@bvrb3r.demo");
-    expect(result.role).toBe("client");
+    expect(result.role).toBe("client_user");
     expect(result.reason).toBe("authenticated");
   });
 
