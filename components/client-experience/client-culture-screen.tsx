@@ -4,8 +4,10 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StatusBadge } from "@/design/components";
+import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
 import { CulturePostCard } from "@/components/culture/culture-post-card";
 import type { CultureFeedItem, CultureFeedModule, CultureFeedResponse } from "@/lib/culture/service";
+import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 
 export type CultureCreatorRole = "client" | "barber" | "shop" | "architect";
 type CultureSurface = "client" | "barber" | "shop";
@@ -164,11 +166,13 @@ function CultureDiscoveryGrid({ module }: { module: CultureFeedModule }) {
 export function ClientCultureScreen({
   feed,
   posts = [],
-  surface = "client"
+  surface = "client",
+  paywallSummary
 }: {
   feed?: CultureFeedResponse;
   posts?: ClientCulturePost[];
   surface?: CultureSurface;
+  paywallSummary?: ClientPaywallSummary;
 }) {
   const initialItems = useMemo(() => feed?.items ?? posts.map(legacyPostToFeedItem), [feed?.items, posts]);
   const [feedItems, setFeedItems] = useState<CultureFeedItem[]>(initialItems);
@@ -372,6 +376,8 @@ export function ClientCultureScreen({
         ) : null}
 
         <div className="space-y-4">
+          {paywallSummary ? <ClientPlanAccessCard summary={paywallSummary} compact /> : null}
+
           {feedError ? (
             <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 p-5 text-sm text-red-100">
               {feedError}

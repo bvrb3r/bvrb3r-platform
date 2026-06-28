@@ -1,6 +1,7 @@
 import { ClientAppShell } from "@/components/client-experience/client-app-shell";
 import { ClientSearchScreen } from "@/components/client-experience/client-search-screen";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
+import { resolveClientPaywallSummaryForUser } from "@/lib/entitlements/client-paywall";
 
 export default async function ClientSearchDashboardPage({
   searchParams
@@ -19,11 +20,15 @@ export default async function ClientSearchDashboardPage({
 }) {
   const context = await getClientExperienceContext();
   const params = await searchParams;
+  const paywallSummary = context.isSignedInClient
+    ? await resolveClientPaywallSummaryForUser({ user: context.viewer })
+    : undefined;
 
   return (
     <ClientAppShell activeTab="search" mode={context.isGuest ? "guest" : "client"}>
       <ClientSearchScreen
         clientId={context.clientId}
+        paywallSummary={paywallSummary}
         initialType={params.type === "shops" ? "shops" : "barbers"}
         initialQuery={params.q ?? ""}
         initialCategory={params.category ?? ""}

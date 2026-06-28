@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
+import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
@@ -54,6 +55,7 @@ import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/
 import { formatPublicCityStateLocation, formatPublicUsernameLine } from "@/lib/profile/public-identity-summary";
 import { uploadMediaAsset } from "@/lib/storage/media";
 import { currency } from "@/lib/utils";
+import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 
 type PickerInput = HTMLInputElement & {
   showPicker?: () => void;
@@ -201,7 +203,8 @@ export function ClientProfileScreen({
   authEmail,
   authPhone,
   emailVerified = false,
-  phoneVerified = false
+  phoneVerified = false,
+  paywallSummary
 }: {
   payload: ClientProfilePayload;
   isSignedInClient: boolean;
@@ -210,6 +213,7 @@ export function ClientProfileScreen({
   authPhone?: string;
   emailVerified?: boolean;
   phoneVerified?: boolean;
+  paywallSummary?: ClientPaywallSummary;
 }) {
   const queryClient = useQueryClient();
   const mediaQuery = useProfileMediaWorkspaceQuery(isSignedInClient);
@@ -308,6 +312,7 @@ export function ClientProfileScreen({
       subtitle: "How this account pays, earns rewards, and unlocks eligible creator payouts.",
       rows: [
         { href: "/dashboard/client/more?section=wallet", title: "Wallet / Billing", subtitle: "Default payment method for bookings, auto-booking, subscriptions, tools, ads, and promotions.", icon: <CreditCard className="h-5 w-5" />, needsAction: !defaultPaymentMethod },
+        { href: "/dashboard/client/more?section=wallet", title: "Plan Access", subtitle: "Free booking stays open. Pro and Elite tools require server-verified plan access.", icon: <ShieldCheck className="h-5 w-5" />, status: paywallSummary?.statusLabel ?? "Needs review", tone: paywallSummary?.statusTone === "green" ? "green" : "yellow", needsAction: Boolean(!paywallSummary || paywallSummary.lockedFeatureCount || paywallSummary.needsReviewCount) },
         { href: "/dashboard/client/more?section=rewards", title: "Stripe Connect", subtitle: "Creator-only. Manage bank accounts and payout connection when creator payout eligibility unlocks.", icon: <WalletCards className="h-5 w-5" />, status: "Creator-only", tone: "yellow", needsAction: true },
         { href: "/dashboard/client/more?section=rewards", title: "Creator Payouts", subtitle: "Locked until approved. All creator payout information for this account lives here.", icon: <CircleDollarSign className="h-5 w-5" />, status: "Locked", tone: "yellow", needsAction: true },
         { href: "/dashboard/client/more?section=rewards", title: "Rewards", subtitle: "Points, credits, loyalty progress, and referrals", icon: <Gift className="h-5 w-5" /> },
@@ -1016,6 +1021,7 @@ export function ClientProfileScreen({
         subtitle="Saved payment methods and the booking default stay here."
       >
         <div id="profile-wallet" className="scroll-mt-6 space-y-4">
+          {paywallSummary ? <ClientPlanAccessCard summary={paywallSummary} showFeatureGroups /> : null}
           <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
               <CreditCard className="h-4 w-4 text-[#baff69]" />
