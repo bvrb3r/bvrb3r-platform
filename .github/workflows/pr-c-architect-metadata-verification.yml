@@ -1,0 +1,61 @@
+name: PR-C Architect Metadata Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/mission-control-real-architect-metadata-verification
+    paths:
+      - ".github/workflows/pr-c-architect-metadata-verification.yml"
+      - "lib/auth/**"
+      - "scripts/verify-architect-metadata.ts"
+      - "tests/unit/architect-metadata-verification.spec.ts"
+      - "docs/audits/pr-c-architect-metadata-verification.md"
+      - "package.json"
+      - "package-lock.json"
+      - "pnpm-lock.yaml"
+      - "yarn.lock"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-architect-metadata:
+    name: Verify Architect app_metadata access
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    env:
+      SUPABASE_URL: ${{ secrets.BVRB3R_SUPABASE_URL || secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.BVRB3R_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.BVRB3R_SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ARCHITECT_USER_ID: ${{ secrets.BVRB3R_ARCHITECT_USER_ID || secrets.ARCHITECT_USER_ID }}
+      ARCHITECT_USER_EMAIL: ${{ secrets.BVRB3R_ARCHITECT_USER_EMAIL || secrets.ARCHITECT_USER_EMAIL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Architect metadata
+        run: npm.cmd run verify:architect-metadata
+
+      - name: Lint
+        run: npm.cmd run lint
+
+      - name: Typecheck
+        run: npm.cmd run typecheck
+
+      - name: Targeted tests
+        run: npx vitest run --silent tests/unit/guards.spec.ts tests/unit/session.spec.ts tests/unit/production-identity.spec.ts tests/unit/demo-auth.spec.ts tests/unit/architect-access-guard.spec.tsx tests/unit/architect-debug-security.spec.ts tests/unit/architect-verification-routes.spec.ts tests/unit/architect-metadata-verification.spec.ts
+
+      - name: Build
+        run: npm.cmd run build

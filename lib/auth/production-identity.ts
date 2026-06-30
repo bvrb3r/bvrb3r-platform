@@ -27,7 +27,7 @@ import type {
 } from "@/types/domain";
 import type { VerificationStatus, VerificationSubjectRole } from "@/types/trust";
 
-type AuthUserLike = {
+export type AuthUserLike = {
   id: string;
   email?: string | null;
   phone?: string | null;
@@ -35,6 +35,10 @@ type AuthUserLike = {
   phone_confirmed_at?: string | null;
   app_metadata?: Record<string, unknown>;
   user_metadata?: Record<string, unknown>;
+};
+
+type BuildRuntimeUserOptions = {
+  readOnly?: boolean;
 };
 
 type ProfileRow = {
@@ -1479,9 +1483,12 @@ async function readLocationReferencesForProfile(profileId: string, ownedShopId?:
   return Array.from(new Set(references));
 }
 
-export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike): Promise<UserAccount> {
+export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike, options: BuildRuntimeUserOptions = {}): Promise<UserAccount> {
   try {
-    await syncProfileFromAuth(authUser);
+    if (!options.readOnly) {
+      await syncProfileFromAuth(authUser);
+    }
+
     const [profile, client, barber, shop] = await Promise.all([
       readProfile(authUser.id),
       readClientByProfile(authUser.id),
@@ -1528,20 +1535,23 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
         : "profile_only";
     const canonicalFullName = requiredContact.fullName || displayName;
 
-    await persistResolvedProfileState({
-      profile,
-      profileId: authUser.id,
-      runtimeRole,
-      primaryRole,
-      onboardingState,
-      fullName: canonicalFullName,
-      email: requiredContact.email,
-      phone: requiredContact.phone,
-      phoneVerified
-    });
+    if (!options.readOnly) {
+      await persistResolvedProfileState({
+        profile,
+        profileId: authUser.id,
+        runtimeRole,
+        primaryRole,
+        onboardingState,
+        fullName: canonicalFullName,
+        email: requiredContact.email,
+        phone: requiredContact.phone,
+        phoneVerified
+      });
+    }
 
     console.info("[auth] production identity resolved", {
       userId: authUser.id,
+      readOnly: options.readOnly === true,
       primaryRole,
       runtimeRole,
       hasLaneRecord,
