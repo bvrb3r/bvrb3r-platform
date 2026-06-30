@@ -70,6 +70,7 @@ export interface UserAccount {
   title: string;
   locationIds: string[];
   platformAdmin?: boolean;
+  appMetadata?: Record<string, unknown>;
   phone?: string;
   accountStatus?: "active" | "deactivated" | "suspended" | "banned" | "profile_only";
   primaryOnboardingRole?: IdentityLane;

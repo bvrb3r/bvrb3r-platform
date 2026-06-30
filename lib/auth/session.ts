@@ -48,6 +48,7 @@ export async function getCurrentUserFromServer() {
     phone: authUser.phone,
     email_confirmed_at: authUser.email_confirmed_at,
     phone_confirmed_at: authUser.phone_confirmed_at,
+    app_metadata: authUser.app_metadata as Record<string, unknown> | undefined,
     user_metadata: authUser.user_metadata as Record<string, unknown> | undefined
   };
 

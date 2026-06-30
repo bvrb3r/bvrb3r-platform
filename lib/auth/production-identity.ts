@@ -33,6 +33,7 @@ type AuthUserLike = {
   phone?: string | null;
   email_confirmed_at?: string | null;
   phone_confirmed_at?: string | null;
+  app_metadata?: Record<string, unknown>;
   user_metadata?: Record<string, unknown>;
 };
 
@@ -612,6 +613,7 @@ function buildMinimalRuntimeUser(authUser: AuthUserLike): UserAccount {
     canonicalFullName: requiredContact.fullName || undefined,
     title: "Client",
     phone: requiredContact.phone,
+    appMetadata: { ...(authUser.app_metadata ?? {}) },
     firstName: requiredContact.firstName || undefined,
     lastName: requiredContact.lastName || undefined,
     locationIds: [],
@@ -1556,6 +1558,7 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
       canonicalFullName,
       title: getTitle(runtimeRole, barber?.barber_subtype),
       phone: requiredContact.phone,
+      appMetadata: { ...(authUser.app_metadata ?? {}) },
       firstName: requiredContact.firstName || undefined,
       lastName: requiredContact.lastName || undefined,
       locationIds,

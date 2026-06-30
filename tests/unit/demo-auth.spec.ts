@@ -108,4 +108,15 @@ describe("demo account mapping", () => {
       accountStatus: "active"
     })).toBe(false);
   });
+
+  it.each([
+    "client_user",
+    "barber_user",
+    "shop_owner_user"
+  ] as const)("keeps %s blocked by the existing platform-admin guard", (role) => {
+    expect(isPlatformAdminUser({
+      role,
+      accountStatus: "active"
+    })).toBe(false);
+  });
 });

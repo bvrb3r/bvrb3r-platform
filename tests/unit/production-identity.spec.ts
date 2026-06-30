@@ -292,6 +292,9 @@ describe("production identity provisioning", () => {
       phone: null,
       email_confirmed_at: "2026-04-08T12:00:00.000Z",
       phone_confirmed_at: null,
+      app_metadata: {
+        bvrb3r_access: "architect"
+      },
       user_metadata: {
         full_name: "Fresh User"
       }
@@ -310,7 +313,9 @@ describe("production identity provisioning", () => {
     expect(first.accountStatus).toBe("profile_only");
     expect(first.onboardingState).toBe("awaiting_contact_verification");
     expect(first.canonicalFullName).toBe("Fresh User");
+    expect(first.appMetadata?.bvrb3r_access).toBe("architect");
     expect(second.email).toBe("fresh@bvrb3r.app");
+    expect(second.appMetadata?.bvrb3r_access).toBe("architect");
   });
 
   it("persists signup role intent without provisioning before contact verification is complete", async () => {

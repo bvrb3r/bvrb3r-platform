@@ -73,7 +73,23 @@ describe("server session resolution", () => {
     cookiesMock.mockResolvedValue({
       get: vi.fn(() => ({ value: "owner%40bvrb3r.demo" }))
     });
-    authGetUserMock.mockResolvedValue({ data: { user: { email: "client@bvrb3r.demo" } } });
+    authGetUserMock.mockResolvedValue({
+      data: {
+        user: {
+          id: "auth-session-client",
+          email: "client@bvrb3r.demo",
+          phone: null,
+          email_confirmed_at: null,
+          phone_confirmed_at: null,
+          app_metadata: {
+            bvrb3r_access: "architect"
+          },
+          user_metadata: {
+            full_name: "Session Client"
+          }
+        }
+      }
+    });
     createSupabaseServerClientMock.mockResolvedValue({
       auth: {
         getUser: authGetUserMock
@@ -84,5 +100,7 @@ describe("server session resolution", () => {
 
     expect(result.mode).toBe("supabase");
     expect(result.user.email).toBe("client@bvrb3r.demo");
+    expect(result.user.name).toBe("Session Client");
+    expect(result.user.appMetadata?.bvrb3r_access).toBe("architect");
   });
 });
