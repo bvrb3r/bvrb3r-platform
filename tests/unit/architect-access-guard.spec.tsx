@@ -119,6 +119,39 @@ describe("architect server-side access guard wiring", () => {
     expect(screen.queryByTestId("architect-mission-control-home")).not.toBeInTheDocument();
   });
 
+  it("blocks inactive canonical Architect metadata before the Mission Control home route renders", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      mode: "supabase",
+      authenticated: true,
+      user: makeCanonicalArchitect({
+        accountStatus: "suspended"
+      })
+    });
+
+    await expect(ArchitectPage()).rejects.toThrow("REDIRECT:/login?account=disabled");
+    expect(redirectMock).toHaveBeenCalledWith("/login?account=disabled");
+    expect(screen.queryByTestId("architect-mission-control-home")).not.toBeInTheDocument();
+  });
+
+  it("blocks userMetadata-only Architect claims before the Mission Control home route renders", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      mode: "supabase",
+      authenticated: true,
+      user: {
+        ...makeCanonicalArchitect({
+          appMetadata: undefined
+        }),
+        userMetadata: {
+          bvrb3r_access: "architect"
+        }
+      }
+    });
+
+    await expect(ArchitectPage()).rejects.toThrow("REDIRECT:/dashboard/client");
+    expect(redirectMock).toHaveBeenCalledWith("/dashboard/client");
+    expect(screen.queryByTestId("architect-mission-control-home")).not.toBeInTheDocument();
+  });
+
   it("renders /architect as Mission Control Home for an active canonical Architect", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({
       mode: "supabase",

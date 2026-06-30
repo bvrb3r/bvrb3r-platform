@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
+import type { IdentityLane, Role, UserAccount } from "@/types/domain";
 
 const {
   getCurrentUserFromServerMock,
@@ -40,6 +41,33 @@ import { GET as getDetail } from "@/app/api/architect/verifications/[profileId]/
 import { POST as postApprove } from "@/app/api/architect/verifications/[profileId]/approve/route";
 import { POST as postDocumentSignedUrl } from "@/app/api/architect/verifications/[profileId]/documents/[documentId]/signed-url/route";
 
+function makeArchitectMetadataUser(overrides: Partial<UserAccount> = {}): UserAccount {
+  return {
+    ...resolveDemoUser("client@bvrb3r.demo"),
+    id: "metadata-architect-user",
+    email: "metadata-architect@bvrb3r.app",
+    role: "client_user",
+    primaryOnboardingRole: "client",
+    accountStatus: "active",
+    appMetadata: {
+      bvrb3r_access: "architect"
+    },
+    ...overrides
+  };
+}
+
+function makePublicRoleUser(role: Role, primaryOnboardingRole: IdentityLane): UserAccount {
+  return {
+    ...resolveDemoUser("client@bvrb3r.demo"),
+    id: `public-${role}`,
+    email: `${role}@bvrb3r.app`,
+    role,
+    primaryOnboardingRole,
+    accountStatus: "active",
+    appMetadata: undefined
+  };
+}
+
 describe("architect verification routes", () => {
   beforeEach(() => {
     getCurrentUserFromServerMock.mockReset();
@@ -59,6 +87,95 @@ describe("architect verification routes", () => {
 
     expect(response.status).toBe(403);
     expect(body.error).toMatch(/restricted to the platform admin/i);
+    expect(listVerificationProfilesForArchitectMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["client_user", "client"],
+    ["barber_user", "barber"],
+    ["shop_owner_user", "shop_owner"]
+  ] as const)("blocks %s queue access before verification service access", async (role, primaryOnboardingRole) => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: true,
+      mode: "supabase",
+      user: makePublicRoleUser(role, primaryOnboardingRole)
+    });
+
+    const response = await getQueue(new NextRequest("https://bvrb3r.demo/api/architect/verifications"));
+
+    expect(response.status).toBe(403);
+    expect(listVerificationProfilesForArchitectMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks inactive appMetadata Architect users before verification service access", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: true,
+      mode: "supabase",
+      user: makeArchitectMetadataUser({
+        accountStatus: "banned"
+      })
+    });
+
+    const response = await getQueue(new NextRequest("https://bvrb3r.demo/api/architect/verifications"));
+
+    expect(response.status).toBe(403);
+    expect(listVerificationProfilesForArchitectMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks userMetadata-only Architect claims before verification service access", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: true,
+      mode: "supabase",
+      user: {
+        ...makeArchitectMetadataUser({
+          appMetadata: undefined
+        }),
+        userMetadata: {
+          bvrb3r_access: "architect"
+        }
+      }
+    });
+
+    const response = await getQueue(new NextRequest("https://bvrb3r.demo/api/architect/verifications"));
+
+    expect(response.status).toBe(403);
+    expect(listVerificationProfilesForArchitectMock).not.toHaveBeenCalled();
+  });
+
+  it("returns the verification queue for an active appMetadata Architect user", async () => {
+    const architect = makeArchitectMetadataUser();
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: true,
+      mode: "supabase",
+      user: architect
+    });
+    listVerificationProfilesForArchitectMock.mockResolvedValue({
+      items: [],
+      warnings: []
+    });
+
+    const response = await getQueue(new NextRequest("https://bvrb3r.demo/api/architect/verifications"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.items).toHaveLength(0);
+    expect(listVerificationProfilesForArchitectMock).toHaveBeenCalledWith(architect, expect.objectContaining({}));
+  });
+
+  it("blocks inactive legacy bridge users before verification service access", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: true,
+      mode: "supabase",
+      user: makePlatformAdminUser({
+        accountStatus: "suspended",
+        appMetadata: undefined
+      })
+    });
+
+    const response = await getQueue(new NextRequest("https://bvrb3r.demo/api/architect/verifications"));
+
+    expect(response.status).toBe(403);
+    expect(listVerificationProfilesForArchitectMock).not.toHaveBeenCalled();
   });
 
   it("returns the verification queue for the founder", async () => {

@@ -215,12 +215,67 @@ describe("architect access helper", () => {
     }))).toBe(false);
   });
 
+  it("blocks canonical Architect metadata when accountStatus is missing", () => {
+    expect(hasArchitectAccess(makeGuardUser({
+      accountStatus: undefined,
+      appMetadata: {
+        bvrb3r_access: "architect"
+      }
+    }))).toBe(false);
+  });
+
+  it.each([
+    "deactivated",
+    "suspended",
+    "banned",
+    "profile_only"
+  ] as const)("blocks %s canonical Architect metadata", (accountStatus) => {
+    expect(hasArchitectAccess(makeGuardUser({
+      accountStatus,
+      appMetadata: {
+        bvrb3r_access: "architect"
+      }
+    }))).toBe(false);
+  });
+
+  it("blocks userMetadata Architect claims", () => {
+    const userMetadataOnlyUser = {
+      ...makeGuardUser(),
+      userMetadata: {
+        bvrb3r_access: "architect"
+      }
+    };
+
+    expect(hasArchitectAccess(userMetadataOnlyUser)).toBe(false);
+  });
+
+  it("blocks unrelated appMetadata values", () => {
+    expect(hasArchitectAccess(makeGuardUser({
+      appMetadata: {
+        bvrb3r_access: "support"
+      }
+    }))).toBe(false);
+  });
+
   it.each([
     "client_user",
     "barber_user",
     "shop_owner_user"
   ] as const)("blocks %s without Architect metadata", (role) => {
     expect(hasArchitectAccess(makeGuardUser({ role }))).toBe(false);
+  });
+
+  it.each([
+    "client_user",
+    "barber_user",
+    "shop_owner_user"
+  ] as const)("allows active %s only when canonical Architect metadata is present", (role) => {
+    expect(hasArchitectAccess(makeGuardUser({
+      role,
+      appMetadata: {
+        bvrb3r_access: "architect"
+      }
+    }))).toBe(true);
   });
 
   it("blocks unauthenticated or null users", () => {
