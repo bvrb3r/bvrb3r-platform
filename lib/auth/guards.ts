@@ -27,7 +27,11 @@ function redirectIfAccessDisabled(accountStatus?: string) {
 }
 
 export function hasArchitectAccess(user?: ArchitectAccessUser) {
-  if (user?.appMetadata?.bvrb3r_access === "architect" && user.accountStatus === "active") {
+  if (!user || user.accountStatus !== "active") {
+    return false;
+  }
+
+  if (user.appMetadata?.bvrb3r_access === "architect") {
     return true;
   }
 
