@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { hasArchitectAccess } from "@/lib/auth/guards";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
-import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import type { ArchitectActor } from "@/lib/architect/debug/types";
 
 export async function requireArchitectDebugAccess() {
@@ -19,7 +19,7 @@ export async function requireArchitectDebugAccess() {
     };
   }
 
-  if (!isPlatformAdminUser(user)) {
+  if (!hasArchitectAccess(user)) {
     return {
       ok: false as const,
       response: NextResponse.json({ error: "Architect debug access is restricted to platform administrators." }, { status: 403 })

@@ -69,7 +69,10 @@ describe("demo account mapping", () => {
     const founder = {
       ...retiredDemoArchitect,
       email: CANONICAL_PLATFORM_ADMIN_EMAIL,
-      accountStatus: "active" as const
+      accountStatus: "active" as const,
+      appMetadata: {
+        bvrb3r_access: "architect"
+      }
     };
     const accounts = getDemoLauncherAccounts();
 
