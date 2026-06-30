@@ -1,5 +1,5 @@
-import { renderArchitectMissionControlLane } from "@/app/(platform)/architect/_mission-control-page";
+import { renderArchitectMissionControlHome } from "@/app/(platform)/architect/_mission-control-page";
 
 export default async function ArchitectPage() {
-  return renderArchitectMissionControlLane("ceo");
+  return renderArchitectMissionControlHome();
 }
