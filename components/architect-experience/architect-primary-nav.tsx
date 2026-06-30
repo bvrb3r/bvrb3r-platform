@@ -11,7 +11,7 @@ function isArchitectNavActive(pathname: string | null, href: string, itemId: str
   }
 
   if (itemId === "ceo") {
-    return pathname === "/architect" || pathname === "/architect/ceo";
+    return pathname === "/architect/ceo";
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);

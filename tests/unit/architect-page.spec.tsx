@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MASTER_TRUTH_ACCOUNT_ROLES } from "@/lib/auth/roles";
 import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
 
 const { getPlatformAdminUserMock } = vi.hoisted(() => ({
@@ -30,14 +31,17 @@ describe("architect page", () => {
     getPlatformAdminUserMock.mockReset();
   });
 
-  it("renders Mission Control for platform admins", async () => {
+  it("renders a distinct Mission Control home for platform admins", async () => {
     getPlatformAdminUserMock.mockResolvedValue(makePlatformAdminUser());
 
     render(await ArchitectPage());
 
     expect(getPlatformAdminUserMock).toHaveBeenCalled();
-    expect(screen.getByTestId("architect-mission-control")).toHaveTextContent("Mission Control");
-    expect(screen.getByTestId("architect-mission-control")).toHaveAttribute("data-lane-id", "ceo");
+    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("BVRB3R Mission Control");
+    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("Architect Operating System");
+    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("Evidence-backed system truth. Missing proof stays Needs Review.");
+    expect(screen.getAllByText("Needs Review").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("architect-mission-control")).not.toBeInTheDocument();
   });
 
   it("renders routed Mission Control lane pages for platform admins", async () => {
@@ -59,5 +63,23 @@ describe("architect page", () => {
       expect(screen.getByTestId("architect-mission-control")).toHaveAttribute("data-lane-id", laneId);
       unmount();
     }
+  });
+
+  it("keeps the CEO lane separate from the Mission Control home", async () => {
+    getPlatformAdminUserMock.mockResolvedValue(makePlatformAdminUser());
+
+    const home = render(await ArchitectPage());
+    expect(screen.getByTestId("architect-mission-control-home")).toBeInTheDocument();
+    expect(screen.queryByTestId("architect-mission-control")).not.toBeInTheDocument();
+    home.unmount();
+
+    render(await ArchitectCeoPage());
+    expect(screen.getByTestId("architect-mission-control")).toHaveAttribute("data-lane-id", "ceo");
+    expect(screen.queryByTestId("architect-mission-control-home")).not.toBeInTheDocument();
+  });
+
+  it("keeps public account roles scoped to V1 user roles", () => {
+    expect([...MASTER_TRUTH_ACCOUNT_ROLES]).toEqual(["client_user", "barber_user", "shop_owner_user"]);
+    expect([...MASTER_TRUTH_ACCOUNT_ROLES]).not.toContain("architect_user");
   });
 });

@@ -54,14 +54,14 @@ describe("architect layout", () => {
 
     expect(screen.getByText("Architect session")).toBeInTheDocument();
     expect(screen.getByText("BVR")).toBeInTheDocument();
-    expect(screen.getByText("Mission Control")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Mission Control" })).toHaveAttribute("href", "/architect");
     expect(screen.getByText("ops-admin@bvrb3r.app")).toBeInTheDocument();
     expect(screen.getByTestId("architect-shell")).toHaveClass("bvr-screen");
     expect(screen.getByTestId("architect-header-shell")).not.toHaveClass("bvr-screen");
     expect(screen.getByTestId("architect-header-shell").className).not.toMatch(/min-h|h-screen|100svh|items-center/);
     expect(screen.getByRole("navigation", { name: "BVRB3R Mission Control Navigation" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "CEO" })).toHaveAttribute("href", "/architect/ceo");
-    expect(screen.getByRole("link", { name: "CEO" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "CEO" })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: "Product" })).toHaveAttribute("href", "/architect/product");
     expect(screen.getByRole("link", { name: "Technology" })).toHaveAttribute("href", "/architect/technology");
     expect(screen.getByRole("link", { name: "Operations" })).toHaveAttribute("href", "/architect/operations");

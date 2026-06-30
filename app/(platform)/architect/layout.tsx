@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { ArchitectPrimaryNav } from "@/components/architect-experience/architect-primary-nav";
 import { LogoutButton } from "@/components/auth/logout-button";
@@ -24,9 +25,9 @@ export default async function ArchitectLayout({ children }: { children: React.Re
                       <ShieldCheck className="h-3.5 w-3.5" />
                       Architect session
                     </span>
-                    <span className="rounded-[8px] border border-white/10 bg-black/24 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/58">
+                    <Link href="/architect" className="rounded-[8px] border border-white/10 bg-black/24 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/68 transition hover:border-[#A3FF12]/24 hover:text-white">
                       Mission Control
-                    </span>
+                    </Link>
                   </div>
                   <div className="mt-2 min-w-0">
                     <p className="truncate text-lg font-black tracking-[-0.02em] text-white">{user.name}</p>
