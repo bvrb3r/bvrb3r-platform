@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import { getDefaultRouteForUser, isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { isRoleAllowed } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
-import { Role } from "@/types/domain";
+import type { Role, UserAccount } from "@/types/domain";
+
+type ArchitectAccessUser = Pick<UserAccount, "accountStatus" | "appMetadata" | "primaryOnboardingRole" | "role"> | null | undefined;
 
 function isAuthenticatedSession(
   session: Awaited<ReturnType<typeof getCurrentUserFromServer>>
@@ -22,6 +24,16 @@ function redirectIfAccessDisabled(accountStatus?: string) {
   if (accountStatus && accountStatus !== "active") {
     redirect("/login?account=disabled");
   }
+}
+
+export function hasArchitectAccess(user?: ArchitectAccessUser) {
+  if (user?.appMetadata?.bvrb3r_access === "architect" && user.accountStatus === "active") {
+    return true;
+  }
+
+  // TEMPORARY MISSION CONTROL BRIDGE:
+  // legacy platform_admin arm prevents Architect lockout until the real Supabase Auth app_metadata.bvrb3r_access='architect' claim is seeded and verified in preview/production JWT. Future PR removes this bridge after seeding proof. PR-B RLS must use only auth.jwt()->'app_metadata'->>'bvrb3r_access'.
+  return isPlatformAdminUser(user);
 }
 
 export async function getAuthorizedUser(allowedRoles: Role[]) {
@@ -47,7 +59,7 @@ export async function getPlatformAdminUser() {
   }
   redirectIfAccessDisabled(user.accountStatus);
 
-  if (!isPlatformAdminUser(user)) {
+  if (!hasArchitectAccess(user)) {
     redirect(getDefaultRouteForUser(user));
   }
 

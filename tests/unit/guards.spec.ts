@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
+import type { UserAccount } from "@/types/domain";
 
 const { getCurrentUserFromServerMock, redirectMock } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
@@ -17,7 +18,21 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock
 }));
 
-import { getAuthorizedUser, getPlatformAdminUser } from "@/lib/auth/guards";
+import { getAuthorizedUser, getPlatformAdminUser, hasArchitectAccess } from "@/lib/auth/guards";
+
+function makeGuardUser(overrides: Partial<UserAccount> = {}): UserAccount {
+  return {
+    id: "guard-user",
+    role: "client_user",
+    email: "guard-user@bvrb3r.app",
+    password: "",
+    name: "Guard User",
+    title: "Client",
+    locationIds: [],
+    accountStatus: "active",
+    ...overrides
+  };
+}
 
 describe("authorized user guard", () => {
   beforeEach(() => {
@@ -152,6 +167,23 @@ describe("authorized user guard", () => {
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
+  it("returns an active canonical Architect metadata session through the architect guard", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      mode: "supabase",
+      authenticated: true,
+      user: makeGuardUser({
+        appMetadata: {
+          bvrb3r_access: "architect"
+        }
+      })
+    });
+
+    const user = await getPlatformAdminUser();
+
+    expect(user.appMetadata?.bvrb3r_access).toBe("architect");
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+
   it("redirects the retired demo architect identity away from the architect route", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
 
@@ -162,5 +194,61 @@ describe("authorized user guard", () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
     await expect(getPlatformAdminUser()).rejects.toThrow("REDIRECT:/dashboard/owner");
+  });
+});
+
+describe("architect access helper", () => {
+  it("allows active canonical Architect metadata", () => {
+    expect(hasArchitectAccess(makeGuardUser({
+      appMetadata: {
+        bvrb3r_access: "architect"
+      }
+    }))).toBe(true);
+  });
+
+  it("blocks inactive canonical Architect metadata", () => {
+    expect(hasArchitectAccess(makeGuardUser({
+      accountStatus: "suspended",
+      appMetadata: {
+        bvrb3r_access: "architect"
+      }
+    }))).toBe(false);
+  });
+
+  it.each([
+    "client_user",
+    "barber_user",
+    "shop_owner_user"
+  ] as const)("blocks %s without Architect metadata", (role) => {
+    expect(hasArchitectAccess(makeGuardUser({ role }))).toBe(false);
+  });
+
+  it("blocks unauthenticated or null users", () => {
+    expect(hasArchitectAccess(null)).toBe(false);
+    expect(hasArchitectAccess(undefined)).toBe(false);
+  });
+
+  it("blocks the guest/kiosk user shape", () => {
+    expect(hasArchitectAccess(makeGuardUser({
+      id: "guest-user",
+      role: "client",
+      email: "guest@bvrb3r.local",
+      name: "Guest",
+      title: "Guest",
+      accountStatus: "profile_only"
+    }))).toBe(false);
+  });
+
+  it("allows active legacy platform_admin through the TEMPORARY bridge to prevent Architect lockout until real app_metadata is seeded", () => {
+    expect(hasArchitectAccess(makePlatformAdminUser({
+      appMetadata: undefined
+    }))).toBe(true);
+  });
+
+  it("blocks inactive legacy platform_admin", () => {
+    expect(hasArchitectAccess(makePlatformAdminUser({
+      accountStatus: "suspended",
+      appMetadata: undefined
+    }))).toBe(false);
   });
 });

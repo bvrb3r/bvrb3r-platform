@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
+import { hasArchitectAccess } from "@/lib/auth/guards";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
-import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 
 export const architectVerificationActionSchema = z.object({
   reason: z.string().trim().min(1).max(400),
@@ -24,7 +24,7 @@ export async function requireArchitectAdmin() {
     };
   }
 
-  if (!isPlatformAdminUser(user)) {
+  if (!hasArchitectAccess(user)) {
     return {
       ok: false as const,
       response: NextResponse.json({ error: "Architect verification access is restricted to the platform admin." }, { status: 403 })

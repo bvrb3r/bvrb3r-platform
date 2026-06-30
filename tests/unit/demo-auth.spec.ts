@@ -69,7 +69,10 @@ describe("demo account mapping", () => {
     const founder = {
       ...retiredDemoArchitect,
       email: CANONICAL_PLATFORM_ADMIN_EMAIL,
-      accountStatus: "active" as const
+      accountStatus: "active" as const,
+      appMetadata: {
+        bvrb3r_access: "architect"
+      }
     };
     const accounts = getDemoLauncherAccounts();
 
@@ -105,6 +108,17 @@ describe("demo account mapping", () => {
     expect(isPlatformAdminUser({
       role: "platform_admin",
       email: CANONICAL_PLATFORM_ADMIN_EMAIL,
+      accountStatus: "active"
+    })).toBe(false);
+  });
+
+  it.each([
+    "client_user",
+    "barber_user",
+    "shop_owner_user"
+  ] as const)("keeps %s blocked by the existing platform-admin guard", (role) => {
+    expect(isPlatformAdminUser({
+      role,
       accountStatus: "active"
     })).toBe(false);
   });
