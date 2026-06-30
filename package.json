@@ -33,6 +33,7 @@
     "typecheck": "node scripts/typecheck.mjs",
     "test": "vitest run",
     "verify:deployment": "node scripts/verify-deployment.mjs",
+    "verify:architect-metadata": "node --env-file-if-exists=.env.local ./node_modules/tsx/dist/cli.mjs scripts/verify-architect-metadata.ts",
     "seed": "tsx lib/data/seed.ts",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",

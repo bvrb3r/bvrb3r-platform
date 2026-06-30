@@ -262,6 +262,7 @@ import {
   updateContactVerificationProfile,
   verifyPhoneVerificationChallenge
 } from "@/lib/auth/production-identity";
+import { hasArchitectAccess } from "@/lib/auth/architect-access";
 
 describe("production identity provisioning", () => {
   let state: TableState;
@@ -316,6 +317,94 @@ describe("production identity provisioning", () => {
     expect(first.appMetadata?.bvrb3r_access).toBe("architect");
     expect(second.email).toBe("fresh@bvrb3r.app");
     expect(second.appMetadata?.bvrb3r_access).toBe("architect");
+  });
+
+  it("maps Supabase app_metadata into an active domain Architect user without write sync when readOnly is true", async () => {
+    state.profiles.push({
+      id: "auth-architect-active",
+      role: "platform_admin",
+      email: "architect-active@bvrb3r.app",
+      full_name: "Active Architect",
+      phone: "+15555550100",
+      primary_onboarding_role: "platform_admin",
+      onboarding_state: "active",
+      phone_verified_at: "2026-04-08T12:00:00.000Z"
+    });
+
+    const runtimeUser = await buildRuntimeUserFromProductionAuth({
+      id: "auth-architect-active",
+      email: "architect-active@bvrb3r.app",
+      phone: "+15555550100",
+      email_confirmed_at: "2026-04-08T12:00:00.000Z",
+      phone_confirmed_at: "2026-04-08T12:00:00.000Z",
+      app_metadata: {
+        bvrb3r_access: "architect"
+      },
+      user_metadata: {
+        full_name: "Active Architect"
+      }
+    }, { readOnly: true });
+
+    expect(runtimeUser.appMetadata?.bvrb3r_access).toBe("architect");
+    expect(runtimeUser.accountStatus).toBe("active");
+    expect(hasArchitectAccess(runtimeUser)).toBe(true);
+    expect(state.profiles).toHaveLength(1);
+  });
+
+  it("maps Supabase app_metadata but denies Architect access when the mapped account is inactive", async () => {
+    const runtimeUser = await buildRuntimeUserFromProductionAuth({
+      id: "auth-architect-profile-only",
+      email: "profile-only@bvrb3r.app",
+      phone: null,
+      email_confirmed_at: "2026-04-08T12:00:00.000Z",
+      phone_confirmed_at: null,
+      app_metadata: {
+        bvrb3r_access: "architect"
+      },
+      user_metadata: {
+        full_name: "Profile Only Architect"
+      }
+    }, { readOnly: true });
+
+    expect(runtimeUser.appMetadata?.bvrb3r_access).toBe("architect");
+    expect(runtimeUser.accountStatus).toBe("profile_only");
+    expect(hasArchitectAccess(runtimeUser)).toBe(false);
+    expect(state.profiles).toHaveLength(0);
+  });
+
+  it("does not grant Architect access from Supabase user_metadata after active domain mapping", async () => {
+    state.profiles.push({
+      id: "auth-user-metadata-only",
+      role: "client_user",
+      email: "metadata-only@bvrb3r.app",
+      full_name: "Metadata Only",
+      phone: "+15555550101",
+      primary_onboarding_role: "client",
+      onboarding_state: "active",
+      phone_verified_at: "2026-04-08T12:00:00.000Z"
+    });
+    state.clients.push({
+      id: "client-metadata-only",
+      reference_code: "client-metadata-only",
+      profile_id: "auth-user-metadata-only",
+      created_at: "2026-04-08T12:00:00.000Z"
+    });
+
+    const runtimeUser = await buildRuntimeUserFromProductionAuth({
+      id: "auth-user-metadata-only",
+      email: "metadata-only@bvrb3r.app",
+      phone: "+15555550101",
+      email_confirmed_at: "2026-04-08T12:00:00.000Z",
+      phone_confirmed_at: "2026-04-08T12:00:00.000Z",
+      user_metadata: {
+        bvrb3r_access: "architect",
+        full_name: "Metadata Only"
+      }
+    }, { readOnly: true });
+
+    expect(runtimeUser.accountStatus).toBe("active");
+    expect(runtimeUser.appMetadata?.bvrb3r_access).toBeUndefined();
+    expect(hasArchitectAccess(runtimeUser)).toBe(false);
   });
 
   it("persists signup role intent without provisioning before contact verification is complete", async () => {

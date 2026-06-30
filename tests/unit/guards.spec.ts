@@ -18,7 +18,7 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock
 }));
 
-import { getAuthorizedUser, getPlatformAdminUser, hasArchitectAccess } from "@/lib/auth/guards";
+import { getArchitectAccessDecision, getAuthorizedUser, getPlatformAdminUser, hasArchitectAccess } from "@/lib/auth/guards";
 
 function makeGuardUser(overrides: Partial<UserAccount> = {}): UserAccount {
   return {
@@ -198,6 +198,18 @@ describe("authorized user guard", () => {
 });
 
 describe("architect access helper", () => {
+  it("returns the app_metadata decision for active canonical Architect metadata", () => {
+    expect(getArchitectAccessDecision(makeGuardUser({
+      appMetadata: {
+        bvrb3r_access: "architect"
+      }
+    }))).toEqual({
+      allowed: true,
+      source: "app_metadata",
+      reason: "architect_app_metadata"
+    });
+  });
+
   it("allows active canonical Architect metadata", () => {
     expect(hasArchitectAccess(makeGuardUser({
       appMetadata: {
@@ -213,6 +225,19 @@ describe("architect access helper", () => {
         bvrb3r_access: "architect"
       }
     }))).toBe(false);
+  });
+
+  it("returns inactive_account before metadata or bridge checks", () => {
+    expect(getArchitectAccessDecision(makePlatformAdminUser({
+      accountStatus: "suspended",
+      appMetadata: {
+        bvrb3r_access: "architect"
+      }
+    }))).toEqual({
+      allowed: false,
+      source: "none",
+      reason: "inactive_account"
+    });
   });
 
   it("blocks canonical Architect metadata when accountStatus is missing", () => {
@@ -247,6 +272,11 @@ describe("architect access helper", () => {
     };
 
     expect(hasArchitectAccess(userMetadataOnlyUser)).toBe(false);
+    expect(getArchitectAccessDecision(userMetadataOnlyUser)).toEqual({
+      allowed: false,
+      source: "none",
+      reason: "missing_architect_access"
+    });
   });
 
   it("blocks unrelated appMetadata values", () => {
@@ -255,6 +285,15 @@ describe("architect access helper", () => {
         bvrb3r_access: "support"
       }
     }))).toBe(false);
+    expect(getArchitectAccessDecision(makeGuardUser({
+      appMetadata: {
+        bvrb3r_access: "support"
+      }
+    }))).toEqual({
+      allowed: false,
+      source: "none",
+      reason: "missing_architect_access"
+    });
   });
 
   it.each([
@@ -263,6 +302,11 @@ describe("architect access helper", () => {
     "shop_owner_user"
   ] as const)("blocks %s without Architect metadata", (role) => {
     expect(hasArchitectAccess(makeGuardUser({ role }))).toBe(false);
+    expect(getArchitectAccessDecision(makeGuardUser({ role }))).toEqual({
+      allowed: false,
+      source: "none",
+      reason: "missing_architect_access"
+    });
   });
 
   it.each([
@@ -281,6 +325,11 @@ describe("architect access helper", () => {
   it("blocks unauthenticated or null users", () => {
     expect(hasArchitectAccess(null)).toBe(false);
     expect(hasArchitectAccess(undefined)).toBe(false);
+    expect(getArchitectAccessDecision(undefined)).toEqual({
+      allowed: false,
+      source: "none",
+      reason: "missing_user"
+    });
   });
 
   it("blocks the guest/kiosk user shape", () => {
@@ -298,6 +347,13 @@ describe("architect access helper", () => {
     expect(hasArchitectAccess(makePlatformAdminUser({
       appMetadata: undefined
     }))).toBe(true);
+    expect(getArchitectAccessDecision(makePlatformAdminUser({
+      appMetadata: undefined
+    }))).toEqual({
+      allowed: true,
+      source: "legacy_bridge",
+      reason: "legacy_bridge"
+    });
   });
 
   it("blocks inactive legacy platform_admin", () => {
@@ -305,5 +361,13 @@ describe("architect access helper", () => {
       accountStatus: "suspended",
       appMetadata: undefined
     }))).toBe(false);
+    expect(getArchitectAccessDecision(makePlatformAdminUser({
+      accountStatus: "suspended",
+      appMetadata: undefined
+    }))).toEqual({
+      allowed: false,
+      source: "none",
+      reason: "inactive_account"
+    });
   });
 });
