@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArchitectMissionControl } from "@/components/architect/mission-control/mission-control";
+import { CockpitHome } from "@/components/architect/mission-control/cockpit-home";
 import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, buildSourceVaultInventory } from "@/lib/architect/mission-control/foundation";
 import { buildMissionControlSnapshot } from "@/lib/architect/mission-control/incident-detection";
+import type { MissionControlSnapshot } from "@/lib/architect/mission-control/types";
 import { APPOINTMENT_ID, ARCHITECT_USER, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
 
 const fetchMock = vi.fn();
@@ -1614,5 +1616,58 @@ describe("architect mission control", () => {
 
     await waitFor(() => expect(clipboardWriteTextMock).toHaveBeenCalledWith(expect.stringContaining("BVRB3R ROUTING FIX")));
     expect(screen.getByText("Packet copied.")).toBeInTheDocument();
+  });
+});
+
+function createHomeSnapshot(): MissionControlSnapshot {
+  return {
+    ...createSnapshot(),
+    foundation: buildMissionControlFoundation([], "2026-05-18T12:00:00.000Z")
+  } as unknown as MissionControlSnapshot;
+}
+
+const HOME_USER = { name: "Architect Prime", email: "architect@bvrb3r.app" };
+
+describe("architect mission control home cockpit", () => {
+  it("renders the full cockpit from the server-provided snapshot", () => {
+    render(<CockpitHome snapshot={createHomeSnapshot()} user={HOME_USER} />);
+
+    expect(screen.getByTestId("architect-mission-control-home")).toBeInTheDocument();
+    expect(screen.getByTestId("cockpit-env-strip")).toBeInTheDocument();
+    expect(screen.getByTestId("cockpit-session-rail")).toBeInTheDocument();
+    expect(screen.getByTestId("cockpit-system-vitals")).toBeInTheDocument();
+    expect(screen.getByTestId("cockpit-system-map")).toBeInTheDocument();
+    expect(screen.getByTestId("cockpit-readiness-ring")).toBeInTheDocument();
+    expect(screen.getByTestId("cockpit-work-queue")).toBeInTheDocument();
+    expect(screen.getByTestId("cockpit-officer-lanes")).toBeInTheDocument();
+    expect(screen.getByTestId("cockpit-command-deck")).toBeInTheDocument();
+    expect(screen.getByTestId("cockpit-evidence-drawer")).toBeInTheDocument();
+    expect(screen.getByText(HOME_USER.email)).toBeInTheDocument();
+
+    ["critical", "needs", "approval", "codex", "recent"].forEach((tab) => {
+      expect(screen.getByTestId(`cockpit-work-queue-tab-${tab}`)).toBeInTheDocument();
+    });
+  });
+
+  it("selecting an officer lane drives the evidence drawer without leaving the home route", () => {
+    render(<CockpitHome snapshot={createHomeSnapshot()} user={HOME_USER} />);
+
+    const drawer = screen.getByTestId("cockpit-evidence-drawer");
+    expect(drawer).toHaveTextContent("System evidence");
+
+    fireEvent.click(screen.getByTestId("cockpit-officer-lane-finance"));
+    expect(drawer).toHaveTextContent("Finance lane");
+    expect(screen.getByTestId("cockpit-officer-link-finance")).toHaveAttribute("href", "/architect/finance");
+  });
+
+  it("renders a safe Degraded state and never fakes Pass when the snapshot is null", () => {
+    render(<CockpitHome snapshot={null} user={HOME_USER} />);
+
+    const degraded = screen.getByTestId("cockpit-degraded");
+    expect(degraded).toHaveTextContent("Mission Control — Degraded");
+    expect(degraded).toHaveTextContent("Needs Review");
+    expect(screen.queryByTestId("cockpit-system-map")).not.toBeInTheDocument();
+    // No status element renders exactly "Pass" — the Degraded state never fabricates a Pass.
+    expect(screen.queryByText("Pass")).not.toBeInTheDocument();
   });
 });
