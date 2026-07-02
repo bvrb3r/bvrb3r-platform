@@ -38,7 +38,19 @@ vi.mock("@/components/marketplace/service-catalog-workspace", () => ({
 }));
 
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
+import { buildFreeEntitlementTruth } from "@/lib/entitlements/domain";
+import { buildShopOwnerPaywallSummary } from "@/lib/entitlements/shop-owner-paywall";
 import { OwnerSettingsWorkspace } from "@/components/operations/owner-settings-workspace";
+
+function makeFreeOwnerPaywallSummary() {
+  return buildShopOwnerPaywallSummary({
+    user: { id: "owner-demo", role: "shop_owner_user" },
+    entitlement: buildFreeEntitlementTruth({
+      profileId: "owner-demo",
+      accountRole: "shop_owner_user"
+    })
+  });
+}
 
 function makeShopAccount(overrides: Record<string, unknown> = {}) {
   return {
@@ -229,6 +241,42 @@ describe("owner More workspace", () => {
     expect(screen.queryByRole("link", { name: /Help Support resources/ })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Help Center Guides/ })).toHaveAttribute("href", "/contact");
     expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
+  });
+
+
+
+  it("keeps owner More subtitles unchanged while adding a safe plan access entry", () => {
+    const ownerPlanSummary = makeFreeOwnerPaywallSummary();
+
+    render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} ownerPlanSummary={ownerPlanSummary} />);
+
+    expect(screen.getByText("BVRB3R App Settings")).toBeInTheDocument();
+    expect(screen.getByText("SHOP BUSINESS SETTINGS")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Payments & Banking" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Compliance & Security" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();
+    expect(screen.getByText("Account session")).toBeInTheDocument();
+
+    const planSummaryCard = screen.getByTestId("owner-settings-plan-access-summary");
+    expect(within(planSummaryCard).getByText("Shop owner plan access")).toBeInTheDocument();
+    expect(within(planSummaryCard).getByText("Free shop access")).toBeInTheDocument();
+    expect(within(planSummaryCard).getByText("Shop profile, location, hours, and chairs")).toBeInTheDocument();
+    expect(within(planSummaryCard).getByRole("button", { name: "Plan management is being prepared" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Plan Access Review Free, Pro, and Elite shop tools/ }));
+    const dialog = screen.getByRole("dialog", { name: "Plan Access" });
+    expect(within(dialog).getByText("Payments & Banking")).toBeInTheDocument();
+    within(dialog).getAllByRole("button", { name: "Plan management is being prepared" }).forEach((button) => {
+      expect(button).toBeDisabled();
+    });
+    expect(within(dialog).getByText("Server owns plan truth")).toBeInTheDocument();
+    expect(within(dialog).getByText("Free shop setup stays available")).toBeInTheDocument();
+    expect(within(dialog).getByText("Money stays server-owned")).toBeInTheDocument();
+
+    ["Paywall", "Subscriptions", "Upgrade", "Plans", "Billing Settings", "Premium", "Pro Settings", "Elite Settings"].forEach((heading) => {
+      expect(screen.queryByRole("heading", { name: heading })).not.toBeInTheDocument();
+    });
+    expect(document.body.textContent).not.toMatch(/shop_owner_user|client_user|barber_user|stripe_customer_id|stripe_subscription_id|account_entitlements|payment_routing_records|booth_rent_barber|commission_barber/i);
   });
 
   it("uses the public shop profile image in the single owner account identity card", () => {
