@@ -37,6 +37,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
+import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
 import {
   MoreControlHub,
   MoreIdentityReadinessCard,
@@ -91,6 +92,7 @@ import type { ServiceCatalogItem } from "@/lib/marketplace/engine";
 import { useCreateMessageThreadMutation } from "@/lib/messages/client";
 import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
+import type { SubscriptionSettingsSummary } from "@/lib/entitlements/subscription-settings";
 import type { BarberSubtype, UserAccount } from "@/types/domain";
 
 const subtypeOptions: Array<{ subtype: BarberSubtype; label: string; description: string }> = [
@@ -140,6 +142,7 @@ const sectionIdMap = {
   availability: "barber-settings-availability",
   business: "barber-settings-business",
   money: "barber-settings-money",
+  plan: "barber-settings-plan-access",
   verification: "barber-settings-verification",
   payouts: "barber-settings-payouts",
   system: "barber-settings-system",
@@ -889,11 +892,13 @@ export function BarberSettingsScreen({
   user,
   initialSection,
   stripeReturnState = null,
+  subscriptionSummary,
   embedded = false
 }: {
   user: UserAccount;
   initialSection?: string;
   stripeReturnState?: "return" | "refresh" | null;
+  subscriptionSummary?: SubscriptionSettingsSummary;
   embedded?: boolean;
 }) {
   const router = useRouter();
@@ -1147,6 +1152,7 @@ export function BarberSettingsScreen({
       subtitle: "Payout account, eligible balance, transactions, and tax posture.",
       rows: [
         { title: "Wallet / Billing", subtitle: "Default payment method for bookings, subscriptions, and tools", href: "/dashboard/barber/more?section=wallet", icon: <CreditCard className="h-5 w-5" /> },
+        { title: "Plan Access", subtitle: "Free profile and booking setup stay open. Pro and Elite tools require server-verified plan access.", onClick: () => document.getElementById(sectionIdMap.plan)?.scrollIntoView({ behavior: "smooth", block: "start" }), status: subscriptionSummary?.accessStateLabel ?? "Needs Review", tone: subscriptionSummary?.accessTone === "green" ? "green" : subscriptionSummary?.accessTone === "red" ? "red" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Stripe Connect", subtitle: "Manage bank accounts and payouts", href: "/dashboard/barber/more?section=payouts", status: payoutSetupStatusLabel, tone: payoutsReady ? "green" : "yellow", icon: <WalletCards className="h-5 w-5" />, needsAction: !payoutsReady },
         { title: "Barber Payouts", subtitle: "Eligible balance, payout routing, payout holds, release readiness, and payout history", href: "/dashboard/barber/more?section=payouts", status: payoutCurrency(eligiblePayoutAmount ?? 0), tone: hasPayoutAmount ? "green" : "muted", icon: <CircleDollarSign className="h-5 w-5" /> },
         { title: "Rewards", subtitle: "Points, credits, loyalty progress, and referrals", href: "/rewards", icon: <Gift className="h-5 w-5" /> },
@@ -1890,6 +1896,12 @@ export function BarberSettingsScreen({
           secondaryAction={{ label: "Edit Public Profile", href: "/dashboard/barber/profile" }}
           tiles={[]}
         />
+
+        {subscriptionSummary ? (
+          <div id={sectionIdMap.plan} className="scroll-mt-6">
+            <SubscriptionSettingsCard summary={subscriptionSummary} />
+          </div>
+        ) : null}
 
         {selectedSection === "payouts" && !payoutsReady ? (
           <GlassCard id="barber-settings-payout-refresh" className="scroll-mt-6 p-5 sm:p-6">

@@ -2,6 +2,7 @@ import { BarberSettingsScreen } from "@/components/barber-experience/barber-sett
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import type { DashboardHeaderNotificationItem } from "@/components/dashboard/dashboard-header-actions";
 import { getAuthorizedUser } from "@/lib/auth/guards";
+import { resolveSubscriptionSettingsSummaryForUser } from "@/lib/entitlements/subscription-settings";
 import { getStripeConnectEnvironment } from "@/lib/stripe/connect";
 
 export default async function BarberMorePage({
@@ -10,6 +11,7 @@ export default async function BarberMorePage({
   searchParams: Promise<{ section?: string; stripe?: string }>;
 }) {
   const user = await getAuthorizedUser(["barber_user"]);
+  const subscriptionSummary = await resolveSubscriptionSettingsSummaryForUser({ user });
   const params = await searchParams;
   const stripeReturnState = params.stripe === "return" || params.stripe === "refresh" ? params.stripe : null;
   const stripeEnvironment = getStripeConnectEnvironment();
@@ -38,7 +40,12 @@ export default async function BarberMorePage({
       hidePageHeader
       headerNotificationItems={headerNotificationItems}
     >
-      <BarberSettingsScreen user={user} initialSection={params.section} stripeReturnState={stripeReturnState} />
+      <BarberSettingsScreen
+        user={user}
+        initialSection={params.section}
+        stripeReturnState={stripeReturnState}
+        subscriptionSummary={subscriptionSummary ?? undefined}
+      />
     </DashboardShell>
   );
 }

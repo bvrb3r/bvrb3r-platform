@@ -5,6 +5,7 @@ import { ensureClientProfileForUser, getClientProfilePayload, type ClientProfile
 import { isClientRole } from "@/lib/auth/roles";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 import { resolveClientPaywallSummaryForUser } from "@/lib/entitlements/client-paywall";
+import { resolveSubscriptionSettingsSummaryForUser } from "@/lib/entitlements/subscription-settings";
 
 function emptyClientProfilePayload(): ClientProfilePayload {
   return {
@@ -74,9 +75,12 @@ export default async function ClientProfileDashboardPage({
   }
 
   let payload: ClientProfilePayload;
-  const paywallSummary = context.isSignedInClient && isClientRole(context.viewer.role)
-    ? await resolveClientPaywallSummaryForUser({ user: context.viewer })
-    : undefined;
+  const [paywallSummary, subscriptionSummary] = context.isSignedInClient && isClientRole(context.viewer.role)
+    ? await Promise.all([
+        resolveClientPaywallSummaryForUser({ user: context.viewer }),
+        resolveSubscriptionSettingsSummaryForUser({ user: context.viewer })
+      ])
+    : [undefined, undefined];
 
   try {
     payload = await getClientProfilePayload(clientId);
@@ -102,6 +106,7 @@ export default async function ClientProfileDashboardPage({
         emailVerified={context.viewer.emailVerified}
         phoneVerified={context.viewer.phoneVerified}
         paywallSummary={paywallSummary}
+        subscriptionSummary={subscriptionSummary ?? undefined}
       />
     </ClientAppShell>
   );

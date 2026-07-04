@@ -39,10 +39,12 @@ import { Input } from "@/components/ui/input";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
 import { KioskSettingsCard } from "@/components/kiosk/kiosk-actions";
 import { ShopOwnerPlanAccessCard, ShopOwnerUpgradePrompt } from "@/components/owner-experience/shop-owner-plan-access-card";
+import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { GlassCard } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
 import type { ShopOwnerPaywallSummary } from "@/lib/entitlements/shop-owner-paywall";
+import type { SubscriptionSettingsSummary } from "@/lib/entitlements/subscription-settings";
 import { useCreateOwnerTeamInviteMutation, useOwnerTeamInviteDirectoryQuery } from "@/lib/operations/barber-client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { formatPublicAddressLocation, formatPublicUsernameLine } from "@/lib/profile/public-identity-summary";
@@ -262,11 +264,13 @@ function isRecoverableShopMediaError(error: unknown) {
 export function OwnerSettingsWorkspace({
   user,
   initialSection,
-  ownerPlanSummary
+  ownerPlanSummary,
+  subscriptionSummary
 }: {
   user: UserAccount;
   initialSection?: string;
   ownerPlanSummary?: ShopOwnerPaywallSummary | null;
+  subscriptionSummary?: SubscriptionSettingsSummary | null;
 }) {
   const profileQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
@@ -754,6 +758,12 @@ export function OwnerSettingsWorkspace({
         secondaryAction={ownerShopId ? { label: "Public Profile", href: "/dashboard/owner/public-profile" } : undefined}
         tiles={[]}
       />
+
+      {subscriptionSummary ? (
+        <div data-testid="owner-settings-subscription-summary">
+          <SubscriptionSettingsCard summary={subscriptionSummary} />
+        </div>
+      ) : null}
 
       {ownerPlanSummary ? (
         <div data-testid="owner-settings-plan-access-summary">
