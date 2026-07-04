@@ -30,6 +30,7 @@ import {
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
+import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
@@ -56,6 +57,7 @@ import { formatPublicCityStateLocation, formatPublicUsernameLine } from "@/lib/p
 import { uploadMediaAsset } from "@/lib/storage/media";
 import { currency } from "@/lib/utils";
 import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
+import type { SubscriptionSettingsSummary } from "@/lib/entitlements/subscription-settings";
 
 type PickerInput = HTMLInputElement & {
   showPicker?: () => void;
@@ -204,7 +206,8 @@ export function ClientProfileScreen({
   authPhone,
   emailVerified = false,
   phoneVerified = false,
-  paywallSummary
+  paywallSummary,
+  subscriptionSummary
 }: {
   payload: ClientProfilePayload;
   isSignedInClient: boolean;
@@ -214,6 +217,7 @@ export function ClientProfileScreen({
   emailVerified?: boolean;
   phoneVerified?: boolean;
   paywallSummary?: ClientPaywallSummary;
+  subscriptionSummary?: SubscriptionSettingsSummary;
 }) {
   const queryClient = useQueryClient();
   const mediaQuery = useProfileMediaWorkspaceQuery(isSignedInClient);
@@ -1021,6 +1025,7 @@ export function ClientProfileScreen({
         subtitle="Saved payment methods and the booking default stay here."
       >
         <div id="profile-wallet" className="scroll-mt-6 space-y-4">
+          {subscriptionSummary ? <SubscriptionSettingsCard summary={subscriptionSummary} /> : null}
           {paywallSummary ? <ClientPlanAccessCard summary={paywallSummary} showFeatureGroups /> : null}
           <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
