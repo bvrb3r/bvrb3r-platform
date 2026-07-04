@@ -1,6 +1,7 @@
 "use client";
 
 import type { MoreSectionRow } from "@/components/dashboard/more/more-components";
+import { getNotificationConsentModel, type NotificationConsentControl } from "@/lib/notifications/consent";
 
 export type MoreSettingRoleScope = "client" | "barber" | "owner" | "shared";
 export type MoreSettingMode = "editable" | "read_only" | "requirements" | "ledger" | "verification" | "legal" | "support";
@@ -146,47 +147,22 @@ function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSe
   const status = row.status ?? "Current account state";
 
   if (title.includes("notifications")) {
-    const sharedFields: MoreSettingField[] = [
-      { key: "in_app_enabled", label: "In-app alerts", helper: "Messages, account notices, and role updates inside BVRB3R.", type: "toggle", value: true, editable: true, private: true },
-      { key: "sms_enabled", label: "SMS updates", helper: "Booking, payout, support, and reminder texts only when consent is active.", type: "toggle", value: false, editable: true, private: true },
-      { key: "email_enabled", label: "Email updates", helper: "Receipts, account notices, and role-safe operational email.", type: "toggle", value: true, editable: true, private: true },
-      { key: "push_enabled", label: "Push reminders", helper: "Mobile-safe reminders and app alerts.", type: "toggle", value: false, editable: true, private: true },
-      { key: "message_alerts_enabled", label: "Message alerts", helper: "Support and conversation updates.", type: "toggle", value: true, editable: true, private: true },
-      { key: "booking_alerts_enabled", label: roleScope === "owner" ? "Booking/shop alerts" : "Booking alerts", helper: roleScope === "owner" ? "Shop booking updates, schedule changes, and operational notices." : "Booking reminders, changes, and confirmations where this role supports bookings.", type: "toggle", value: true, editable: true, private: true }
-    ];
-
+    const model = getNotificationConsentModel(roleScope === "client" || roleScope === "barber" || roleScope === "owner" ? roleScope : "client");
     const contactField: MoreSettingField = {
       key: "preferred_contact_channel",
       label: "Preferred contact channel",
       helper: "Used only when consent allows outreach.",
       type: "select",
-      value: "In-app first",
+      value: "in_app",
       editable: true,
       private: true,
       options: [{ label: "In-app first", value: "in_app" }, { label: "SMS", value: "sms" }, { label: "Email", value: "email" }, { label: "Push", value: "push" }]
     };
 
-    if (roleScope === "client") {
-      return [
-        ...sharedFields,
-        { key: "rewards_alerts_enabled", label: "Rewards alerts", helper: "Points, credits, loyalty, and referral updates.", type: "toggle", value: true, editable: true, private: true },
-        { key: "creator_alerts_enabled", label: "Creator alerts", helper: "Culture creator and payout eligibility notices for client creator tools.", type: "toggle", value: true, editable: true, private: true },
-        { key: "payout_alerts_enabled", label: "Creator payout alerts", helper: "Private creator payout readiness and money movement notices when creator payout eligibility applies.", type: "toggle", value: false, editable: true, private: true },
-        contactField
-      ];
-    }
-
-    if (roleScope === "owner") {
-      return [
-        ...sharedFields,
-        { key: "payout_alerts_enabled", label: "Payout/business alerts", helper: "Private shop payout readiness, business notices, and money movement updates.", type: "toggle", value: true, editable: true, private: true },
-        contactField
-      ];
-    }
-
     return [
-      ...sharedFields,
-      { key: "payout_alerts_enabled", label: "Payout alerts", helper: "Private payout readiness and money movement notices.", type: "toggle", value: true, editable: true, private: true },
+      ...model.channelControls.map(notificationControlToField),
+      ...model.categoryControls.map(notificationControlToField),
+      ...model.infrastructureNotes.map(notificationControlToField),
       contactField
     ];
   }
@@ -363,6 +339,19 @@ function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSe
   return [
     { key: "current_state", label: row.title, helper: row.subtitle, type: "readonly", value: status, editable: false, private: true }
   ];
+}
+
+function notificationControlToField(control: NotificationConsentControl): MoreSettingField {
+  return {
+    key: control.preferenceField ?? control.id,
+    label: control.label,
+    helper: `${control.helper} ${control.control === "toggle" ? "Saved by the BVRB3R notification preference service." : "Display-only until a dedicated persistence path exists."}`,
+    type: control.control === "toggle" ? "toggle" : "readonly",
+    value: control.value,
+    editable: control.control === "toggle",
+    private: true,
+    required: control.required
+  };
 }
 
 function dataSourcesFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): string[] {
@@ -572,6 +561,10 @@ function saveActionFor(row: MoreSectionRow, mode: MoreSettingMode) {
 
 function loadEndpointFor(row: MoreSectionRow) {
   const title = normalizeTitle(row);
+
+  if (title.includes("notifications")) {
+    return "/api/settings/more?kind=notification-preferences";
+  }
 
   if (title.includes("saved") || title.includes("favorites")) {
     return "/api/settings/more?kind=saved-favorites";

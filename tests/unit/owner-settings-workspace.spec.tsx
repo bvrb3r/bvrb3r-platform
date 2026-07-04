@@ -387,7 +387,9 @@ describe("owner More workspace", () => {
     const ownerNotificationSave = within(dialog).getByRole("button", { name: "Save Changes" });
     expect(ownerNotificationSave).toBeDisabled();
     expect(within(dialog).getAllByText("Messages, shop alerts, payout alerts, team updates, and business alerts.").length).toBeGreaterThan(0);
-    expect(within(dialog).getByText("Payout/business alerts")).toBeInTheDocument();
+    expect(within(dialog).getByText("Money posture alerts")).toBeInTheDocument();
+    expect(within(dialog).getByText("Kiosk, walk-in, and queue updates")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Not configured yet").length).toBeGreaterThan(0);
     expect(within(dialog).queryByText("Creator alerts")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("Rewards alerts")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("Quiet hours start")).not.toBeInTheDocument();

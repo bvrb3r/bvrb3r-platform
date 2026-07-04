@@ -10,6 +10,7 @@ import {
   favoriteTarget,
   followTarget,
   listActivity,
+  listNotificationPreferences,
   listSavedFavorites,
   recordActivityEvent,
   saveTarget,
@@ -99,6 +100,34 @@ describe("canonical More settings service", () => {
       quietHoursEnd: "08:00",
       preferredContactChannel: "sms"
     });
+  });
+
+  it("loads current notification preference truth without raw backend labels", async () => {
+    await updateNotificationPreferences(clientUser, {
+      sms_enabled: true,
+      booking_alerts_enabled: false,
+      creator_alerts_enabled: true
+    });
+
+    const result = await listNotificationPreferences(clientUser);
+
+    expect(result.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: "SMS updates", detail: "On" }),
+      expect.objectContaining({ title: "Booking alerts", detail: "Off" }),
+      expect.objectContaining({ title: "Culture updates", detail: "On" })
+    ]));
+    expect(JSON.stringify(result.items)).not.toContain("notification_preferences");
+    expect(JSON.stringify(result.items)).not.toContain("push_subscriptions");
+  });
+
+  it("does not invent consent when notification preferences have not been saved", async () => {
+    const result = await listNotificationPreferences(clientUser);
+
+    expect(result.notificationPreferences).toBeNull();
+    expect(result.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: "SMS updates", detail: "Not configured yet" }),
+      expect.objectContaining({ title: "Booking alerts", detail: "Not configured yet" })
+    ]));
   });
 
   it("saves role-specific app preferences and privacy preferences", async () => {

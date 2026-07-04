@@ -594,7 +594,9 @@ describe("client profile screen", () => {
     expect(notificationSaveButton).toBeDisabled();
     expect(within(dialog).queryByText("Canonical save path required")).not.toBeInTheDocument();
     expect(within(dialog).getAllByText("Messages, reminders, booking updates, rewards, and app alerts.").length).toBeGreaterThan(0);
-    expect(within(dialog).getByText("Rewards alerts")).toBeInTheDocument();
+    expect(within(dialog).getByText("Culture updates")).toBeInTheDocument();
+    expect(within(dialog).getByText("Receipt and payment updates")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Not configured yet").length).toBeGreaterThan(0);
     expect(within(dialog).queryByText("Quiet hours start")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("Quiet hours end")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByLabelText(/SMS updates/));
