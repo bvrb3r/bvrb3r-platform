@@ -709,6 +709,66 @@ describe("client profile screen", () => {
     expect(within(dialog).getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
 
+  it("submits client support intake only after required details are present", async () => {
+    render(
+      <ClientProfileScreen
+        isSignedInClient
+        authEmail="client@bvrb3r.demo"
+        authPhone="8135550100"
+        payload={{
+          client: {
+            clientReference: "client-support",
+            fullName: "Support Client",
+            email: "client@bvrb3r.demo",
+            phone: "8135550100",
+            preferredLocation: { city: "Tampa", state: "FL" }
+          },
+          favoriteBarber: null,
+          preferredShops: [],
+          paymentMethods: [],
+          notificationPreference: null
+        } as unknown as ClientProfilePayload}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Report a problem Report booking, account, messages, payments, safety, or app issues/ }));
+    const dialog = screen.getByRole("dialog", { name: "Report a problem" });
+    const categorySelect = within(dialog).getByLabelText(/What is this about/);
+    const options = within(categorySelect).getAllByRole("option").map((option) => option.getAttribute("value"));
+    expect(options).toContain("booking_problem");
+    expect(options).toContain("safety_or_trust_concern");
+    expect(options).not.toContain("shop_or_queue_problem");
+    expect(options).not.toContain("kiosk_problem");
+    expect(within(dialog).queryByText("If someone is in immediate danger, contact local emergency services.")).not.toBeInTheDocument();
+
+    fireEvent.change(categorySelect, { target: { value: "safety_or_trust_concern" } });
+    expect(within(dialog).getByText("If someone is in immediate danger, contact local emergency services.")).toBeInTheDocument();
+    const submitButton = within(dialog).getByRole("button", { name: "Submit to Support" });
+    await waitFor(() => expect(submitButton).toBeEnabled());
+    fireEvent.click(submitButton);
+    expect(await within(dialog).findByText("Complete What happened? before submitting.")).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalledWith("/api/support/issue-intake", expect.anything());
+
+    fireEvent.change(within(dialog).getByLabelText(/What happened/), {
+      target: { value: "The app showed an error after I tried to open my next booking." }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Submit to Support" }));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/support/issue-intake", expect.objectContaining({
+      method: "POST"
+    })));
+    const supportRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find((call) => call[0] === "/api/support/issue-intake")?.[1] as RequestInit | undefined;
+    expect(JSON.parse(String(supportRequest?.body))).toEqual(expect.objectContaining({
+      category: "safety_or_trust_concern",
+      severity: "normal",
+      description: "The app showed an error after I tried to open my next booking.",
+      sourceSurface: "client_more"
+    }));
+    expect(await within(dialog).findByText("We received your report and routed it to BVRB3R Support.")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Report a problem" })).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/client_user|barber_user|shop_owner_user|support_ticket_id|issue_intake_records|route_target|architect_internal|stripe_customer_id|account_entitlements/i);
+  });
+
   it("keeps membership failures visible without blocking the rest of profile", () => {
     useClientMembershipQueryMock.mockReturnValue({
       data: null,

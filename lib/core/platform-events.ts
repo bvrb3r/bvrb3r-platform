@@ -34,7 +34,8 @@ export const PLATFORM_EVENT_TYPES = [
   "referral_rewarded",
   "membership_started",
   "membership_canceled",
-  "membership_past_due"
+  "membership_past_due",
+  "support_issue_received"
 ] as const;
 
 export type PlatformEventType = (typeof PLATFORM_EVENT_TYPES)[number];

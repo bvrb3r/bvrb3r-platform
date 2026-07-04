@@ -2,6 +2,10 @@
 
 import type { MoreSectionRow } from "@/components/dashboard/more/more-components";
 import { getNotificationConsentModel, type NotificationConsentControl } from "@/lib/notifications/consent";
+import {
+  getSupportIssueCategoryOptionsForRole,
+  type SupportIssueRoleScope
+} from "@/lib/support/issue-intake";
 
 export type MoreSettingRoleScope = "client" | "barber" | "owner" | "shared";
 export type MoreSettingMode = "editable" | "read_only" | "requirements" | "ledger" | "verification" | "legal" | "support";
@@ -46,6 +50,11 @@ export type MoreSettingModalSpec = {
   missingSavePath?: string;
   loadEndpoint?: string;
   saveEndpoint?: string;
+  savePayload?: Record<string, unknown>;
+  primaryLabel?: string;
+  savingLabel?: string;
+  successMessage?: string;
+  closeOnSave?: boolean;
 };
 
 function slugify(value: string) {
@@ -59,6 +68,10 @@ function normalizeTitle(row: MoreSectionRow) {
 function inferMode(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSettingMode {
   const title = row.title.toLowerCase();
   const subtitle = row.subtitle.toLowerCase();
+
+  if (title === "report a problem" || title === "send feedback") {
+    return "editable";
+  }
 
   if (title.includes("legal")) {
     return "legal";
@@ -145,6 +158,62 @@ function requirementsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope) {
 function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSettingField[] {
   const title = normalizeTitle(row);
   const status = row.status ?? "Current account state";
+
+  if (title === "report a problem" || title === "send feedback") {
+    const supportRole = (roleScope === "client" || roleScope === "barber" || roleScope === "owner" ? roleScope : "client") as SupportIssueRoleScope;
+    const categoryOptions = title === "send feedback"
+      ? [{ label: "Feedback or feature request", value: "feedback_or_feature_request" }]
+      : getSupportIssueCategoryOptionsForRole(supportRole);
+
+    return [
+      {
+        key: "category",
+        label: "What is this about?",
+        helper: "Choose the closest category so support can route the issue to the right owner lane.",
+        type: "select",
+        value: categoryOptions[0]?.value ?? "other",
+        editable: true,
+        private: true,
+        required: true,
+        options: categoryOptions
+      },
+      {
+        key: "severity",
+        label: "Priority",
+        helper: "Urgent means the issue blocks a real booking, account access, safety, or business operation.",
+        type: "select",
+        value: "normal",
+        editable: true,
+        private: true,
+        required: true,
+        options: [
+          { label: "Low", value: "low" },
+          { label: "Normal", value: "normal" },
+          { label: "High", value: "high" },
+          { label: "Urgent", value: "urgent" }
+        ]
+      },
+      {
+        key: "description",
+        label: title === "send feedback" ? "Feedback" : "What happened?",
+        helper: "Include the screen, action, expected result, and what happened instead. This text is sent only through the support persistence path.",
+        type: "textarea",
+        value: "",
+        editable: true,
+        private: true,
+        required: true
+      },
+      {
+        key: "privacy_note",
+        label: "Privacy note",
+        helper: "Support can use authorized account context without exposing private IDs or provider records in the app UI.",
+        type: "readonly",
+        value: "Private support intake",
+        editable: false,
+        private: true
+      }
+    ];
+  }
 
   if (title.includes("notifications")) {
     const model = getNotificationConsentModel(roleScope === "client" || roleScope === "barber" || roleScope === "owner" ? roleScope : "client");
@@ -358,6 +427,10 @@ function dataSourcesFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): s
   const title = normalizeTitle(row);
   const base = ["profiles"];
 
+  if (title === "report a problem" || title === "send feedback") {
+    return [...base, "support message threads", "support messages", "platform events"];
+  }
+
   if (roleScope === "owner" && (title.includes("booth rent") || title.includes("commission") || title.includes("fees"))) {
     return [...base, "compensation_rules or canonical shop compensation settings", "shop_barber_relationships/staff relationship overrides", "fintech platform fee configuration"];
   }
@@ -395,6 +468,10 @@ function dataSourcesFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): s
 
 function syncTargetsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): string[] {
   const title = normalizeTitle(row);
+
+  if (title === "report a problem" || title === "send feedback") {
+    return ["Support inbox", "Architect support posture", "role-safe issue routing metadata"];
+  }
 
   if (roleScope === "owner" && (title.includes("booth rent") || title.includes("commission") || title.includes("fees"))) {
     return ["Owner More row state", "Owner Money", "barber shop relationship summaries", "future payout routing assumptions", "team relationship summaries"];
@@ -437,6 +514,10 @@ function syncTargetsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): s
 
 function validationsFor(row: MoreSectionRow): string[] {
   const title = normalizeTitle(row);
+
+  if (title === "report a problem" || title === "send feedback") {
+    return ["Signed-in role must be Client, Barber, or Shop Owner", "Category must be available for this role", "Description is required", "Safety concerns show emergency guidance", "No private provider IDs render in the UI"];
+  }
 
   if (title.includes("booth rent") || title.includes("commission") || title.includes("fees")) {
     return ["Owner must own the shop", "Booth rent amount must be non-negative", "Frequency must be daily, weekly, or monthly", "Barber percent plus shop percent must equal 100", "Platform fees stay read-only"];
@@ -514,6 +595,10 @@ function missingSavePathFor(row: MoreSectionRow, mode: MoreSettingMode) {
 
   const title = normalizeTitle(row);
 
+  if (title === "report a problem" || title === "send feedback") {
+    return undefined;
+  }
+
   if (title.includes("booth rent") || title.includes("commission") || title.includes("fees")) {
     return "Wire owner compensation settings to compensation_rules or the canonical shop relationship compensation service before enabling Save Changes. Relationship-specific overrides should persist through shop_barber_relationships/staff relationship records, not local UI state.";
   }
@@ -543,6 +628,10 @@ function saveActionFor(row: MoreSectionRow, mode: MoreSettingMode) {
   }
 
   const title = normalizeTitle(row);
+
+  if (title === "report a problem" || title === "send feedback") {
+    return "submit_support_issue_intake";
+  }
 
   if (title.includes("notifications")) {
     return "update_notification_preferences";
@@ -579,6 +668,24 @@ function loadEndpointFor(row: MoreSectionRow) {
 
 function helperFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope) {
   const title = normalizeTitle(row);
+
+  if (title === "report a problem") {
+    if (roleScope === "client") {
+      return "Tell support what is blocking booking, messages, profile settings, payments, notifications, safety, or the app experience.";
+    }
+
+    if (roleScope === "barber") {
+      return "Tell support what is blocking schedule, client messages, profile settings, shop/queue operations, payments, notifications, safety, or the app experience.";
+    }
+
+    if (roleScope === "owner") {
+      return "Tell support what is blocking shop operations, team/queue/kiosk work, settings, payments, notifications, safety, or the app experience.";
+    }
+  }
+
+  if (title === "send feedback") {
+    return "Send product feedback or a feature request to the support team without changing live app behavior.";
+  }
 
   if (title.includes("notifications")) {
     if (roleScope === "client") {
@@ -624,6 +731,9 @@ export function resolveMoreSettingModalSpec({
   const sectionKey = slugify(sectionTitle ?? "more");
   const fields = fieldsFor(row, roleScope);
   const saveAction = saveActionFor(row, mode);
+  const title = normalizeTitle(row);
+  const sourceSurface = roleScope === "client" ? "client_more" : roleScope === "barber" ? "barber_more" : roleScope === "owner" ? "owner_more" : "unknown";
+  const supportIntake = title === "report a problem" || title === "send feedback";
 
   return {
     key: `${roleScope}-${sectionKey}-${slugify(row.title)}`,
@@ -649,6 +759,11 @@ export function resolveMoreSettingModalSpec({
     algorithmSignals: algorithmSignalsFor(row),
     missingSavePath: missingSavePathFor(row, mode),
     loadEndpoint: loadEndpointFor(row),
-    saveEndpoint: saveAction ? "/api/settings/more" : undefined
+    saveEndpoint: supportIntake ? "/api/support/issue-intake" : saveAction ? "/api/settings/more" : undefined,
+    savePayload: supportIntake ? { sourceSurface } : undefined,
+    primaryLabel: supportIntake ? title === "send feedback" ? "Send Feedback" : "Submit to Support" : undefined,
+    savingLabel: supportIntake ? "Submitting..." : undefined,
+    successMessage: supportIntake ? "We received your report and routed it to BVRB3R Support." : undefined,
+    closeOnSave: supportIntake ? false : undefined
   };
 }
