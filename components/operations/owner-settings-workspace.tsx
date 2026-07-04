@@ -14,6 +14,7 @@ import {
   Heart,
   HelpCircle,
   KeyRound,
+  LockKeyhole,
   MessageCircle,
   ReceiptText,
   Search,
@@ -37,9 +38,11 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
 import { KioskSettingsCard } from "@/components/kiosk/kiosk-actions";
+import { ShopOwnerPlanAccessCard, ShopOwnerUpgradePrompt } from "@/components/owner-experience/shop-owner-plan-access-card";
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { GlassCard } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
+import type { ShopOwnerPaywallSummary } from "@/lib/entitlements/shop-owner-paywall";
 import { useCreateOwnerTeamInviteMutation, useOwnerTeamInviteDirectoryQuery } from "@/lib/operations/barber-client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { formatPublicAddressLocation, formatPublicUsernameLine } from "@/lib/profile/public-identity-summary";
@@ -75,7 +78,8 @@ const sectionIdMap = {
   documents: "owner-settings-compliance",
   security: "owner-settings-compliance",
   support: "owner-settings-support",
-  logout: "owner-settings-logout"
+  logout: "owner-settings-logout",
+  plan: "owner-settings-payments"
 } as const;
 
 type OwnerSettingsSectionKey = keyof typeof sectionIdMap;
@@ -257,15 +261,18 @@ function isRecoverableShopMediaError(error: unknown) {
 
 export function OwnerSettingsWorkspace({
   user,
-  initialSection
+  initialSection,
+  ownerPlanSummary
 }: {
   user: UserAccount;
   initialSection?: string;
+  ownerPlanSummary?: ShopOwnerPaywallSummary | null;
 }) {
   const profileQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
   const fintechQuery = useFintechManagementQuery();
   const [quickSetupModal, setQuickSetupModal] = useState<OwnerQuickSetupModal>(null);
+  const [planAccessOpen, setPlanAccessOpen] = useState(false);
   const [accountEditorOpen, setAccountEditorOpen] = useState(false);
   const [savedOwnerName, setSavedOwnerName] = useState<string | null>(null);
   const [savedOwnerEmail, setSavedOwnerEmail] = useState<string | null>(null);
@@ -558,6 +565,14 @@ export function OwnerSettingsWorkspace({
       icon: <CreditCard className="h-5 w-5" />
     },
     {
+      title: "Plan Access",
+      subtitle: "Review Free, Pro, and Elite shop tools. Plan management is being prepared.",
+      onClick: () => setPlanAccessOpen(true),
+      icon: <LockKeyhole className="h-5 w-5" />,
+      status: ownerPlanSummary?.statusLabel ?? "Needs Review",
+      tone: ownerPlanSummary?.statusTone === "green" ? "green" : ownerPlanSummary?.statusTone === "yellow" ? "yellow" : "muted"
+    },
+    {
       title: "Stripe Connect",
       subtitle: "Manage bank accounts and payouts",
       href: "/dashboard/owner/money?view=fintech",
@@ -740,6 +755,12 @@ export function OwnerSettingsWorkspace({
         tiles={[]}
       />
 
+      {ownerPlanSummary ? (
+        <div data-testid="owner-settings-plan-access-summary">
+          <ShopOwnerPlanAccessCard summary={ownerPlanSummary} showFeatureGroups />
+        </div>
+      ) : null}
+
       <MoreControlHub
         title="BVRB3R App Settings"
         subtitle="App-level behavior, saved items, activity, and personal preferences."
@@ -852,6 +873,34 @@ export function OwnerSettingsWorkspace({
         onPaymentAction={handleAccountPaymentAction}
         onSave={handleAccountSave}
       />
+
+      {ownerPlanSummary ? (
+        <MoreSettingModal
+          open={planAccessOpen}
+          spec={{
+            key: "owner-plan-access",
+            roleScope: "owner",
+            sectionKey: "owner-settings-payments-banking",
+            title: "Plan Access",
+            eyebrow: "Payments & Banking",
+            helper: "Review Free, Pro, and Elite shop tools. Plan management is being prepared.",
+            mode: "read_only",
+            statusLabel: ownerPlanSummary.statusLabel,
+            privacyLevel: "financial",
+            dataSources: ["Server entitlement registry", "Server entitlement resolver"],
+            syncTargets: ["Owner Home", "Owner Schedule", "Owner Money", "Owner More"],
+            validations: ["Server entitlement proof decides paid access", "UI lock is presentation only", "No paid plan action starts here"],
+            permissions: ["Signed-in shop owner account"]
+          }}
+          onClose={() => setPlanAccessOpen(false)}
+          primaryLabel="Plan management is being prepared"
+          primaryEnabled={false}
+          closeLabel="Close plan access"
+          maxWidthClassName="max-w-5xl"
+        >
+          <ShopOwnerUpgradePrompt summary={ownerPlanSummary} />
+        </MoreSettingModal>
+      ) : null}
 
       {quickSetupModal ? (
         <MoreSettingModal

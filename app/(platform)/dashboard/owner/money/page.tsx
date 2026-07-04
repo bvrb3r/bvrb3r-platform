@@ -1,8 +1,10 @@
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { ShopOwnerPlanAccessCard } from "@/components/owner-experience/shop-owner-plan-access-card";
 import { FintechWorkspace } from "@/components/operations/fintech-workspace";
 import { OwnerMoneyWorkspace } from "@/components/operations/owner-money-workspace";
 import { Card } from "@/components/ui/card";
 import { getAuthorizedUser } from "@/lib/auth/guards";
+import { resolveShopOwnerPaywallSummaryForUser } from "@/lib/entitlements/shop-owner-paywall";
 
 export default async function OwnerMoneyPage({
   searchParams
@@ -10,6 +12,7 @@ export default async function OwnerMoneyPage({
   searchParams: Promise<{ view?: string; section?: string }>;
 }) {
   const user = await getAuthorizedUser(["shop_owner_user"]);
+  const paywallSummary = await resolveShopOwnerPaywallSummaryForUser({ user });
   const params = await searchParams;
   const growthRequested = params.view === "growth";
   const fintechRequested = params.view === "fintech";
@@ -22,6 +25,7 @@ export default async function OwnerMoneyPage({
       subtitle="Revenue & payouts"
       hidePageHeader
     >
+      <ShopOwnerPlanAccessCard summary={paywallSummary} compact />
       {growthRequested ? (
         <Card className="rounded-[32px] border border-white/8 p-5 sm:p-6">
           <p className="surface-label">Growth parked</p>
