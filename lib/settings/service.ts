@@ -536,6 +536,45 @@ function displayActivity(event: ActivityEventRecord): SettingsDisplayItem {
   };
 }
 
+function displayToggleState(value: boolean) {
+  return value ? "On" : "Off";
+}
+
+function displayNotificationPreferenceItems(payload: NotificationPreferencesPayload): SettingsDisplayItem[] {
+  return [
+    { key: "in-app-alerts", title: "In-app alerts", detail: displayToggleState(payload.inAppEnabled), meta: "Current channel consent" },
+    { key: "sms-updates", title: "SMS updates", detail: displayToggleState(payload.smsEnabled), meta: "Current channel consent" },
+    { key: "email-updates", title: "Email updates", detail: displayToggleState(payload.emailEnabled), meta: "Current channel consent" },
+    { key: "push-reminders", title: "Push reminders", detail: displayToggleState(payload.pushEnabled), meta: "Current channel consent" },
+    { key: "message-alerts", title: "Message alerts", detail: displayToggleState(payload.messageAlertsEnabled), meta: "Current category consent" },
+    { key: "booking-alerts", title: "Booking alerts", detail: displayToggleState(payload.bookingAlertsEnabled), meta: "Current category consent" },
+    { key: "payout-alerts", title: "Payout and money posture alerts", detail: displayToggleState(payload.payoutAlertsEnabled), meta: "Current category consent" },
+    { key: "culture-updates", title: "Culture updates", detail: displayToggleState(payload.creatorAlertsEnabled), meta: "Current category consent" },
+    { key: "rewards-alerts", title: "Rewards alerts", detail: displayToggleState(payload.rewardsAlertsEnabled), meta: "Current category consent" },
+    { key: "preferred-contact-channel", title: "Preferred contact channel", detail: titleCase(payload.preferredContactChannel), meta: "Current consent preference" }
+  ];
+}
+
+function displayUnconfiguredNotificationPreferenceItems(): SettingsDisplayItem[] {
+  return [
+    "In-app alerts",
+    "SMS updates",
+    "Email updates",
+    "Push reminders",
+    "Message alerts",
+    "Booking alerts",
+    "Payout and money posture alerts",
+    "Culture updates",
+    "Rewards alerts",
+    "Preferred contact channel"
+  ].map((title) => ({
+    key: title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
+    title,
+    detail: "Not configured yet",
+    meta: "No saved consent record"
+  }));
+}
+
 async function maybeSupabase() {
   return createSupabaseAdminClient();
 }
@@ -641,6 +680,20 @@ export async function updateNotificationPreferences(user: UserAccount, values: S
   });
 
   return { notificationPreferences: payload, activity };
+}
+
+export async function listNotificationPreferences(user: UserAccount) {
+  assertSignedIn(user);
+  const supabase = await maybeSupabase();
+  const payload = supabase
+    ? await loadExistingNotificationPreferences(supabase, user)
+    : demoSettingsState.notificationPreferences.get(actorKey(user));
+
+  return {
+    notificationPreferences: payload ?? null,
+    items: payload ? displayNotificationPreferenceItems(payload) : displayUnconfiguredNotificationPreferenceItems(),
+    emptyText: "Notification preference consent has not been configured yet."
+  };
 }
 
 export async function updateAppPreferences(user: UserAccount, values: SettingValues) {

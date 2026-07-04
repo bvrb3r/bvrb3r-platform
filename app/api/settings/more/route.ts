@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import {
   listActivity,
+  listNotificationPreferences,
   listSavedFavorites,
   updateAppPreferences,
   updateNotificationPreferences,
@@ -37,6 +38,10 @@ export async function GET(request: NextRequest) {
 
     if (kind === "activity") {
       return NextResponse.json({ ok: true, ...(await listActivity(session.user)) });
+    }
+
+    if (kind === "notification-preferences") {
+      return NextResponse.json({ ok: true, ...(await listNotificationPreferences(session.user)) });
     }
 
     return NextResponse.json({ error: "Unsupported More settings load action." }, { status: 400 });

@@ -692,7 +692,9 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(barberNotificationSave).toBeDisabled();
     expect(within(dialog).queryByText("Canonical save path required")).not.toBeInTheDocument();
     expect(within(dialog).getAllByText("Messages, booking alerts, payout alerts, schedule updates, and business alerts.").length).toBeGreaterThan(0);
-    expect(within(dialog).getByText("Payout alerts")).toBeInTheDocument();
+    expect(within(dialog).getByText("Payout and money posture")).toBeInTheDocument();
+    expect(within(dialog).getByText("Client rebook prompts")).toBeInTheDocument();
+    expect(within(dialog).getByText("Queue and walk-in updates")).toBeInTheDocument();
     expect(within(dialog).queryByText("Creator alerts")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("Rewards alerts")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("Quiet hours start")).not.toBeInTheDocument();
