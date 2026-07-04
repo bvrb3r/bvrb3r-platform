@@ -45,6 +45,14 @@ describe("client navigation", () => {
     expect(screen.queryByRole("link", { name: /bookings/i })).not.toBeInTheDocument();
   });
 
+  it("keeps client bottom navigation tap targets at the mobile minimum", () => {
+    render(<ClientBottomNav activeTab="home" />);
+
+    ["Home", "Search", "Culture", "Messages", "More"].forEach((label) => {
+      expect(screen.getByRole("link", { name: label })).toHaveClass("min-h-12");
+    });
+  });
+
   it("renders the universal client header actions in the shared order", () => {
     render(<ClientAppHeader />);
 
