@@ -13,6 +13,21 @@ const APP_SHELL = [
   "/icons/pwa-maskable-512.png",
   "/icons/apple-touch-180.png"
 ];
+const CACHEABLE_NAVIGATION_PATHS = new Set([
+  "/",
+  "/offline",
+  "/discover",
+  "/booking/new",
+  "/barber/wave"
+]);
+const SENSITIVE_NAVIGATION_PREFIXES = [
+  "/architect",
+  "/dashboard",
+  "/messages",
+  "/settings",
+  "/checkout",
+  "/kiosk"
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -32,10 +47,21 @@ async function networkFirst(request) {
   const cache = await caches.open(CACHE_NAME);
   try {
     const response = await fetch(request);
-    cache.put(request, response.clone());
+    if (response.ok) {
+      cache.put(request, response.clone());
+    }
     return response;
   } catch {
     return (await cache.match(request)) || (await cache.match("/offline"));
+  }
+}
+
+async function networkOnlyWithOfflineFallback(request) {
+  try {
+    return await fetch(request);
+  } catch {
+    const cache = await caches.open(CACHE_NAME);
+    return (await cache.match("/offline")) || Response.error();
   }
 }
 
@@ -50,6 +76,14 @@ async function staleWhileRevalidate(request) {
     .catch(() => undefined);
 
   return cached || networkPromise || fetch(request);
+}
+
+function isCacheableAppShellNavigation(pathname) {
+  if (SENSITIVE_NAVIGATION_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    return false;
+  }
+
+  return CACHEABLE_NAVIGATION_PATHS.has(pathname);
 }
 
 self.addEventListener("fetch", (event) => {
@@ -79,7 +113,7 @@ self.addEventListener("fetch", (event) => {
 
   const acceptsHtml = request.headers.get("accept")?.includes("text/html");
   if (request.mode === "navigate" || acceptsHtml) {
-    event.respondWith(networkFirst(request));
+    event.respondWith(isCacheableAppShellNavigation(url.pathname) ? networkFirst(request) : networkOnlyWithOfflineFallback(request));
     return;
   }
 

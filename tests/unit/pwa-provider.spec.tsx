@@ -24,6 +24,10 @@ describe("pwa provider", () => {
     mockPathname = "/";
     window.localStorage.clear();
     delete (window as Window & { Capacitor?: unknown }).Capacitor;
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36"
+    });
     Object.defineProperty(window, "matchMedia", {
       writable: true,
       value: vi.fn().mockImplementation(() => ({
@@ -127,5 +131,52 @@ describe("pwa provider", () => {
 
     expect(screen.queryByText(/Install the BVRB3R app/i)).not.toBeInTheDocument();
     expect(await screen.findByText(/Activate mobile alerts/i)).toBeInTheDocument();
+  });
+
+  it("keeps unsupported desktop browsers free of fake install or push CTAs", async () => {
+    Reflect.deleteProperty(window, "Notification");
+    Reflect.deleteProperty(navigator, "serviceWorker");
+    mockPathname = "/dashboard/client";
+
+    renderWithProviders();
+
+    expect(await screen.findByText("child")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText(/Install the BVRB3R app/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Activate mobile alerts/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it("uses honest iOS install copy without a fake browser install button", async () => {
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1"
+    });
+
+    renderWithProviders();
+
+    expect(await screen.findByText("Install the BVRB3R app")).toBeInTheDocument();
+    expect(screen.getByText(/use Share then Add to Home Screen/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Install app/i })).not.toBeInTheDocument();
+  });
+
+  it("does not stack push and install prompts over the mobile dock", async () => {
+    mockPathname = "/dashboard/client";
+    const event = new Event("beforeinstallprompt");
+    Object.assign(event, {
+      prompt: vi.fn().mockResolvedValue(undefined),
+      userChoice: Promise.resolve({ outcome: "dismissed", platform: "web" })
+    });
+
+    renderWithProviders();
+
+    act(() => {
+      window.dispatchEvent(event);
+    });
+
+    expect(await screen.findByText(/Install the BVRB3R app/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText(/Activate mobile alerts/i)).not.toBeInTheDocument();
+    });
   });
 });

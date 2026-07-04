@@ -27,7 +27,7 @@ export function ClientBottomNav({ activeTab, mode = "client" }: { activeTab?: Cl
               href={item.href}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] px-2 py-2.5 text-center transition",
+                "flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] px-2 py-2.5 text-center transition",
                 isActive
                   ? "border border-[#7CFF00]/26 bg-[#7CFF00]/10 text-white"
                   : "border border-white/8 bg-black/18 text-white/66 hover:border-[#7CFF00]/20 hover:text-white"

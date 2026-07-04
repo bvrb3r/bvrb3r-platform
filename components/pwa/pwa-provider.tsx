@@ -158,11 +158,13 @@ function getOrCreateDeviceId() {
 
 function getCapabilities(permission: PushPermissionState, isStandalone: boolean, runtimeMode: AppRuntimeMode): DeviceCapabilityRecord {
   const nativeRuntime = isNativeRuntimeMode(runtimeMode);
+  const hasWindow = typeof window !== "undefined";
+  const hasNavigator = typeof navigator !== "undefined";
   return {
-    pushSupported: nativeRuntime || typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator,
-    shareSupported: typeof navigator !== "undefined" && typeof navigator.share === "function",
-    standaloneSupported: nativeRuntime || isStandalone || typeof window !== "undefined" && typeof window.matchMedia === "function",
-    serviceWorkerSupported: nativeRuntime ? false : typeof navigator !== "undefined" && "serviceWorker" in navigator,
+    pushSupported: nativeRuntime || hasWindow && hasNavigator && "Notification" in window && "serviceWorker" in navigator,
+    shareSupported: hasNavigator && typeof navigator.share === "function",
+    standaloneSupported: nativeRuntime || isStandalone || hasWindow && typeof window.matchMedia === "function",
+    serviceWorkerSupported: nativeRuntime ? false : hasNavigator && "serviceWorker" in navigator,
     notificationPermission: permission
   };
 }
@@ -489,7 +491,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
 
   const showPushPrompt = useMemo(() => {
     const isRoleSurface = pathname?.startsWith("/dashboard") || pathname === "/referrals";
-    if (!isRoleSurface || dismissedPush || !isOnline) {
+    if (!isRoleSurface || dismissedPush || !isOnline || showInstallPrompt) {
       return false;
     }
 
@@ -498,7 +500,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     }
 
     return isStandalone || nativeRuntime || Boolean(installEvent) || pathname === "/dashboard/client" || pathname === "/dashboard/barber" || pathname === "/dashboard/owner";
-  }, [dismissedPush, installEvent, isOnline, isStandalone, nativeRuntime, pathname, pushEnabled, pushPermission]);
+  }, [dismissedPush, installEvent, isOnline, isStandalone, nativeRuntime, pathname, pushEnabled, pushPermission, showInstallPrompt]);
 
   async function handleInstall() {
     if (!installEvent) {
@@ -533,7 +535,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function ensureServiceWorker() {
-    if (!("serviceWorker" in navigator)) {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
       return null;
     }
 
@@ -721,7 +723,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
       {showInstallPrompt ? (
-        <div className="pointer-events-none fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)] z-50 flex justify-center sm:inset-x-6">
+        <div className="pointer-events-none fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+7.5rem)] z-50 flex justify-center sm:inset-x-6 lg:bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
           <div className="pointer-events-auto w-full max-w-xl rounded-[28px] border border-[#7CFF00]/16 bg-[rgba(8,8,8,0.94)] p-4 shadow-[0_22px_48px_rgba(0,0,0,0.42)] backdrop-blur">
             <div className="flex items-start gap-3">
               <div className="rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/10 p-2 text-[#d7ffab]">
