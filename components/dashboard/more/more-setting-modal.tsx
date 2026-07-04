@@ -43,6 +43,7 @@ export function MoreSettingModal({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const [payload, setPayload] = useState<Record<string, unknown>>({});
 
@@ -52,6 +53,7 @@ export function MoreSettingModal({
       setConfirmDiscard(false);
       setIsSaving(false);
       setError(null);
+      setSuccess(null);
       setPayload({});
     }
   }, [open]);
@@ -88,7 +90,27 @@ export function MoreSettingModal({
     return null;
   }
 
-  const canSave = Boolean(onSave) && (primaryEnabled || (spec.mode === "editable" && dirty));
+  const activeSpec = spec;
+  const canSave = Boolean(onSave) && (primaryEnabled || (activeSpec.mode === "editable" && dirty));
+
+  function getMissingRequiredField() {
+    return activeSpec.fields?.find((field) => {
+      if (!field.required || field.editable === false) {
+        return false;
+      }
+
+      const value = payload[field.key];
+      if (typeof value === "string") {
+        return value.trim().length === 0;
+      }
+
+      if (Array.isArray(value)) {
+        return value.length === 0;
+      }
+
+      return value === null || value === undefined;
+    }) ?? null;
+  }
 
   function requestClose() {
     if (dirty) {
@@ -106,14 +128,26 @@ export function MoreSettingModal({
 
     setIsSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
+      const missingField = getMissingRequiredField();
+      if (missingField) {
+        setError(`Complete ${missingField.label} before submitting.`);
+        return;
+      }
+
       await onSave?.(payload);
       setDirty(false);
       onSaved?.();
-      onClose();
-    } catch {
-      setError("Couldn't save this setting. Try again.");
+      if (activeSpec.successMessage) {
+        setSuccess(activeSpec.successMessage);
+      }
+      if (activeSpec.closeOnSave !== false) {
+        onClose();
+      }
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Couldn't save this setting. Try again.");
     } finally {
       setIsSaving(false);
     }
@@ -144,13 +178,19 @@ export function MoreSettingModal({
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
-          <p className="pr-12 text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">{spec.eyebrow}</p>
-          <h2 id="more-setting-modal-title" className="mt-2 pr-12 text-3xl font-black tracking-[-0.045em] text-white">{spec.title}</h2>
-          <p className="mt-2 max-w-xl pr-12 text-sm leading-6 text-white/58">{spec.helper}</p>
+          <p className="pr-12 text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">{activeSpec.eyebrow}</p>
+          <h2 id="more-setting-modal-title" className="mt-2 pr-12 text-3xl font-black tracking-[-0.045em] text-white">{activeSpec.title}</h2>
+          <p className="mt-2 max-w-xl pr-12 text-sm leading-6 text-white/58">{activeSpec.helper}</p>
         </div>
 
         <div className={cn("min-h-0 flex-1 overflow-y-auto p-5 sm:p-6", bodyClassName)}>
-          {children ?? <MoreSettingModalContent spec={spec} href={href} dirty={dirty} onDirtyChange={setDirty} onPayloadChange={setPayload} />}
+          {children ?? <MoreSettingModalContent
+            spec={activeSpec}
+            href={href}
+            dirty={dirty}
+            onDirtyChange={setDirty}
+            onPayloadChange={setPayload}
+          />}
           {confirmDiscard ? (
             <div className="mt-5 rounded-[18px] border border-amber-300/20 bg-amber-300/[0.06] p-4">
               <p className="text-sm font-extrabold text-amber-100">Discard unsaved changes?</p>
@@ -162,6 +202,7 @@ export function MoreSettingModal({
             </div>
           ) : null}
           {error ? <p className="mt-4 rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">{error}</p> : null}
+          {success ? <p className="mt-4 rounded-[18px] border border-[#A3FF12]/25 bg-[#A3FF12]/10 p-4 text-sm font-semibold text-[#d7ffab]">{success}</p> : null}
         </div>
 
         <footer
@@ -187,7 +228,7 @@ export function MoreSettingModal({
               disabled={!canSave || isSaving}
               aria-disabled={!canSave || isSaving}
             >
-              {isSaving ? "Saving..." : primaryLabel}
+              {isSaving ? activeSpec.savingLabel ?? "Saving..." : primaryLabel}
             </button>
           )}
         </footer>

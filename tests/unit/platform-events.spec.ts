@@ -82,6 +82,7 @@ describe("platform events core", () => {
       "membership_started",
       "membership_canceled",
       "membership_past_due",
+      "support_issue_received",
       "verification_approved",
       "verification_rejected"
     ]));

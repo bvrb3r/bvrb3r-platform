@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, ExternalLink, LockKeyhole, Settings2, ShieldCheck } from "lucide-react";
 import type { MoreSettingField, MoreSettingModalSpec } from "@/components/dashboard/more/more-setting-modal-registry";
+import { SUPPORT_SAFETY_DISCLAIMER } from "@/lib/support/issue-intake";
 import { cn } from "@/lib/utils";
 
 type MoreHref = string;
@@ -76,6 +77,10 @@ function formatFieldValue(value: MoreSettingField["value"]) {
 function initialFieldValue(field: MoreSettingField) {
   if (field.type === "toggle") {
     return Boolean(field.value);
+  }
+
+  if ((field.type === "text" || field.type === "textarea") && field.editable !== false) {
+    return typeof field.value === "string" ? field.value : "";
   }
 
   if ((field.type === "select" || field.type === "multi_select") && field.options?.length) {
@@ -285,6 +290,7 @@ export function MoreSettingModalContent({
   const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [loadedSummary, setLoadedSummary] = useState<string | null>(null);
   const [loadedRecords, setLoadedRecords] = useState<LoadedRecordBody | null>(null);
+  const showSafetyDisclaimer = values.category === "safety_or_trust_concern";
 
   useEffect(() => {
     setValues(initialValues);
@@ -371,6 +377,11 @@ export function MoreSettingModalContent({
               <FieldControl key={field.key} field={field} canEdit={canEdit} value={values[field.key]} onValueChange={(value) => updateValue(field.key, value)} />
             ))}
           </div>
+          {showSafetyDisclaimer ? (
+            <p className="rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-sm font-semibold leading-6 text-red-100">
+              {SUPPORT_SAFETY_DISCLAIMER}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

@@ -302,6 +302,7 @@ export function ClientProfileScreen({
     {
       title: "Client Content Creator Settings",
       subtitle: "Manage your creator eligibility, Culture profile, content settings, performance, and creator safety.",
+      roleScope: "client" as const,
       rows: [
         { href: "/dashboard/client/more?section=rewards", title: "Creator Status", subtitle: "Locked, eligible, pending review, approved, suspended, or banned.", icon: <ShieldCheck className="h-5 w-5" />, status: "Creator tools locked", tone: "yellow", needsAction: true },
         { href: "/dashboard/client/more?section=rewards", title: "Creator Requirements", subtitle: "Loyalty, account verification, auto-book activity, content rules, and payout eligibility.", icon: <FileText className="h-5 w-5" />, needsAction: true },
@@ -314,6 +315,7 @@ export function ClientProfileScreen({
     {
       title: "Payments & Banking",
       subtitle: "How this account pays, earns rewards, and unlocks eligible creator payouts.",
+      roleScope: "client" as const,
       rows: [
         { href: "/dashboard/client/more?section=wallet", title: "Wallet / Billing", subtitle: "Default payment method for bookings, auto-booking, subscriptions, tools, ads, and promotions.", icon: <CreditCard className="h-5 w-5" />, needsAction: !defaultPaymentMethod },
         { href: "/dashboard/client/more?section=wallet", title: "Plan Access", subtitle: "Free booking stays open. Pro and Elite tools require server-verified plan access.", icon: <ShieldCheck className="h-5 w-5" />, status: paywallSummary?.statusLabel ?? "Needs review", tone: paywallSummary?.statusTone === "green" ? "green" : "yellow", needsAction: Boolean(!paywallSummary || paywallSummary.lockedFeatureCount || paywallSummary.needsReviewCount) },
@@ -327,6 +329,7 @@ export function ClientProfileScreen({
     {
       title: "Compliance & Security",
       subtitle: "Login, privacy, and account protection controls.",
+      roleScope: "client" as const,
       rows: [
         { title: "Identity Verification", subtitle: "Required when this account becomes eligible to receive payouts, such as creator payouts. Not required for normal booking.", href: "/verify-contact", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Password & Login", subtitle: "Password, sign-in method, email login, phone login, and connected access.", href: "/verify-contact", icon: <KeyRound className="h-5 w-5" /> },
@@ -338,9 +341,12 @@ export function ClientProfileScreen({
     {
       title: "Support",
       subtitle: "Help and account questions stay reachable from Messages.",
+      roleScope: "client" as const,
       rows: [
         { title: "Help Center", subtitle: "Guides and support resources.", href: "/contact", icon: <LifeBuoy className="h-5 w-5" /> },
-        { title: "Contact Support", subtitle: "Start a support conversation inside Messages.", href: `${CLIENT_PRIMARY_TAB_HREFS.messages}?thread=support` as Route, icon: <MessageSquareText className="h-5 w-5" /> }
+        { title: "Contact Support", subtitle: "Start a support conversation inside Messages.", href: `${CLIENT_PRIMARY_TAB_HREFS.messages}?thread=support` as Route, icon: <MessageSquareText className="h-5 w-5" /> },
+        { title: "Report a problem", subtitle: "Report booking, account, messages, payments, safety, or app issues.", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Send feedback", subtitle: "Share product feedback or a feature request.", icon: <MailPlus className="h-5 w-5" /> }
       ]
     }
   ];

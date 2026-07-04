@@ -669,6 +669,16 @@ export function OwnerSettingsWorkspace({
       subtitle: "Get help from our team",
       href: "/workspace/messages",
       icon: <MessageCircle className="h-5 w-5" />
+    },
+    {
+      title: "Report a problem",
+      subtitle: "Report shop, team, queue, kiosk, settings, safety, or app issues",
+      icon: <ShieldCheck className="h-5 w-5" />
+    },
+    {
+      title: "Send feedback",
+      subtitle: "Share product feedback or a feature request",
+      icon: <FileText className="h-5 w-5" />
     }
   ];
 

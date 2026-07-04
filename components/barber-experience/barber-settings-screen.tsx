@@ -1150,6 +1150,7 @@ export function BarberSettingsScreen({
       id: "barber-settings-payments-banking",
       title: "Payments & Banking",
       subtitle: "Payout account, eligible balance, transactions, and tax posture.",
+      roleScope: "barber" as const,
       rows: [
         { title: "Wallet / Billing", subtitle: "Default payment method for bookings, subscriptions, and tools", href: "/dashboard/barber/more?section=wallet", icon: <CreditCard className="h-5 w-5" /> },
         { title: "Plan Access", subtitle: "Free profile and booking setup stay open. Pro and Elite tools require server-verified plan access.", onClick: () => document.getElementById(sectionIdMap.plan)?.scrollIntoView({ behavior: "smooth", block: "start" }), status: subscriptionSummary?.accessStateLabel ?? "Needs Review", tone: subscriptionSummary?.accessTone === "green" ? "green" : subscriptionSummary?.accessTone === "red" ? "red" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
@@ -1164,6 +1165,7 @@ export function BarberSettingsScreen({
       id: "barber-settings-compliance",
       title: "Compliance & Security",
       subtitle: "Identity, license, account security, and privacy.",
+      roleScope: "barber" as const,
       rows: [
         { title: "Identity Verification", subtitle: "Government ID or driver license proving who owns this account", onClick: () => openBusinessTool("verification"), status: formatStatusLabel(canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)), icon: <Fingerprint className="h-5 w-5" />, testId: "business-tool-verification" },
         { title: "License Verification", subtitle: "Barber license upload, license state, license review, and approval status", onClick: () => openBusinessTool("verification"), icon: <ShieldCheck className="h-5 w-5" /> },
@@ -1177,9 +1179,12 @@ export function BarberSettingsScreen({
       id: "barber-settings-support",
       title: "Support",
       subtitle: "Help resources and direct support threads.",
+      roleScope: "barber" as const,
       rows: [
         { title: "Help Center", subtitle: "Guides and platform help", href: "/contact", icon: <LifeBuoy className="h-5 w-5" /> },
-        { title: "Contact Support", subtitle: "Message BVRB3R support", href: "/dashboard/barber/messages?thread=support", icon: <Headphones className="h-5 w-5" /> }
+        { title: "Contact Support", subtitle: "Message BVRB3R support", href: "/dashboard/barber/messages?thread=support", icon: <Headphones className="h-5 w-5" /> },
+        { title: "Report a problem", subtitle: "Report schedule, checkout, messages, shop, safety, or app issues", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Send feedback", subtitle: "Share product feedback or a feature request", icon: <Send className="h-5 w-5" /> }
       ]
     }
   ];
