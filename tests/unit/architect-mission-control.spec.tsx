@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArchitectMissionControl } from "@/components/architect/mission-control/mission-control";
 import { CockpitHome } from "@/components/architect/mission-control/cockpit-home";
+import { buildMapModel } from "@/components/architect/mission-control/cockpit-map-model";
 import { buildDeploymentRegressionEvidence, buildMissionControlFoundation, buildSourceVaultInventory } from "@/lib/architect/mission-control/foundation";
 import { buildMissionControlSnapshot } from "@/lib/architect/mission-control/incident-detection";
 import type { MissionControlSnapshot } from "@/lib/architect/mission-control/types";
@@ -1669,5 +1670,59 @@ describe("architect mission control home cockpit", () => {
     expect(screen.queryByTestId("cockpit-system-map")).not.toBeInTheDocument();
     // No status element renders exactly "Pass" — the Degraded state never fabricates a Pass.
     expect(screen.queryByText("Pass")).not.toBeInTheDocument();
+  });
+});
+
+describe("architect mission control 3D map model", () => {
+  it("derives cores, service nodes, and edges from the real snapshot", () => {
+    const model = buildMapModel(createHomeSnapshot());
+
+    const lanes = createHomeSnapshot().foundation.departmentLanes;
+    expect(model.clusters.map((c) => c.id)).toEqual(lanes.map((l) => l.id));
+    lanes.forEach((lane) => {
+      expect(model.nodes.find((n) => n.id === `core:${lane.id}`)).toBeTruthy();
+    });
+
+    // health checks become service nodes attached to the mapped officer lane
+    const routing = model.nodes.find((n) => n.id === "health:routing");
+    expect(routing).toBeTruthy();
+    expect(routing?.clusterId).toBe("finance");
+    expect(routing?.status).toBe("failed"); // status "critical" from evidence, never a fake Pass
+    const bookings = model.nodes.find((n) => n.id === "health:bookings");
+    expect(bookings?.clusterId).toBe("operations");
+    expect(bookings?.status).toBe("pass");
+    expect(model.edges.find((e) => e.from === "health:routing" && e.to === "core:finance")).toBeTruthy();
+  });
+
+  it("maps action registry department labels onto lane clusters", () => {
+    const model = buildMapModel(createHomeSnapshot());
+
+    // Registered actions carry department labels ("Finance") that must resolve
+    // to lane cluster ids ("finance"), not fall back to the first lane.
+    const actionNodes = model.nodes.filter((n) => n.id.startsWith("action:"));
+    expect(actionNodes.length).toBeGreaterThan(0);
+    const financeAction = actionNodes.find((n) => n.id === "action:refund");
+    expect(financeAction?.clusterId).toBe("finance");
+    expect(financeAction?.status).toBe("warning"); // approval-required stays Needs Review
+  });
+
+  it("escalates the matching node when an incident names it and attaches the Codex packet id", () => {
+    const snapshot = createHomeSnapshot();
+    const incidentId = snapshot.incidents[0].id;
+    snapshot.incidents = [{
+      ...snapshot.incidents[0],
+      affectedEntity: "Routing",
+      headline: "Completed paid appointment is missing payment routing."
+    }];
+
+    const model = buildMapModel(snapshot);
+    const routing = model.nodes.find((n) => n.id === "health:routing");
+    expect(routing?.status).toBe("failed");
+    expect(routing?.issue).toBe("Completed paid appointment is missing payment routing.");
+    expect(routing?.incidentId).toBe(incidentId);
+  });
+
+  it("returns an empty model when the snapshot is absent — never fabricated dots", () => {
+    expect(buildMapModel(null)).toEqual({ clusters: [], nodes: [], edges: [] });
   });
 });

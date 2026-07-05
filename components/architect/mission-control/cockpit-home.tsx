@@ -7,7 +7,7 @@
 // state when the snapshot is null — it never fabricates a Pass.
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { GlassCard } from "@/design/components";
 import type { MissionControlSnapshot, MissionLaneId } from "@/lib/architect/mission-control/types";
@@ -35,7 +35,7 @@ import {
   TopDirectives,
   WorkQueue
 } from "@/components/architect/mission-control/cockpit-panels";
-import { SystemMap } from "@/components/architect/mission-control/cockpit-map";
+import { MissionControlMapPanel } from "@/components/architect/mission-control/cockpit-map-panel";
 import { VoiceCommand } from "@/components/architect/mission-control/cockpit-voice";
 
 type CockpitUser = { name: string; email: string };
@@ -86,6 +86,26 @@ export function CockpitHome({
     }
     pushTranscript("Cockpit: Read-only cockpit — evidence surfaced, no action executed.");
   };
+
+  // Live refresh for the 3D map: re-runs the SAME snapshot builder behind the
+  // admin guard via the existing Mission Control API route. Non-ok responses
+  // throw so the panel keeps its last good snapshot.
+  const refreshSnapshot = useCallback(async () => {
+    const response = await fetch("/api/architect/mission-control");
+    if (!response.ok) throw new Error("Mission Control snapshot refresh failed.");
+    const next = (await response.json()) as MissionControlSnapshot;
+    if (!next || next.ok !== true) throw new Error("Mission Control snapshot refresh returned no evidence.");
+    return next;
+  }, []);
+
+  // Map node clicks drive the same lane selection as the officer lanes panel.
+  const handleMapLaneSelect = useCallback(
+    (laneId: string | null) => {
+      const lane = snapshot?.foundation.departmentLanes.find((l) => l.id === laneId);
+      setSelectedLane(lane?.id ?? null);
+    },
+    [snapshot]
+  );
 
   const handleCopyPacket = (packetId: string) => {
     const packet = snapshot?.packets[packetId]?.codexPacket;
@@ -139,7 +159,7 @@ export function CockpitHome({
           {/* CENTER */}
           <div className="flex min-h-0 flex-col gap-3">
             <div className="flex min-h-[300px] flex-col">
-              <SystemMap nodes={views.mapNodes} selectedId={selectedLane} onSelect={setSelectedLane} />
+              <MissionControlMapPanel snapshot={snapshot} refresh={refreshSnapshot} onLaneSelect={handleMapLaneSelect} />
             </div>
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
               <VoiceCommand onCommand={handleCommand} />
