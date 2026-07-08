@@ -331,12 +331,12 @@ export function ContactVerificationWorkspace() {
         ) : null}
 
         {statusQuery.data?.degraded ? (
-          <div className="mt-5 rounded-[22px] border border-[#cfff93]/18 bg-[#7cff00]/[0.08] p-4 text-sm leading-7 text-[#ddffb8]">
+          <div className="mt-5 rounded-[22px] border border-[#e0f6a0]/18 bg-[#c4f24e]/[0.08] p-4 text-sm leading-7 text-[#e8f6c8]">
             Contact verification is running in a degraded mode, but your session is still active.
           </div>
         ) : null}
         {errorMessage ? <p className="mt-5 text-sm leading-7 text-[#ff8f8f]">{errorMessage}</p> : null}
-        {successMessage ? <p className="mt-5 text-sm leading-7 text-[#d7ffab]">{successMessage}</p> : null}
+        {successMessage ? <p className="mt-5 text-sm leading-7 text-[#e4f9b8]">{successMessage}</p> : null}
       </Card>
     </section>
   );

@@ -795,7 +795,7 @@ function getParticipantSearchDisplay(result: MessagingParticipantSearchResult) {
 
 function RolePill({ label }: { label: string }) {
   return (
-    <span className="inline-flex h-5 items-center rounded-[6px] border border-white/10 bg-white/[0.035] px-1.5 text-[10px] font-bold uppercase text-[#d7ffab]">
+    <span className="inline-flex h-5 items-center rounded-[6px] border border-white/10 bg-white/[0.035] px-1.5 text-[10px] font-bold uppercase text-[#e4f9b8]">
       {label}
     </span>
   );
@@ -822,7 +822,7 @@ function ParticipantSearchResultRow({
 
   return (
     <div
-      className="grid min-h-[82px] w-full grid-cols-[auto_1fr] gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2 text-left transition hover:border-[#a3ff12]/28 hover:bg-white/[0.05] sm:grid-cols-[auto_1fr_auto]"
+      className="grid min-h-[82px] w-full grid-cols-[auto_1fr] gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2 text-left transition hover:border-[#c4f24e]/28 hover:bg-white/[0.05] sm:grid-cols-[auto_1fr_auto]"
       data-testid={`message-participant-result-${result.resultType}-${result.id}`}
     >
       <Avatar
@@ -837,7 +837,7 @@ function ParticipantSearchResultRow({
           <RolePill label={roleLabel} />
         </span>
         {secondaryUsername ? (
-          <span className="mt-0.5 block truncate text-xs font-bold text-[#d7ffab]/85">{secondaryUsername}</span>
+          <span className="mt-0.5 block truncate text-xs font-bold text-[#e4f9b8]/85">{secondaryUsername}</span>
         ) : null}
         <span className="mt-0.5 block truncate text-xs text-white/48">
           {result.publicContextLine ?? result.subtitle ?? (result.existingThreadId ? "Existing conversation" : "Start a conversation")}
@@ -850,14 +850,14 @@ function ParticipantSearchResultRow({
         {profileHref ? (
           <Link
             href={profileHref as Route}
-            className="inline-flex h-8 items-center rounded-lg border border-white/10 px-2.5 text-[11px] font-black text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white"
+            className="inline-flex h-8 items-center rounded-lg border border-white/10 px-2.5 text-[11px] font-black text-white/72 transition hover:border-[#c4f24e]/28 hover:text-white"
           >
             View Profile
           </Link>
         ) : null}
         <button
           type="button"
-          className="inline-flex h-8 items-center rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-2.5 text-[11px] font-black text-[#d7ffab] transition hover:border-[#a3ff12]/36 hover:bg-[#a3ff12]/16 disabled:cursor-not-allowed disabled:opacity-45"
+          className="inline-flex h-8 items-center rounded-lg border border-[#c4f24e]/20 bg-[#c4f24e]/10 px-2.5 text-[11px] font-black text-[#e4f9b8] transition hover:border-[#c4f24e]/36 hover:bg-[#c4f24e]/16 disabled:cursor-not-allowed disabled:opacity-45"
           disabled={messageDisabled}
           onClick={() => onSelect(result)}
         >
@@ -960,7 +960,7 @@ function ThreadStoryRail({
                 initials={getAvatarInitials(contact.label, contact.role, contact.threadType)}
                 className={[
                   "mx-auto h-12 w-12 text-sm",
-                  contact.active ? "border-2 border-[#a3ff12]/80 shadow-[0_0_18px_rgba(163,255,18,0.18)]" : "border-white/12"
+                  contact.active ? "border-2 border-[#c4f24e]/80 shadow-[0_0_18px_rgba(196, 242, 78,0.18)]" : "border-white/12"
                 ].join(" ")}
               />
               <span className="mt-1 block truncate text-[11px] font-semibold text-white/64 group-hover:text-white">
@@ -1024,8 +1024,8 @@ function ThinThreadRow({
       className={[
         "group grid min-h-[78px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[12px] border px-3 py-2 transition",
         active
-          ? "border-[#a3ff12]/35 bg-[#a3ff12]/10"
-          : "border-white/8 bg-white/[0.022] hover:border-[#a3ff12]/24 hover:bg-white/[0.04]"
+          ? "border-[#c4f24e]/35 bg-[#c4f24e]/10"
+          : "border-white/8 bg-white/[0.022] hover:border-[#c4f24e]/24 hover:bg-white/[0.04]"
       ].join(" ")}
     >
       <Avatar
@@ -1039,7 +1039,7 @@ function ThinThreadRow({
           <p className="truncate text-sm font-bold text-white">{displayName}</p>
           {roleBadgeLabel ? <RolePill label={roleBadgeLabel} /> : null}
         </div>
-        {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-[#d7ffab]/85">{usernameLine}</p> : null}
+        {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-[#e4f9b8]/85">{usernameLine}</p> : null}
         <p className="mt-0.5 truncate text-xs font-medium text-white/54">{contextDetail}</p>
         <p className="mt-0.5 truncate text-xs text-white/42">{preview}</p>
       </div>
@@ -1048,9 +1048,9 @@ function ThinThreadRow({
           {formatCompactThreadTime(thread.lastMessage?.createdAt ?? thread.updatedAt)}
         </span>
         {thread.hasUnread ? (
-          <span className="h-2.5 w-2.5 rounded-full bg-[#a3ff12] shadow-[0_0_14px_rgba(163,255,18,0.75)]" aria-label="Unread message" />
+          <span className="h-2.5 w-2.5 rounded-full bg-[#c4f24e] shadow-[0_0_14px_rgba(196, 242, 78,0.75)]" aria-label="Unread message" />
         ) : thread.appointmentContext ? (
-          <span className="rounded-[6px] border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-1.5 py-0.5 text-[10px] font-bold text-[#d7ffab]">
+          <span className="rounded-[6px] border border-[#c4f24e]/18 bg-[#c4f24e]/8 px-1.5 py-0.5 text-[10px] font-bold text-[#e4f9b8]">
             {thread.appointmentContext.statusLabel}
           </span>
         ) : null}
@@ -1099,12 +1099,12 @@ function PaymentRequestCard({
 
   return (
     <div
-      className="w-full max-w-[22rem] rounded-lg border border-[#a3ff12]/24 bg-[linear-gradient(180deg,rgba(163,255,18,0.12),rgba(8,8,8,0.96))] p-3 shadow-[0_14px_34px_rgba(0,0,0,0.32)]"
+      className="w-full max-w-[22rem] rounded-lg border border-[#c4f24e]/24 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(8,8,8,0.96))] p-3 shadow-[0_14px_34px_rgba(0,0,0,0.32)]"
       data-testid="pos-payment-request-card"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d7ffab]">Payment Request</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#e4f9b8]">Payment Request</p>
           <p className="mt-2 text-sm font-black text-white">
             {counterpartName} requested {formatMoneyFromCents(metadata.amountCents)}
           </p>
@@ -1113,7 +1113,7 @@ function PaymentRequestCard({
         <span className={[
           "rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em]",
           status === "paid"
-            ? "border-[#a3ff12]/28 bg-[#a3ff12]/12 text-[#d7ffab]"
+            ? "border-[#c4f24e]/28 bg-[#c4f24e]/12 text-[#e4f9b8]"
             : status === "declined" || status === "failed" || status === "expired" || status === "canceled" || status === "canceled_duplicate" || status === "superseded"
               ? "border-rose-300/24 bg-rose-500/10 text-rose-100"
               : "border-amber-200/22 bg-amber-300/10 text-amber-100"
@@ -1126,7 +1126,7 @@ function PaymentRequestCard({
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <button
             type="button"
-            className="h-9 rounded-lg bg-[#a3ff12] px-3 text-xs font-black text-[#050505] transition hover:bg-[#d7ffab] disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-9 rounded-lg bg-[#c4f24e] px-3 text-xs font-black text-[#050505] transition hover:bg-[#e4f9b8] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isProcessing}
             onClick={() => onApprove(metadata.paymentRequestId)}
           >
@@ -1298,14 +1298,14 @@ function ConversationPanel({
         {onClose ? (
           <button
             type="button"
-            className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-white/56 transition hover:text-[#d7ffab]"
+            className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-white/56 transition hover:text-[#e4f9b8]"
             onClick={onClose}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Back
           </button>
         ) : selectedThreadId ? (
-          <Link href={basePath as Route} className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-white/56 transition hover:text-[#d7ffab] xl:hidden">
+          <Link href={basePath as Route} className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-white/56 transition hover:text-[#e4f9b8] xl:hidden">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Back
           </Link>
@@ -1328,14 +1328,14 @@ function ConversationPanel({
                   src={getAvatarImageUrl(activeThread?.counterpart?.avatarUrl, activeThread?.counterpart?.role, activeThread?.threadType)}
                   alt={displayName}
                   initials={getAvatarInitials(displayName, activeThread?.counterpart?.role, activeThread?.threadType)}
-                  className="h-12 w-12 border-2 border-[#a3ff12]/65 text-sm"
+                  className="h-12 w-12 border-2 border-[#c4f24e]/65 text-sm"
                 />
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-2">
                     <h3 className="truncate text-base font-black text-white">{displayName}</h3>
                     {roleBadgeLabel ? <RolePill label={roleBadgeLabel} /> : null}
                   </div>
-                  {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-[#d7ffab]/85">{usernameLine}</p> : null}
+                  {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-[#e4f9b8]/85">{usernameLine}</p> : null}
                   <p className="mt-0.5 truncate text-xs text-white/46">
                     {[conversationTypeLabel, publicContextLine].filter(Boolean).join(" - ")}
                   </p>
@@ -1345,14 +1345,14 @@ function ConversationPanel({
                 {profileHref ? (
                   <Link
                     href={profileHref as Route}
-                    className="inline-flex h-8 items-center rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white"
+                    className="inline-flex h-8 items-center rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-[#c4f24e]/28 hover:text-white"
                   >
                     View Profile
                   </Link>
                 ) : activeThread.threadType !== "support" ? (
                   <button
                     type="button"
-                    className="h-8 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white disabled:opacity-45"
+                    className="h-8 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-[#c4f24e]/28 hover:text-white disabled:opacity-45"
                     disabled
                   >
                     View Profile
@@ -1361,7 +1361,7 @@ function ConversationPanel({
                 {surface !== "shop" && activeThread.threadType !== "support" ? (
                   <Link
                     href={bookingHref as Route}
-                    className="inline-flex h-8 items-center rounded-lg bg-[#a3ff12] px-3 text-xs font-black text-[#050505] transition hover:bg-[#d7ffab]"
+                    className="inline-flex h-8 items-center rounded-lg bg-[#c4f24e] px-3 text-xs font-black text-[#050505] transition hover:bg-[#e4f9b8]"
                   >
                     Book
                   </Link>
@@ -1370,7 +1370,7 @@ function ConversationPanel({
             </div>
 
             <div
-              className="rounded-lg border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-3 py-2 text-xs font-semibold text-[#d7ffab]"
+              className="rounded-lg border border-[#c4f24e]/18 bg-[#c4f24e]/8 px-3 py-2 text-xs font-semibold text-[#e4f9b8]"
               data-testid="message-thread-context-line"
             >
               {getConversationContextLineWithContext(activeThread, freshAppointmentContext)}
@@ -1380,7 +1380,7 @@ function ConversationPanel({
               <div className={[
                 "rounded-lg border px-3 py-2 text-xs font-semibold",
                 requestBanner.tone === "success"
-                  ? "border-[#a3ff12]/22 bg-[#a3ff12]/8 text-[#d7ffab]"
+                  ? "border-[#c4f24e]/22 bg-[#c4f24e]/8 text-[#e4f9b8]"
                   : requestBanner.tone === "error"
                     ? "border-red-400/20 bg-red-500/10 text-red-100"
                     : "border-white/10 bg-white/[0.035] text-white/64"
@@ -1393,7 +1393,7 @@ function ConversationPanel({
                         <button
                           key={action}
                           type="button"
-                          className="rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-bold text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white"
+                          className="rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-bold text-white/72 transition hover:border-[#c4f24e]/28 hover:text-white"
                           onClick={() => onRequestAction(activeThread.request!.id, action)}
                         >
                           {action === "accept" ? "Accept" : action === "decline" ? "Decline" : action === "block" ? "Block" : "Report"}
@@ -1449,7 +1449,7 @@ function ConversationPanel({
                     message.messageType === "system"
                       ? "border border-white/8 bg-white/[0.025] text-white/56"
                       : message.isOwn
-                        ? "bg-[#a3ff12] text-[#050505]"
+                        ? "bg-[#c4f24e] text-[#050505]"
                         : "border border-white/8 bg-white/[0.06] text-white"
                   ].join(" ")}
                 >
@@ -1470,7 +1470,7 @@ function ConversationPanel({
             {showJumpToLatest ? (
               <button
                 type="button"
-                className="sticky bottom-2 left-1/2 z-10 mx-auto flex -translate-x-0 items-center rounded-lg border border-[#a3ff12]/24 bg-[#0b0b0b]/92 px-3 py-2 text-xs font-black text-[#d7ffab] shadow-[0_12px_32px_rgba(0,0,0,0.36)] transition hover:border-[#a3ff12]/55"
+                className="sticky bottom-2 left-1/2 z-10 mx-auto flex -translate-x-0 items-center rounded-lg border border-[#c4f24e]/24 bg-[#0b0b0b]/92 px-3 py-2 text-xs font-black text-[#e4f9b8] shadow-[0_12px_32px_rgba(0,0,0,0.36)] transition hover:border-[#c4f24e]/55"
                 onClick={() => scrollToLatest("smooth")}
               >
                 Jump to latest
@@ -1495,7 +1495,7 @@ function ConversationPanel({
                 aria-label="Send message"
                 disabled={sendPending || composerDisabledByLifecycle || !composerBody.trim()}
                 onClick={onSend}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#a3ff12] text-[#050505] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#c4f24e] text-[#050505] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
               >
                 <Send className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -1505,7 +1505,7 @@ function ConversationPanel({
       ) : (
         <div className="flex flex-1 items-center justify-center p-4 text-center">
           <div className="max-w-sm">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#a3ff12]/28 bg-[#a3ff12]/10 text-[#a3ff12]">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#c4f24e]/28 bg-[#c4f24e]/10 text-[#c4f24e]">
               <MessageSquareText className="h-5 w-5" aria-hidden="true" />
             </div>
             <p className="mt-3 text-sm font-semibold text-white">{hasAppointment ? "Open this appointment thread." : "Pick a conversation"}</p>
@@ -1620,12 +1620,12 @@ function ComposeModal({
         <div className="border-b border-white/8 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase text-[#a3ff12]">New Message</p>
+              <p className="text-xs font-bold uppercase text-[#c4f24e]">New Message</p>
               <h3 className="mt-1 text-lg font-black text-white">Choose a conversation</h3>
             </div>
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/60 transition hover:border-[#a3ff12]/28 hover:text-white"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/60 transition hover:border-[#c4f24e]/28 hover:text-white"
               aria-label="Close new message"
               onClick={onClose}
             >
@@ -1634,7 +1634,7 @@ function ComposeModal({
           </div>
 
           <label className="sr-only" htmlFor="message-participant-search">Search @username, barber, shop, or client</label>
-          <div className="mt-3 flex h-11 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 focus-within:border-[#a3ff12]/30">
+          <div className="mt-3 flex h-11 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 focus-within:border-[#c4f24e]/30">
             <Search className="h-4 w-4 text-white/36" aria-hidden="true" />
             <input
               id="message-participant-search"
@@ -2100,14 +2100,14 @@ export function MessagingInboxScreen({
 
   return (
     <div
-      className="relative isolate overflow-hidden rounded-[18px] border border-white/8 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_28%),#050505] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.42)] sm:p-4"
+      className="relative isolate overflow-hidden rounded-[18px] border border-white/8 bg-[radial-gradient(circle_at_top_right,rgba(196, 242, 78,0.10),transparent_28%),#050505] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.42)] sm:p-4"
       data-testid={`messaging-inbox-${surface}`}
     >
-      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(163,255,18,0.55),transparent)]" />
+      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(196, 242, 78,0.55),transparent)]" />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase text-[#a3ff12]">{copy.shellLabel}</p>
+          <p className="text-xs font-bold uppercase text-[#c4f24e]">{copy.shellLabel}</p>
           <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl" data-display="true">{title}</h2>
           <p className="mt-1 max-w-xl truncate text-sm text-white/54">{subtitle}</p>
         </div>
@@ -2123,7 +2123,7 @@ export function MessagingInboxScreen({
           {cultureHref ? (
             <Link
               href={cultureHref as Route}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-xs font-black text-white/74 transition hover:border-[#a3ff12]/30 hover:text-[#d7ffab]"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-xs font-black text-white/74 transition hover:border-[#c4f24e]/30 hover:text-[#e4f9b8]"
             >
               <Sparkles className="h-4 w-4" aria-hidden="true" />
               {cultureLabel}
@@ -2248,10 +2248,10 @@ export function MessagingInboxScreen({
               <div ref={startersRef} className="rounded-[14px] border border-white/8 bg-white/[0.025] p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase text-[#a3ff12]">{copy.starterTitle}</p>
+                  <p className="text-xs font-bold uppercase text-[#c4f24e]">{copy.starterTitle}</p>
                   <p className="mt-1 text-xs text-white/48">{copy.starterCopy}</p>
                 </div>
-                <MessageSquareText className="h-4 w-4 text-[#d7ffab]" aria-hidden="true" />
+                <MessageSquareText className="h-4 w-4 text-[#e4f9b8]" aria-hidden="true" />
               </div>
               <div className="mt-3 space-y-2">
                 {uniqueAppointmentStarters.map((starter) => (
@@ -2315,14 +2315,14 @@ export function MessagingInboxScreen({
               <div className="rounded-lg border border-white/8 bg-white/[0.025] p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold uppercase text-[#a3ff12]">{copy.broadcastTitle}</p>
+                    <p className="text-xs font-bold uppercase text-[#c4f24e]">{copy.broadcastTitle}</p>
                     <p className="mt-1 text-xs text-white/48">{copy.broadcastCopy}</p>
                   </div>
-                  <RadioTower className="h-4 w-4 text-[#d7ffab]" aria-hidden="true" />
+                  <RadioTower className="h-4 w-4 text-[#e4f9b8]" aria-hidden="true" />
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <select
-                    className="h-10 rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none transition focus:border-[#7cff00]/30"
+                    className="h-10 rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none transition focus:border-[#c4f24e]/30"
                     value={broadcastLocationId}
                     onChange={(event) => setBroadcastLocationId(event.target.value)}
                   >
@@ -2332,7 +2332,7 @@ export function MessagingInboxScreen({
                     ))}
                   </select>
                   <select
-                    className="h-10 rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none transition focus:border-[#7cff00]/30"
+                    className="h-10 rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none transition focus:border-[#c4f24e]/30"
                     value={broadcastAudience}
                     onChange={(event) => setBroadcastAudience(event.target.value as MessagingBroadcastAudience)}
                   >
@@ -2345,7 +2345,7 @@ export function MessagingInboxScreen({
                   value={broadcastBody}
                   onChange={(event) => setBroadcastBody(event.target.value)}
                   rows={2}
-                  className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-[#090909] px-3 py-2 text-sm text-white outline-none transition placeholder:text-white/34 focus:border-[#7CFF00]/28"
+                  className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-[#090909] px-3 py-2 text-sm text-white outline-none transition placeholder:text-white/34 focus:border-[#C4F24E]/28"
                   placeholder="Send a shop update."
                 />
                 <div className="mt-2 flex justify-end">

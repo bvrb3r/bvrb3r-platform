@@ -121,11 +121,11 @@ function CommandIconButton({
     <Link
       href={href}
       aria-label={label}
-      className="relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#A3FF12]/35 hover:text-white hover:shadow-[0_0_24px_rgba(163,255,18,0.12)] sm:h-14 sm:w-14"
+      className="relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#C4F24E]/35 hover:text-white hover:shadow-[0_0_24px_rgba(196, 242, 78,0.12)] sm:h-14 sm:w-14"
     >
       {children}
       {badge && badge > 0 ? (
-        <span className="absolute -right-1 -top-1 inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[#A3FF12] px-2 text-xs font-black text-black shadow-[0_0_14px_rgba(163,255,18,0.45)]">
+        <span className="absolute -right-1 -top-1 inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[#C4F24E] px-2 text-xs font-black text-black shadow-[0_0_14px_rgba(196, 242, 78,0.45)]">
           {badge}
         </span>
       ) : null}
@@ -168,12 +168,12 @@ function UtilizationCard({
   return (
     <Link
       href={href}
-      className="group rounded-[22px] border border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.045)] transition hover:-translate-y-0.5 hover:border-[#A3FF12]/30"
+      className="group rounded-[22px] border border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.045)] transition hover:-translate-y-0.5 hover:border-[#C4F24E]/30"
     >
       <div
         className={cn(
-          "mb-7 inline-flex h-11 w-11 items-center justify-center rounded-[14px] border shadow-[0_0_20px_rgba(163,255,18,0.16)]",
-          tone === "green" && "border-[#A3FF12]/25 bg-[#A3FF12]/12 text-[#A3FF12]",
+          "mb-7 inline-flex h-11 w-11 items-center justify-center rounded-[14px] border shadow-[0_0_20px_rgba(196, 242, 78,0.16)]",
+          tone === "green" && "border-[#C4F24E]/25 bg-[#C4F24E]/12 text-[#C4F24E]",
           tone === "amber" && "border-amber-300/25 bg-amber-300/10 text-amber-300",
           tone === "neutral" && "border-white/12 bg-white/[0.04] text-white/74"
         )}
@@ -182,7 +182,7 @@ function UtilizationCard({
       </div>
       <p className="text-3xl font-black tracking-[-0.04em] text-white">{value}</p>
       <p className="mt-2 text-lg font-semibold text-white/78">{label}</p>
-      <p className={cn("mt-3 text-base font-extrabold", tone === "amber" ? "text-amber-300" : tone === "neutral" ? "text-white/52" : "text-[#A3FF12]")}>
+      <p className={cn("mt-3 text-base font-extrabold", tone === "amber" ? "text-amber-300" : tone === "neutral" ? "text-white/52" : "text-[#C4F24E]")}>
         {detail}
       </p>
     </Link>
@@ -320,11 +320,11 @@ export function OwnerOverview() {
             <Bell className="h-5 w-5" />
           </CommandIconButton>
           <details className="group relative">
-            <summary className="inline-flex h-12 w-12 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#A3FF12]/35 hover:text-white hover:shadow-[0_0_24px_rgba(163,255,18,0.12)] sm:h-14 sm:w-14" aria-label="Open overview filters">
+            <summary className="inline-flex h-12 w-12 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#C4F24E]/35 hover:text-white hover:shadow-[0_0_24px_rgba(196, 242, 78,0.12)] sm:h-14 sm:w-14" aria-label="Open overview filters">
               <SlidersHorizontal className="h-5 w-5" />
             </summary>
             <GlassCard className="absolute right-0 z-20 mt-3 w-56 p-3">
-              <p className="px-3 py-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#A3FF12]">Timeframe</p>
+              <p className="px-3 py-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#C4F24E]">Timeframe</p>
               {timeframeOptions.map((option) => (
                 <Link
                   key={option}
@@ -332,7 +332,7 @@ export function OwnerOverview() {
                   className="flex items-center justify-between rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white"
                 >
                   {option}
-                  {option === "Today" ? <span className="h-2 w-2 rounded-full bg-[#A3FF12]" /> : null}
+                  {option === "Today" ? <span className="h-2 w-2 rounded-full bg-[#C4F24E]" /> : null}
                 </Link>
               ))}
             </GlassCard>
@@ -346,10 +346,10 @@ export function OwnerOverview() {
         </GlassCard>
       ) : null}
 
-      <GlassCard className="border-[#A3FF12]/14 bg-[linear-gradient(135deg,rgba(163,255,18,0.08),rgba(8,8,8,0.92)_48%,rgba(0,0,0,0.96))] p-6 sm:p-7">
+      <GlassCard className="border-[#C4F24E]/14 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.08),rgba(8,8,8,0.92)_48%,rgba(0,0,0,0.96))] p-6 sm:p-7">
         <div className="grid gap-5 xl:grid-cols-[1.12fr_0.88fr] xl:items-end">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#A3FF12]">Business command center</p>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C4F24E]">Business command center</p>
             <h2 className="mt-3 max-w-3xl text-3xl font-black tracking-[-0.055em] text-white sm:text-4xl" data-display="true">
               Run the shop from health, capacity, and money signals.
             </h2>
@@ -358,19 +358,19 @@ export function OwnerOverview() {
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Link href="/dashboard/owner/team" className="rounded-[22px] border border-white/8 bg-black/25 p-4 transition hover:border-[#A3FF12]/28">
+            <Link href="/dashboard/owner/team" className="rounded-[22px] border border-white/8 bg-black/25 p-4 transition hover:border-[#C4F24E]/28">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Team</p>
               <p className="mt-3 text-2xl font-black text-white">{barbers.length}</p>
               <p className="mt-2 text-sm leading-6 text-white/56">Connected barbers</p>
             </Link>
-            <Link href="/dashboard/owner/schedule" className="rounded-[22px] border border-white/8 bg-black/25 p-4 transition hover:border-[#A3FF12]/28">
+            <Link href="/dashboard/owner/schedule" className="rounded-[22px] border border-white/8 bg-black/25 p-4 transition hover:border-[#C4F24E]/28">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Capacity</p>
               <p className="mt-3 text-2xl font-black text-white">{chairsUsedPercent === null ? "-" : `${chairsUsedPercent}%`}</p>
               <p className="mt-2 text-sm leading-6 text-white/56">Chairs in motion</p>
             </Link>
-            <Link href="/dashboard/owner/money" className="rounded-[22px] border border-white/8 bg-black/25 p-4 transition hover:border-[#A3FF12]/28">
+            <Link href="/dashboard/owner/money" className="rounded-[22px] border border-white/8 bg-black/25 p-4 transition hover:border-[#C4F24E]/28">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Money alerts</p>
-              <p className={cn("mt-3 text-2xl font-black", alertCount ? "text-amber-300" : "text-[#A3FF12]")}>{alertCount}</p>
+              <p className={cn("mt-3 text-2xl font-black", alertCount ? "text-amber-300" : "text-[#C4F24E]")}>{alertCount}</p>
               <p className="mt-2 text-sm leading-6 text-white/56">{alertCount ? "Needs review" : "Clear"}</p>
             </Link>
           </div>
@@ -383,7 +383,7 @@ export function OwnerOverview() {
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">Today Revenue</h2>
               <details className="relative">
-                <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full text-white/42 transition hover:text-[#A3FF12]" aria-label="Explain today revenue">
+                <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full text-white/42 transition hover:text-[#C4F24E]" aria-label="Explain today revenue">
                   <Info className="h-5 w-5" />
                 </summary>
                 <div className="absolute left-0 z-10 mt-3 w-80 rounded-[18px] border border-white/10 bg-[#090909] p-4 text-sm leading-6 text-white/68 shadow-[0_18px_50px_rgba(0,0,0,0.5)]">
@@ -395,7 +395,7 @@ export function OwnerOverview() {
             {isInitialLoading ? (
               <Skeleton className="mt-7 h-16 w-72" />
             ) : (
-              <p className="mt-7 text-6xl font-black leading-none tracking-[-0.08em] text-[#A3FF12] drop-shadow-[0_0_28px_rgba(163,255,18,0.26)] sm:text-7xl" data-display="true">
+              <p className="mt-7 text-6xl font-black leading-none tracking-[-0.08em] text-[#C4F24E] drop-shadow-[0_0_28px_rgba(196, 242, 78,0.26)] sm:text-7xl" data-display="true">
                 {currency(todayRevenue)}
               </p>
             )}
@@ -405,13 +405,13 @@ export function OwnerOverview() {
               <p>Goal unavailable</p>
             </div>
             <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-0 rounded-full bg-[#A3FF12]" />
+              <div className="h-full w-0 rounded-full bg-[#C4F24E]" />
             </div>
           </div>
 
           <div className="border-white/10 lg:border-l lg:pl-9">
             <details className="relative ml-auto w-fit">
-              <summary className="inline-flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-[18px] border border-white/12 bg-black/30 px-5 text-lg font-extrabold text-white transition hover:border-[#A3FF12]/28">
+              <summary className="inline-flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-[18px] border border-white/12 bg-black/30 px-5 text-lg font-extrabold text-white transition hover:border-[#C4F24E]/28">
                 Today
                 <ChevronDown className="h-5 w-5" />
               </summary>
@@ -449,7 +449,7 @@ export function OwnerOverview() {
         <SectionHeader
           title="Utilization"
           action={
-            <Link href="/dashboard/owner/schedule" className="inline-flex items-center gap-2 text-lg font-extrabold text-[#A3FF12]">
+            <Link href="/dashboard/owner/schedule" className="inline-flex items-center gap-2 text-lg font-extrabold text-[#C4F24E]">
               Today
               <ChevronDown className="h-5 w-5" />
             </Link>
@@ -506,7 +506,7 @@ export function OwnerOverview() {
         <SectionHeader
           title="Team Snapshot"
           action={
-            <Link href="/dashboard/owner/team" className="inline-flex items-center gap-2 text-lg font-extrabold text-[#A3FF12]">
+            <Link href="/dashboard/owner/team" className="inline-flex items-center gap-2 text-lg font-extrabold text-[#C4F24E]">
               View all
               <ChevronRight className="h-5 w-5" />
             </Link>
@@ -526,14 +526,14 @@ export function OwnerOverview() {
               <Link
                 key={barber.id}
                 href={`/dashboard/owner/team?barber=${encodeURIComponent(barber.id)}`}
-                className="min-w-[9.25rem] rounded-[22px] border border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 text-center shadow-[0_14px_42px_rgba(0,0,0,0.38),inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:-translate-y-0.5 hover:border-[#A3FF12]/30"
+                className="min-w-[9.25rem] rounded-[22px] border border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 text-center shadow-[0_14px_42px_rgba(0,0,0,0.38),inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:-translate-y-0.5 hover:border-[#C4F24E]/30"
               >
                 <div className="relative mx-auto h-20 w-20">
-                  <div className={cn("flex h-20 w-20 items-center justify-center rounded-full border bg-[#111] text-xl font-black text-white shadow-[0_0_18px_rgba(163,255,18,0.12)]", barber.active ? "border-[#A3FF12]/70" : "border-white/14")}>
+                  <div className={cn("flex h-20 w-20 items-center justify-center rounded-full border bg-[#111] text-xl font-black text-white shadow-[0_0_18px_rgba(196, 242, 78,0.12)]", barber.active ? "border-[#C4F24E]/70" : "border-white/14")}>
                     {barber.initials}
                   </div>
                   {barber.active ? (
-                    <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-black bg-[#A3FF12] shadow-[0_0_12px_rgba(163,255,18,0.45)]" />
+                    <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-black bg-[#C4F24E] shadow-[0_0_12px_rgba(196, 242, 78,0.45)]" />
                   ) : null}
                 </div>
                 <p className="mt-4 text-xl font-black tracking-[-0.04em] text-white">{barber.name}</p>
@@ -550,7 +550,7 @@ export function OwnerOverview() {
           <GlassCard className="p-6">
             <p className="text-xl font-extrabold text-white">No active team members yet.</p>
             <p className="mt-2 text-sm text-white/58">Invite barbers to start tracking performance.</p>
-            <Link href="/dashboard/owner/team" className="mt-5 inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
+            <Link href="/dashboard/owner/team" className="mt-5 inline-flex min-h-12 items-center justify-center rounded-full border border-[#C4F24E]/40 px-5 text-sm font-extrabold text-[#C4F24E] transition hover:bg-[#C4F24E]/10">
               Invite Barber
             </Link>
           </GlassCard>
@@ -562,7 +562,7 @@ export function OwnerOverview() {
           id="owner-alerts"
           title="Alerts & Opportunities"
           action={
-            <Link href="#owner-alerts" className="text-lg font-extrabold text-[#A3FF12]">
+            <Link href="#owner-alerts" className="text-lg font-extrabold text-[#C4F24E]">
               View all alerts
             </Link>
           }
@@ -586,7 +586,7 @@ export function OwnerOverview() {
                   className={cn(
                     "inline-flex h-12 w-12 items-center justify-center rounded-[16px] border",
                     alert.tone === "warning" && "border-amber-300/25 bg-amber-300/10 text-amber-300",
-                    alert.tone === "opportunity" && "border-[#A3FF12]/25 bg-[#A3FF12]/10 text-[#A3FF12]",
+                    alert.tone === "opportunity" && "border-[#C4F24E]/25 bg-[#C4F24E]/10 text-[#C4F24E]",
                     alert.tone === "danger" && "border-red-400/25 bg-red-500/10 text-red-300"
                   )}
                 >
@@ -612,15 +612,15 @@ export function OwnerOverview() {
       <section className="space-y-5 pb-4">
         <SectionHeader title="Quick Actions" />
         <div className="grid gap-4 md:grid-cols-3">
-          <Link href="/dashboard/owner/schedule?action=assign-walkin" className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[20px] border border-[#A3FF12]/40 bg-black/25 px-5 text-lg font-extrabold text-[#A3FF12] transition hover:-translate-y-0.5 hover:bg-[#A3FF12]/10">
+          <Link href="/dashboard/owner/schedule?action=assign-walkin" className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[20px] border border-[#C4F24E]/40 bg-black/25 px-5 text-lg font-extrabold text-[#C4F24E] transition hover:-translate-y-0.5 hover:bg-[#C4F24E]/10">
             <UserPlus className="h-5 w-5" />
             Assign Walk-in
           </Link>
-          <Link href="/dashboard/owner/schedule?filter=open-slots" className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[20px] border border-[#A3FF12]/40 bg-black/25 px-5 text-lg font-extrabold text-[#A3FF12] transition hover:-translate-y-0.5 hover:bg-[#A3FF12]/10">
+          <Link href="/dashboard/owner/schedule?filter=open-slots" className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[20px] border border-[#C4F24E]/40 bg-black/25 px-5 text-lg font-extrabold text-[#C4F24E] transition hover:-translate-y-0.5 hover:bg-[#C4F24E]/10">
             <Rocket className="h-5 w-5" />
             Review Capacity
           </Link>
-          <Link href="/dashboard/owner/schedule" className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[20px] border border-[#A3FF12]/40 bg-black/25 px-5 text-lg font-extrabold text-[#A3FF12] transition hover:-translate-y-0.5 hover:bg-[#A3FF12]/10">
+          <Link href="/dashboard/owner/schedule" className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[20px] border border-[#C4F24E]/40 bg-black/25 px-5 text-lg font-extrabold text-[#C4F24E] transition hover:-translate-y-0.5 hover:bg-[#C4F24E]/10">
             <CalendarDays className="h-5 w-5" />
             View Full Schedule
           </Link>

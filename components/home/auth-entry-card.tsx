@@ -83,7 +83,7 @@ export function AuthEntryCard() {
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(124,255,0,0.78),transparent)]"
+        className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(196, 242, 78,0.78),transparent)]"
       />
       <h2 id="auth-entry-title" className="sr-only">
         Account access
@@ -119,7 +119,7 @@ export function AuthEntryCard() {
         </div>
         <Link
           href="/forgot-password"
-          className="w-fit justify-self-end text-sm font-medium text-white/56 underline-offset-4 transition hover:text-[#cfff93] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7cff00] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          className="w-fit justify-self-end text-sm font-medium text-white/56 underline-offset-4 transition hover:text-[#e0f6a0] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4f24e] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
         >
           Forgot password?
         </Link>
@@ -152,7 +152,7 @@ export function AuthEntryCard() {
         </Button>
         <Link
           href="/signup"
-          className="inline-flex min-h-[52px] items-center justify-center rounded-full border border-[#7cff00]/25 bg-[#7cff00]/8 px-5 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-[#d7ffab] transition hover:border-[#7cff00]/45 hover:bg-[#7cff00]/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7cff00] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          className="inline-flex min-h-[52px] items-center justify-center rounded-full border border-[#c4f24e]/25 bg-[#c4f24e]/8 px-5 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e4f9b8] transition hover:border-[#c4f24e]/45 hover:bg-[#c4f24e]/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4f24e] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
         >
           Create account
         </Link>

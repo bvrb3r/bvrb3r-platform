@@ -34,12 +34,12 @@ export default async function ReportsPage({
               <p className="surface-label">Money visibility</p>
               <p className="mt-2 text-sm text-white/58">Money stays live here because it runs on canonical payment, routing, payout, and anomaly systems.</p>
             </div>
-            <span className="status-pill text-[#d7ffab]">Canonical money tab</span>
+            <span className="status-pill text-[#e4f9b8]">Canonical money tab</span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
               href="/reports?view=money"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#cfff93]/40 bg-[linear-gradient(135deg,#7cff00_0%,#b7ff58_100%)] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(124,255,0,0.24)] transition sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#e0f6a0]/40 bg-[linear-gradient(135deg,#c4f24e_0%,#d4f97a_100%)] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(196, 242, 78,0.24)] transition sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
             >
               Money
             </Link>

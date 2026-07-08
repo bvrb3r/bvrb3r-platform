@@ -46,7 +46,7 @@ export default async function AppointmentsPage({
               <p className="surface-label">Appointment details</p>
               <p className="mt-2 max-w-2xl text-sm text-white/58">Scan time, chair, balance, and current status without leaving the schedule view.</p>
             </div>
-            <span className="status-pill text-[#d7ffab]">Live floor visibility</span>
+            <span className="status-pill text-[#e4f9b8]">Live floor visibility</span>
           </div>
 
           <div className="mt-4 rounded-[28px] border border-dashed border-white/10 bg-black/20 p-6 text-sm leading-6 text-white/58">
@@ -60,7 +60,7 @@ export default async function AppointmentsPage({
               <p className="surface-label">Walk-in management</p>
               <p className="mt-2 text-sm text-white/58">Claim requests, keep wait estimates visible, and protect queue clarity during rush windows.</p>
             </div>
-            <span className="status-pill text-[#d7ffab]">Front desk ready</span>
+            <span className="status-pill text-[#e4f9b8]">Front desk ready</span>
           </div>
           <div className="mt-4 rounded-[28px] border border-dashed border-white/10 bg-black/20 p-6 text-sm leading-6 text-white/58">
             No walk-ins are waiting right now. Queue records will stay empty until real guests join the line.

@@ -84,7 +84,7 @@ async function readJson<T>(response: Response) {
 function statusClass(status?: string | null) {
   const normalized = String(status ?? "").toLowerCase();
   if (["healthy", "pass", "completed", "eligible", "ready"].some((token) => normalized.includes(token))) {
-    return "border-[#7CFF00]/25 bg-[#7CFF00]/12 text-[#d7ffab]";
+    return "border-[#C4F24E]/25 bg-[#C4F24E]/12 text-[#e4f9b8]";
   }
   if (["idle"].some((token) => normalized.includes(token))) {
     return "border-emerald-300/20 bg-emerald-300/8 text-emerald-100";
@@ -128,8 +128,8 @@ function EvidenceCard({ card, onOpenIssue }: { card: MissionEvidenceCard; onOpen
       aria-label={interactive ? `Open ${card.label} issue detail` : undefined}
       data-testid={`architect-issue-card-${card.id}`}
       className={cn(
-        "min-h-[11rem] rounded-[18px] border border-white/8 bg-black/24 p-4 shadow-[0_18px_42px_rgba(0,0,0,0.20)] transition hover:border-[#A3FF12]/18",
-        interactive && "cursor-pointer text-left hover:bg-white/[0.035] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/55"
+        "min-h-[11rem] rounded-[18px] border border-white/8 bg-black/24 p-4 shadow-[0_18px_42px_rgba(0,0,0,0.20)] transition hover:border-[#C4F24E]/18",
+        interactive && "cursor-pointer text-left hover:bg-white/[0.035] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/55"
       )}
       onClick={onOpenIssue}
       onKeyDown={interactive ? (event) => handleCardKeyboard(event, onOpenIssue as () => void) : undefined}
@@ -149,7 +149,7 @@ function EvidenceCard({ card, onOpenIssue }: { card: MissionEvidenceCard; onOpen
         {card.evidence.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
       </ul>
       {interactive ? (
-        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#d7ffab]">Open issue detail</p>
+        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#e4f9b8]">Open issue detail</p>
       ) : null}
     </article>
   );
@@ -1252,7 +1252,7 @@ function CeoHistoricalChart({ points }: { points?: CeoChartPoint[] }) {
         {points.map((point) => (
           <div key={point.label} className="flex min-w-0 flex-1 flex-col items-center gap-2">
             <div
-              className="w-full rounded-t-[8px] border border-[#A3FF12]/22 bg-[#A3FF12]/18"
+              className="w-full rounded-t-[8px] border border-[#C4F24E]/22 bg-[#C4F24E]/18"
               style={{ height: `${Math.max(8, (point.value / maxValue) * 100)}%` }}
             />
             <span className="truncate text-[10px] font-black uppercase tracking-[0.08em] text-white/44">{point.label}</span>
@@ -1277,7 +1277,7 @@ function CompactCeoCard({ card, onAction, onOpenDetail }: { card: CompactCeoCard
       tabIndex={0}
       aria-label={`Open ${card.label} detail`}
       data-testid={`architect-ceo-card-${card.id}`}
-      className="flex min-h-[8rem] cursor-pointer flex-col justify-between rounded-[18px] border border-white/8 bg-black/24 p-4 text-left shadow-[0_18px_42px_rgba(0,0,0,0.20)] transition hover:border-[#A3FF12]/18 hover:bg-white/[0.035] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/55"
+      className="flex min-h-[8rem] cursor-pointer flex-col justify-between rounded-[18px] border border-white/8 bg-black/24 p-4 text-left shadow-[0_18px_42px_rgba(0,0,0,0.20)] transition hover:border-[#C4F24E]/18 hover:bg-white/[0.035] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/55"
       onClick={onOpenDetail}
       onKeyDown={(event) => handleCardKeyboard(event, onOpenDetail)}
     >
@@ -1296,7 +1296,7 @@ function CompactCeoCard({ card, onAction, onOpenDetail }: { card: CompactCeoCard
         {card.href ? (
           <Link
             href={card.href}
-            className="text-[10px] font-black uppercase tracking-[0.16em] text-[#d7ffab] hover:text-white"
+            className="text-[10px] font-black uppercase tracking-[0.16em] text-[#e4f9b8] hover:text-white"
             onClick={(event) => event.stopPropagation()}
           >
             Open lane
@@ -1350,7 +1350,7 @@ function CeoGreenQueue({ cards }: { cards: CompactCeoCard[] }) {
     <article className="rounded-[22px] border border-white/8 bg-black/24 p-4 shadow-[0_18px_48px_rgba(0,0,0,0.22)] sm:p-5" data-testid="ceo-green-queue">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#A3FF12]">Green Queue</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#C4F24E]">Green Queue</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Officer-owned path to green or neutral</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
             Compact card-state queue. It shows what is already green, what is neutral by design, what needs proof, what needs repair, and what is blocked before remediation.
@@ -1382,7 +1382,7 @@ function CeoGreenQueue({ cards }: { cards: CompactCeoCard[] }) {
                     <StatusPill status={card.status} />
                   </div>
                   <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-white/52">{card.stateSemantics.requiredAction}</p>
-                  <Link href={card.stateSemantics.openLaneTarget as Route} className="mt-2 inline-flex text-[10px] font-black uppercase tracking-[0.14em] text-[#d7ffab] hover:text-white">
+                  <Link href={card.stateSemantics.openLaneTarget as Route} className="mt-2 inline-flex text-[10px] font-black uppercase tracking-[0.14em] text-[#e4f9b8] hover:text-white">
                     Open Officer
                   </Link>
                 </div>
@@ -1411,12 +1411,12 @@ function CeoReadinessCard({
   return (
     <article
       data-testid="architect-ceo-readiness"
-      className="rounded-[22px] border border-white/8 bg-[linear-gradient(135deg,rgba(163,255,18,0.10),rgba(255,255,255,0.025)_42%,rgba(0,0,0,0.24))] p-4 shadow-[0_22px_70px_rgba(0,0,0,0.30)] sm:p-5"
+      className="rounded-[22px] border border-white/8 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.10),rgba(255,255,255,0.025)_42%,rgba(0,0,0,0.24))] p-4 shadow-[0_22px_70px_rgba(0,0,0,0.30)] sm:p-5"
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">V1 Readiness</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">V1 Readiness</p>
             <StatusPill status={readiness.overallStatus} />
           </div>
           <div className="mt-3 flex flex-wrap items-end gap-3">
@@ -1432,7 +1432,7 @@ function CeoReadinessCard({
         <div className="grid min-w-full gap-2 sm:grid-cols-5 lg:min-w-[42rem]">
           <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">V1 required pass</p>
-            <p data-testid="ceo-readiness-pass-count" className="mt-1 text-2xl font-black text-[#d7ffab]">{readiness.passCount}</p>
+            <p data-testid="ceo-readiness-pass-count" className="mt-1 text-2xl font-black text-[#e4f9b8]">{readiness.passCount}</p>
           </div>
           <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">V1 required failed</p>
@@ -1483,7 +1483,7 @@ function CeoReadinessCard({
                     <li key={blocker.id}>{blocker.label}</li>
                   ))}
                 </ul>
-                <Link data-testid={`ceo-officer-link-${group.laneId}`} href={group.href} className="mt-3 inline-flex min-h-9 items-center rounded-[8px] border border-[#A3FF12]/24 px-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#d7ffab] hover:border-[#A3FF12]/50">
+                <Link data-testid={`ceo-officer-link-${group.laneId}`} href={group.href} className="mt-3 inline-flex min-h-9 items-center rounded-[8px] border border-[#C4F24E]/24 px-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#e4f9b8] hover:border-[#C4F24E]/50">
                   Open Officer
                 </Link>
               </section>
@@ -1512,7 +1512,7 @@ function CeoReadinessCard({
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Officer Status Grid</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {officerSummaries.map((officer) => (
-                <Link key={officer.laneId} href={officer.href} className="rounded-[12px] border border-white/8 bg-black/24 p-3 hover:border-[#A3FF12]/26">
+                <Link key={officer.laneId} href={officer.href} className="rounded-[12px] border border-white/8 bg-black/24 p-3 hover:border-[#C4F24E]/26">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-xs font-black text-white">{officer.label}</p>
@@ -1550,7 +1550,7 @@ function V1RuntimeProofPanel({ groups }: { groups: V1RuntimeProofGroup[] }) {
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">V1 Runtime Proof</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">V1 Runtime Proof</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Role and operating-loop proof matrix</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
             Read-only proof rows show whether the current V1 Client, Barber, Shop Owner, Money, Security, Deployment, and Audit loops are connected, failing, or still missing evidence.
@@ -1585,7 +1585,7 @@ function V1RuntimeProofPanel({ groups }: { groups: V1RuntimeProofGroup[] }) {
                 <dd className="text-white/76">{group.nextRepairLane.replace("_", " ")}</dd>
               </div>
             </dl>
-            <Link href={`/architect/${group.nextRepairLane === "ceo" ? "ceo" : group.nextRepairLane}` as Route} className="mt-3 inline-flex text-[10px] font-black uppercase tracking-[0.16em] text-[#d7ffab] hover:text-white">
+            <Link href={`/architect/${group.nextRepairLane === "ceo" ? "ceo" : group.nextRepairLane}` as Route} className="mt-3 inline-flex text-[10px] font-black uppercase tracking-[0.16em] text-[#e4f9b8] hover:text-white">
               Open lane
             </Link>
           </section>
@@ -1658,7 +1658,7 @@ function DeploymentRegressionEvidencePanel({ evidence }: { evidence?: Deployment
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Deployment / Regression Evidence</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Deployment / Regression Evidence</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Production proof connector</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
             Read-only deployment proof compares expected main commit, runtime commit, deployment metadata, and validation evidence. Missing build, lint, typecheck, or test proof stays Needs Review.
@@ -1757,7 +1757,7 @@ function AuditSpinePanel({ auditSpine }: { auditSpine?: AuditSpineModel }) {
       <article data-testid="audit-spine" className="rounded-[22px] border border-white/8 bg-black/24 p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Audit Spine</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Audit Spine</p>
             <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Repair audit evidence is not connected</h3>
             <p className="mt-2 text-sm leading-6 text-white/62">No Audit Spine read model was returned. This remains Needs Review and cannot count as Pass.</p>
           </div>
@@ -1771,7 +1771,7 @@ function AuditSpinePanel({ auditSpine }: { auditSpine?: AuditSpineModel }) {
     <article data-testid="audit-spine" className="rounded-[22px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.24)] sm:p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Audit Spine</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Audit Spine</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Controlled repair evidence stages</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
             Read-only coverage for approval, execution, verification, and score-impact evidence. Refund rows can prove execution, but they cannot fake full repair audit Pass.
@@ -1833,14 +1833,14 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
       <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#070707] text-white shadow-[0_34px_100px_rgba(0,0,0,0.62)]" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-white/8 p-5">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#A3FF12]">CEO Card Detail</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#C4F24E]">CEO Card Detail</p>
             <h3 id="ceo-card-detail-title" className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{card.label}</h3>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <StatusPill status={card.status} />
               <span className="rounded-[8px] border border-white/10 bg-black/24 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/54">Read-only</span>
             </div>
           </div>
-          <button type="button" aria-label="Close CEO card detail" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]" onClick={onClose}>
+          <button type="button" aria-label="Close CEO card detail" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#C4F24E]/35 hover:text-[#C4F24E]" onClick={onClose}>
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1898,7 +1898,7 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
               <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Evidence</h4>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-white/62">
                 {card.evidence.slice(0, 6).map((item) => (
-                  <li key={item} className="border-l border-[#A3FF12]/22 pl-3">{item}</li>
+                  <li key={item} className="border-l border-[#C4F24E]/22 pl-3">{item}</li>
                 ))}
               </ul>
             </section>
@@ -1918,7 +1918,7 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
         <div className="flex flex-col-reverse gap-2 border-t border-white/8 p-5 sm:flex-row sm:justify-end">
           <Button type="button" variant="secondary" className="min-h-11 rounded-[8px]" onClick={onClose}>Close</Button>
           {card.href ? (
-            <Link href={card.href} className="inline-flex min-h-11 items-center justify-center rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black shadow-[0_14px_32px_rgba(163,255,18,0.22)] transition hover:bg-[#d7ffab]">
+            <Link href={card.href} className="inline-flex min-h-11 items-center justify-center rounded-[8px] border border-[#C4F24E]/42 bg-[#C4F24E] px-5 text-sm font-black text-black shadow-[0_14px_32px_rgba(196, 242, 78,0.22)] transition hover:bg-[#e4f9b8]">
               Open Lane
             </Link>
           ) : null}
@@ -1931,10 +1931,10 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
 
 function ArchitectControlPlaneBoundary({ lane }: { lane: MissionDepartmentLane }) {
   return (
-    <article className="rounded-[22px] border border-[#A3FF12]/14 bg-[#A3FF12]/6 p-4" data-testid="architect-control-plane-boundary">
+    <article className="rounded-[22px] border border-[#C4F24E]/14 bg-[#C4F24E]/6 p-4" data-testid="architect-control-plane-boundary">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d7ffab]">Control-plane boundary</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#e4f9b8]">Control-plane boundary</p>
           <h3 className="mt-2 text-lg font-black tracking-[-0.03em] text-white">Architect detects issues before it executes actions.</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/64">
             {lane.label} cards are evidence-first issue detectors. Controlled repair actions are separate, gated, auth-bound, and must keep missing UI, missing auth, or missing environment evidence as Needs Review / Not connected.
@@ -1981,10 +1981,10 @@ function ControlledRefundResolutionSection({
 
   if (!targets.length) {
     return (
-      <section className="mt-3 rounded-[20px] border border-[#A3FF12]/22 bg-[#A3FF12]/8 p-4" data-testid="controlled-refund-resolution">
+      <section className="mt-3 rounded-[20px] border border-[#C4F24E]/22 bg-[#C4F24E]/8 p-4" data-testid="controlled-refund-resolution">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-[#d7ffab]">Controlled refund resolution</h4>
+            <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-[#e4f9b8]">Controlled refund resolution</h4>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">
               No active cancelled/captured refund targets. Refund history is available in Finance Logs.
             </p>
@@ -2133,7 +2133,7 @@ function ControlledRefundResolutionSection({
               <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Type {expectedBatchConfirmation} to enable</span>
               <input
                 aria-label="Type batch refund confirmation"
-                className="mt-2 h-11 w-full rounded-[10px] border border-white/10 bg-black/36 px-3 font-mono text-sm text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/42"
+                className="mt-2 h-11 w-full rounded-[10px] border border-white/10 bg-black/36 px-3 font-mono text-sm text-white outline-none transition placeholder:text-white/28 focus:border-[#C4F24E]/42"
                 value={batchConfirmation}
                 onChange={(event) => setBatchConfirmation(event.target.value)}
                 placeholder={expectedBatchConfirmation}
@@ -2142,7 +2142,7 @@ function ControlledRefundResolutionSection({
             </label>
             <Button
               type="button"
-              className="min-h-11 rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black hover:bg-[#d7ffab] disabled:border-white/10 disabled:bg-white/10 disabled:text-white/34"
+              className="min-h-11 rounded-[8px] border border-[#C4F24E]/42 bg-[#C4F24E] px-5 text-sm font-black text-black hover:bg-[#e4f9b8] disabled:border-white/10 disabled:bg-white/10 disabled:text-white/34"
               disabled={batchDisabled}
               aria-label={`Refund all ${targets.length} active targets through canonical route`}
               onClick={() => void executeBatchRefund()}
@@ -2154,7 +2154,7 @@ function ControlledRefundResolutionSection({
             <div className={cn(
               "mt-3 rounded-[14px] border p-3 text-sm leading-6",
               batchState.status === "success"
-                ? "border-[#A3FF12]/22 bg-[#A3FF12]/10 text-[#d7ffab]"
+                ? "border-[#C4F24E]/22 bg-[#C4F24E]/10 text-[#e4f9b8]"
                 : "border-rose-400/24 bg-rose-400/10 text-rose-100"
             )}>
               {batchState.message}
@@ -2201,7 +2201,7 @@ function ControlledRefundResolutionSection({
                   <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Type REFUND 5 to enable</span>
                   <input
                     aria-label={`Type REFUND 5 for payment ${target.paymentId}`}
-                    className="mt-2 h-11 w-full rounded-[10px] border border-white/10 bg-black/36 px-3 font-mono text-sm text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/42"
+                    className="mt-2 h-11 w-full rounded-[10px] border border-white/10 bg-black/36 px-3 font-mono text-sm text-white outline-none transition placeholder:text-white/28 focus:border-[#C4F24E]/42"
                     value={confirmation}
                     onChange={(event) => updateConfirmation(target.paymentId, event.target.value)}
                     placeholder={CONTROLLED_REFUND_CONFIRMATION}
@@ -2210,7 +2210,7 @@ function ControlledRefundResolutionSection({
                 </label>
                 <Button
                   type="button"
-                  className="min-h-11 rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black hover:bg-[#d7ffab] disabled:border-white/10 disabled:bg-white/10 disabled:text-white/34"
+                  className="min-h-11 rounded-[8px] border border-[#C4F24E]/42 bg-[#C4F24E] px-5 text-sm font-black text-black hover:bg-[#e4f9b8] disabled:border-white/10 disabled:bg-white/10 disabled:text-white/34"
                   disabled={disabled}
                   aria-label={`Refund $5 through canonical route for payment ${target.paymentId}`}
                   onClick={() => void executeRefund(target)}
@@ -2219,7 +2219,7 @@ function ControlledRefundResolutionSection({
                 </Button>
               </div>
               {state.status === "success" ? (
-                <div className="mt-3 rounded-[14px] border border-[#A3FF12]/22 bg-[#A3FF12]/10 p-3 text-sm leading-6 text-[#d7ffab]">
+                <div className="mt-3 rounded-[14px] border border-[#C4F24E]/22 bg-[#C4F24E]/10 p-3 text-sm leading-6 text-[#e4f9b8]">
                   <p className="font-black">Refund success.</p>
                   <p>Refund ID: {state.refundId ?? "returned response did not include refund ID"}</p>
                   <p>Updated payment status: {state.paymentStatus ?? "not returned"}</p>
@@ -2325,7 +2325,7 @@ function ArchitectIssueDetailModal({
       <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#070707] text-white shadow-[0_34px_100px_rgba(0,0,0,0.62)]" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-white/8 p-5">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#A3FF12]">Issue Detail</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#C4F24E]">Issue Detail</p>
             <h3 id="architect-issue-detail-title" className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{issue.issueName}</h3>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="rounded-[8px] border border-white/10 bg-black/24 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/58">{issue.lane.label}</span>
@@ -2333,7 +2333,7 @@ function ArchitectIssueDetailModal({
               <span className="rounded-[8px] border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-100">{issue.severity}</span>
             </div>
           </div>
-          <button type="button" aria-label="Close issue detail" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]" onClick={onClose}>
+          <button type="button" aria-label="Close issue detail" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#C4F24E]/35 hover:text-[#C4F24E]" onClick={onClose}>
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -2363,7 +2363,7 @@ function ArchitectIssueDetailModal({
               <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Evidence rows</h4>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-white/62">
                 {issue.evidenceRows.map((row) => (
-                  <li key={row} className="border-l border-[#A3FF12]/22 pl-3">{row}</li>
+                  <li key={row} className="border-l border-[#C4F24E]/22 pl-3">{row}</li>
                 ))}
               </ul>
             </section>
@@ -2407,7 +2407,7 @@ function ArchitectIssueDetailModal({
           ) : null}
 
           {copyMessage ? (
-            <p className="mt-3 rounded-[14px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 p-3 text-sm text-[#d7ffab]">{copyMessage}</p>
+            <p className="mt-3 rounded-[14px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-3 text-sm text-[#e4f9b8]">{copyMessage}</p>
           ) : null}
         </div>
 
@@ -2420,12 +2420,12 @@ function ArchitectIssueDetailModal({
                   {contextualPromptLabel}
                 </Button>
               ) : null}
-              <Button type="button" className="min-h-11 rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black hover:bg-[#d7ffab]" onClick={onOpenFinanceLogs}>
+              <Button type="button" className="min-h-11 rounded-[8px] border border-[#C4F24E]/42 bg-[#C4F24E] px-5 text-sm font-black text-black hover:bg-[#e4f9b8]" onClick={onOpenFinanceLogs}>
                 Open Finance Logs
               </Button>
             </>
           ) : (
-            <Button type="button" className="min-h-11 rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black hover:bg-[#d7ffab]" onClick={() => void handlePromptAction()} disabled={promptState === "building"}>
+            <Button type="button" className="min-h-11 rounded-[8px] border border-[#C4F24E]/42 bg-[#C4F24E] px-5 text-sm font-black text-black hover:bg-[#e4f9b8]" onClick={() => void handlePromptAction()} disabled={promptState === "building"}>
               {promptButtonLabel}
             </Button>
           )}
@@ -2453,7 +2453,7 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
     <section aria-labelledby="ceo-command-center" className="space-y-3" data-testid="architect-ceo-one-screen">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">CEO Command Center</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">CEO Command Center</p>
           <h2 id="ceo-command-center" className="mt-1 text-2xl font-black tracking-[-0.04em] text-white">One-screen platform posture</h2>
         </div>
         <p className="text-xs text-white/48">Missing data stays Needs Review. Failed evidence stays Failed.</p>
@@ -2533,7 +2533,7 @@ function FinanceRoutingEvidencePanel({ summary }: { summary: FinanceRoutingEvide
     <article className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5" data-testid="finance-routing-evidence-summary">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">Finance Routing Evidence</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#C4F24E]">Finance Routing Evidence</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">
             {summary.repairNeeded ? "Routing repair target detected" : "Routing repair not required"}
           </h3>
@@ -2575,7 +2575,7 @@ function FinanceLogsPanel({ logs, metrics }: { logs: FinanceLogEntry[]; metrics:
     <article id="finance-logs" className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5" data-testid="finance-logs">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">Finance Logs</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#C4F24E]">Finance Logs</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Refund History</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
             Searchable refund, failed refund attempt, payout block, and manual-review evidence. This is read-only and does not execute money actions.
@@ -2612,7 +2612,7 @@ function FinanceLogsPanel({ logs, metrics }: { logs: FinanceLogEntry[]; metrics:
           <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/36">Search by payment, appointment, refund, provider ID, or reason</span>
           <input
             aria-label="Search Finance Logs"
-            className="mt-2 h-11 w-full rounded-[10px] border border-white/10 bg-black/36 px-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/42"
+            className="mt-2 h-11 w-full rounded-[10px] border border-white/10 bg-black/36 px-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-[#C4F24E]/42"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search Finance Logs"
@@ -2626,8 +2626,8 @@ function FinanceLogsPanel({ logs, metrics }: { logs: FinanceLogEntry[]; metrics:
               className={cn(
                 "min-h-10 rounded-[8px] border px-3 text-xs font-black transition",
                 timeFilter === filter
-                  ? "border-[#A3FF12]/42 bg-[#A3FF12] text-black"
-                  : "border-white/10 bg-white/[0.035] text-white/62 hover:border-[#A3FF12]/30"
+                  ? "border-[#C4F24E]/42 bg-[#C4F24E] text-black"
+                  : "border-white/10 bg-white/[0.035] text-white/62 hover:border-[#C4F24E]/30"
               )}
               onClick={() => setTimeFilter(filter)}
             >
@@ -2645,8 +2645,8 @@ function FinanceLogsPanel({ logs, metrics }: { logs: FinanceLogEntry[]; metrics:
             className={cn(
               "min-h-10 rounded-[8px] border px-3 text-xs font-black transition",
               categoryFilter === filter.id
-                ? "border-[#A3FF12]/42 bg-[#A3FF12] text-black"
-                : "border-white/10 bg-white/[0.035] text-white/62 hover:border-[#A3FF12]/30"
+                ? "border-[#C4F24E]/42 bg-[#C4F24E] text-black"
+                : "border-white/10 bg-white/[0.035] text-white/62 hover:border-[#C4F24E]/30"
             )}
             onClick={() => setCategoryFilter(filter.id)}
           >
@@ -2724,7 +2724,7 @@ function RlsSecurityInventoryPanel({ inventory }: { inventory?: RlsSecurityInven
     <article className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5" data-testid="rls-security-inventory">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">RLS Security Inventory</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#C4F24E]">RLS Security Inventory</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Read-only Supabase RLS posture</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
             Inventory only - no RLS changes applied. Missing production table/policy evidence stays Needs Review, and disabled V1-critical evidence stays Failed.
@@ -2872,7 +2872,7 @@ function SourceVaultInventoryPanel({ inventory }: { inventory?: SourceVaultInven
     <article className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5" data-testid="source-vault-inventory">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">Source Vault Ingestion Foundation</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#C4F24E]">Source Vault Ingestion Foundation</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Metadata-only source readiness</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/58">
             {inventory.privacyWarning} Source titles, categories, private-storage references, placeholder hashes, scopes, linked cards, and readiness states are tracked without committing raw PDFs, DOCX files, screenshots, transcripts, secrets, or private strategy documents.
@@ -2957,7 +2957,7 @@ function RoleTruthInventoryPanel({ inventory }: { inventory?: RoleTruthInventory
     <article className="rounded-[24px] border border-white/8 bg-black/24 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5" data-testid="role-truth-inventory">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">Role Truth Inventory</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#C4F24E]">Role Truth Inventory</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">Read-only account role migration plan</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
             Plan only - no role changes applied. Primary account roles, platform admin, business relationships, staff permissions, legacy drift, and unknown values are separated before any migration is approved.
@@ -3063,7 +3063,7 @@ function DepartmentLaneDetail({
   return (
     <section aria-labelledby={`${lane.id}-lane-heading`} className="space-y-4">
       <div>
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">{lane.label} Mission Control</p>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">{lane.label} Mission Control</p>
         <h2 id={`${lane.id}-lane-heading`} className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{lane.purpose}</h2>
       </div>
       <ArchitectControlPlaneBoundary lane={lane} />
@@ -3170,10 +3170,10 @@ export function ArchitectMissionControl({ laneId = "ceo" }: { laneId?: MissionLa
     <main className="px-2 pb-8 pt-2 sm:px-3 sm:pt-3 lg:px-5" data-testid="architect-mission-control-root">
       <div className="mx-auto max-w-7xl space-y-3">
         <section className="relative overflow-hidden rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl sm:p-5">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.08),transparent_32%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(196, 242, 78,0.08),transparent_32%)]" />
           <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <div className="inline-flex items-center gap-2 rounded-[8px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#d7ffab]">
+              <div className="inline-flex items-center gap-2 rounded-[8px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#e4f9b8]">
                 <ShieldCheck className="h-3.5 w-3.5" />
                 Mission Control
               </div>
@@ -3202,7 +3202,7 @@ export function ArchitectMissionControl({ laneId = "ceo" }: { laneId?: MissionLa
           </div>
         ) : null}
         {notice ? (
-          <div className="flex items-start gap-2 rounded-[18px] border border-[#A3FF12]/20 bg-[#A3FF12]/10 p-3 text-sm text-[#d7ffab]">
+          <div className="flex items-start gap-2 rounded-[18px] border border-[#C4F24E]/20 bg-[#C4F24E]/10 p-3 text-sm text-[#e4f9b8]">
             <CheckCircle2 className="mt-0.5 h-4 w-4" />
             {notice}
           </div>

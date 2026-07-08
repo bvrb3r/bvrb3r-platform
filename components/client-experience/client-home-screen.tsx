@@ -223,7 +223,7 @@ export function ClientHomeScreen({
   return (
     <div className="space-y-4" data-testid="client-home-screen">
       <Card className="rounded-[38px] border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(6,6,6,0.99))] p-5 shadow-[0_30px_70px_rgba(0,0,0,0.32)] sm:p-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,255,0,0.12),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_26%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(196, 242, 78,0.12),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_26%)]" />
         <div className="relative">
           <PageHeader
             label="Book fast"
@@ -232,9 +232,9 @@ export function ClientHomeScreen({
           />
 
           <div className="mt-6 max-w-xl">
-            <div className="rounded-[28px] border border-[#d7ffab]/14 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(8,8,8,0.98))] p-4">
+            <div className="rounded-[28px] border border-[#e4f9b8]/14 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(8,8,8,0.98))] p-4">
               <div className="inline-flex items-center gap-2 text-sm text-white/92">
-                <CalendarDays className="h-4 w-4 text-[#d7ffab]" />
+                <CalendarDays className="h-4 w-4 text-[#e4f9b8]" />
                 Get a Cut Now
               </div>
               <p className="mt-3 text-sm leading-7 text-white/68">
@@ -368,7 +368,7 @@ export function ClientHomeScreen({
           </div>
         ) : (
           <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
-            <div className="inline-flex items-center gap-2 text-sm font-semibold text-[#d7ffab]">
+            <div className="inline-flex items-center gap-2 text-sm font-semibold text-[#e4f9b8]">
               <Sparkles className="h-4 w-4" />
               Culture lives here
             </div>
@@ -409,21 +409,21 @@ export function ClientHomeScreen({
             <div className="mt-5 grid gap-3 md:grid-cols-3">
               <div className="rounded-[18px] border border-white/8 bg-black/20 p-4">
                 <div className="inline-flex items-center gap-2 text-sm text-white/78">
-                  <CalendarDays className="h-4 w-4 text-[#baff69]" />
+                  <CalendarDays className="h-4 w-4 text-[#d9f985]" />
                   Date
                 </div>
                 <p className="mt-3 text-lg font-semibold text-white">{formatDateLabel(nextAppointment.start)}</p>
               </div>
               <div className="rounded-[18px] border border-white/8 bg-black/20 p-4">
                 <div className="inline-flex items-center gap-2 text-sm text-white/78">
-                  <Clock3 className="h-4 w-4 text-[#d7ffab]" />
+                  <Clock3 className="h-4 w-4 text-[#e4f9b8]" />
                   Time
                 </div>
                 <p className="mt-3 text-lg font-semibold text-white">{formatTimeLabel(nextAppointment.start)}</p>
               </div>
               <div className="rounded-[18px] border border-white/8 bg-black/20 p-4">
                 <div className="inline-flex items-center gap-2 text-sm text-white/78">
-                  <MapPin className="h-4 w-4 text-[#baff69]" />
+                  <MapPin className="h-4 w-4 text-[#d9f985]" />
                   Payment
                 </div>
                 <p className="mt-3 text-lg font-semibold text-white">{paymentStatusCopy}</p>
@@ -455,7 +455,7 @@ export function ClientHomeScreen({
           <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] p-5 shadow-[0_20px_42px_rgba(0,0,0,0.18)]">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="inline-flex items-center gap-2 text-sm font-semibold text-[#d7ffab]">
+                <div className="inline-flex items-center gap-2 text-sm font-semibold text-[#e4f9b8]">
                   <Scissors className="h-4 w-4" />
                   Last visit
                 </div>

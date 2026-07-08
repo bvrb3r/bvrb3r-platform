@@ -27,11 +27,11 @@ export function OnboardingReadinessSummary({
     <section className="rounded-[28px] border border-white/10 bg-black/30 p-5 text-white shadow-[0_20px_80px_rgba(0,0,0,0.32)]" data-testid="onboarding-readiness-summary">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#7CFF00]">{title}</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">{title}</p>
           <h2 className="mt-2 text-2xl font-semibold">{result.currentHighestReadinessLabel}</h2>
           <p className="mt-2 text-sm text-white/60">{result.progressPercent}% complete based on connected readiness proof.</p>
         </div>
-        <div className="rounded-2xl border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-4 py-3 text-sm text-[#d7ffab]">
+        <div className="rounded-2xl border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-4 py-3 text-sm text-[#e4f9b8]">
           {result.canEnterDashboard ? "Dashboard available" : "Setup needed before dashboard"}
         </div>
       </div>
@@ -40,7 +40,7 @@ export function OnboardingReadinessSummary({
         <p className="text-xs font-black uppercase tracking-[0.18em] text-white/45">Next best action</p>
         <h3 className="mt-2 text-lg font-semibold">{result.nextBestAction.label}</h3>
         <p className="mt-2 text-sm leading-6 text-white/62">{result.nextBestAction.description}</p>
-        <a className="mt-4 inline-flex rounded-full border border-[#7CFF00]/30 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-[#d7ffab]" href={result.nextBestAction.href}>
+        <a className="mt-4 inline-flex rounded-full border border-[#C4F24E]/30 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-[#e4f9b8]" href={result.nextBestAction.href}>
           Continue
         </a>
       </div>

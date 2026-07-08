@@ -88,7 +88,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 function TrustItem({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="inline-flex min-h-12 items-center gap-3 rounded-lg border border-white/8 bg-black/30 px-3 py-2">
-      <span className="text-[#d7ffab]">{icon}</span>
+      <span className="text-[#e4f9b8]">{icon}</span>
       <span>
         <span className="block text-xs font-bold text-white">{label}</span>
         <span className="block text-xs text-white/50">{value}</span>
@@ -150,7 +150,7 @@ export function PublicBarberProfile({
             ) : (
               <div
                 className="flex h-28 w-28 items-center justify-center rounded-lg border border-white/10 text-3xl font-black text-black shadow-[0_18px_46px_rgba(0,0,0,0.4)] sm:h-36 sm:w-36 sm:text-4xl"
-                style={{ background: `linear-gradient(135deg, ${profile.profile.photoAccent}, #d7ffab)` }}
+                style={{ background: `linear-gradient(135deg, ${profile.profile.photoAccent}, #e4f9b8)` }}
                 data-testid="barber-profile-initials"
               >
                 {initials}
@@ -163,7 +163,7 @@ export function PublicBarberProfile({
               <h1 className="text-center text-3xl font-black text-white sm:text-left sm:text-4xl" data-display="true">
                 {displayName}
               </h1>
-              {isVerified ? <BadgeCheck className="h-5 w-5 text-[#a3ff12]" aria-label="Verified barber" /> : null}
+              {isVerified ? <BadgeCheck className="h-5 w-5 text-[#c4f24e]" aria-label="Verified barber" /> : null}
             </div>
             <p className="mt-1 text-center text-sm font-semibold text-white/58 sm:text-left">{handle}</p>
             <p className="mt-2 text-center text-sm text-white/62 sm:text-left">
@@ -172,7 +172,7 @@ export function PublicBarberProfile({
             {profile.shop ? (
               <Link
                 href={`/shop/${encodeURIComponent(profile.shop.id)}` as Route}
-                className="mt-1 block text-center text-sm font-semibold text-[#d7ffab] transition hover:text-white sm:text-left"
+                className="mt-1 block text-center text-sm font-semibold text-[#e4f9b8] transition hover:text-white sm:text-left"
               >
                 Connected to {profile.shop.name}
               </Link>
@@ -182,7 +182,7 @@ export function PublicBarberProfile({
             {verificationBadges.length ? (
               <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
                 {verificationBadges.map((badge) => (
-                  <span key={badge} className="rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-2.5 py-1 text-xs font-bold text-[#d7ffab]">
+                  <span key={badge} className="rounded-lg border border-[#c4f24e]/20 bg-[#c4f24e]/10 px-2.5 py-1 text-xs font-bold text-[#e4f9b8]">
                     {badge}
                   </span>
                 ))}

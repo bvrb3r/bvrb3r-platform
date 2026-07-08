@@ -141,7 +141,7 @@ function getLifecycleActions(appointment: BarberOperationalAppointment): Lifecyc
 
 function getLiveStatusTone(status: BarberStatusView["liveStatus"]) {
   if (status === "busy") {
-    return "border-[#7cff00]/20 bg-[#7cff00]/10 text-[#d7ffab]";
+    return "border-[#c4f24e]/20 bg-[#c4f24e]/10 text-[#e4f9b8]";
   }
 
   if (status === "available") {
@@ -473,8 +473,8 @@ export function BarberCommandWorkspace({ barberName }: { barberName: string }) {
             </h3>
             <p className="mt-3 text-sm text-white/62">Run the chair. Keep the day moving. Stay paid.</p>
           </div>
-          <div className="rounded-[22px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Chair control</p>
+          <div className="rounded-[22px] border border-[#c4f24e]/16 bg-[#c4f24e]/10 px-4 py-3 text-right">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">Chair control</p>
             <p className="mt-2 text-sm font-medium text-white">{payload?.status.currentShopLabel ?? "No territory selected"}</p>
             <p className="mt-1 text-sm text-white/58">{payload?.status.liveStatusLabel ?? "Offline"}</p>
           </div>
@@ -574,13 +574,13 @@ export function BarberCommandWorkspace({ barberName }: { barberName: string }) {
                 <div>
                   <p className="surface-label">Next guest</p>
                 </div>
-                <Scissors className="h-5 w-5 text-[#baff69]" />
+                <Scissors className="h-5 w-5 text-[#d9f985]" />
               </div>
 
               {nextGuest ? (
                 <div className="mt-4 space-y-4">
                   <div className="flex items-center gap-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-[22px] border border-[#7cff00]/18 bg-[#7cff00]/10 text-xl font-semibold text-[#d7ffab]">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-[22px] border border-[#c4f24e]/18 bg-[#c4f24e]/10 text-xl font-semibold text-[#e4f9b8]">
                       {getClientInitials(nextGuest.display.clientName)}
                     </div>
                     <div className="min-w-0">
@@ -638,12 +638,12 @@ export function BarberCommandWorkspace({ barberName }: { barberName: string }) {
                 <div>
                   <p className="surface-label">Today performance</p>
                 </div>
-                <RadioTower className="h-5 w-5 text-[#baff69]" />
+                <RadioTower className="h-5 w-5 text-[#d9f985]" />
               </div>
 
               <div className="mt-4 grid gap-3">
-                <div className="rounded-[20px] border border-[#7cff00]/18 bg-[#7cff00]/8 p-4">
-                  <p className="surface-label text-[#d7ffab]">Today earnings</p>
+                <div className="rounded-[20px] border border-[#c4f24e]/18 bg-[#c4f24e]/8 p-4">
+                  <p className="surface-label text-[#e4f9b8]">Today earnings</p>
                   <p className="mt-3 text-3xl font-semibold" data-display="true">
                     {currency(earnings?.grossSales ?? 0)}
                   </p>
@@ -668,7 +668,7 @@ export function BarberCommandWorkspace({ barberName }: { barberName: string }) {
                 <div>
                   <p className="surface-label">Weekly availability</p>
                 </div>
-                <CalendarRange className="h-5 w-5 text-[#d7ffab]" />
+                <CalendarRange className="h-5 w-5 text-[#e4f9b8]" />
               </div>
 
               <div className="mt-4 space-y-3">
@@ -723,7 +723,7 @@ export function BarberCommandWorkspace({ barberName }: { barberName: string }) {
                 <div>
                   <p className="surface-label">Service builder</p>
                 </div>
-                <Store className="h-5 w-5 text-[#d7ffab]" />
+                <Store className="h-5 w-5 text-[#e4f9b8]" />
               </div>
 
               {serviceCatalogQuery.data?.canCreate ? (

@@ -231,7 +231,7 @@ export function BarberClientsWorkspace({ barberName }: { barberName: string }) {
 
       <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm text-white/60">
         <div className="inline-flex items-center gap-2 text-white/78">
-          <Users className="h-4 w-4 text-[#baff69]" />
+          <Users className="h-4 w-4 text-[#d9f985]" />
           Relationship list only
         </div>
         <p className="mt-2">This tab stays focused on guest history and quick context. Checkout keeps money controls, and Calendar keeps chair and timing controls.</p>

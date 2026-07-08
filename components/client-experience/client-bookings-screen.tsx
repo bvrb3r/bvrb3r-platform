@@ -629,7 +629,7 @@ export function ClientBookingsScreen() {
                           <p className="mt-2 text-lg text-white/76">
                             {appointment.view?.service?.name ?? appointment.serviceSnapshot?.service_name ?? "Service pending"}
                           </p>
-                          <p className="mt-2 text-sm text-[#d7ffab]">
+                          <p className="mt-2 text-sm text-[#e4f9b8]">
                             {location?.name ?? "Location pending"}
                           </p>
                           <p className="mt-1 text-sm leading-6 text-white/58">{getLocationLabel(location)}</p>
@@ -767,7 +767,7 @@ export function ClientBookingsScreen() {
                 data-testid="client-pos-receipt"
               >
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-[24px] border border-[#a3ff12]/22 bg-[#a3ff12]/10 text-[#d7ffab] shadow-[0_18px_34px_rgba(0,0,0,0.22)]">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-[24px] border border-[#c4f24e]/22 bg-[#c4f24e]/10 text-[#e4f9b8] shadow-[0_18px_34px_rgba(0,0,0,0.22)]">
                     <CreditCard className="h-7 w-7" aria-hidden="true" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -775,7 +775,7 @@ export function ClientBookingsScreen() {
                       <div className="min-w-0">
                         <p className="text-2xl font-semibold text-white" data-display="true">{receipt.barberName}</p>
                         <p className="mt-2 text-lg text-white/76">{receipt.serviceLabel}</p>
-                        <p className="mt-2 text-sm text-[#d7ffab]">{receipt.paymentMethodLabel} | {currency(receipt.amountCents / 100)}</p>
+                        <p className="mt-2 text-sm text-[#e4f9b8]">{receipt.paymentMethodLabel} | {currency(receipt.amountCents / 100)}</p>
                       </div>
                       <StatusBadge tone="green" className="uppercase tracking-[0.16em]">
                         {receipt.statusLabel}
@@ -835,7 +835,7 @@ export function ClientBookingsScreen() {
                           <p className="mt-2 text-lg text-white/76">
                             {appointment.view?.service?.name ?? appointment.serviceSnapshot?.service_name ?? "Completed service"}
                           </p>
-                          <p className="mt-2 text-sm text-[#d7ffab]">
+                          <p className="mt-2 text-sm text-[#e4f9b8]">
                             {location?.name ?? "Location pending"}
                           </p>
                           <p className="mt-1 text-sm leading-6 text-white/58">{getLocationLabel(location)}</p>
@@ -963,8 +963,8 @@ export function ClientBookingsScreen() {
                       ) : null}
 
                       {appointment.review && isReviewOpen ? (
-                        <div className="mt-5 rounded-[24px] border border-[#d7ffab]/18 bg-[#d7ffab]/8 p-4">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-[#d7ffab]">
+                        <div className="mt-5 rounded-[24px] border border-[#e4f9b8]/18 bg-[#e4f9b8]/8 p-4">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-[#e4f9b8]">
                             <Star className="h-4 w-4 fill-current" />
                             {appointment.review.rating.toFixed(1)} / 5
                           </div>
@@ -981,7 +981,7 @@ export function ClientBookingsScreen() {
                         <div className="mt-5 rounded-[24px] border border-white/10 bg-black/22 p-4">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-[#d7ffab]">Leave a verified review</p>
+                              <p className="text-[10px] uppercase tracking-[0.18em] text-[#e4f9b8]">Leave a verified review</p>
                               <p className="mt-2 text-sm leading-7 text-white/62">
                                 Share how the completed appointment went and help the next client trust the chair.
                               </p>
@@ -1003,8 +1003,8 @@ export function ClientBookingsScreen() {
                                   className={cn(
                                     "inline-flex h-10 w-10 items-center justify-center rounded-full border transition",
                                     reviewDraft.rating === rating
-                                      ? "border-[#d7ffab]/30 bg-[#d7ffab]/12 text-[#d7ffab]"
-                                      : "border-white/10 bg-black/20 text-white/62 hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
+                                      ? "border-[#e4f9b8]/30 bg-[#e4f9b8]/12 text-[#e4f9b8]"
+                                      : "border-white/10 bg-black/20 text-white/62 hover:border-[#e4f9b8]/18 hover:text-[#e4f9b8]"
                                   )}
                                   aria-label={`Rate ${rating} stars`}
                                 >
@@ -1031,7 +1031,7 @@ export function ClientBookingsScreen() {
                               rows={3}
                               maxLength={500}
                               placeholder="What stood out about this visit?"
-                              className="mt-2 w-full rounded-[18px] border border-white/10 bg-black/24 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#b7ff58]/40"
+                              className="mt-2 w-full rounded-[18px] border border-white/10 bg-black/24 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#d4f97a]/40"
                             />
                           </label>
 

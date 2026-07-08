@@ -191,7 +191,7 @@ export function StripeDebugCard() {
 
   return (
     <div className="mx-auto max-w-3xl rounded-[24px] border border-white/10 bg-black p-6 text-white">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#baff69]">Stripe minimal test</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#d9f985]">Stripe minimal test</p>
       <h1 className="mt-3 text-2xl font-semibold">Minimal CardNumberElement mount</h1>
       <p className="mt-3 text-sm leading-7 text-white/60">
         This bypasses BVRB3R wallet wrappers. If typing works here, the issue is layout/CSS around the wallet form.
@@ -211,7 +211,7 @@ export function StripeDebugCard() {
       ) : null}
 
       {stripePromise && setupIntent?.clientSecret ? (
-        <div className="mt-6 rounded-[18px] border border-[#baff69]/20 bg-white/[0.04] p-5">
+        <div className="mt-6 rounded-[18px] border border-[#d9f985]/20 bg-white/[0.04] p-5">
           <Elements stripe={stripePromise}>
             <CardNumberElement
               options={{

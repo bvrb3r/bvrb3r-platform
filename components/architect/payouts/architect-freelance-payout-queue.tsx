@@ -74,7 +74,7 @@ function formatDateTime(value?: string | null) {
 function statusPillClasses(value?: string | null) {
   const normalized = String(value ?? "").toLowerCase();
   if (normalized === "pending" || normalized === "ready_for_payout" || normalized === "ready" || normalized === "eligible") {
-    return "border-[#7CFF00]/20 bg-[#7CFF00]/10 text-[#d7ffab]";
+    return "border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#e4f9b8]";
   }
   if (normalized === "paid_out" || normalized === "executed") {
     return "border-sky-300/20 bg-sky-300/10 text-sky-100";
@@ -175,7 +175,7 @@ function StripePlatformDiagnosticsCard() {
           "rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em]",
           diagnostics?.mismatchWarning
             ? "border-rose-400/20 bg-rose-400/10 text-rose-100"
-            : "border-[#7CFF00]/20 bg-[#7CFF00]/10 text-[#d7ffab]"
+            : "border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#e4f9b8]"
         )}>
           {diagnostics?.stripeKeyMode ?? "checking"}
         </span>
@@ -557,7 +557,7 @@ export function ArchitectFreelancePayoutQueue() {
             Only freelance barber payouts with ready routing, no shop split, and a live Stripe Connect account can move here.
           </p>
         </div>
-        <WalletCards className="h-5 w-5 text-[#baff69]" />
+        <WalletCards className="h-5 w-5 text-[#d9f985]" />
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -582,13 +582,13 @@ export function ArchitectFreelancePayoutQueue() {
           "mt-5 rounded-[24px] border p-4",
           batchBlockedByBalance
             ? "border-amber-300/16 bg-amber-300/8"
-            : "border-[#7CFF00]/14 bg-[#7CFF00]/8"
+            : "border-[#C4F24E]/14 bg-[#C4F24E]/8"
         )}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className={cn(
                 "text-[10px] font-extrabold uppercase tracking-[0.16em]",
-                batchBlockedByBalance ? "text-amber-100/70" : "text-[#d7ffab]/70"
+                batchBlockedByBalance ? "text-amber-100/70" : "text-[#e4f9b8]/70"
               )}>
                 Batch ready release
               </p>
@@ -681,9 +681,9 @@ export function ArchitectFreelancePayoutQueue() {
             onRelease={(next) => void handleRelease(next)}
           />
         )) : (
-          <div className="rounded-[26px] border border-dashed border-[#7CFF00]/16 bg-[#7CFF00]/8 p-5 text-sm leading-7 text-white/62">
+          <div className="rounded-[26px] border border-dashed border-[#C4F24E]/16 bg-[#C4F24E]/8 p-5 text-sm leading-7 text-white/62">
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-[#baff69]" aria-hidden="true" />
+              <CheckCircle2 className="h-5 w-5 text-[#d9f985]" aria-hidden="true" />
               <div>
                 <p className="font-semibold text-white">No freelance payout releases are waiting right now.</p>
                 <p className="mt-1 text-sm leading-6 text-white/56">

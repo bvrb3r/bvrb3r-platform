@@ -145,20 +145,20 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
     <div className="space-y-4" data-testid="discovery-workspace">
       <section className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
         <Card className="rounded-[36px] p-6 sm:p-8">
-          <p className="surface-label text-[#d7ffab]">BVRB3R Marketplace beta</p>
+          <p className="surface-label text-[#e4f9b8]">BVRB3R Marketplace beta</p>
           <h2 className="mt-4 text-balance text-3xl font-semibold sm:text-5xl" data-display="true">Find the right barber as fast as booking a ride.</h2>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-white/66">
             Search by barber, shop, service, style, or location. Discovery now reads persisted marketplace signals for proof, conversion, demand, and availability.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-[1.2fr_0.8fr]">
-            <div className="rounded-[24px] border border-[#7CFF00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(124,255,0,0.04))] p-4">
+            <div className="rounded-[24px] border border-[#C4F24E]/16 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(196, 242, 78,0.04))] p-4">
               <label className="surface-label mb-3 block">Search the network</label>
               <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#baff69]" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#d9f985]" />
                 <Input className="pl-11" placeholder="Search barber, shop, service, style, or neighborhood" value={query} onChange={(event) => setQuery(event.target.value)} />
               </div>
               <div className="mt-4 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.22em] text-white/50">
-                <span className="status-pill text-[#d7ffab]">Nearby barbers</span>
+                <span className="status-pill text-[#e4f9b8]">Nearby barbers</span>
                 <span className="status-pill text-white/72">Top rated</span>
                 <span className="status-pill text-white/72">Trending styles</span>
                 <span className="status-pill text-white/72">Available now</span>
@@ -198,17 +198,17 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
               <p className="surface-label">Client discovery feed</p>
               <p className="mt-2 text-sm text-white/58">The feed combines nearby talent, style demand, and real marketplace proof.</p>
             </div>
-            <Compass className="h-5 w-5 text-[#baff69]" />
+            <Compass className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             {featuredStyles.length ? featuredStyles.slice(0, 4).map((style) => (
-              <div key={style.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/18 hover:bg-black/30">
+              <div key={style.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/18 hover:bg-black/30">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-medium">{style.name}</p>
                     <p className="mt-1 text-sm text-white/55">Trending in {style.regionLabel}</p>
                   </div>
-                  <span className="status-pill text-[#d7ffab]">#{style.rank}</span>
+                  <span className="status-pill text-[#e4f9b8]">#{style.rank}</span>
                 </div>
                 <p className="mt-3 text-sm text-white/68">{style.bookingCount} real bookings powering marketplace demand signals.</p>
               </div>
@@ -234,24 +234,24 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
             <div className="flex flex-wrap gap-2">
               <Link href="/discover/top" className="status-pill text-white/72">Top in market</Link>
               <Link href="/discover/styles" className="status-pill text-white/72">Styles</Link>
-              <Link href="/leaderboards" className="status-pill text-[#d7ffab]">Leaderboards</Link>
+              <Link href="/leaderboards" className="status-pill text-[#e4f9b8]">Leaderboards</Link>
             </div>
           </div>
           {favoriteUpdates.length ? (
-            <div className="mt-4 rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-5">
+            <div className="mt-4 rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="surface-label text-[#d7ffab]">Favorite barber updates</p>
+                  <p className="surface-label text-[#e4f9b8]">Favorite barber updates</p>
                   <p className="mt-2 text-sm text-white/70">Barbers you already follow stay close to the top so repeat usage feels natural.</p>
                 </div>
-                <span className="status-pill text-[#d7ffab]">For you</span>
+                <span className="status-pill text-[#e4f9b8]">For you</span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {favoriteUpdates.map((result) => (
-                  <Link key={`favorite-${result.barberId}`} href={`/barber/${result.username}` as Route} className="rounded-[22px] border border-white/10 bg-black/25 p-4 transition hover:border-[#7CFF00]/24 hover:bg-black/35">
+                  <Link key={`favorite-${result.barberId}`} href={`/barber/${result.username}` as Route} className="rounded-[22px] border border-white/10 bg-black/25 p-4 transition hover:border-[#C4F24E]/24 hover:bg-black/35">
                     <p className="font-medium">{result.barberName}</p>
                     <p className="mt-2 text-sm text-white/58">{result.shopName ?? "Independent barber"}</p>
-                    <p className="mt-3 text-[11px] uppercase tracking-[0.22em] text-[#d7ffab]">{dateLabel(result.nextAvailableAt)}</p>
+                    <p className="mt-3 text-[11px] uppercase tracking-[0.22em] text-[#e4f9b8]">{dateLabel(result.nextAvailableAt)}</p>
                   </Link>
                 ))}
               </div>
@@ -262,11 +262,11 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
               <div key={section.id} className="rounded-[24px] border border-white/8 bg-black/20 p-5">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-medium">{section.title}</p>
-                  <span className="status-pill text-[#d7ffab]">{section.badge}</span>
+                  <span className="status-pill text-[#e4f9b8]">{section.badge}</span>
                 </div>
                 <div className="mt-4 space-y-3">
                   {section.items.map((item) => (
-                    <Link key={`${section.id}-${item.barberId}`} href={`/barber/${item.username}` as Route} className="block rounded-[20px] border border-white/8 bg-black/25 px-4 py-4 transition hover:border-[#7CFF00]/18 hover:bg-black/35">
+                    <Link key={`${section.id}-${item.barberId}`} href={`/barber/${item.username}` as Route} className="block rounded-[20px] border border-white/8 bg-black/25 px-4 py-4 transition hover:border-[#C4F24E]/18 hover:bg-black/35">
                       <div className="flex items-center justify-between gap-3">
                         <p className="font-medium">{item.barberName}</p>
                         <span className="text-[11px] uppercase tracking-[0.22em] text-white/42">{item.rating.toFixed(1)}</span>
@@ -286,17 +286,17 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
               <p className="surface-label">Most booked services</p>
               <p className="mt-2 text-sm text-white/58">Service demand is now visible enough to guide client browsing before a search ever starts.</p>
             </div>
-            <TrendingUp className="h-5 w-5 text-[#baff69]" />
+            <TrendingUp className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {results.filter((result) => result.mostBookedService).length ? results.filter((result) => result.mostBookedService).slice(0, 4).map((result) => (
-              <div key={`service-${result.barberId}`} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/18 hover:bg-black/30">
+              <div key={`service-${result.barberId}`} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/18 hover:bg-black/30">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-medium">{result.mostBookedService}</p>
                     <p className="mt-2 text-sm text-white/55">with {result.barberName}</p>
                   </div>
-                  <Link href={buildMarketplaceBookingHref({ barberId: result.barberId, username: result.username, locationId: locationId || undefined, sourceKind: "discovery", query: result.mostBookedService })} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                  <Link href={buildMarketplaceBookingHref({ barberId: result.barberId, username: result.username, locationId: locationId || undefined, sourceKind: "discovery", query: result.mostBookedService })} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8]">
                     Book
                     <ArrowRight className="h-4 w-4" />
                   </Link>
@@ -318,7 +318,7 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
               <p className="surface-label">Refine the search</p>
               <p className="mt-2 text-sm text-white/58">These filters shape the first persisted discovery engine without adding complexity too early.</p>
             </div>
-            <WandSparkles className="h-5 w-5 text-[#baff69]" />
+            <WandSparkles className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div>
@@ -377,7 +377,7 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
               <p className="surface-label">Instant match</p>
               <p className="mt-2 text-sm text-white/58">The signature matching engine now records real haircut-now demand and booking intent.</p>
             </div>
-            <TimerReset className="h-5 w-5 text-[#baff69]" />
+            <TimerReset className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {showInstantMatch && instantError ? <FeedbackBanner tone="error" message={instantError} /> : null}
@@ -393,8 +393,8 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
                 <Skeleton className="mt-4 h-11 w-36 rounded-full" />
               </div>
             ) : haircutNowQuery.data ? (
-              <div className="rounded-[28px] border border-[#7CFF00]/18 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(10,10,10,0.98))] p-5">
-                <span className="status-pill text-[#d7ffab]">{getMatchLabel(haircutNowQuery.data.matchedFrom)}</span>
+              <div className="rounded-[28px] border border-[#C4F24E]/18 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(10,10,10,0.98))] p-5">
+                <span className="status-pill text-[#e4f9b8]">{getMatchLabel(haircutNowQuery.data.matchedFrom)}</span>
                 <h3 className="mt-4 text-3xl font-semibold" data-display="true">{haircutNowQuery.data.barberName}</h3>
                 <p className="mt-3 text-sm leading-7 text-white/72">{haircutNowQuery.data.matchReason}</p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -412,11 +412,11 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <Link href={`/barber/${haircutNowQuery.data.username}` as Route} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                  <Link href={`/barber/${haircutNowQuery.data.username}` as Route} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8]">
                     View profile
                     <ArrowRight className="h-4 w-4" />
                   </Link>
-                  <Link href={buildMarketplaceBookingHref({ barberId: haircutNowQuery.data.barberId, username: haircutNowQuery.data.username, locationId: haircutNowQuery.data.locationId, sourceKind: "haircut_now", matchedFrom: haircutNowQuery.data.matchedFrom, query: deferredQuery.trim() || undefined })} className="inline-flex items-center gap-2 rounded-full border border-[#cfff93]/40 bg-[linear-gradient(135deg,#7cff00_0%,#b7ff58_100%)] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-black shadow-[0_14px_34px_rgba(124,255,0,0.24)] transition hover:translate-y-[-1px] hover:shadow-[0_18px_38px_rgba(124,255,0,0.28)]">
+                  <Link href={buildMarketplaceBookingHref({ barberId: haircutNowQuery.data.barberId, username: haircutNowQuery.data.username, locationId: haircutNowQuery.data.locationId, sourceKind: "haircut_now", matchedFrom: haircutNowQuery.data.matchedFrom, query: deferredQuery.trim() || undefined })} className="inline-flex items-center gap-2 rounded-full border border-[#e0f6a0]/40 bg-[linear-gradient(135deg,#c4f24e_0%,#d4f97a_100%)] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-black shadow-[0_14px_34px_rgba(196, 242, 78,0.24)] transition hover:translate-y-[-1px] hover:shadow-[0_18px_38px_rgba(196, 242, 78,0.28)]">
                     Book now
                     <Sparkles className="h-4 w-4" />
                   </Link>
@@ -438,7 +438,7 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
               <p className="surface-label">Discovery results</p>
               <p className="mt-2 text-sm text-white/58">Client-facing cards now combine trust, pricing, next availability, conversion proof, and ranking context.</p>
             </div>
-            <Scissors className="h-5 w-5 text-[#baff69]" />
+            <Scissors className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {discoveryError ? <FeedbackBanner tone="error" message={discoveryError} /> : null}
@@ -449,15 +449,15 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
                 <DiscoveryCardSkeleton />
               </>
             ) : results.length ? results.map((result) => (
-              <div key={result.barberId} className="rounded-[28px] border border-white/8 bg-black/20 p-5 transition hover:-translate-y-0.5 hover:border-[#7CFF00]/18 hover:bg-black/30">
+              <div key={result.barberId} className="rounded-[28px] border border-white/8 bg-black/20 p-5 transition hover:-translate-y-0.5 hover:border-[#C4F24E]/18 hover:bg-black/30">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-xl font-semibold">{result.barberName}</p>
                       {result.badges.slice(0, 2).map((badge) => (
-                        <span key={badge} className="status-pill text-[#d7ffab]">{getBadgeLabel(badge)}</span>
+                        <span key={badge} className="status-pill text-[#e4f9b8]">{getBadgeLabel(badge)}</span>
                       ))}
-                      {result.rankingLabel ? <span className="status-pill text-white/72">{result.rankingLabel}</span> : null}{result.trustLabel ? <span className="status-pill text-[#d7ffab]">{result.trustLabel}</span> : null}{result.featuredLabel ? <span className="status-pill text-[#d7ffab]">{result.featuredLabel}</span> : null}{result.boostedLabel ? <span className="status-pill text-white/72">{result.boostedLabel}</span> : null}{result.cityLabel ? <span className="status-pill text-white/72">{result.cityLabel}</span> : null}
+                      {result.rankingLabel ? <span className="status-pill text-white/72">{result.rankingLabel}</span> : null}{result.trustLabel ? <span className="status-pill text-[#e4f9b8]">{result.trustLabel}</span> : null}{result.featuredLabel ? <span className="status-pill text-[#e4f9b8]">{result.featuredLabel}</span> : null}{result.boostedLabel ? <span className="status-pill text-white/72">{result.boostedLabel}</span> : null}{result.cityLabel ? <span className="status-pill text-white/72">{result.cityLabel}</span> : null}
                     </div>
                     <p className="mt-2 text-sm text-white/58">{result.shopName ?? "Independent barber"}</p>
                   </div>
@@ -469,7 +469,7 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-[22px] border border-white/8 bg-black/25 p-4">
                     <p className="surface-label">Rating</p>
-                    <p className="mt-3 flex items-center gap-2 text-lg font-semibold"><Star className="h-4 w-4 fill-current text-[#d7ffab]" />{result.rating.toFixed(1)} ({result.reviewCount})</p>
+                    <p className="mt-3 flex items-center gap-2 text-lg font-semibold"><Star className="h-4 w-4 fill-current text-[#e4f9b8]" />{result.rating.toFixed(1)} ({result.reviewCount})</p>
                   </div>
                   <div className="rounded-[22px] border border-white/8 bg-black/25 p-4">
                     <p className="surface-label">Price range</p>
@@ -486,13 +486,13 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="rounded-[20px] border border-white/8 bg-black/25 px-4 py-3 text-sm text-white/70">
-                    <div className="flex items-center gap-2"><Users className="h-4 w-4 text-[#baff69]" />{result.followCount ?? 0} followers</div>
+                    <div className="flex items-center gap-2"><Users className="h-4 w-4 text-[#d9f985]" />{result.followCount ?? 0} followers</div>
                   </div>
                   <div className="rounded-[20px] border border-white/8 bg-black/25 px-4 py-3 text-sm text-white/70">
-                    <div className="flex items-center gap-2"><TrendingUp className="h-4 w-4 text-[#baff69]" />Reputation {result.reputationScore?.toFixed(0) ?? "0"}</div>
+                    <div className="flex items-center gap-2"><TrendingUp className="h-4 w-4 text-[#d9f985]" />Reputation {result.reputationScore?.toFixed(0) ?? "0"}</div>
                   </div>
                   <div className="rounded-[20px] border border-white/8 bg-black/25 px-4 py-3 text-sm text-white/70">
-                    <div className="flex items-center gap-2"><Compass className="h-4 w-4 text-[#baff69]" />{result.completionRate ?? 0}% reliability</div>
+                    <div className="flex items-center gap-2"><Compass className="h-4 w-4 text-[#d9f985]" />{result.completionRate ?? 0}% reliability</div>
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.22em] text-white/50">
@@ -501,11 +501,11 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
                   ))}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <Link href={`/barber/${result.username}` as Route} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                  <Link href={`/barber/${result.username}` as Route} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8]">
                     View profile
                     <ArrowRight className="h-4 w-4" />
                   </Link>
-                  <Link href={buildMarketplaceBookingHref({ barberId: result.barberId, username: result.username, locationId: locationId || undefined, sourceKind: "discovery", query: deferredQuery.trim() || undefined })} className="inline-flex items-center gap-2 rounded-full border border-[#cfff93]/40 bg-[linear-gradient(135deg,#7cff00_0%,#b7ff58_100%)] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-black shadow-[0_14px_34px_rgba(124,255,0,0.24)] transition hover:translate-y-[-1px] hover:shadow-[0_18px_38px_rgba(124,255,0,0.28)]">
+                  <Link href={buildMarketplaceBookingHref({ barberId: result.barberId, username: result.username, locationId: locationId || undefined, sourceKind: "discovery", query: deferredQuery.trim() || undefined })} className="inline-flex items-center gap-2 rounded-full border border-[#e0f6a0]/40 bg-[linear-gradient(135deg,#c4f24e_0%,#d4f97a_100%)] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-black shadow-[0_14px_34px_rgba(196, 242, 78,0.24)] transition hover:translate-y-[-1px] hover:shadow-[0_18px_38px_rgba(196, 242, 78,0.28)]">
                     Book now
                     <Sparkles className="h-4 w-4" />
                   </Link>

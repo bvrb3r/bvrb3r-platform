@@ -61,7 +61,7 @@ export type MoreSectionGroup = {
 function toneClasses(tone: MoreTone = "muted") {
   switch (tone) {
     case "green":
-      return "border-[#A3FF12]/26 bg-[#A3FF12]/10 text-[#A3FF12]";
+      return "border-[#C4F24E]/26 bg-[#C4F24E]/10 text-[#C4F24E]";
     case "yellow":
       return "border-amber-300/26 bg-amber-300/10 text-amber-200";
     case "red":
@@ -73,10 +73,10 @@ function toneClasses(tone: MoreTone = "muted") {
 
 function actionClasses(kind: "primary" | "secondary") {
   return cn(
-    "inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/60",
+    "inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/60",
     kind === "primary"
-      ? "border border-[#A3FF12]/40 bg-[#A3FF12]/12 text-[#A3FF12] shadow-[0_0_28px_rgba(163,255,18,0.14)] hover:border-[#A3FF12]/70 hover:bg-[#A3FF12]/16"
-      : "border border-white/10 bg-white/[0.035] text-white/78 hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+      ? "border border-[#C4F24E]/40 bg-[#C4F24E]/12 text-[#C4F24E] shadow-[0_0_28px_rgba(196, 242, 78,0.14)] hover:border-[#C4F24E]/70 hover:bg-[#C4F24E]/16"
+      : "border border-white/10 bg-white/[0.035] text-white/78 hover:border-[#C4F24E]/28 hover:text-[#C4F24E]"
   );
 }
 
@@ -101,7 +101,7 @@ function MoreActionLink({ action, kind }: { action: MoreAction; kind: "primary" 
 export function MorePageHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <header className="space-y-3">
-      <p className="text-xs font-black uppercase tracking-[0.22em] text-[#A3FF12]">Control center</p>
+      <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C4F24E]">Control center</p>
       <div>
         <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl">{title}</h1>
         <p className="mt-3 max-w-3xl text-base font-medium leading-7 text-white/62 sm:text-lg">{subtitle}</p>
@@ -138,19 +138,19 @@ export function MoreIdentityReadinessCard({
 
   return (
     <GlassCard active className="overflow-hidden p-5 sm:p-6" data-testid={`${variant}-more-identity-card`}>
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#A3FF12]/45 to-transparent" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#C4F24E]/45 to-transparent" aria-hidden="true" />
       <div className="grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
         <Avatar
           src={imageUrl}
           alt={`${title} ${avatarLabel}`}
           initials={initials}
-          className="h-24 w-24 rounded-[28px] border-2 border-[#A3FF12]/65 text-2xl shadow-[0_0_0_2px_rgba(163,255,18,0.10),0_22px_54px_rgba(0,0,0,0.48)] sm:h-32 sm:w-32"
+          className="h-24 w-24 rounded-[28px] border-2 border-[#C4F24E]/65 text-2xl shadow-[0_0_0_2px_rgba(196, 242, 78,0.10),0_22px_54px_rgba(0,0,0,0.48)] sm:h-32 sm:w-32"
         />
 
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="min-w-0 text-3xl font-black tracking-[-0.045em] text-white sm:text-4xl">{title}</h2>
-            <span className="rounded-full border border-[#A3FF12]/24 bg-[#A3FF12]/10 px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.16em] text-[#A3FF12]">
+            <span className="rounded-full border border-[#C4F24E]/24 bg-[#C4F24E]/10 px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.16em] text-[#C4F24E]">
               {roleLabel}
             </span>
           </div>
@@ -195,12 +195,12 @@ export function MoreIdentityReadinessCard({
           const content = (
             <>
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/42">{tile.label}</p>
-              <p className={cn("mt-3 text-lg font-extrabold", tile.tone === "green" ? "text-[#A3FF12]" : tile.tone === "yellow" ? "text-amber-200" : tile.tone === "red" ? "text-red-200" : "text-white")}>{tile.value}</p>
+              <p className={cn("mt-3 text-lg font-extrabold", tile.tone === "green" ? "text-[#C4F24E]" : tile.tone === "yellow" ? "text-amber-200" : tile.tone === "red" ? "text-red-200" : "text-white")}>{tile.value}</p>
               {tile.helper ? <p className="mt-2 text-sm leading-5 text-white/52">{tile.helper}</p> : null}
             </>
           );
 
-          const className = "rounded-[20px] border border-white/8 bg-black/25 p-4 transition hover:border-[#A3FF12]/20";
+          const className = "rounded-[20px] border border-white/8 bg-black/25 p-4 transition hover:border-[#C4F24E]/20";
 
           return tile.href ? (
             <Link key={tile.label} href={tile.href as never} className={className}>
@@ -222,7 +222,7 @@ export function MoreActivationGate({ title, subtitle, children }: { title: strin
   return (
     <section className="space-y-3" data-testid="more-activation-gate">
       <div>
-        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">{title}</p>
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C4F24E]">{title}</p>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-white/56">{subtitle}</p>
       </div>
       {children}
@@ -244,7 +244,7 @@ export function MoreControlHub({
   return (
     <GlassCard className="p-5 sm:p-6" data-testid="more-control-hub">
       <div className="mb-5">
-        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">{title}</p>
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C4F24E]">{title}</p>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-white/56">{subtitle}</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -301,7 +301,7 @@ function MoreSectionRowLink({
   const body = (
     <>
       {row.icon ? (
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[#A3FF12]/20 bg-[#A3FF12]/10 text-[#A3FF12]">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#C4F24E]">
           {row.icon}
         </span>
       ) : null}
@@ -312,16 +312,16 @@ function MoreSectionRowLink({
       {row.status ? <span className={cn("hidden rounded-full border px-3 py-1.5 text-xs font-extrabold sm:inline-flex", toneClasses(row.tone))}>{row.status}</span> : null}
       {row.needsAction ? (
         <span
-          className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#A3FF12] shadow-[0_0_14px_rgba(163,255,18,0.65)]"
+          className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#C4F24E] shadow-[0_0_14px_rgba(196, 242, 78,0.65)]"
           aria-label={`${row.title} needs action`}
         />
       ) : null}
-      <ChevronRight className="h-5 w-5 shrink-0 text-white/36 transition group-hover:translate-x-0.5 group-hover:text-[#A3FF12]" aria-hidden="true" />
+      <ChevronRight className="h-5 w-5 shrink-0 text-white/36 transition group-hover:translate-x-0.5 group-hover:text-[#C4F24E]" aria-hidden="true" />
     </>
   );
 
   const className = cn(
-    "group grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-[20px] border border-white/8 bg-black/22 transition hover:border-[#A3FF12]/18 hover:bg-[#A3FF12]/[0.035]",
+    "group grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-[20px] border border-white/8 bg-black/22 transition hover:border-[#C4F24E]/18 hover:bg-[#C4F24E]/[0.035]",
     compact ? "p-4" : "min-h-[76px] p-4 sm:p-5"
   );
 
@@ -378,7 +378,7 @@ export function MoreSectionGroup({ group }: { group: MoreSectionGroup }) {
   return (
     <section id={group.id} className="scroll-mt-6 space-y-3">
       <div>
-        <h2 className="text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">{group.title}</h2>
+        <h2 className="text-xs font-black uppercase tracking-[0.2em] text-[#C4F24E]">{group.title}</h2>
         {group.subtitle ? <p className="mt-2 text-sm leading-6 text-white/54">{group.subtitle}</p> : null}
       </div>
       <GlassCard className="overflow-hidden p-0">

@@ -311,17 +311,17 @@ function ActivationChecklistCard({
   return (
     <section
       data-testid={testId}
-      className="overflow-hidden rounded-[28px] border border-[#A3FF12]/18 bg-[linear-gradient(180deg,rgba(163,255,18,0.09),rgba(255,255,255,0.025)_34%,rgba(5,5,5,0.92))] p-5 text-white shadow-[0_18px_50px_rgba(0,0,0,0.42),0_0_30px_rgba(163,255,18,0.10)] sm:p-6"
+      className="overflow-hidden rounded-[28px] border border-[#C4F24E]/18 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.09),rgba(255,255,255,0.025)_34%,rgba(5,5,5,0.92))] p-5 text-white shadow-[0_18px_50px_rgba(0,0,0,0.42),0_0_30px_rgba(196, 242, 78,0.10)] sm:p-6"
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Activation Gate</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Activation Gate</p>
           <h2 className="mt-3 text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl">
             {title}
           </h2>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/62">{subtitle}</p>
         </div>
-        <span className="inline-flex w-fit rounded-full border border-[#A3FF12]/25 bg-[#A3FF12]/10 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-[#A3FF12]">
+        <span className="inline-flex w-fit rounded-full border border-[#C4F24E]/25 bg-[#C4F24E]/10 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-[#C4F24E]">
           {completedCount}/{items.length} ready
         </span>
       </div>
@@ -336,7 +336,7 @@ function ActivationChecklistCard({
               className={cn(
                 "grid min-h-[86px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[20px] border px-4 py-3",
                 item.complete
-                  ? "border-[#A3FF12]/16 bg-[#A3FF12]/[0.055]"
+                  ? "border-[#C4F24E]/16 bg-[#C4F24E]/[0.055]"
                   : item.optional
                     ? "border-white/8 bg-black/24"
                     : "border-amber-300/18 bg-amber-300/[0.065]"
@@ -346,7 +346,7 @@ function ActivationChecklistCard({
                 className={cn(
                   "flex h-10 w-10 items-center justify-center rounded-full border",
                   item.complete
-                    ? "border-[#A3FF12]/25 bg-[#A3FF12]/12 text-[#A3FF12]"
+                    ? "border-[#C4F24E]/25 bg-[#C4F24E]/12 text-[#C4F24E]"
                     : item.optional
                       ? "border-white/10 bg-white/[0.04] text-white/56"
                       : "border-amber-300/25 bg-amber-300/10 text-amber-200"
@@ -356,7 +356,7 @@ function ActivationChecklistCard({
               </span>
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-white">{item.label}</span>
-                <span className={cn("mt-1 block text-sm", item.complete ? "text-[#A3FF12]" : "text-white/58")}>
+                <span className={cn("mt-1 block text-sm", item.complete ? "text-[#C4F24E]" : "text-white/58")}>
                   {item.complete ? item.completeLabel : item.missingLabel}
                 </span>
               </span>
@@ -365,7 +365,7 @@ function ActivationChecklistCard({
                   <button
                     type="button"
                     onClick={actionHandler}
-                    className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 text-xs font-black text-white transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/60"
+                    className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 text-xs font-black text-white transition hover:border-[#C4F24E]/35 hover:text-[#C4F24E] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/60"
                   >
                     {item.actionLabel}
                     <ArrowRight className="h-3.5 w-3.5" />
@@ -373,7 +373,7 @@ function ActivationChecklistCard({
                 ) : (
                   <Link
                     href={item.href as Route}
-                    className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 text-xs font-black text-white transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]"
+                    className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 text-xs font-black text-white transition hover:border-[#C4F24E]/35 hover:text-[#C4F24E]"
                   >
                     {item.actionLabel}
                     <ArrowRight className="h-3.5 w-3.5" />

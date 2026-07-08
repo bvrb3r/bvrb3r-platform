@@ -521,7 +521,7 @@ export function InlineBookingPaymentMethod({
         <div className="mt-4 rounded-[18px] border border-white/10 bg-black/22 p-4">
           <p className="text-sm leading-7 text-white/72">Saved payment method could not be loaded. Refresh or manage wallet.</p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Link href="/dashboard/client/profile?section=wallet" className="text-sm font-medium text-white/48 transition hover:text-[#d7ffab]">
+            <Link href="/dashboard/client/profile?section=wallet" className="text-sm font-medium text-white/48 transition hover:text-[#e4f9b8]">
               Manage payment methods
             </Link>
           </div>
@@ -529,7 +529,7 @@ export function InlineBookingPaymentMethod({
       ) : selectedPaymentMethod && !showAddForm ? (
         <div className="mt-4 rounded-[18px] border border-white/10 bg-black/22 p-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-[#7CFF00]/20 bg-[#7CFF00]/10 text-[#d7ffab]">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#e4f9b8]">
               <CreditCard className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
@@ -569,7 +569,7 @@ export function InlineBookingPaymentMethod({
             <Button type="button" variant="secondary" className="h-10 px-4" onClick={startAddCard}>
               Add new card
             </Button>
-            <Link href="/dashboard/client/profile?section=wallet" className="text-sm font-medium text-white/48 transition hover:text-[#d7ffab]">
+            <Link href="/dashboard/client/profile?section=wallet" className="text-sm font-medium text-white/48 transition hover:text-[#e4f9b8]">
               Manage payment methods
             </Link>
           </div>
@@ -596,7 +596,7 @@ export function InlineBookingPaymentMethod({
           <label className="mt-4 flex items-start gap-3 text-sm leading-6 text-white/68">
             <input
               type="checkbox"
-              className="mt-1 accent-[#7CFF00]"
+              className="mt-1 accent-[#C4F24E]"
               checked={saveForFuture}
               onChange={(event) => setSaveForFuture(event.target.checked)}
             />
@@ -623,7 +623,7 @@ export function InlineBookingPaymentMethod({
                 Retry loading card form
               </Button>
             ) : null}
-            <Link href="/dashboard/client/profile?section=wallet" className="text-sm font-medium text-white/48 transition hover:text-[#d7ffab]">
+            <Link href="/dashboard/client/profile?section=wallet" className="text-sm font-medium text-white/48 transition hover:text-[#e4f9b8]">
               Manage payment methods
             </Link>
           </div>

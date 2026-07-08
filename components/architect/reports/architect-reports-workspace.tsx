@@ -51,7 +51,7 @@ function statusLabel(status: string) {
 }
 
 function statusClass(status: string) {
-  if (status === "resolved") return "border-[#7CFF00]/25 bg-[#7CFF00]/10 text-[#d7ffab]";
+  if (status === "resolved") return "border-[#C4F24E]/25 bg-[#C4F24E]/10 text-[#e4f9b8]";
   if (status === "under_review") return "border-amber-300/25 bg-amber-300/10 text-amber-100";
   if (status === "dismissed") return "border-white/10 bg-white/[0.04] text-white/58";
   return "border-rose-400/25 bg-rose-400/10 text-rose-100";
@@ -73,7 +73,7 @@ function ReportCard({
   onOpen: () => void;
 }) {
   return (
-    <article className={cn("rounded-[24px] border bg-black/24 p-4 transition", selected ? "border-[#7CFF00]/35" : "border-white/10")}>
+    <article className={cn("rounded-[24px] border bg-black/24 p-4 transition", selected ? "border-[#C4F24E]/35" : "border-white/10")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42">{report.concernType}</p>
@@ -181,7 +181,7 @@ export function ArchitectReportsWorkspace() {
         <section className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.92),rgba(5,5,5,0.96))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.34)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#d7ffab]">
+              <p className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#e4f9b8]">
                 <ShieldCheck className="h-4 w-4" />
                 Architect Reports
               </p>
@@ -200,7 +200,7 @@ export function ArchitectReportsWorkspace() {
             <div
               className={cn(
                 "mt-4 rounded-[20px] border px-4 py-3 text-sm",
-                status.tone === "success" && "border-[#7CFF00]/25 bg-[#7CFF00]/10 text-[#d7ffab]",
+                status.tone === "success" && "border-[#C4F24E]/25 bg-[#C4F24E]/10 text-[#e4f9b8]",
                 status.tone === "error" && "border-rose-400/25 bg-rose-400/10 text-rose-100",
                 status.tone === "info" && "border-white/10 bg-white/[0.04] text-white/70"
               )}
@@ -223,8 +223,8 @@ export function ArchitectReportsWorkspace() {
             <p className="text-xs uppercase tracking-[0.18em] text-amber-100/72">Under Review</p>
             <p className="mt-3 text-3xl font-black text-white">{payload?.summary.underReview ?? 0}</p>
           </Card>
-          <Card className="rounded-[24px] border-[#7CFF00]/20 bg-[#7CFF00]/8 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-[#d7ffab]">Resolved / Dismissed</p>
+          <Card className="rounded-[24px] border-[#C4F24E]/20 bg-[#C4F24E]/8 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-[#e4f9b8]">Resolved / Dismissed</p>
             <p className="mt-3 text-3xl font-black text-white">{(payload?.summary.resolved ?? 0) + (payload?.summary.dismissed ?? 0)}</p>
           </Card>
         </section>
@@ -236,7 +236,7 @@ export function ArchitectReportsWorkspace() {
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42">Latest reports</p>
                 <p className="mt-1 text-sm text-white/62">Newest cases first</p>
               </div>
-              <FileText className="h-5 w-5 text-[#d7ffab]" />
+              <FileText className="h-5 w-5 text-[#e4f9b8]" />
             </div>
             <div className="mt-4 space-y-3">
               {loading ? (
@@ -282,7 +282,7 @@ export function ArchitectReportsWorkspace() {
                     <p className="mt-1 text-xs text-white/50">Reference: {activeReport.targetReference}</p>
                     <p className="mt-1 text-xs text-white/50">Resolution: {activeReport.targetResolution}</p>
                     {activeReport.targetHref ? (
-                      <Link href={activeReport.targetHref as Route} className="mt-3 inline-flex text-sm font-semibold text-[#d7ffab]">View target profile</Link>
+                      <Link href={activeReport.targetHref as Route} className="mt-3 inline-flex text-sm font-semibold text-[#e4f9b8]">View target profile</Link>
                     ) : null}
                   </div>
                   <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
@@ -290,7 +290,7 @@ export function ArchitectReportsWorkspace() {
                     <p className="mt-2 text-sm font-semibold text-white">{activeReport.reporterName}</p>
                     <p className="mt-1 text-xs text-white/50">{activeReport.reporterEmail ?? activeReport.reporterId ?? "No reporter reference"}</p>
                     {activeReport.reporterSupportThreadHref ? (
-                      <Link href={activeReport.reporterSupportThreadHref as Route} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#d7ffab]">
+                      <Link href={activeReport.reporterSupportThreadHref as Route} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#e4f9b8]">
                         <MessageCircle className="h-4 w-4" />
                         Message reporter
                       </Link>
@@ -319,7 +319,7 @@ export function ArchitectReportsWorkspace() {
 
                 <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                   <div className="flex items-center gap-2 text-white">
-                    <CheckCircle2 className="h-4 w-4 text-[#d7ffab]" />
+                    <CheckCircle2 className="h-4 w-4 text-[#e4f9b8]" />
                     <h3 className="text-sm font-semibold">Event history</h3>
                   </div>
                   <div className="mt-4 space-y-3">

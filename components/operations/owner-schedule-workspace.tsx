@@ -298,7 +298,7 @@ function MetricCard({
 }) {
   const content = (
     <>
-      <span className="flex items-center gap-2 text-sm font-extrabold text-[#A3FF12]">
+      <span className="flex items-center gap-2 text-sm font-extrabold text-[#C4F24E]">
         {icon}
         {label}
       </span>
@@ -307,7 +307,7 @@ function MetricCard({
     </>
   );
 
-  const className = "min-h-[8.75rem] rounded-[22px] border border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-5 text-left shadow-[0_18px_50px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.045)] transition hover:-translate-y-0.5 hover:border-[#A3FF12]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70";
+  const className = "min-h-[8.75rem] rounded-[22px] border border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-5 text-left shadow-[0_18px_50px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.045)] transition hover:-translate-y-0.5 hover:border-[#C4F24E]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/70";
 
   if (href) {
     return (
@@ -350,7 +350,7 @@ function StatusLegend() {
           <span
             className={cn(
               "h-3 w-3 rounded-full",
-              item.tone === "booked" && "bg-[#A3FF12]",
+              item.tone === "booked" && "bg-[#C4F24E]",
               item.tone === "walk-in" && "bg-blue-400",
               item.tone === "blocked" && "bg-amber-300",
               item.tone === "available" && "bg-white/42"
@@ -374,12 +374,12 @@ function ScheduleCellButton({
 }) {
   const visible = isCellVisible(cell, filter);
   const className = cn(
-    "flex min-h-[4.75rem] w-36 flex-col justify-center rounded-[12px] border px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70",
+    "flex min-h-[4.75rem] w-36 flex-col justify-center rounded-[12px] border px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/70",
     !visible && "opacity-25",
-    cell.kind === "booked" && "border-[#A3FF12]/30 bg-[#A3FF12]/35 text-white shadow-[0_0_20px_rgba(163,255,18,0.08)]",
+    cell.kind === "booked" && "border-[#C4F24E]/30 bg-[#C4F24E]/35 text-white shadow-[0_0_20px_rgba(196, 242, 78,0.08)]",
     cell.kind === "walk-in" && "border-blue-300/35 bg-blue-500/35 text-white",
     cell.kind === "blocked" && "border-amber-300/35 bg-amber-400/42 text-white",
-    cell.kind === "available" && "border-white/8 bg-white/[0.11] text-white/74 hover:border-[#A3FF12]/25 hover:text-white",
+    cell.kind === "available" && "border-white/8 bg-white/[0.11] text-white/74 hover:border-[#C4F24E]/25 hover:text-white",
     cell.kind === "empty" && "border-white/6 bg-white/[0.035] text-white/32"
   );
 
@@ -476,12 +476,12 @@ export function OwnerScheduleWorkspace() {
           <details className="group relative">
             <summary
               aria-label="Open schedule filters"
-              className="inline-flex h-14 w-14 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/74 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
+              className="inline-flex h-14 w-14 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/74 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#C4F24E]/35 hover:text-[#C4F24E] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/70"
             >
               <SlidersHorizontal className="h-6 w-6" />
             </summary>
             <GlassCard className="absolute right-0 z-20 mt-3 w-72 p-4">
-              <p className="px-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#A3FF12]">Schedule filters</p>
+              <p className="px-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#C4F24E]">Schedule filters</p>
               <div className="mt-3 grid gap-2">
                 {[
                   ["All", "all"],
@@ -497,8 +497,8 @@ export function OwnerScheduleWorkspace() {
                     className={cn(
                       "flex min-h-11 items-center justify-between rounded-[14px] border px-3 py-2 text-sm font-bold transition",
                       slotFilter === value
-                        ? "border-[#A3FF12]/45 bg-[#A3FF12] text-black"
-                        : "border-white/10 bg-black/20 text-white/72 hover:border-[#A3FF12]/25 hover:text-white"
+                        ? "border-[#C4F24E]/45 bg-[#C4F24E] text-black"
+                        : "border-white/10 bg-black/20 text-white/72 hover:border-[#C4F24E]/25 hover:text-white"
                     )}
                   >
                     {label}
@@ -515,7 +515,7 @@ export function OwnerScheduleWorkspace() {
               setSelectedDate(getTodayKey());
               setSlotFilter("all");
             }}
-            className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-6 text-base font-extrabold text-white transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
+            className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-6 text-base font-extrabold text-white transition hover:border-[#C4F24E]/35 hover:text-[#C4F24E] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/70"
           >
             Today
           </button>
@@ -530,7 +530,7 @@ export function OwnerScheduleWorkspace() {
 
       <GlassCard className="grid gap-4 p-5 md:grid-cols-4">
         <div className="md:col-span-2">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Shop schedule pulse</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Shop schedule pulse</p>
           <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">Today and week context for every chair.</p>
           <p className="mt-2 text-sm leading-6 text-white/56">When the team is connected, this becomes the operating board for coverage, walk-ins, and open capacity.</p>
         </div>
@@ -558,14 +558,14 @@ export function OwnerScheduleWorkspace() {
                 setSelectedAppointmentId(null);
               }}
               className={cn(
-                "min-h-[5.875rem] rounded-[20px] border px-2 py-3 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70",
+                "min-h-[5.875rem] rounded-[20px] border px-2 py-3 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/70",
                 selected
-                  ? "border-[#A3FF12]/80 bg-[#A3FF12]/8 text-[#A3FF12] shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                  ? "border-[#C4F24E]/80 bg-[#C4F24E]/8 text-[#C4F24E] shadow-[0_0_24px_rgba(196, 242, 78,0.12)]"
                   : "border-transparent text-white/70 hover:border-white/10 hover:bg-white/[0.025]"
               )}
             >
               <span className="block text-xs font-extrabold tracking-[0.08em] text-white/52 sm:text-sm">{day.weekday}</span>
-              <span className={cn("mt-2 block text-2xl font-black tracking-[-0.04em] sm:text-3xl", selected ? "text-[#A3FF12]" : "text-white")}>
+              <span className={cn("mt-2 block text-2xl font-black tracking-[-0.04em] sm:text-3xl", selected ? "text-[#C4F24E]" : "text-white")}>
                 {day.day}
               </span>
             </button>
@@ -644,10 +644,10 @@ export function OwnerScheduleWorkspace() {
             title="No chairs or barbers assigned yet."
             detail="Invite barbers to connect your shop team, then configure shop chairs to build the schedule."
           >
-            <Link href="/dashboard/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
+            <Link href="/dashboard/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#C4F24E]/40 px-5 text-sm font-extrabold text-[#C4F24E] transition hover:bg-[#C4F24E]/10">
               Invite Barber
             </Link>
-            <Link href="/dashboard/owner/more?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
+            <Link href="/dashboard/owner/more?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#C4F24E]/30 hover:text-[#C4F24E]">
               Configure Shop Hours
             </Link>
           </EmptyState>
@@ -656,10 +656,10 @@ export function OwnerScheduleWorkspace() {
             title="No schedule data for this day."
             detail="Set shop hours and barber availability to track chair usage."
           >
-            <Link href="/dashboard/owner/more?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
+            <Link href="/dashboard/owner/more?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#C4F24E]/40 px-5 text-sm font-extrabold text-[#C4F24E] transition hover:bg-[#C4F24E]/10">
               Set Shop Hours
             </Link>
-            <Link href="/dashboard/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
+            <Link href="/dashboard/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#C4F24E]/30 hover:text-[#C4F24E]">
               Review Team
             </Link>
           </EmptyState>
@@ -676,21 +676,21 @@ export function OwnerScheduleWorkspace() {
 
                   <div />
                   <div className="flex min-h-[8.5rem] flex-col items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.035] px-3 text-center">
-                    <Users className="h-8 w-8 text-[#A3FF12]" />
+                    <Users className="h-8 w-8 text-[#C4F24E]" />
                     <span className="mt-3 text-lg font-extrabold text-white">All Chairs</span>
                   </div>
                   {barberColumns.map((barber) => (
                     <Link
                       key={barber.id}
                       href={`/dashboard/owner/schedule?barberId=${encodeURIComponent(barber.id)}`}
-                      className="flex min-h-[8.5rem] flex-col items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.035] px-3 text-center transition hover:border-[#A3FF12]/30"
+                      className="flex min-h-[8.5rem] flex-col items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.035] px-3 text-center transition hover:border-[#C4F24E]/30"
                     >
                       <Avatar
                         alt={barber.name}
                         initials={barber.initials}
                         className={cn(
                           "h-14 w-14 border-2",
-                          barber.active ? "border-[#A3FF12]/80 shadow-[0_0_18px_rgba(163,255,18,0.18)]" : "border-white/15"
+                          barber.active ? "border-[#C4F24E]/80 shadow-[0_0_18px_rgba(196, 242, 78,0.18)]" : "border-white/15"
                         )}
                       />
                       <span className="mt-3 text-lg font-extrabold text-white">{barber.firstName}</span>
@@ -715,7 +715,7 @@ export function OwnerScheduleWorkspace() {
                         <button
                           type="button"
                           onClick={() => setSlotFilter("all")}
-                          className="flex min-h-[4.75rem] items-center justify-center rounded-[12px] border border-white/8 bg-black/26 text-xl font-black text-[#A3FF12] transition hover:border-[#A3FF12]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
+                          className="flex min-h-[4.75rem] items-center justify-center rounded-[12px] border border-white/8 bg-black/26 text-xl font-black text-[#C4F24E] transition hover:border-[#C4F24E]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/70"
                           aria-label={`${activeChairCount} of ${barberColumns.length} chairs active at ${formatHourLabel(hour)}`}
                         >
                           {activeChairCount}/{barberColumns.length}
@@ -740,7 +740,7 @@ export function OwnerScheduleWorkspace() {
         {selectedAppointment ? (
           <GlassCard active className="grid gap-4 p-5 md:grid-cols-[1fr_auto] md:items-center">
             <div className="flex min-w-0 items-center gap-4">
-              <Avatar alt={selectedAppointment.display.clientName} initials={getInitials(selectedAppointment.display.clientName)} className="h-14 w-14 border-2 border-[#A3FF12]/70" />
+              <Avatar alt={selectedAppointment.display.clientName} initials={getInitials(selectedAppointment.display.clientName)} className="h-14 w-14 border-2 border-[#C4F24E]/70" />
               <div className="min-w-0">
                 <p className="text-xl font-extrabold text-white">{selectedAppointment.display.clientName}</p>
                 <p className="mt-1 text-sm font-semibold text-white/62">
@@ -749,7 +749,7 @@ export function OwnerScheduleWorkspace() {
                 <p className="mt-2 text-sm text-white/52">{selectedAppointment.note || "No client notes were attached to this appointment."}</p>
               </div>
             </div>
-            <Link href={`/dashboard/owner/money?appointmentId=${encodeURIComponent(selectedAppointment.id)}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
+            <Link href={`/dashboard/owner/money?appointmentId=${encodeURIComponent(selectedAppointment.id)}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#C4F24E]/40 px-5 text-sm font-extrabold text-[#C4F24E] transition hover:bg-[#C4F24E]/10">
               View Ticket
             </Link>
           </GlassCard>
@@ -758,7 +758,7 @@ export function OwnerScheduleWorkspace() {
 
       <Link href="/dashboard/owner/schedule?filter=open-slots" className="group block pb-4" onClick={() => setSlotFilter("open")}>
         <GlassCard className="grid gap-4 p-5 sm:grid-cols-[auto_1fr_auto] sm:items-center sm:p-6">
-          <span className="flex h-16 w-16 items-center justify-center rounded-full border border-[#A3FF12]/22 bg-[#A3FF12]/10 text-[#A3FF12] shadow-[0_0_24px_rgba(163,255,18,0.16)]">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full border border-[#C4F24E]/22 bg-[#C4F24E]/10 text-[#C4F24E] shadow-[0_0_24px_rgba(196, 242, 78,0.16)]">
             <Clock3 className="h-8 w-8" />
           </span>
           <span>
@@ -769,7 +769,7 @@ export function OwnerScheduleWorkspace() {
                 : "No open slots today. Your available chair time is fully used."}
             </span>
           </span>
-          <span className="inline-flex items-center gap-2 text-lg font-extrabold text-[#A3FF12]">
+          <span className="inline-flex items-center gap-2 text-lg font-extrabold text-[#C4F24E]">
             View Open Slots
             <ChevronRight className="h-5 w-5 transition group-hover:translate-x-1" />
           </span>

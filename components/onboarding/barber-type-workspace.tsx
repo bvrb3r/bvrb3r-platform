@@ -71,16 +71,16 @@ export function BarberTypeWorkspace() {
                 onClick={() => setSelectedSubtype(card.subtype)}
                 className={`flex min-h-[210px] flex-col justify-between rounded-[24px] border p-4 text-left transition ${
                   isSelected
-                    ? "border-[#7cff00]/34 bg-[#7cff00]/10"
-                    : "border-white/8 bg-black/25 hover:border-[#7cff00]/18 hover:bg-black/35"
+                    ? "border-[#c4f24e]/34 bg-[#c4f24e]/10"
+                    : "border-white/8 bg-black/25 hover:border-[#c4f24e]/18 hover:bg-black/35"
                 }`}
               >
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-[#cfff93]">Subtype</p>
+                  <p className="text-[11px] uppercase tracking-[0.22em] text-[#e0f6a0]">Subtype</p>
                   <h2 className="mt-3 text-2xl font-semibold text-white">{card.title}</h2>
                   <p className="mt-3 text-sm leading-7 text-white/62">{card.copy}</p>
                 </div>
-                <p className="mt-5 text-xs leading-6 text-[#d7ffab]">{card.approvalCopy}</p>
+                <p className="mt-5 text-xs leading-6 text-[#e4f9b8]">{card.approvalCopy}</p>
               </button>
             );
           })}

@@ -150,7 +150,7 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm text-white/68">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">
                 {role === "owner" ? <Store className="h-4 w-4" /> : <Scissors className="h-4 w-4" />}
                 {role === "owner" ? "Shop-owned catalog" : canOwnBarberServices ? "Barber-owned services" : "Read-only service catalog"}
               </div>
@@ -178,8 +178,8 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
                   <p className="mt-3 text-3xl font-semibold" data-display="true">{catalogQuery.data?.readOnlyServices.length ?? 0}</p>
                   <p className="mt-2 text-sm text-white/58">Visible for context, protected from accidental pricing changes.</p>
                 </div>
-                <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                  <p className="surface-label text-[#d7ffab]">Most booked capability</p>
+                <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4">
+                  <p className="surface-label text-[#e4f9b8]">Most booked capability</p>
                   <p className="mt-3 text-3xl font-semibold" data-display="true">Live</p>
                   <p className="mt-2 text-sm text-white/70">Popularity metrics are already available for profiles and discovery.</p>
                 </div>
@@ -194,7 +194,7 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
               <p className="surface-label">Create service</p>
               <p className="mt-2 text-sm text-white/58">{catalogQuery.data?.canCreate ? "Add a new marketplace-ready service without touching unrelated workflows." : "This role can view service performance, but cannot create or edit service definitions."}</p>
             </div>
-            {catalogQuery.data?.canCreate ? <Sparkles className="h-5 w-5 text-[#baff69]" /> : <LockKeyhole className="h-5 w-5 text-[#baff69]" />}
+            {catalogQuery.data?.canCreate ? <Sparkles className="h-5 w-5 text-[#d9f985]" /> : <LockKeyhole className="h-5 w-5 text-[#d9f985]" />}
           </div>
           {catalogQuery.data?.canCreate ? (
             <div className="mt-4 space-y-3">
@@ -202,7 +202,7 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
                 <Input placeholder="Service name" value={createDraft.name} onChange={(event) => setCreateDraft((current) => ({ ...current, name: event.target.value }))} />
                 <Input placeholder="Category" value={createDraft.category} onChange={(event) => setCreateDraft((current) => ({ ...current, category: event.target.value }))} />
               </div>
-              <textarea className="min-h-[120px] w-full rounded-[22px] border border-white/10 bg-[rgba(15,15,15,0.9)] px-4 py-3 text-sm text-white outline-none transition focus:border-[#7CFF00]/35 focus:ring-2 focus:ring-[#7CFF00]/20" placeholder="Describe the service experience." value={createDraft.description} onChange={(event) => setCreateDraft((current) => ({ ...current, description: event.target.value }))} />
+              <textarea className="min-h-[120px] w-full rounded-[22px] border border-white/10 bg-[rgba(15,15,15,0.9)] px-4 py-3 text-sm text-white outline-none transition focus:border-[#C4F24E]/35 focus:ring-2 focus:ring-[#C4F24E]/20" placeholder="Describe the service experience." value={createDraft.description} onChange={(event) => setCreateDraft((current) => ({ ...current, description: event.target.value }))} />
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <Input type="number" placeholder="Duration" value={createDraft.durationMin} onChange={(event) => setCreateDraft((current) => ({ ...current, durationMin: event.target.value }))} />
                 <Input type="number" placeholder="Buffer" value={createDraft.bufferMin} onChange={(event) => setCreateDraft((current) => ({ ...current, bufferMin: event.target.value }))} />
@@ -234,7 +234,7 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
               <p className="surface-label">Editable catalog</p>
               <p className="mt-2 text-sm text-white/58">Update service names, descriptions, pricing, duration, and style ownership only where your role allows it.</p>
             </div>
-            <TrendingUp className="h-5 w-5 text-[#baff69]" />
+            <TrendingUp className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {isInitialLoading ? (
@@ -245,19 +245,19 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
             ) : catalogQuery.data?.editableServices.length ? catalogQuery.data.editableServices.map((item) => {
               const draft = drafts[item.service.id] ?? buildDraft(item);
               return (
-                <div key={item.service.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+                <div key={item.service.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="font-medium">{item.service.name}</p>
                       <p className="mt-1 text-sm text-white/55">{item.ownerLabel}</p>
                     </div>
-                    <span className="status-pill text-[#d7ffab]">Rank #{item.popularity.popularityRank || "--"}</span>
+                    <span className="status-pill text-[#e4f9b8]">Rank #{item.popularity.popularityRank || "--"}</span>
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <Input value={draft.name} onChange={(event) => updateDraft(item.service.id, "name", event.target.value)} />
                     <Input value={draft.category} onChange={(event) => updateDraft(item.service.id, "category", event.target.value)} />
                   </div>
-                  <textarea className="mt-3 min-h-[110px] w-full rounded-[22px] border border-white/10 bg-[rgba(15,15,15,0.9)] px-4 py-3 text-sm text-white outline-none transition focus:border-[#7CFF00]/35 focus:ring-2 focus:ring-[#7CFF00]/20" value={draft.description} onChange={(event) => updateDraft(item.service.id, "description", event.target.value)} />
+                  <textarea className="mt-3 min-h-[110px] w-full rounded-[22px] border border-white/10 bg-[rgba(15,15,15,0.9)] px-4 py-3 text-sm text-white outline-none transition focus:border-[#C4F24E]/35 focus:ring-2 focus:ring-[#C4F24E]/20" value={draft.description} onChange={(event) => updateDraft(item.service.id, "description", event.target.value)} />
                   <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                     <Input type="number" value={draft.durationMin} onChange={(event) => updateDraft(item.service.id, "durationMin", event.target.value)} />
                     <Input type="number" value={draft.bufferMin} onChange={(event) => updateDraft(item.service.id, "bufferMin", event.target.value)} />
@@ -297,7 +297,7 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
               <p className="surface-label">Protected catalog visibility</p>
               <p className="mt-2 text-sm text-white/58">Shop-owned commission services and self-owned booth-rent services are visible here without weakening the permission boundary.</p>
             </div>
-            <LockKeyhole className="h-5 w-5 text-[#baff69]" />
+            <LockKeyhole className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {isInitialLoading ? (

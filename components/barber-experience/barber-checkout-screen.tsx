@@ -491,7 +491,7 @@ export function BarberCheckoutScreen({
       {overviewQuery.error ? <FeedbackBanner tone="error" message={getReadableActionError(overviewQuery.error)} /> : null}
 
       <GlassCard className="relative overflow-hidden rounded-[28px] p-5 sm:p-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.06),transparent_28%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(196, 242, 78,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(196, 242, 78,0.06),transparent_28%)]" />
         <div className="relative">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -506,7 +506,7 @@ export function BarberCheckoutScreen({
             <button
               type="button"
               aria-label="Open recent checkout history"
-              className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+              className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#c4f24e]/35 hover:shadow-[0_0_24px_rgba(196, 242, 78,0.12)]"
               onClick={() => openDetailSection("appointments")}
             >
               <History className="h-6 w-6" />
@@ -521,7 +521,7 @@ export function BarberCheckoutScreen({
                 className={cn(
                   "flex flex-col items-center justify-center rounded-[10px] px-1 text-center text-sm font-extrabold transition sm:text-base",
                   activePanel === panel.key
-                    ? "bg-[linear-gradient(135deg,#a3ff12,#7dce00)] text-[#050505] shadow-[0_0_28px_rgba(163,255,18,0.25)]"
+                    ? "bg-[linear-gradient(135deg,#c4f24e,#8fbf2e)] text-[#050505] shadow-[0_0_28px_rgba(196, 242, 78,0.25)]"
                     : "text-white/70 hover:text-white"
                 )}
                 onClick={() => setActivePanel(panel.key)}
@@ -538,7 +538,7 @@ export function BarberCheckoutScreen({
             <div>
               <section className="mt-[38px]">
                 <p className="text-sm font-black uppercase tracking-[0.18em] text-white/40">Total amount</p>
-                <p className="mt-2 text-[4.25rem] font-black leading-[0.95] tracking-[-0.07em] text-[#a3ff12] [text-shadow:0_0_34px_rgba(163,255,18,0.24)] sm:text-[6rem]">
+                <p className="mt-2 text-[4.25rem] font-black leading-[0.95] tracking-[-0.07em] text-[#c4f24e] [text-shadow:0_0_34px_rgba(196, 242, 78,0.24)] sm:text-[6rem]">
                   {formatCheckoutAmount(keypadAmount)}
                 </p>
                 {selectedServiceLabel ? <p className="mt-3 text-sm font-semibold text-white/60">{selectedServiceLabel} loaded into the sale.</p> : null}
@@ -548,7 +548,7 @@ export function BarberCheckoutScreen({
                     value={saleNote}
                     onChange={(event) => setSaleNote(event.target.value)}
                     placeholder="Optional customer or sale note"
-                    className="mt-2 h-12 w-full rounded-[8px] border border-white/10 bg-black/28 px-4 text-sm font-semibold text-white outline-none transition placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                    className="mt-2 h-12 w-full rounded-[8px] border border-white/10 bg-black/28 px-4 text-sm font-semibold text-white outline-none transition placeholder:text-white/30 focus:border-[#c4f24e]/45"
                   />
                 </label>
               </section>
@@ -556,17 +556,17 @@ export function BarberCheckoutScreen({
               <section className="mt-7 grid grid-cols-4 gap-2 sm:gap-3">
                 <button
                   type="button"
-                  className="flex h-[72px] items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] text-base font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-[#a3ff12]/[0.04] sm:h-[88px] sm:gap-3 sm:text-xl"
+                  className="flex h-[72px] items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] text-base font-extrabold text-white transition hover:border-[#c4f24e]/25 hover:bg-[#c4f24e]/[0.04] sm:h-[88px] sm:gap-3 sm:text-xl"
                   onClick={handleNoteAction}
                 >
-                  <Plus className="h-7 w-7 text-[#a3ff12] sm:h-8 sm:w-8" />
+                  <Plus className="h-7 w-7 text-[#c4f24e] sm:h-8 sm:w-8" />
                   Note
                 </button>
                 {quickAmounts.map((amount) => (
                   <button
                     key={amount}
                     type="button"
-                    className="h-[72px] rounded-[8px] border border-white/10 bg-white/[0.035] text-base font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-[#a3ff12]/[0.04] sm:h-[88px] sm:text-2xl"
+                    className="h-[72px] rounded-[8px] border border-white/10 bg-white/[0.035] text-base font-extrabold text-white transition hover:border-[#c4f24e]/25 hover:bg-[#c4f24e]/[0.04] sm:h-[88px] sm:text-2xl"
                     onClick={() => handleQuickAmount(amount)}
                   >
                     {formatCheckoutAmount(amount)}
@@ -574,14 +574,14 @@ export function BarberCheckoutScreen({
                 ))}
               </section>
 
-              <section className="mt-7 overflow-hidden rounded-[16px] border-[1.5px] border-[#a3ff12]/52 bg-white/[0.018] shadow-[0_0_32px_rgba(163,255,18,0.14),inset_0_1px_0_rgba(255,255,255,0.045)]">
+              <section className="mt-7 overflow-hidden rounded-[16px] border-[1.5px] border-[#c4f24e]/52 bg-white/[0.018] shadow-[0_0_32px_rgba(196, 242, 78,0.14),inset_0_1px_0_rgba(255,255,255,0.045)]">
                 <div className="grid grid-cols-3">
                   {keypadButtons.map((button, index) => (
                     <button
                       key={button.key}
                       type="button"
                       className={cn(
-                        "flex h-[104px] flex-col items-center justify-center border-[rgba(163,255,18,0.14)] transition hover:bg-[#a3ff12]/[0.06] sm:h-[132px]",
+                        "flex h-[104px] flex-col items-center justify-center border-[rgba(196, 242, 78,0.14)] transition hover:bg-[#c4f24e]/[0.06] sm:h-[132px]",
                         index % 3 !== 2 && "border-r",
                         index < 9 && "border-b"
                       )}
@@ -602,7 +602,7 @@ export function BarberCheckoutScreen({
                       <span
                         className={cn(
                           "text-[34px] font-black leading-none tracking-[-0.03em] sm:text-[42px]",
-                          button.key === "clear" ? "text-[#ff2d2d]" : button.key === "plus" ? "text-[#a3ff12]" : "text-white"
+                          button.key === "clear" ? "text-[#ff2d2d]" : button.key === "plus" ? "text-[#c4f24e]" : "text-white"
                         )}
                       >
                         {button.label}
@@ -616,10 +616,10 @@ export function BarberCheckoutScreen({
               <section className="mt-6 grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  className="flex min-h-[92px] items-center gap-4 rounded-[12px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 text-left shadow-[0_14px_42px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:border-[#a3ff12]/25 sm:min-h-[112px]"
+                  className="flex min-h-[92px] items-center gap-4 rounded-[12px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 text-left shadow-[0_14px_42px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:border-[#c4f24e]/25 sm:min-h-[112px]"
                   onClick={() => handleSecondaryMoneyAction("Discount")}
                 >
-                  <span className="flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-full border border-[#a3ff12]/65 bg-[rgba(163,255,18,0.08)] text-[#a3ff12] shadow-[0_0_22px_rgba(163,255,18,0.18)]">
+                  <span className="flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-full border border-[#c4f24e]/65 bg-[rgba(196, 242, 78,0.08)] text-[#c4f24e] shadow-[0_0_22px_rgba(196, 242, 78,0.18)]">
                     <BadgePercent className="h-6 w-6" />
                   </span>
                   <span>
@@ -629,10 +629,10 @@ export function BarberCheckoutScreen({
                 </button>
                 <button
                   type="button"
-                  className="flex min-h-[92px] items-center gap-4 rounded-[12px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 text-left shadow-[0_14px_42px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:border-[#a3ff12]/25 sm:min-h-[112px]"
+                  className="flex min-h-[92px] items-center gap-4 rounded-[12px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 text-left shadow-[0_14px_42px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:border-[#c4f24e]/25 sm:min-h-[112px]"
                   onClick={() => handleSecondaryMoneyAction("Tip")}
                 >
-                  <span className="flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-full border border-[#a3ff12]/65 bg-[rgba(163,255,18,0.08)] text-[#a3ff12] shadow-[0_0_22px_rgba(163,255,18,0.18)]">
+                  <span className="flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-full border border-[#c4f24e]/65 bg-[rgba(196, 242, 78,0.08)] text-[#c4f24e] shadow-[0_0_22px_rgba(196, 242, 78,0.18)]">
                     <ReceiptText className="h-6 w-6" />
                   </span>
                   <span>
@@ -645,7 +645,7 @@ export function BarberCheckoutScreen({
               <button
                 type="button"
                 disabled={reviewLoading}
-                className="mt-[22px] flex min-h-[76px] w-full items-center justify-center rounded-[8px] bg-[linear-gradient(135deg,#a3ff12,#7dce00)] px-6 text-[21px] font-black text-[#050505] shadow-[0_16px_46px_rgba(163,255,18,0.28),inset_0_1px_0_rgba(255,255,255,0.28)] transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 sm:min-h-[86px]"
+                className="mt-[22px] flex min-h-[76px] w-full items-center justify-center rounded-[8px] bg-[linear-gradient(135deg,#c4f24e,#8fbf2e)] px-6 text-[21px] font-black text-[#050505] shadow-[0_16px_46px_rgba(196, 242, 78,0.28),inset_0_1px_0_rgba(255,255,255,0.28)] transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 sm:min-h-[86px]"
                 onClick={handleReviewSale}
               >
                 <span>{reviewLoading ? "Building Quote..." : "Review Sale"}</span>
@@ -654,7 +654,7 @@ export function BarberCheckoutScreen({
 
               <GlassCard className="mt-[22px] flex min-h-24 items-center justify-between gap-4 rounded-[16px] p-[18px]">
                 <div className="flex min-w-0 items-center gap-4">
-                  <span className="flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full border border-[rgba(163,255,18,0.22)] bg-[rgba(163,255,18,0.08)] text-[#a3ff12]">
+                  <span className="flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full border border-[rgba(196, 242, 78,0.22)] bg-[rgba(196, 242, 78,0.08)] text-[#c4f24e]">
                     <CreditCard className="h-6 w-6" />
                   </span>
                   <div className="min-w-0">
@@ -664,7 +664,7 @@ export function BarberCheckoutScreen({
                 </div>
                 <button
                   type="button"
-                  className="inline-flex shrink-0 items-center gap-2 text-base font-extrabold text-[#a3ff12]"
+                  className="inline-flex shrink-0 items-center gap-2 text-base font-extrabold text-[#c4f24e]"
                   onClick={() => openDetailSection("appointments")}
                 >
                   Change
@@ -682,7 +682,7 @@ export function BarberCheckoutScreen({
                     <p className="bvr-section-label">Appointment checkout</p>
                     <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Ready to close</h3>
                   </div>
-                  <CircleDollarSign className="h-5 w-5 text-[#a3ff12]" />
+                  <CircleDollarSign className="h-5 w-5 text-[#c4f24e]" />
                 </div>
                 <div className="mt-4 space-y-3">
                   {readyForCheckout.length ? readyForCheckout.slice(0, 4).map((appointment) => (
@@ -714,7 +714,7 @@ export function BarberCheckoutScreen({
                     <p className="bvr-section-label">Service library</p>
                     <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Load a real price</h3>
                   </div>
-                  <Scissors className="h-5 w-5 text-[#a3ff12]" />
+                  <Scissors className="h-5 w-5 text-[#c4f24e]" />
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {serviceShortcuts.length ? serviceShortcuts.map((item) => (
@@ -722,7 +722,7 @@ export function BarberCheckoutScreen({
                       key={item.service.id}
                       type="button"
                       onClick={() => handleLoadService(item.service)}
-                      className="rounded-[22px] border border-white/8 bg-black/20 p-4 text-left transition hover:border-[#a3ff12]/24 hover:bg-black/30"
+                      className="rounded-[22px] border border-white/8 bg-black/20 p-4 text-left transition hover:border-[#c4f24e]/24 hover:bg-black/30"
                     >
                       <p className="font-semibold text-white">{item.service.name}</p>
                       <p className="mt-2 text-sm text-white/58">{formatCheckoutAmount(item.service.price)} | {item.service.durationMin} min</p>
@@ -738,7 +738,7 @@ export function BarberCheckoutScreen({
 
               <GlassCard id="barber-checkout-services" className="scroll-mt-6 p-5">
                 <p className="bvr-section-label">Loaded sale</p>
-                <p className="mt-4 text-5xl font-black tracking-[-0.06em] text-[#a3ff12]">{formatCheckoutAmount(keypadAmount)}</p>
+                <p className="mt-4 text-5xl font-black tracking-[-0.06em] text-[#c4f24e]">{formatCheckoutAmount(keypadAmount)}</p>
                 <p className="mt-3 text-sm text-white/58">
                   {selectedServiceLabel ? `${selectedServiceLabel} is ready in Keypad.` : "Choose a service to load its live price into Keypad."}
                 </p>
@@ -792,7 +792,7 @@ export function BarberCheckoutScreen({
               <div className="border-t border-white/10 pt-3">
                 <div className="flex justify-between gap-4 text-lg font-black text-white">
                   <span>Total charge</span>
-                  <span className="text-[#a3ff12]">{formatCheckoutCents(reviewQuote.totalCents)}</span>
+                  <span className="text-[#c4f24e]">{formatCheckoutCents(reviewQuote.totalCents)}</span>
                 </div>
                 <p className="mt-2 text-xs font-semibold text-white/40">
                   {reviewQuote.relationshipType.replace("_", " ")} sale. Payout readiness is confirmed only after the server records successful payment and routing evidence.
@@ -802,7 +802,7 @@ export function BarberCheckoutScreen({
 
             <button
               type="button"
-              className="mt-5 flex min-h-[58px] w-full items-center justify-center rounded-[10px] bg-[linear-gradient(135deg,#a3ff12,#7dce00)] px-5 text-lg font-black text-[#050505] transition active:scale-[0.99] disabled:cursor-wait disabled:opacity-70"
+              className="mt-5 flex min-h-[58px] w-full items-center justify-center rounded-[10px] bg-[linear-gradient(135deg,#c4f24e,#8fbf2e)] px-5 text-lg font-black text-[#050505] transition active:scale-[0.99] disabled:cursor-wait disabled:opacity-70"
               onClick={handleChoosePaymentMethod}
             >
               {`Charge ${formatCheckoutCents(reviewQuote.totalCents)}`}
@@ -817,7 +817,7 @@ export function BarberCheckoutScreen({
               <div>
                 <p className="bvr-section-label">Current sale</p>
                 <h3 className="mt-3 text-3xl font-black tracking-[-0.04em] text-white">Choose payment method</h3>
-                <p className="mt-2 text-lg font-black text-[#a3ff12]">Sale amount: {formatCheckoutCents(reviewQuote.totalCents)}</p>
+                <p className="mt-2 text-lg font-black text-[#c4f24e]">Sale amount: {formatCheckoutCents(reviewQuote.totalCents)}</p>
               </div>
               <button
                 type="button"
@@ -835,7 +835,7 @@ export function BarberCheckoutScreen({
                   <button
                     type="button"
                     disabled={Boolean(paymentMethodLoading)}
-                    className="mt-3 rounded-[8px] border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#d7ffab] transition hover:bg-[#a3ff12]/15 disabled:cursor-wait disabled:opacity-70"
+                    className="mt-3 rounded-[8px] border border-[#c4f24e]/35 bg-[#c4f24e]/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#e4f9b8] transition hover:bg-[#c4f24e]/15 disabled:cursor-wait disabled:opacity-70"
                     onClick={handleRetryPaymentRequestMessage}
                   >
                     Retry sending message
@@ -853,7 +853,7 @@ export function BarberCheckoutScreen({
               >
                 <span className="block text-lg font-black text-white">Tap to Pay</span>
                 <span className="mt-1 block text-sm font-semibold text-white/55">Accept contactless card / Apple Pay / Google Pay.</span>
-                <span className="mt-2 block text-xs font-semibold text-[#a3ff12]/75">Tap to Pay setup required.</span>
+                <span className="mt-2 block text-xs font-semibold text-[#c4f24e]/75">Tap to Pay setup required.</span>
               </button>
 
               <div className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4">
@@ -864,25 +864,25 @@ export function BarberCheckoutScreen({
                     value={cashCustomerName}
                     onChange={(event) => setCashCustomerName(event.target.value)}
                     placeholder="Customer name (optional)"
-                    className="h-10 rounded-[8px] border border-white/10 bg-black/35 px-3 text-xs font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                    className="h-10 rounded-[8px] border border-white/10 bg-black/35 px-3 text-xs font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#c4f24e]/45"
                   />
                   <input
                     value={cashCustomerPhone}
                     onChange={(event) => setCashCustomerPhone(event.target.value)}
                     placeholder="Phone (optional)"
-                    className="h-10 rounded-[8px] border border-white/10 bg-black/35 px-3 text-xs font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                    className="h-10 rounded-[8px] border border-white/10 bg-black/35 px-3 text-xs font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#c4f24e]/45"
                   />
                   <input
                     value={cashCustomerEmail}
                     onChange={(event) => setCashCustomerEmail(event.target.value)}
                     placeholder="Email (optional)"
-                    className="h-10 rounded-[8px] border border-white/10 bg-black/35 px-3 text-xs font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                    className="h-10 rounded-[8px] border border-white/10 bg-black/35 px-3 text-xs font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#c4f24e]/45"
                   />
                 </div>
                 <button
                   type="button"
                   disabled={Boolean(paymentMethodLoading)}
-                  className="mt-3 flex min-h-11 w-full items-center justify-center rounded-[8px] border border-[#a3ff12]/35 bg-[#a3ff12]/8 px-4 text-sm font-black text-[#a3ff12] transition hover:bg-[#a3ff12]/12 disabled:cursor-wait disabled:opacity-70"
+                  className="mt-3 flex min-h-11 w-full items-center justify-center rounded-[8px] border border-[#c4f24e]/35 bg-[#c4f24e]/8 px-4 text-sm font-black text-[#c4f24e] transition hover:bg-[#c4f24e]/12 disabled:cursor-wait disabled:opacity-70"
                   onClick={() => handlePaymentMethod("cash")}
                 >
                   Record cash
@@ -898,7 +898,7 @@ export function BarberCheckoutScreen({
                   value={clientSearch}
                   onChange={(event) => setClientSearch(event.target.value)}
                   placeholder="Search clients by name, phone, or email"
-                  className="mt-3 h-11 w-full rounded-[8px] border border-white/10 bg-black/35 px-3 text-sm font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                  className="mt-3 h-11 w-full rounded-[8px] border border-white/10 bg-black/35 px-3 text-sm font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#c4f24e]/45"
                 />
                 <div className="mt-3 grid gap-2">
                   {clientSearch.trim().length < 2 ? (
@@ -912,21 +912,21 @@ export function BarberCheckoutScreen({
                       className={cn(
                         "rounded-[8px] border px-3 py-2 text-left text-sm transition",
                         selectedClientId === client.clientId
-                          ? "border-[#a3ff12]/55 bg-[#a3ff12]/10 text-white"
+                          ? "border-[#c4f24e]/55 bg-[#c4f24e]/10 text-white"
                           : "border-white/10 bg-black/20 text-white/70 hover:text-white"
                       )}
                       onClick={() => setSelectedClientId(client.clientId)}
                     >
                       <span className="block font-black">{client.clientName}</span>
                       <span className="mt-0.5 block text-xs text-white/45">{client.email || client.phone || "Client"}</span>
-                      {selectedClientId === client.clientId ? <span className="mt-1 block text-xs font-semibold text-[#a3ff12]/75">Ready to request card approval.</span> : null}
+                      {selectedClientId === client.clientId ? <span className="mt-1 block text-xs font-semibold text-[#c4f24e]/75">Ready to request card approval.</span> : null}
                     </button>
                   )) : (
                     <p className="rounded-[8px] border border-dashed border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/45">No matching clients yet.</p>
                   )}
                 </div>
                 {selectedClient ? (
-                  <div className="mt-3 rounded-[10px] border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-3 py-2">
+                  <div className="mt-3 rounded-[10px] border border-[#c4f24e]/35 bg-[#c4f24e]/10 px-3 py-2">
                     <p className="text-sm font-black text-white">{selectedClient.clientName}</p>
                     <p className="mt-1 text-xs font-semibold text-white/55">{selectedClient.email || selectedClient.phone || "Selected client"}</p>
                   </div>
@@ -934,7 +934,7 @@ export function BarberCheckoutScreen({
                 <button
                   type="button"
                   disabled={Boolean(paymentMethodLoading)}
-                  className="mt-3 flex min-h-11 w-full items-center justify-center rounded-[8px] border border-[#a3ff12]/45 bg-[#a3ff12]/10 px-4 text-sm font-black text-[#a3ff12] transition hover:bg-[#a3ff12]/15 disabled:cursor-wait disabled:opacity-70"
+                  className="mt-3 flex min-h-11 w-full items-center justify-center rounded-[8px] border border-[#c4f24e]/45 bg-[#c4f24e]/10 px-4 text-sm font-black text-[#c4f24e] transition hover:bg-[#c4f24e]/15 disabled:cursor-wait disabled:opacity-70"
                   onClick={() => handlePaymentMethod("card_on_file")}
                 >
                   Send payment request
@@ -942,7 +942,7 @@ export function BarberCheckoutScreen({
               </div>
             </div>
 
-            {paymentMethodLoading ? <p className="mt-4 text-center text-sm font-black uppercase tracking-[0.22em] text-[#a3ff12]">Processing {paymentMethodLoading.replace("_", " ")}...</p> : null}
+            {paymentMethodLoading ? <p className="mt-4 text-center text-sm font-black uppercase tracking-[0.22em] text-[#c4f24e]">Processing {paymentMethodLoading.replace("_", " ")}...</p> : null}
           </div>
         </div>
       ) : null}

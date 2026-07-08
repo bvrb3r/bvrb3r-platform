@@ -44,7 +44,7 @@ export function PublicBarberPortfolioGrid({
               </span>
             )}
             {asset.featured ? (
-              <span className="absolute left-2 top-2 rounded-md border border-[#a3ff12]/30 bg-black/70 px-2 py-1 text-[10px] font-bold text-[#d7ffab]">
+              <span className="absolute left-2 top-2 rounded-md border border-[#c4f24e]/30 bg-black/70 px-2 py-1 text-[10px] font-bold text-[#e4f9b8]">
                 Featured
               </span>
             ) : null}
@@ -69,7 +69,7 @@ export function PublicBarberPortfolioGrid({
           <section className="relative z-10 grid max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-lg border border-white/10 bg-[#080808] shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
             <button
               type="button"
-              className="absolute right-3 top-3 z-20 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-black/70 text-white transition hover:border-[#a3ff12]/35 hover:text-[#d7ffab]"
+              className="absolute right-3 top-3 z-20 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-black/70 text-white transition hover:border-[#c4f24e]/35 hover:text-[#e4f9b8]"
               aria-label="Close"
               onClick={() => setSelectedAsset(null)}
             >

@@ -51,7 +51,7 @@ import { getReadableActionError } from "@/lib/utils/feedback";
 const weekdayLabels = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const shortWeekdayLabels = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const inputClassName =
-  "h-12 rounded-[18px] border border-white/10 bg-black/30 px-4 text-sm text-white outline-none transition focus:border-[#a3ff12]/50 focus:ring-2 focus:ring-[#a3ff12]/15";
+  "h-12 rounded-[18px] border border-white/10 bg-black/30 px-4 text-sm text-white outline-none transition focus:border-[#c4f24e]/50 focus:ring-2 focus:ring-[#c4f24e]/15";
 
 type WorkingHoursFormRow = {
   weekday: number;
@@ -478,7 +478,7 @@ function AppointmentCard({
       aria-label={`Open appointment details for ${appointment.display.clientName}`}
       className={cn(
         "cursor-pointer p-4",
-        highlighted && "border-l-4 border-l-[#a3ff12] shadow-[0_18px_55px_rgba(163,255,18,0.10)]"
+        highlighted && "border-l-4 border-l-[#c4f24e] shadow-[0_18px_55px_rgba(196, 242, 78,0.10)]"
       )}
       onClick={() => onViewDetails(appointment)}
       onKeyDown={(event) => {
@@ -514,8 +514,8 @@ function AppointmentCard({
       <div className="mt-3 flex flex-wrap gap-2 text-sm text-white/58">
         <span className="status-pill text-white/68">{appointment.display.locationLabel}</span>
         <span className="status-pill text-white/68">{appointment.financial.latestStatusLabel}</span>
-        {appointment.status === "completed" && isPayoutEligible(appointment) ? <span className="status-pill text-[#d7ffab]">Payout eligible</span> : null}
-        {appointment.note?.trim() ? <span className="status-pill text-[#d7ffab]">Notes</span> : null}
+        {appointment.status === "completed" && isPayoutEligible(appointment) ? <span className="status-pill text-[#e4f9b8]">Payout eligible</span> : null}
+        {appointment.note?.trim() ? <span className="status-pill text-[#e4f9b8]">Notes</span> : null}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-white/8 pt-4">
@@ -589,7 +589,7 @@ function CompleteServiceConfirmation({
   return (
     <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/74 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="complete-service-title">
       <div className="w-full max-w-md rounded-[28px] border border-white/10 bg-[#070707] p-5 text-white shadow-[0_28px_90px_rgba(0,0,0,0.55)] sm:p-6">
-        <p className="bvr-section-label text-[#d7ffab]">Chair action</p>
+        <p className="bvr-section-label text-[#e4f9b8]">Chair action</p>
         <h3 id="complete-service-title" className="mt-3 text-2xl font-extrabold tracking-[-0.03em] text-white">
           Complete this service?
         </h3>
@@ -599,7 +599,7 @@ function CompleteServiceConfirmation({
         <div className="mt-4 rounded-[20px] border border-white/8 bg-black/24 p-4">
           <p className="text-base font-extrabold text-white">{appointment.display.clientName}</p>
           <p className="mt-1 text-sm text-white/58">{appointment.display.serviceName} - {formatTimeRange(appointment.start, appointment.end)}</p>
-          <p className="mt-2 text-sm font-bold text-[#d7ffab]">{appointment.financial.latestStatusLabel}</p>
+          <p className="mt-2 text-sm font-bold text-[#e4f9b8]">{appointment.financial.latestStatusLabel}</p>
         </div>
         <div className="mt-5 grid gap-2 sm:grid-cols-2">
           <ActionButton type="button" variant="secondary" className="min-h-11 px-4" disabled={isPending} onClick={onCancel}>
@@ -616,10 +616,10 @@ function CompleteServiceConfirmation({
 
 function OpenSlotCard({ slot, onBookSlot }: { slot: OpenSlotView; onBookSlot: (slot: OpenSlotView) => void }) {
   return (
-    <div className="rounded-[16px] border border-dashed border-[#a3ff12]/34 bg-[#a3ff12]/[0.025] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.30)]">
+    <div className="rounded-[16px] border border-dashed border-[#c4f24e]/34 bg-[#c4f24e]/[0.025] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.30)]">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[14px] bg-[rgba(163,255,18,0.14)] text-[#a3ff12] shadow-[0_0_22px_rgba(163,255,18,0.20)]">
+          <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[14px] bg-[rgba(196, 242, 78,0.14)] text-[#c4f24e] shadow-[0_0_22px_rgba(196, 242, 78,0.20)]">
             <Plus className="h-6 w-6" />
           </div>
           <div className="min-w-0">
@@ -629,10 +629,10 @@ function OpenSlotCard({ slot, onBookSlot }: { slot: OpenSlotView; onBookSlot: (s
         </div>
         <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
           <p className="text-sm font-semibold text-white/70">{formatDuration(slot.durationMinutes)}</p>
-          <p className="mt-1 text-base font-extrabold text-[#a3ff12]">Available</p>
+          <p className="mt-1 text-base font-extrabold text-[#c4f24e]">Available</p>
         </div>
       </div>
-      <div className="mt-4 flex justify-end border-t border-[#a3ff12]/12 pt-4">
+      <div className="mt-4 flex justify-end border-t border-[#c4f24e]/12 pt-4">
         <ActionButton
           type="button"
           className="min-h-10 px-4"
@@ -723,7 +723,7 @@ function AppointmentDetailsModal({
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#c4f24e]/35"
             aria-label={view === "transaction" ? "Back to appointment details" : "Back to Calendar"}
             onClick={() => {
               if (view === "transaction") {
@@ -747,7 +747,7 @@ function AppointmentDetailsModal({
             {transactionNotice ? <FeedbackBanner tone="info" message={transactionNotice} /> : null}
             <div className="rounded-[22px] border border-white/8 bg-white/[0.025] p-4">
               <div className="flex items-center gap-3">
-                <CreditCard className="h-5 w-5 text-[#a3ff12]" />
+                <CreditCard className="h-5 w-5 text-[#c4f24e]" />
                 <div>
                   <p className="text-base font-extrabold text-white">Card Payment</p>
                   <p className="mt-1 text-sm text-white/58">{cardLabel} · Card on file payment</p>
@@ -766,7 +766,7 @@ function AppointmentDetailsModal({
             </div>
 
             <div className="rounded-[22px] border border-white/8 bg-white/[0.025] p-4">
-              <p className="surface-label text-[#d7ffab]">Items</p>
+              <p className="surface-label text-[#e4f9b8]">Items</p>
               <div className="mt-4 flex items-center justify-between gap-3 text-sm">
                 <span className="font-semibold text-white">{appointment.display.serviceName}</span>
                 <span className="font-extrabold text-white">{formatMoneyWithCents(appointment.serviceTotal || appointment.totalAmount)}</span>
@@ -777,7 +777,7 @@ function AppointmentDetailsModal({
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/8 pt-3 text-base">
                 <span className="font-extrabold text-white">Total</span>
-                <span className="font-extrabold text-[#a3ff12]">{formatMoneyWithCents(appointment.grandTotal || appointment.totalAmount)}</span>
+                <span className="font-extrabold text-[#c4f24e]">{formatMoneyWithCents(appointment.grandTotal || appointment.totalAmount)}</span>
               </div>
             </div>
 
@@ -794,9 +794,9 @@ function AppointmentDetailsModal({
           </div>
         ) : (
           <div className="mt-6 space-y-4">
-            <div className="rounded-[22px] border border-[#a3ff12]/20 bg-[#a3ff12]/[0.045] p-4">
+            <div className="rounded-[22px] border border-[#c4f24e]/20 bg-[#c4f24e]/[0.045] p-4">
               <p className="text-2xl font-extrabold text-white">{formatMoneyWithCents(appointment.grandTotal || appointment.totalAmount)} pre-paid</p>
-              <p className="mt-2 text-sm font-semibold text-[#d7ffab]">{serviceComplete ? "Service complete" : isPaid ? "Service not complete" : appointment.financial.latestStatusLabel}</p>
+              <p className="mt-2 text-sm font-semibold text-[#e4f9b8]">{serviceComplete ? "Service complete" : isPaid ? "Service not complete" : appointment.financial.latestStatusLabel}</p>
               {serviceComplete && payoutEligible ? (
                 <p className="mt-2 text-sm font-semibold text-white/72">
                   Payout posture is evidence-based{expectedPayoutLabel ? ` - ${expectedPayoutLabel}` : ""}
@@ -1329,7 +1329,7 @@ export function BarberScheduleWorkspace({
       {showCalendar ? (
         <>
       <GlassCard className="relative overflow-hidden rounded-[28px] p-5 sm:p-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.06),transparent_28%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(196, 242, 78,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(196, 242, 78,0.06),transparent_28%)]" />
         <div className="relative space-y-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
@@ -1384,7 +1384,7 @@ export function BarberScheduleWorkspace({
               <button
                 type="button"
                 aria-label="Focus calendar date"
-                className="inline-flex h-11 w-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white transition hover:border-[#c4f24e]/35 hover:shadow-[0_0_24px_rgba(196, 242, 78,0.12)]"
                 onClick={() => dateInputRef.current?.focus()}
               >
                 <Search className="h-5 w-5" />
@@ -1392,7 +1392,7 @@ export function BarberScheduleWorkspace({
               <button
                 type="button"
                 aria-label="Jump to today"
-                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12]"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white transition hover:border-[#c4f24e]/35 hover:text-[#c4f24e]"
                 onClick={jumpToToday}
               >
                 <CalendarDays className="h-5 w-5" />
@@ -1409,7 +1409,7 @@ export function BarberScheduleWorkspace({
             </button>
             <button
               type="button"
-              className="inline-flex h-11 shrink-0 items-center justify-center rounded-[8px] border border-[#a3ff12]/24 bg-[#a3ff12]/10 px-4 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/40 hover:bg-[rgba(163,255,18,0.14)]"
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-[8px] border border-[#c4f24e]/24 bg-[#c4f24e]/10 px-4 text-sm font-extrabold text-[#c4f24e] transition hover:border-[#c4f24e]/40 hover:bg-[rgba(196, 242, 78,0.14)]"
               onClick={jumpToToday}
             >
               Today
@@ -1435,12 +1435,12 @@ export function BarberScheduleWorkspace({
                   className={cn(
                     "flex min-h-[64px] flex-col items-center justify-center rounded-[14px] border border-transparent px-1.5 transition sm:min-h-[76px] sm:rounded-[18px] sm:px-2",
                     isSelected
-                      ? "border-[#a3ff12] bg-[rgba(163,255,18,0.06)] text-[#a3ff12] shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                      ? "border-[#c4f24e] bg-[rgba(196, 242, 78,0.06)] text-[#c4f24e] shadow-[0_0_24px_rgba(196, 242, 78,0.12)]"
                       : "text-white hover:border-white/10 hover:bg-white/[0.03]"
                   )}
                   onClick={() => setAnchorDate(day.key)}
                 >
-                  <span className={cn("text-xs font-bold tracking-[0.05em]", isSelected ? "text-[#a3ff12]" : "text-white/48")}>{day.label}</span>
+                  <span className={cn("text-xs font-bold tracking-[0.05em]", isSelected ? "text-[#c4f24e]" : "text-white/48")}>{day.label}</span>
                   <span className={cn("mt-2 text-xl font-bold leading-none sm:text-2xl", isSelected && "text-2xl font-black sm:text-3xl")}>{day.dayNumber}</span>
                 </button>
               );
@@ -1473,7 +1473,7 @@ export function BarberScheduleWorkspace({
               className="min-h-[112px] rounded-[18px]"
               label="Day Utilization"
               value={utilization ? `${utilization.percent}%` : "--"}
-              detail={<span className={utilization && utilization.percent >= 80 ? "font-bold text-[#a3ff12]" : undefined}>{utilization ? (utilization.percent >= 80 ? "Great" : `${formatDuration(utilization.openMinutes)} open`) : "Set hours"}</span>}
+              detail={<span className={utilization && utilization.percent >= 80 ? "font-bold text-[#c4f24e]" : undefined}>{utilization ? (utilization.percent >= 80 ? "Great" : `${formatDuration(utilization.openMinutes)} open`) : "Set hours"}</span>}
               icon={<UsersRound className="h-4 w-4" />}
             />
           </div>
@@ -1489,7 +1489,7 @@ export function BarberScheduleWorkspace({
                 className={cn(
                   "rounded-[14px] text-sm font-extrabold transition",
                   scheduleView === viewMode
-                    ? "bg-[linear-gradient(135deg,#a3ff12,#7dce00)] text-[#050505] shadow-[0_0_30px_rgba(163,255,18,0.24)]"
+                    ? "bg-[linear-gradient(135deg,#c4f24e,#8fbf2e)] text-[#050505] shadow-[0_0_30px_rgba(196, 242, 78,0.24)]"
                     : "text-white/72 hover:text-white"
                 )}
                 onClick={() => setScheduleView(viewMode)}
@@ -1508,14 +1508,14 @@ export function BarberScheduleWorkspace({
               <StatusBadge>{payload?.status.liveStatusLabel ?? "Loading"}</StatusBadge>
               <button
                 type="button"
-                className="status-pill min-h-10 text-white/72 transition hover:border-[#a3ff12]/24 hover:text-white"
+                className="status-pill min-h-10 text-white/72 transition hover:border-[#c4f24e]/24 hover:text-white"
                 onClick={() => shiftTimeline(-1)}
               >
                 Previous
               </button>
               <button
                 type="button"
-                className="status-pill min-h-10 text-white/72 transition hover:border-[#a3ff12]/24 hover:text-white"
+                className="status-pill min-h-10 text-white/72 transition hover:border-[#c4f24e]/24 hover:text-white"
                 onClick={() => shiftTimeline(1)}
               >
                 Next
@@ -1534,13 +1534,13 @@ export function BarberScheduleWorkspace({
             <p className="bvr-section-label">Daily timeline</p>
             <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.03em] text-white">Hour-by-hour chair control</h3>
           </div>
-          <span className="status-pill text-[#d7ffab]">
+          <span className="status-pill text-[#e4f9b8]">
             {visibleAppointments.length} appointment{visibleAppointments.length === 1 ? "" : "s"}
           </span>
         </div>
 
         <div className="relative mt-6 space-y-3">
-          <div className="absolute bottom-4 left-[4.45rem] top-4 hidden w-px bg-[linear-gradient(to_bottom,rgba(163,255,18,0.80),rgba(163,255,18,0.18))] sm:block" />
+          <div className="absolute bottom-4 left-[4.45rem] top-4 hidden w-px bg-[linear-gradient(to_bottom,rgba(196, 242, 78,0.80),rgba(196, 242, 78,0.18))] sm:block" />
 
           {scheduleQuery.isLoading && !payload ? (
             <>
@@ -1594,7 +1594,7 @@ export function BarberScheduleWorkspace({
             <span className="absolute left-[4.22rem] top-7 hidden h-2 w-2 rounded-full bg-white/55 sm:block" />
             <button
               type="button"
-              className="flex min-h-[68px] items-center justify-center gap-3 rounded-[18px] border border-white/10 bg-white/[0.025] px-5 text-base font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/32 hover:bg-[rgba(163,255,18,0.07)]"
+              className="flex min-h-[68px] items-center justify-center gap-3 rounded-[18px] border border-white/10 bg-white/[0.025] px-5 text-base font-extrabold text-[#c4f24e] transition hover:border-[#c4f24e]/32 hover:bg-[rgba(196, 242, 78,0.07)]"
               onClick={openAvailabilityControls}
             >
               <Plus className="h-5 w-5" />
@@ -1615,14 +1615,14 @@ export function BarberScheduleWorkspace({
               <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.03em] text-white">Working hours and blocked time</h3>
               <p className="mt-2 text-sm leading-6 text-white/58">Use canonical schedule controls. No appointment truth is overwritten here.</p>
             </div>
-            <Clock3 className="h-5 w-5 text-[#a3ff12]" />
+            <Clock3 className="h-5 w-5 text-[#c4f24e]" />
           </div>
 
           <div className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
             <div className="rounded-[26px] border border-white/8 bg-black/20 p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="surface-label text-[#d7ffab]">Working hours</p>
+                  <p className="surface-label text-[#e4f9b8]">Working hours</p>
                   <p className="mt-2 text-sm text-white/58">Save one assigned shop schedule at a time.</p>
                 </div>
                 <span className="status-pill text-white/62">{payload?.businessDate ?? "Live date"}</span>
@@ -1690,10 +1690,10 @@ export function BarberScheduleWorkspace({
             <div className="rounded-[26px] border border-white/8 bg-black/20 p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="surface-label text-[#d7ffab]">Blocked time</p>
+                  <p className="surface-label text-[#e4f9b8]">Blocked time</p>
                   <p className="mt-2 text-sm text-white/58">Add time-off, breaks, or blackout windows.</p>
                 </div>
-                <Plus className="h-5 w-5 text-[#a3ff12]" />
+                <Plus className="h-5 w-5 text-[#c4f24e]" />
               </div>
 
               <div className="mt-4 grid gap-3">

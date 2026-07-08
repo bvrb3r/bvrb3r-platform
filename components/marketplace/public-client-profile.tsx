@@ -145,14 +145,14 @@ export function PublicClientProfileContent({
   return (
     <div className="min-h-screen bg-[#050505] px-4 py-6 text-white sm:px-6 lg:px-8" data-testid="public-client-profile">
       <div className="mx-auto max-w-5xl space-y-5">
-        <Link href={backHref as Route} className="inline-flex text-sm font-black uppercase tracking-[0.18em] text-[#a3ff12]">
+        <Link href={backHref as Route} className="inline-flex text-sm font-black uppercase tracking-[0.18em] text-[#c4f24e]">
           {backLabel}
         </Link>
 
         <Card className="overflow-hidden rounded-[36px] border border-white/10 bg-black/40 p-6 shadow-[0_28px_80px_rgba(0,0,0,0.42)] sm:p-8">
-          <div className="-mx-6 -mt-6 mb-6 h-44 border-b border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.18),transparent_35%),linear-gradient(135deg,rgba(163,255,18,0.10),rgba(255,255,255,0.04)_42%,rgba(0,0,0,0.34))] sm:-mx-8 sm:-mt-8" />
+          <div className="-mx-6 -mt-6 mb-6 h-44 border-b border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(196, 242, 78,0.18),transparent_35%),linear-gradient(135deg,rgba(196, 242, 78,0.10),rgba(255,255,255,0.04)_42%,rgba(0,0,0,0.34))] sm:-mx-8 sm:-mt-8" />
           <div className="grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
-            <div className="-mt-20 flex h-32 w-32 items-center justify-center overflow-hidden rounded-[32px] border-[3px] border-white/15 bg-black text-4xl font-black text-[#a3ff12] shadow-[0_20px_60px_rgba(0,0,0,0.50)]">
+            <div className="-mt-20 flex h-32 w-32 items-center justify-center overflow-hidden rounded-[32px] border-[3px] border-white/15 bg-black text-4xl font-black text-[#c4f24e] shadow-[0_20px_60px_rgba(0,0,0,0.50)]">
               {profile?.avatarUrl ? (
                 <Image
                   src={profile.avatarUrl}
@@ -166,18 +166,18 @@ export function PublicClientProfileContent({
             </div>
 
             <div className="min-w-0">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a3ff12]">Culture profile</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#c4f24e]">Culture profile</p>
               <h1 className="mt-3 text-4xl font-black tracking-[-0.055em] text-white sm:text-6xl">Public Profile</h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">
                 {profile?.bio?.trim() || "No public bio yet."}
               </p>
               <p className="mt-5 text-3xl font-black tracking-[-0.04em] text-white">{displayName}</p>
-              <p className="mt-1 text-sm font-bold text-[#a3ff12]">@{publicUsername}</p>
+              <p className="mt-1 text-sm font-bold text-[#c4f24e]">@{publicUsername}</p>
               <p className="mt-2 text-sm font-semibold text-white/50">{profile?.contextLine ?? "Culture and social identity"}</p>
             </div>
 
             <div className="flex flex-col gap-3">
-              <button type="button" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-5 text-sm font-extrabold text-[#a3ff12]">
+              <button type="button" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#c4f24e]/35 bg-[#c4f24e]/10 px-5 text-sm font-extrabold text-[#c4f24e]">
                 <UserPlus className="h-4 w-4" />
                 Follow
               </button>
@@ -209,10 +209,10 @@ export function PublicClientProfileContent({
         <Card className="rounded-[28px] border border-white/10 bg-black/24 p-6">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a3ff12]">Culture posts</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#c4f24e]">Culture posts</p>
               <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-white">Public media</h2>
             </div>
-            <Sparkles className="h-8 w-8 text-[#a3ff12]" />
+            <Sparkles className="h-8 w-8 text-[#c4f24e]" />
           </div>
           {posts.length ? (
             <div className="mt-5 grid gap-3 sm:grid-cols-3">

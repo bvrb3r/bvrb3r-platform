@@ -120,7 +120,7 @@ export function ProfileUsernameEditModal({
           <button
             type="button"
             aria-label="Close username editor"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/72 transition hover:border-[#a3ff12]/30 hover:text-white"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/72 transition hover:border-[#c4f24e]/30 hover:text-white"
             onClick={onClose}
           >
             <X className="h-5 w-5" />
@@ -138,7 +138,7 @@ export function ProfileUsernameEditModal({
               autoCapitalize="none"
               autoCorrect="off"
               inputMode="text"
-              className="mt-2 min-h-12 w-full rounded-2xl border border-white/10 bg-black/40 px-4 text-base font-black text-white outline-none transition placeholder:text-white/34 focus:border-[#a3ff12]/42"
+              className="mt-2 min-h-12 w-full rounded-2xl border border-white/10 bg-black/40 px-4 text-base font-black text-white outline-none transition placeholder:text-white/34 focus:border-[#c4f24e]/42"
               placeholder="public-username"
             />
           </label>
@@ -148,13 +148,13 @@ export function ProfileUsernameEditModal({
           {saveError ? (
             <p className="mt-2 text-xs font-bold text-red-200">{saveError}</p>
           ) : isSaved ? (
-            <p className="mt-2 text-xs font-bold text-[#a3ff12]">Username saved.</p>
+            <p className="mt-2 text-xs font-bold text-[#c4f24e]">Username saved.</p>
           ) : error || saveDisabledReason ? (
             <p className="mt-2 text-xs font-bold text-yellow-200">{error ?? saveDisabledReason}</p>
           ) : availabilityMessage ? (
-            <p className={`mt-2 text-xs font-bold ${availabilityTone === "warning" ? "text-yellow-200" : "text-[#a3ff12]"}`}>{availabilityMessage}</p>
+            <p className={`mt-2 text-xs font-bold ${availabilityTone === "warning" ? "text-yellow-200" : "text-[#c4f24e]"}`}>{availabilityMessage}</p>
           ) : (
-            <p className="mt-2 text-xs font-bold text-[#a3ff12]">Username ready.</p>
+            <p className="mt-2 text-xs font-bold text-[#c4f24e]">Username ready.</p>
           )}
         </div>
 
@@ -170,7 +170,7 @@ export function ProfileUsernameEditModal({
           <button
             type="button"
             disabled={!canSave}
-            className="inline-flex min-h-12 flex-1 items-center justify-center rounded-[8px] bg-[#a3ff12] px-5 text-sm font-black text-[#050505] transition hover:bg-[#d7ffab] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/36"
+            className="inline-flex min-h-12 flex-1 items-center justify-center rounded-[8px] bg-[#c4f24e] px-5 text-sm font-black text-[#050505] transition hover:bg-[#e4f9b8] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/36"
             onClick={() => void onSave(value.trim())}
           >
             {isSaved ? "Saved" : isSaving ? "Saving..." : "Save"}

@@ -17,7 +17,7 @@ function ActionControl({ action }: { action: SubscriptionSettingsSummary["upgrad
   const classes = "inline-flex min-h-11 items-center justify-center rounded-full border px-5 text-xs font-black uppercase tracking-[0.14em] transition";
   if (action.state === "available" && action.href) {
     return (
-      <Link href={action.href as never} className={cn(classes, "border-[#A3FF12]/28 bg-[#A3FF12]/10 text-[#A3FF12] hover:border-[#A3FF12]/46 hover:bg-[#A3FF12]/15")}>
+      <Link href={action.href as never} className={cn(classes, "border-[#C4F24E]/28 bg-[#C4F24E]/10 text-[#C4F24E] hover:border-[#C4F24E]/46 hover:bg-[#C4F24E]/15")}>
         {action.label}
       </Link>
     );
@@ -77,7 +77,7 @@ export function SubscriptionSettingsCard({
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#A3FF12]">Subscription settings</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#C4F24E]">Subscription settings</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.04em] text-white" data-display="true">
             {current.currentTierLabel} {current.roleLabel} plan
           </h3>
@@ -112,9 +112,9 @@ export function SubscriptionSettingsCard({
 
       {!compact ? (
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
-          <div className="rounded-[20px] border border-[#A3FF12]/16 bg-[#A3FF12]/[0.06] p-4">
+          <div className="rounded-[20px] border border-[#C4F24E]/16 bg-[#C4F24E]/[0.06] p-4">
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="mt-0.5 h-5 w-5 text-[#A3FF12]" aria-hidden="true" />
+              <CheckCircle2 className="mt-0.5 h-5 w-5 text-[#C4F24E]" aria-hidden="true" />
               <div>
                 <p className="text-sm font-black text-white">Included now</p>
                 <p className="mt-2 text-sm leading-6 text-white/58">{current.includedCopy}</p>
@@ -156,7 +156,7 @@ export function SubscriptionSettingsCard({
           type="button"
           onClick={() => void handleRefresh()}
           disabled={refreshState === "loading"}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-5 text-xs font-black uppercase tracking-[0.14em] text-white/68 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:text-white/36"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-5 text-xs font-black uppercase tracking-[0.14em] text-white/68 transition hover:border-[#C4F24E]/28 hover:text-[#C4F24E] disabled:cursor-not-allowed disabled:text-white/36"
         >
           <RefreshCw className={cn("h-4 w-4", refreshState === "loading" && "animate-spin")} aria-hidden="true" />
           {refreshState === "loading" ? "Refreshing..." : "Refresh plan status"}
@@ -167,7 +167,7 @@ export function SubscriptionSettingsCard({
         <p
           className={cn(
             "mt-3 rounded-[16px] border px-4 py-3 text-sm font-semibold",
-            refreshState === "success" && "border-[#A3FF12]/20 bg-[#A3FF12]/10 text-[#d7ffab]",
+            refreshState === "success" && "border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#e4f9b8]",
             refreshState === "error" && "border-red-400/22 bg-red-500/10 text-red-100"
           )}
           role="status"

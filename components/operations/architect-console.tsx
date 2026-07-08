@@ -161,7 +161,7 @@ function badgeClasses(value: string) {
   const normalized = value.toLowerCase();
 
   if (normalized.includes("verified") || normalized.includes("active") || normalized.includes("resolved") || normalized.includes("healthy")) {
-    return "border-[#7CFF00]/16 bg-[#7CFF00]/10 text-[#d7ffab]";
+    return "border-[#C4F24E]/16 bg-[#C4F24E]/10 text-[#e4f9b8]";
   }
 
   if (normalized.includes("pending") || normalized.includes("review") || normalized.includes("investigating")) {
@@ -190,7 +190,7 @@ function actionToneClasses(actionClass: PlatformAdminActionClass) {
     case "sensitive":
       return "border-amber-300/20 bg-amber-300/10 text-amber-100";
     default:
-      return "border-[#7CFF00]/16 bg-[#7CFF00]/10 text-[#d7ffab]";
+      return "border-[#C4F24E]/16 bg-[#C4F24E]/10 text-[#e4f9b8]";
   }
 }
 
@@ -210,7 +210,7 @@ function MetricCard({
       label={label}
       value={value}
       detail={detail}
-      className={accent ? "border-[#7CFF00]/28 bg-[#7CFF00]/8" : undefined}
+      className={accent ? "border-[#C4F24E]/28 bg-[#C4F24E]/8" : undefined}
     />
   );
 }
@@ -407,7 +407,7 @@ export function ArchitectConsole({
             <p className="surface-label">Users</p>
             <p className="mt-2 text-sm text-white/58">Search by identity, role, status, phone, or shop relationship.</p>
           </div>
-          <span className="status-pill text-[#d7ffab]">{filteredUsers.length} accounts in view</span>
+          <span className="status-pill text-[#e4f9b8]">{filteredUsers.length} accounts in view</span>
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_220px_220px]">
           <div>
@@ -445,7 +445,7 @@ export function ArchitectConsole({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-xl font-semibold text-white">{user.name}</p>
-                  {user.isPlatformAdmin ? <span className="status-pill border-[#7CFF00]/20 bg-[#7CFF00]/10 text-[#d7ffab]">Founder</span> : null}
+                  {user.isPlatformAdmin ? <span className="status-pill border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#e4f9b8]">Founder</span> : null}
                   <span className={cn("status-pill", badgeClasses(user.accountStatus))}>{formatLabel(user.accountStatus)}</span>
                   <span className={cn("status-pill", badgeClasses(user.verificationStatus))}>{formatLabel(user.verificationStatus)}</span>
                 </div>
@@ -473,7 +473,7 @@ export function ArchitectConsole({
 
             {user.canManageAccess ? (
               <div className="mt-4 flex flex-wrap gap-2">
-                <Link href={`/architect/users/${user.id}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+                <Link href={`/architect/users/${user.id}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#c4f24e]/20 hover:text-[#e4f9b8] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
                   Inspect account
                 </Link>
                 {user.accountStatus !== "active" ? (
@@ -558,7 +558,7 @@ export function ArchitectConsole({
             <p className="surface-label">Shops</p>
             <p className="mt-2 text-sm text-white/58">Platform-level shop visibility, verification, billing posture, kiosk presence, and AI manager status.</p>
           </div>
-          <span className="status-pill text-[#d7ffab]">{filteredShops.length} shops in view</span>
+          <span className="status-pill text-[#e4f9b8]">{filteredShops.length} shops in view</span>
         </div>
         <div className="mt-4">
           <label className="mb-2 block surface-label">Lookup</label>
@@ -670,7 +670,7 @@ export function ArchitectConsole({
               <p className="surface-label">Payout anomalies and holds</p>
               <p className="mt-2 text-sm text-white/58">Inspect or resolve financial anomalies without rewriting canonical balances.</p>
             </div>
-            <AlertTriangle className="h-5 w-5 text-[#baff69]" />
+            <AlertTriangle className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {data.moneyRisk.recentAnomalies.length ? data.moneyRisk.recentAnomalies.map((item) => (
@@ -705,7 +705,7 @@ export function ArchitectConsole({
           <Card className="rounded-[32px] p-6">
             <div className="flex items-center justify-between gap-3">
               <p className="surface-label">Recent cash-out review</p>
-              <WalletCards className="h-5 w-5 text-[#baff69]" />
+              <WalletCards className="h-5 w-5 text-[#d9f985]" />
             </div>
             <div className="mt-4 space-y-3">
               {data.moneyRisk.recentCashouts.length ? data.moneyRisk.recentCashouts.map((item) => (
@@ -723,7 +723,7 @@ export function ArchitectConsole({
           <Card className="rounded-[32px] p-6">
             <div className="flex items-center justify-between gap-3">
               <p className="surface-label">Recent disputes</p>
-              <ShieldAlert className="h-5 w-5 text-[#baff69]" />
+              <ShieldAlert className="h-5 w-5 text-[#d9f985]" />
             </div>
             <div className="mt-4 space-y-3">
               {data.moneyRisk.recentDisputes.length ? data.moneyRisk.recentDisputes.map((item) => (
@@ -762,7 +762,7 @@ export function ArchitectConsole({
             <p className="surface-label">Support tools</p>
             <p className="mt-2 text-sm text-white/58">Inspect booking, payout, points, referral, queue, and kiosk issues without silently rewriting history.</p>
           </div>
-          <span className="status-pill text-[#d7ffab]">{filteredSupport.length} items in view</span>
+          <span className="status-pill text-[#e4f9b8]">{filteredSupport.length} items in view</span>
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_240px]">
           <div>
@@ -806,7 +806,7 @@ export function ArchitectConsole({
             </div>
             {item.href ? (
               <div className="mt-4 flex flex-wrap gap-2">
-                <a href={item.href} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+                <a href={item.href} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#c4f24e]/20 hover:text-[#e4f9b8] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
                   Open lane
                 </a>
               </div>
@@ -831,7 +831,7 @@ export function ArchitectConsole({
               <p className="surface-label">Platform controls</p>
               <p className="mt-2 text-sm text-white/58">Only founder-safe toggles that already map to canonical control state are exposed here.</p>
             </div>
-            <LockKeyhole className="h-5 w-5 text-[#baff69]" />
+            <LockKeyhole className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <MetricCard label="Release-ready" value={String(data.controls.release.readyCount)} detail="Checks currently clear." accent />
@@ -847,10 +847,10 @@ export function ArchitectConsole({
               <p className="surface-label">Action safety model</p>
               <p className="mt-2 text-sm text-white/58">Keep the founder console powerful without turning it into an unsafe back door.</p>
             </div>
-            <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+            <ShieldCheck className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
-            <div className="rounded-[22px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Safe</p><p className="mt-2 text-sm leading-7 text-white/62">Visibility and routing that do not change canonical truth.</p></div>
+            <div className="rounded-[22px] border border-[#C4F24E]/16 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Safe</p><p className="mt-2 text-sm leading-7 text-white/62">Visibility and routing that do not change canonical truth.</p></div>
             <div className="rounded-[22px] border border-amber-300/20 bg-amber-300/10 p-4"><p className="surface-label text-amber-100">Sensitive</p><p className="mt-2 text-sm leading-7 text-white/62">Access, verification, and feature-control changes. Confirmation and reason required.</p></div>
             <div className="rounded-[22px] border border-rose-400/20 bg-rose-400/10 p-4"><p className="surface-label text-rose-100">Critical</p><p className="mt-2 text-sm leading-7 text-white/62">Suspensions and anomaly resolutions. Confirmation, reason, and audit trail required.</p></div>
           </div>
@@ -911,7 +911,7 @@ export function ArchitectConsole({
             <p className="surface-label">Admin audit log</p>
             <p className="mt-2 text-sm text-white/58">Every sensitive founder action is traceable by actor, target, reason, before, and after.</p>
           </div>
-          <span className="status-pill text-[#d7ffab]">{filteredAudit.length} entries in view</span>
+          <span className="status-pill text-[#e4f9b8]">{filteredAudit.length} entries in view</span>
         </div>
         <div className="mt-4">
           <label className="mb-2 block surface-label">Search audit trail</label>
@@ -937,10 +937,10 @@ export function ArchitectConsole({
     );
   const homeSection = (
     <div className="space-y-4">
-      <Card className="rounded-[34px] border-[#7CFF00]/12 bg-[linear-gradient(135deg,rgba(124,255,0,0.08),rgba(10,10,10,0.86)_46%,rgba(0,0,0,0.92))] p-6">
+      <Card className="rounded-[34px] border-[#C4F24E]/12 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.08),rgba(10,10,10,0.86)_46%,rgba(0,0,0,0.92))] p-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="surface-label text-[#d7ffab]">Mission control</p>
+            <p className="surface-label text-[#e4f9b8]">Mission control</p>
             <h2 className="mt-3 max-w-3xl text-2xl font-semibold text-white sm:text-4xl" data-display="true">
               Platform signals first. Deep tools one tap away.
             </h2>
@@ -948,7 +948,7 @@ export function ArchitectConsole({
               Money, verification, access, and diagnostics stay visible here without duplicating the underlying operator flows.
             </p>
           </div>
-          <Link href="/architect/debug" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#7CFF00]/24 bg-[#7CFF00]/10 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]">
+          <Link href="/architect/debug" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#C4F24E]/24 bg-[#C4F24E]/10 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#C4F24E]/35 hover:text-[#e4f9b8]">
             Open debug console
           </Link>
         </div>
@@ -999,7 +999,7 @@ export function ArchitectConsole({
               <p className="surface-label">Platform health</p>
               <p className="mt-2 text-sm text-white/58">Control-tower visibility across readiness, kiosk, AI manager, and reward liability.</p>
             </div>
-            <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+            <ShieldCheck className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <MetricCard label="Fraud flags" value={String(data.overview.fraudFlags)} detail="Trust or anomaly flags still open." />
@@ -1017,7 +1017,7 @@ export function ArchitectConsole({
               <p className="surface-label">Immediate attention</p>
               <p className="mt-2 text-sm text-white/58">The highest-signal items to review first.</p>
             </div>
-            <ShieldAlert className="h-5 w-5 text-[#baff69]" />
+            <ShieldAlert className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {data.moneyRisk.recentAnomalies.length ? data.moneyRisk.recentAnomalies.slice(0, 4).map((item) => (
@@ -1043,7 +1043,7 @@ export function ArchitectConsole({
           count={String(verificationBacklogCount)}
           detail="Review pending barber and shop trust records."
           action={(
-            <Link href="/architect/verifications" className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#7CFF00]/24 bg-[#7CFF00]/10 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+            <Link href="/architect/verifications" className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#C4F24E]/24 bg-[#C4F24E]/10 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#C4F24E]/35 hover:text-[#e4f9b8] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
               Open verification queue
             </Link>
           )}
@@ -1058,7 +1058,7 @@ export function ArchitectConsole({
                 Open transactions
               </Button>
             ) : (
-              <Link href="/architect/money" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+              <Link href="/architect/money" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#c4f24e]/20 hover:text-[#e4f9b8] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
                 Open money
               </Link>
             )
@@ -1069,7 +1069,7 @@ export function ArchitectConsole({
           count={String(accountControlBlockers)}
           detail="Search accounts, inspect identity state, and apply access controls safely."
           action={(
-            <Link href="/architect/users" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+            <Link href="/architect/users" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#c4f24e]/20 hover:text-[#e4f9b8] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
               Open user search
             </Link>
           )}
@@ -1084,7 +1084,7 @@ export function ArchitectConsole({
                 Open support tools
               </Button>
             ) : (
-              <Link href="/architect/settings?section=support" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+              <Link href="/architect/settings?section=support" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#c4f24e]/20 hover:text-[#e4f9b8] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
                 Open settings
               </Link>
             )
@@ -1133,7 +1133,7 @@ export function ArchitectConsole({
               Refund review remains tied to canonical payment records. This Tier 1 money surface does not fabricate a second refund ledger.
             </p>
           </div>
-          <WalletCards className="h-5 w-5 text-[#baff69]" />
+          <WalletCards className="h-5 w-5 text-[#d9f985]" />
         </div>
         <div className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
           No standalone refund feed is exposed in the architect money layer yet. Review disputes, payment failures, and audit history from the canonical money truth above.
@@ -1156,7 +1156,7 @@ export function ArchitectConsole({
             <p className="surface-label">Roles and permissions</p>
             <p className="mt-2 text-sm text-white/58">Architect remains protected by canonical platform-admin authorization on top of shared auth/session identity.</p>
           </div>
-          <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+          <ShieldCheck className="h-5 w-5 text-[#d9f985]" />
         </div>
         <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4 text-sm leading-7 text-white/62">
           Platform-admin access, verification actions, account controls, and money interventions continue to flow through canonical architect guards and audit-safe mutation rails.
@@ -1169,7 +1169,7 @@ export function ArchitectConsole({
             <p className="surface-label">Integrations</p>
             <p className="mt-2 text-sm text-white/58">Stripe, Supabase, Twilio, and deployment integrations remain part of the canonical platform stack.</p>
           </div>
-          <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+          <ShieldCheck className="h-5 w-5 text-[#d9f985]" />
         </div>
         <div className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
           No live integration status panel is available in architect Tier 1 yet. This settings tab stays honest rather than inventing health checks that do not exist.
@@ -1182,7 +1182,7 @@ export function ArchitectConsole({
             <p className="surface-label">System logs</p>
             <p className="mt-2 text-sm text-white/58">Operational and event logs stay canonical. When explicit log streams are unavailable, this view shows a clean empty state.</p>
           </div>
-          <History className="h-5 w-5 text-[#baff69]" />
+          <History className="h-5 w-5 text-[#d9f985]" />
         </div>
         <div className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
           No system log panel is exposed in architect Tier 1 yet. Audit entries and platform support records below remain the live operator truth currently available.
@@ -1270,15 +1270,15 @@ export function ArchitectConsole({
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:w-[22rem]">
-              <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                <p className="surface-label text-[#d7ffab]">Operating as</p>
+              <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4">
+                <p className="surface-label text-[#e4f9b8]">Operating as</p>
                 <p className="mt-3 text-lg font-semibold text-white">{data.actorName}</p>
                 <p className="mt-2 text-sm text-white/62">Platform administrator lane</p>
               </div>
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">{mode === "legacy" ? "Current section" : "Current tab"}</p>
                 <div className="mt-3 flex items-center gap-2 text-white">
-                  <CurrentTabIcon className="h-4 w-4 text-[#baff69]" />
+                  <CurrentTabIcon className="h-4 w-4 text-[#d9f985]" />
                   <span className="font-medium">{currentTabLabel}</span>
                 </div>
                 <p className="mt-2 text-sm text-white/58">Sensitive actions always require confirmation.</p>
@@ -1287,10 +1287,10 @@ export function ArchitectConsole({
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2 border-t border-white/8 pt-5">
-            <Link href="/architect/verifications" className="inline-flex min-h-12 items-center rounded-full border border-[#7CFF00]/24 bg-[#7CFF00]/10 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab] sm:text-[11px] sm:tracking-[0.2em]">
+            <Link href="/architect/verifications" className="inline-flex min-h-12 items-center rounded-full border border-[#C4F24E]/24 bg-[#C4F24E]/10 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#C4F24E]/35 hover:text-[#e4f9b8] sm:text-[11px] sm:tracking-[0.2em]">
               Open verification queue
             </Link>
-            <Link href="/architect/users" className="inline-flex min-h-12 items-center rounded-full border border-white/8 bg-black/20 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/20 hover:text-white sm:text-[11px] sm:tracking-[0.2em]">
+            <Link href="/architect/users" className="inline-flex min-h-12 items-center rounded-full border border-white/8 bg-black/20 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#C4F24E]/20 hover:text-white sm:text-[11px] sm:tracking-[0.2em]">
               Open user search
             </Link>
             {isLegacyMode
@@ -1302,11 +1302,11 @@ export function ArchitectConsole({
                   className={cn(
                     "inline-flex min-h-12 items-center gap-2 rounded-full border px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] transition sm:text-[11px] sm:tracking-[0.2em]",
                     activeSection === item.id
-                      ? "border-[#7CFF00]/24 bg-[#7CFF00]/10 text-white"
-                      : "border-white/8 bg-black/20 text-white/68 hover:border-[#7CFF00]/20 hover:text-white"
+                      ? "border-[#C4F24E]/24 bg-[#C4F24E]/10 text-white"
+                      : "border-white/8 bg-black/20 text-white/68 hover:border-[#C4F24E]/20 hover:text-white"
                   )}
                 >
-                  <item.icon className={cn("h-4 w-4", activeSection === item.id ? "text-[#d7ffab]" : "text-[#baff69]")} />
+                  <item.icon className={cn("h-4 w-4", activeSection === item.id ? "text-[#e4f9b8]" : "text-[#d9f985]")} />
                   {item.label}
                 </button>
               ))
@@ -1316,7 +1316,7 @@ export function ArchitectConsole({
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="inline-flex min-h-12 items-center rounded-full border border-white/8 bg-black/20 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/20 hover:text-white sm:text-[11px] sm:tracking-[0.2em]"
+                    className="inline-flex min-h-12 items-center rounded-full border border-white/8 bg-black/20 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#C4F24E]/20 hover:text-white sm:text-[11px] sm:tracking-[0.2em]"
                   >
                     {item.label}
                   </Link>
@@ -1364,7 +1364,7 @@ export function ArchitectConsole({
                 onChange={(event) => setActionNote(event.target.value)}
                 rows={4}
                 placeholder="Why is this change necessary?"
-                className="min-h-[7.5rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#7CFF00]/55 focus:shadow-[0_0_0_4px_rgba(124,255,0,0.10)]"
+                className="min-h-[7.5rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#C4F24E]/55 focus:shadow-[0_0_0_4px_rgba(196, 242, 78,0.10)]"
               />
               <p className="mt-2 text-sm text-white/48">Sensitive and critical actions require a reason and will be written into the platform audit log.</p>
             </div>

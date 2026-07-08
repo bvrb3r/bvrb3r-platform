@@ -21,9 +21,9 @@ export function ClientServiceGrid() {
           <Link
             key={category.label}
             href={`/search?category=${encodeURIComponent(category.query)}`}
-            className="group flex min-h-[7.4rem] min-w-0 flex-col items-center justify-center rounded-[26px] border border-white/8 bg-[linear-gradient(180deg,rgba(20,20,20,0.96),rgba(9,9,9,0.98))] px-3 py-4 text-center shadow-[0_14px_34px_rgba(0,0,0,0.16)] transition hover:-translate-y-0.5 hover:border-[#7CFF00]/18 hover:bg-black/30"
+            className="group flex min-h-[7.4rem] min-w-0 flex-col items-center justify-center rounded-[26px] border border-white/8 bg-[linear-gradient(180deg,rgba(20,20,20,0.96),rgba(9,9,9,0.98))] px-3 py-4 text-center shadow-[0_14px_34px_rgba(0,0,0,0.16)] transition hover:-translate-y-0.5 hover:border-[#C4F24E]/18 hover:bg-black/30"
           >
-            <div className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-[#7CFF00]/16 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(18,18,18,0.96))] text-[#d7ffab] shadow-[0_12px_28px_rgba(124,255,0,0.1)] transition group-hover:scale-[1.03]">
+            <div className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-[#C4F24E]/16 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.18),rgba(18,18,18,0.96))] text-[#e4f9b8] shadow-[0_12px_28px_rgba(196, 242, 78,0.1)] transition group-hover:scale-[1.03]">
               <Icon className="h-6 w-6" />
             </div>
             <span className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/82 sm:tracking-[0.18em]">{category.label}</span>

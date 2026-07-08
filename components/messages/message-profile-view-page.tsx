@@ -52,7 +52,7 @@ function buildBackHref(surface: ViewerSurface, sourceThreadId?: string | string[
 
 function ProfileBackLink({ href }: { href: string }) {
   return (
-    <Link href={href as Route} className="mb-4 inline-flex text-xs font-black uppercase tracking-[0.18em] text-[#a3ff12]">
+    <Link href={href as Route} className="mb-4 inline-flex text-xs font-black uppercase tracking-[0.18em] text-[#c4f24e]">
       Back to Messages
     </Link>
   );

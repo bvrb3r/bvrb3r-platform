@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
 import type { DiscoveryResult } from "@/types/domain";
 
 const accents = [
-  ["#7cff00", "#d7ffab"],
-  ["#b7ff58", "#efffd5"],
+  ["#c4f24e", "#e4f9b8"],
+  ["#d4f97a", "#efffd5"],
   ["#8eff47", "#d9ffb8"],
   ["#caff6b", "#f4ffd1"]
 ] as const;
@@ -119,18 +119,18 @@ export function ClientDiscoveryCard({
         )}
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.06),rgba(0,0,0,0.68))]" />
         <span className="absolute left-3 top-3 inline-flex max-w-[72%] items-center gap-1.5 rounded-full border border-white/10 bg-black/45 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white/90">
-          <Clock3 className="h-3.5 w-3.5 text-[#d7ffab]" />
+          <Clock3 className="h-3.5 w-3.5 text-[#e4f9b8]" />
           <span className="truncate">{result.availabilityLabel ?? "Book appointment"}</span>
         </span>
         {canFavorite ? (
           <button
             type="button"
             aria-label={`Favorite ${barberName}`}
-            className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/48 text-white transition hover:border-[#d7ffab]/40 hover:text-[#d7ffab] disabled:opacity-60"
+            className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/48 text-white transition hover:border-[#e4f9b8]/40 hover:text-[#e4f9b8] disabled:opacity-60"
             disabled={favoriteMutation.isPending}
             onClick={() => void handleFavorite()}
           >
-            <Heart className={cn("h-4 w-4", saved ? "fill-[#d7ffab] text-[#d7ffab]" : "")} />
+            <Heart className={cn("h-4 w-4", saved ? "fill-[#e4f9b8] text-[#e4f9b8]" : "")} />
           </button>
         ) : null}
         <div className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center overflow-hidden rounded-[16px] border border-white/10 bg-black/30 text-base font-semibold text-white shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
@@ -146,18 +146,18 @@ export function ClientDiscoveryCard({
       <div className="p-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <Link href={profileHref} className="line-clamp-1 text-lg font-semibold text-white transition hover:text-[#d7ffab]">
+            <Link href={profileHref} className="line-clamp-1 text-lg font-semibold text-white transition hover:text-[#e4f9b8]">
               {barberName}
             </Link>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/58">
               {verifiedLabel ? (
-                <span className="inline-flex items-center gap-1 text-[#d7ffab]">
+                <span className="inline-flex items-center gap-1 text-[#e4f9b8]">
                   <ShieldCheck className="h-3.5 w-3.5" />
                   {verifiedLabel}
                 </span>
               ) : null}
               <span className="inline-flex items-center gap-1">
-                <Star className="h-3.5 w-3.5 fill-current text-[#d7ffab]" />
+                <Star className="h-3.5 w-3.5 fill-current text-[#e4f9b8]" />
                 {ratingLabel} <span className="text-white/40">{reviewLabel}</span>
               </span>
             </div>
@@ -166,11 +166,11 @@ export function ClientDiscoveryCard({
 
         <div className="mt-3 grid gap-2 text-sm text-white/68">
           <span className="inline-flex min-w-0 items-center gap-1.5">
-            <MapPin className="h-4 w-4 shrink-0 text-[#baff69]" />
+            <MapPin className="h-4 w-4 shrink-0 text-[#d9f985]" />
             <span className="truncate">{getLocationLabel(result)}</span>
           </span>
           <span className="inline-flex min-w-0 items-center gap-1.5">
-            <Scissors className="h-4 w-4 shrink-0 text-[#d7ffab]" />
+            <Scissors className="h-4 w-4 shrink-0 text-[#e4f9b8]" />
             <span className="truncate">{getServiceLine(result)}</span>
           </span>
         </div>
@@ -201,7 +201,7 @@ export function ClientDiscoveryCard({
           </MarketplaceTrackedActionLink>
           <ClientActionLink href={profileHref} variant="outline" className="min-h-10 px-3 text-xs">
             View Profile
-            <ArrowRight className="h-3.5 w-3.5 text-[#baff69]" />
+            <ArrowRight className="h-3.5 w-3.5 text-[#d9f985]" />
           </ClientActionLink>
         </div>
       </div>

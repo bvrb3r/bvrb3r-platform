@@ -98,7 +98,7 @@ function createInitialFormState() {
 function getAvailabilityTone(state: string) {
   switch (state) {
     case "active":
-      return "text-[#d7ffab]";
+      return "text-[#e4f9b8]";
     case "scheduled":
       return "text-sky-200";
     case "expired":
@@ -224,7 +224,7 @@ export function PromotionsWorkspace({
             </p>
           </div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">
               <Megaphone className="h-4 w-4" />
               {scopedPromotions.length} offers in scope
             </div>
@@ -278,7 +278,7 @@ export function PromotionsWorkspace({
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Create promotion</p>
-            <TicketPercent className="h-5 w-5 text-[#baff69]" />
+            <TicketPercent className="h-5 w-5 text-[#d9f985]" />
           </div>
 
           <div className="mt-4 grid gap-3">
@@ -421,7 +421,7 @@ export function PromotionsWorkspace({
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Live offers</p>
-            <Percent className="h-5 w-5 text-[#baff69]" />
+            <Percent className="h-5 w-5 text-[#d9f985]" />
           </div>
 
           <div className="mt-4 space-y-3">

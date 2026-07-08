@@ -31,7 +31,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <AuthSessionRecovery mode="public" />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_8%,rgba(124,255,0,0.18),transparent_28%),radial-gradient(circle_at_92%_26%,rgba(255,255,255,0.07),transparent_24%),linear-gradient(180deg,#050604_0%,#0a0b09_42%,#030403_100%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_8%,rgba(196, 242, 78,0.18),transparent_28%),radial-gradient(circle_at_92%_26%,rgba(255,255,255,0.07),transparent_24%),linear-gradient(180deg,#050604_0%,#0a0b09_42%,#030403_100%)]"
       />
       <div
         aria-hidden="true"

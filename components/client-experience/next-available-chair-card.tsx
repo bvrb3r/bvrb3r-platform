@@ -44,7 +44,7 @@ export function NextAvailableChairCard({
   if (!match) {
     return (
       <article className="relative overflow-hidden rounded-[34px] border border-[#d9ff9e]/18 bg-[linear-gradient(180deg,rgba(22,28,14,0.96),rgba(8,8,8,0.99))] p-5 shadow-[0_28px_60px_rgba(0,0,0,0.28)] sm:p-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,255,0,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_24%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(196, 242, 78,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_24%)]" />
         <div className="relative">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -53,7 +53,7 @@ export function NextAvailableChairCard({
                 No Instant Chair Yet
               </h2>
             </div>
-            <span className="rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-3 py-2 text-[11px] font-semibold text-[#efffd4]">
+            <span className="rounded-full border border-[#e4f9b8]/16 bg-[#e4f9b8]/10 px-3 py-2 text-[11px] font-semibold text-[#efffd4]">
               Pre-open
             </span>
           </div>
@@ -82,7 +82,7 @@ export function NextAvailableChairCard({
 
   return (
     <article className="relative overflow-hidden rounded-[34px] border border-[#d9ff9e]/18 bg-[linear-gradient(180deg,rgba(22,28,14,0.96),rgba(8,8,8,0.99))] p-5 shadow-[0_28px_60px_rgba(0,0,0,0.28)] sm:p-6">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,255,0,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_24%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(196, 242, 78,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_24%)]" />
       <div className="relative">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -91,7 +91,7 @@ export function NextAvailableChairCard({
               Next Available Chair
             </h2>
           </div>
-          <span className="inline-flex items-center gap-2 rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-3 py-2 text-[11px] font-semibold text-[#efffd4]">
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#e4f9b8]/16 bg-[#e4f9b8]/10 px-3 py-2 text-[11px] font-semibold text-[#efffd4]">
             <ShieldCheck className="h-4 w-4" />
             Fastest local match
           </span>
@@ -113,11 +113,11 @@ export function NextAvailableChairCard({
                 <p className="text-2xl font-semibold text-white sm:text-[2rem]" data-display="true">{barberName}</p>
                 <div className="mt-3 flex flex-wrap gap-2 text-sm text-white/78">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-3 py-2">
-                    <Star className="h-4 w-4 fill-current text-[#d7ffab]" />
+                    <Star className="h-4 w-4 fill-current text-[#e4f9b8]" />
                     {match.rating.toFixed(1)}
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-3 py-2">
-                    <MapPin className="h-4 w-4 text-[#baff69]" />
+                    <MapPin className="h-4 w-4 text-[#d9f985]" />
                     {match.shopName} • {match.distanceLabel}
                   </span>
                 </div>
@@ -126,10 +126,10 @@ export function NextAvailableChairCard({
             </div>
 
             <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(8,8,8,0.2))] p-4 lg:min-w-[14rem]">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-[#d7ffab]">Next Slot</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[#e4f9b8]">Next Slot</p>
               <p className="mt-3 text-2xl font-semibold text-white">{match.nextSlotLabel}</p>
               <p className="mt-2 inline-flex items-center gap-2 text-sm text-white/72">
-                <Clock3 className="h-4 w-4 text-[#d7ffab]" />
+                <Clock3 className="h-4 w-4 text-[#e4f9b8]" />
                 {match.waitLabel}
               </p>
             </div>

@@ -158,14 +158,14 @@ export function PublicBarberReviewsSection({
             setNotice(null);
             setModalOpen(true);
           }}
-          className="min-h-10 rounded-lg border border-[#a3ff12]/35 bg-[#a3ff12]/12 px-4 text-sm font-black text-[#d7ffab] transition hover:bg-[#a3ff12]/18"
+          className="min-h-10 rounded-lg border border-[#c4f24e]/35 bg-[#c4f24e]/12 px-4 text-sm font-black text-[#e4f9b8] transition hover:bg-[#c4f24e]/18"
         >
           Leave a Review
         </button>
       </div>
 
       {notice ? (
-        <div className="mt-4 rounded-lg border border-[#a3ff12]/25 bg-[#a3ff12]/10 px-4 py-3 text-sm font-bold text-[#d7ffab]">
+        <div className="mt-4 rounded-lg border border-[#c4f24e]/25 bg-[#c4f24e]/10 px-4 py-3 text-sm font-bold text-[#e4f9b8]">
           {notice}
         </div>
       ) : null}
@@ -179,7 +179,7 @@ export function PublicBarberReviewsSection({
                   <p className="text-sm font-black text-white">{review.reviewerName || "BVRB3R client"}</p>
                   <p className="mt-1 text-xs text-white/40">{formatReviewDate(review.createdAt)}</p>
                 </div>
-                <span className="inline-flex items-center gap-1 rounded-lg border border-[#a3ff12]/15 bg-[#a3ff12]/10 px-2.5 py-1 text-sm font-black text-[#d7ffab]">
+                <span className="inline-flex items-center gap-1 rounded-lg border border-[#c4f24e]/15 bg-[#c4f24e]/10 px-2.5 py-1 text-sm font-black text-[#e4f9b8]">
                   <Star className="h-4 w-4 fill-current" aria-hidden="true" />
                   {review.rating.toFixed(1)}
                 </span>
@@ -231,7 +231,7 @@ export function PublicBarberReviewsSection({
                         onClick={() => setRating(value)}
                         className={`min-h-10 rounded-lg border px-2 text-sm font-black transition ${
                           rating === value
-                            ? "border-[#a3ff12]/50 bg-[#a3ff12] text-black"
+                            ? "border-[#c4f24e]/50 bg-[#c4f24e] text-black"
                             : "border-white/10 bg-white/[0.035] text-white/70 hover:border-white/18"
                         }`}
                         aria-pressed={rating === value}
@@ -249,7 +249,7 @@ export function PublicBarberReviewsSection({
                     onChange={(event) => setMessage(event.target.value)}
                     placeholder="Share your experience"
                     maxLength={500}
-                    className="mt-2 min-h-28 w-full resize-none rounded-lg border border-white/10 bg-black/35 px-3 py-3 text-sm text-white outline-none transition placeholder:text-white/32 focus:border-[#a3ff12]/45"
+                    className="mt-2 min-h-28 w-full resize-none rounded-lg border border-white/10 bg-black/35 px-3 py-3 text-sm text-white outline-none transition placeholder:text-white/32 focus:border-[#c4f24e]/45"
                   />
                 </label>
               </div>
@@ -274,7 +274,7 @@ export function PublicBarberReviewsSection({
                   type="button"
                   onClick={submitReview}
                   disabled={submitting}
-                  className="min-h-10 rounded-lg border border-[#a3ff12]/45 bg-[#a3ff12] px-4 text-sm font-black text-black transition hover:bg-[#d7ffab] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="min-h-10 rounded-lg border border-[#c4f24e]/45 bg-[#c4f24e] px-4 text-sm font-black text-black transition hover:bg-[#e4f9b8] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {submitting ? "Posting..." : "Submit review"}
                 </button>

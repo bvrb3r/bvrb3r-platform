@@ -29,11 +29,11 @@ export function ClientBottomNav({ activeTab, mode = "client" }: { activeTab?: Cl
               className={cn(
                 "flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] px-2 py-2.5 text-center transition",
                 isActive
-                  ? "border border-[#7CFF00]/26 bg-[#7CFF00]/10 text-white"
-                  : "border border-white/8 bg-black/18 text-white/66 hover:border-[#7CFF00]/20 hover:text-white"
+                  ? "border border-[#C4F24E]/26 bg-[#C4F24E]/10 text-white"
+                  : "border border-white/8 bg-black/18 text-white/66 hover:border-[#C4F24E]/20 hover:text-white"
               )}
             >
-              <Icon className={cn("h-4 w-4", isActive ? "text-[#d7ffab]" : "text-white/62")} />
+              <Icon className={cn("h-4 w-4", isActive ? "text-[#e4f9b8]" : "text-white/62")} />
               <span className="max-w-full truncate text-[10px] font-semibold uppercase leading-none tracking-[0.14em]">{item.label}</span>
             </Link>
           );

@@ -10,7 +10,7 @@ import type { CultureCommentItem, CultureCommentSummary, CultureFeedItem, Cultur
 type CultureSurface = "client" | "barber" | "shop";
 type CulturePostAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click" | "not_interested";
 
-const cultureBookingCtaClassName = "inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#A3FF12]/40 bg-[#A3FF12] px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-[#050505] shadow-[0_14px_32px_rgba(163,255,18,0.22)] ring-1 ring-black/10 transition hover:bg-[#8de300] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7ffab]/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
+const cultureBookingCtaClassName = "inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#C4F24E]/40 bg-[#C4F24E] px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-[#050505] shadow-[0_14px_32px_rgba(196, 242, 78,0.22)] ring-1 ring-black/10 transition hover:bg-[#b3e63a] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e4f9b8]/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
 
 function formatCultureDate(value: string) {
   const date = new Date(value);
@@ -102,11 +102,11 @@ function CultureActionButton({
       aria-busy={loading || undefined}
       title={title}
       className={[
-        "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7ffab]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:cursor-not-allowed",
+        "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e4f9b8]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:cursor-not-allowed",
         active
-          ? "bg-[#A3FF12]/14 text-[#A3FF12] shadow-[0_0_20px_rgba(163,255,18,0.12)]"
+          ? "bg-[#C4F24E]/14 text-[#C4F24E] shadow-[0_0_20px_rgba(196, 242, 78,0.12)]"
           : available
-            ? "bg-transparent text-white/70 hover:bg-white/[0.06] hover:text-[#d7ffab]"
+            ? "bg-transparent text-white/70 hover:bg-white/[0.06] hover:text-[#e4f9b8]"
             : "bg-transparent text-white/26"
       ].join(" ")}
     >
@@ -137,7 +137,7 @@ function CultureMedia({
           <img src={mediaUrl} alt={`Culture post by ${authorDisplayName}`} loading="lazy" className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <div className="rounded-full border border-[#d7ffab]/18 bg-black/36 p-5 text-[#d7ffab]">
+            <div className="rounded-full border border-[#e4f9b8]/18 bg-black/36 p-5 text-[#e4f9b8]">
               <ImageIcon className="h-8 w-8" />
             </div>
             <p className="max-w-[16rem] text-sm leading-6 text-white/44">This post is waiting on approved Culture media.</p>
@@ -160,7 +160,7 @@ function CultureAvatar({
   const dimensions = size === "small" ? "h-9 w-9 text-xs" : "h-12 w-12 text-sm";
 
   return (
-    <div className={`${dimensions} shrink-0 overflow-hidden rounded-full border border-[#d7ffab]/18 bg-[#d7ffab]/10 text-[#d7ffab]`}>
+    <div className={`${dimensions} shrink-0 overflow-hidden rounded-full border border-[#e4f9b8]/18 bg-[#e4f9b8]/10 text-[#e4f9b8]`}>
       {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -658,7 +658,7 @@ export function CulturePostCard({
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate text-sm font-black text-white">{authorPrimaryLabel}</p>
                   {post.authorVerified ? (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[#d7ffab]/20 bg-[#d7ffab]/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#d7ffab]">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[#e4f9b8]/20 bg-[#e4f9b8]/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#e4f9b8]">
                       <ShieldCheck className="h-3 w-3" />
                       Verified
                     </span>
@@ -682,7 +682,7 @@ export function CulturePostCard({
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate text-sm font-black text-white">{authorPrimaryLabel}</p>
                   {post.authorVerified ? (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[#d7ffab]/20 bg-[#d7ffab]/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#d7ffab]">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[#e4f9b8]/20 bg-[#e4f9b8]/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#e4f9b8]">
                       <ShieldCheck className="h-3 w-3" />
                       Verified
                     </span>
@@ -709,8 +709,8 @@ export function CulturePostCard({
               className={[
                 "rounded-full border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition",
                 following
-                  ? "border-[#d7ffab]/28 bg-[#d7ffab]/14 text-[#d7ffab]"
-                  : "border-white/10 bg-white/[0.04] text-white/64 hover:border-[#d7ffab]/24 hover:text-[#d7ffab]"
+                  ? "border-[#e4f9b8]/28 bg-[#e4f9b8]/14 text-[#e4f9b8]"
+                  : "border-white/10 bg-white/[0.04] text-white/64 hover:border-[#e4f9b8]/24 hover:text-[#e4f9b8]"
               ].join(" ")}
               aria-label={following ? "Unfollow Culture author" : "Follow Culture author"}
               title={following ? "Unfollow this Culture author." : "Follow this Culture author."}
@@ -720,7 +720,7 @@ export function CulturePostCard({
             <button
               type="button"
               onClick={() => setMoreOpen((value) => !value)}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/64 transition hover:border-[#d7ffab]/24 hover:text-[#d7ffab]"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/64 transition hover:border-[#e4f9b8]/24 hover:text-[#e4f9b8]"
               aria-label="Open Culture post actions"
               title="Open Culture post actions."
             >
@@ -882,7 +882,7 @@ export function CulturePostCard({
             </div>
           ) : null}
 
-          {message ? <p className="mt-3 text-xs font-semibold text-[#d7ffab]" role="status">{message}</p> : null}
+          {message ? <p className="mt-3 text-xs font-semibold text-[#e4f9b8]" role="status">{message}</p> : null}
           {error ? <p className="mt-3 text-xs font-semibold text-red-100" role="alert">{error}</p> : null}
           {!post.canComment ? <p className="mt-3 text-xs text-white/34">Comments are coming soon.</p> : null}
         </div>
@@ -983,7 +983,7 @@ export function CulturePostCard({
                       onChange={(event) => setCommentBody(event.target.value)}
                       maxLength={500}
                       rows={3}
-                      className="mt-2 w-full resize-none rounded-[16px] border border-white/10 bg-black/44 px-3 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/26 focus:border-[#d7ffab]/30"
+                      className="mt-2 w-full resize-none rounded-[16px] border border-white/10 bg-black/44 px-3 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/26 focus:border-[#e4f9b8]/30"
                       placeholder="Write a comment..."
                     />
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -992,7 +992,7 @@ export function CulturePostCard({
                         type="button"
                         disabled={commentSubmitting}
                         onClick={() => void submitComment()}
-                        className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#d7ffab]/28 bg-[#d7ffab] px-4 text-xs font-black uppercase tracking-[0.12em] text-[#050505] transition hover:bg-[#c6f79b] disabled:cursor-not-allowed disabled:opacity-55"
+                        className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#e4f9b8]/28 bg-[#e4f9b8] px-4 text-xs font-black uppercase tracking-[0.12em] text-[#050505] transition hover:bg-[#c6f79b] disabled:cursor-not-allowed disabled:opacity-55"
                       >
                         {commentSubmitting ? "Posting" : "Post comment"}
                       </button>

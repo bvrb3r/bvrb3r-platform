@@ -307,10 +307,10 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
                       return (
                         <label
                           key={option.value}
-                          className={`grid cursor-pointer gap-2 rounded-[18px] border p-3 text-left transition focus-within:ring-2 focus-within:ring-[#7cff00] focus-within:ring-offset-2 focus-within:ring-offset-black ${
+                          className={`grid cursor-pointer gap-2 rounded-[18px] border p-3 text-left transition focus-within:ring-2 focus-within:ring-[#c4f24e] focus-within:ring-offset-2 focus-within:ring-offset-black ${
                             selected
-                              ? "border-[#7cff00]/40 bg-[#7cff00]/10 text-white"
-                              : "border-white/8 bg-black/20 text-white/66 hover:border-[#7cff00]/24 hover:text-white"
+                              ? "border-[#c4f24e]/40 bg-[#c4f24e]/10 text-white"
+                              : "border-white/8 bg-black/20 text-white/66 hover:border-[#c4f24e]/24 hover:text-white"
                           }`}
                         >
                           <input
@@ -331,7 +331,7 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
                 </fieldset>
               ) : null}
               {mode === "login" ? (
-                <Link href="/forgot-password" className="w-fit text-sm text-[#cfff93] underline-offset-4 hover:underline">
+                <Link href="/forgot-password" className="w-fit text-sm text-[#e0f6a0] underline-offset-4 hover:underline">
                   Forgot password?
                 </Link>
               ) : null}
@@ -353,16 +353,16 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
           </div>
 
           {visibleError ? <p className="mt-4 text-sm leading-7 text-[#ff8f8f]">{visibleError}</p> : null}
-          {visibleSuccess ? <p className="mt-4 text-sm leading-7 text-[#d7ffab]">{visibleSuccess}</p> : null}
+          {visibleSuccess ? <p className="mt-4 text-sm leading-7 text-[#e4f9b8]">{visibleSuccess}</p> : null}
 
           <p className="mt-6 text-sm leading-7 text-white/52">
             {mode === "login" ? "Need an account?" : "Already have an account?"}{" "}
-            <Link href={mode === "login" ? "/signup" : "/login"} className="text-[#cfff93]">
+            <Link href={mode === "login" ? "/signup" : "/login"} className="text-[#e0f6a0]">
               {mode === "login" ? "Create account" : "Log in"}
             </Link>
           </p>
           {unlockKiosk ? (
-            <p className="mt-3 text-sm leading-7 text-[#d7ffab]">
+            <p className="mt-3 text-sm leading-7 text-[#e4f9b8]">
               Staff sign-in will unlock kiosk mode on this device and return you to the protected operator flow.
             </p>
           ) : null}
@@ -382,11 +382,11 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
                       .then((redirectTo) => router.replace(redirectTo))
                       .catch((error) => setErrorMessage(error instanceof Error ? error.message : "Demo sign-in failed."))
                   }
-                  className="flex w-full items-start justify-between gap-4 rounded-[22px] border border-white/8 bg-black/20 px-4 py-4 text-left hover:border-[#7CFF00]/20 hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="flex w-full items-start justify-between gap-4 rounded-[22px] border border-white/8 bg-black/20 px-4 py-4 text-left hover:border-[#C4F24E]/20 hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <span className="min-w-0">
                     <span className="block text-base font-medium text-white">{account.user.name}</span>
-                    <span className="mt-1 block text-[11px] uppercase tracking-[0.22em] text-[#cfff93]">{account.roleLabel}</span>
+                    <span className="mt-1 block text-[11px] uppercase tracking-[0.22em] text-[#e0f6a0]">{account.roleLabel}</span>
                     <span className="mt-2 block text-sm leading-6 text-white/58">{account.description}</span>
                   </span>
                   <span className="shrink-0 text-right text-xs text-white/42">{account.user.email}</span>

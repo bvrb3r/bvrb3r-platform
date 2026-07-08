@@ -52,7 +52,7 @@ function Dot({ tone, label }: { tone: "red" | "yellow"; label: string }) {
 }
 
 function iconButtonClass() {
-  return "relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/28 hover:bg-[#7CFF00]/8 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7CFF00]/50";
+  return "relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#C4F24E]/28 hover:bg-[#C4F24E]/8 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/50";
 }
 
 function severityClass(severity: NotificationSeverity) {
@@ -63,7 +63,7 @@ function severityClass(severity: NotificationSeverity) {
       return "border-[#ffd166]/24 bg-[#ffd166]/10 text-[#ffe2a6]";
     case "info":
     default:
-      return "border-[#A3FF12]/20 bg-[#A3FF12]/8 text-[#d7ffab]";
+      return "border-[#C4F24E]/20 bg-[#C4F24E]/8 text-[#e4f9b8]";
   }
 }
 
@@ -117,13 +117,13 @@ export function DashboardHeaderActions({
         <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(5,5,5,0.98))] p-4 text-white shadow-[0_24px_70px_rgba(0,0,0,0.55)]">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#A3FF12]">Notifications</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#C4F24E]">Notifications</p>
               <h2 className="mt-2 text-xl font-black tracking-[-0.035em]">Notifications</h2>
             </div>
             <button
               type="button"
               aria-label="Close notifications"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#7CFF00]/28 hover:text-white"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#C4F24E]/28 hover:text-white"
               onClick={() => setIsNotificationsOpen(false)}
             >
               <X className="h-4 w-4" aria-hidden="true" />
@@ -164,7 +164,7 @@ export function DashboardHeaderActions({
             {notificationsHref ? (
               <Link
                 href={notificationsHref}
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/10 px-4 text-xs font-black uppercase tracking-[0.16em] text-[#A3FF12] transition hover:bg-[#A3FF12]/14"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#C4F24E]/30 bg-[#C4F24E]/10 px-4 text-xs font-black uppercase tracking-[0.16em] text-[#C4F24E] transition hover:bg-[#C4F24E]/14"
               >
                 Open notification center
               </Link>
@@ -192,7 +192,7 @@ function NotificationRow({ item }: { item: DashboardHeaderNotificationItem }) {
         {item.action ? (
           <Link
             href={item.action.href}
-            className="inline-flex min-h-9 items-center justify-center rounded-full border border-[#A3FF12]/24 bg-[#A3FF12]/8 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12] transition hover:bg-[#A3FF12]/14"
+            className="inline-flex min-h-9 items-center justify-center rounded-full border border-[#C4F24E]/24 bg-[#C4F24E]/8 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#C4F24E] transition hover:bg-[#C4F24E]/14"
           >
             {item.action.label}
           </Link>

@@ -109,7 +109,7 @@ function FieldControl({
       {field.helper ? <span className="mt-1 block text-sm leading-6 text-white/52">{field.helper}</span> : null}
       <span className="mt-2 flex flex-wrap gap-2">
         {field.private ? <span className="rounded-full border border-white/10 bg-white/[0.035] px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/38">Private</span> : null}
-        {field.public ? <span className="rounded-full border border-[#A3FF12]/20 bg-[#A3FF12]/8 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#A3FF12]">Public-safe</span> : null}
+        {field.public ? <span className="rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/8 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#C4F24E]">Public-safe</span> : null}
         {field.required ? <span className="rounded-full border border-amber-300/20 bg-amber-300/8 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-200">Required</span> : null}
       </span>
     </span>
@@ -121,7 +121,7 @@ function FieldControl({
         {baseLabel}
         <input
           type="checkbox"
-          className="h-5 w-5 shrink-0 accent-[#A3FF12] disabled:opacity-45"
+          className="h-5 w-5 shrink-0 accent-[#C4F24E] disabled:opacity-45"
           checked={Boolean(value)}
           disabled={!editable}
           onChange={(event) => onValueChange(event.target.checked)}
@@ -198,7 +198,7 @@ function MetadataList({ title, items }: { title: string; items: string[] }) {
       <div className="mt-3 grid gap-2">
         {items.map((item) => (
           <div key={item} className="flex items-start gap-2 text-sm leading-5 text-white/58">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#A3FF12]/62" aria-hidden="true" />
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#C4F24E]/62" aria-hidden="true" />
             <span>{item}</span>
           </div>
         ))}
@@ -347,7 +347,7 @@ export function MoreSettingModalContent({
         isLocked ? "border-amber-300/20 bg-amber-300/[0.06]" : "border-white/10 bg-white/[0.035]"
       )}>
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[#A3FF12]/20 bg-[#A3FF12]/10 text-[#A3FF12]">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#C4F24E]">
             {isLocked ? <LockKeyhole className="h-5 w-5" aria-hidden="true" /> : <Settings2 className="h-5 w-5" aria-hidden="true" />}
           </span>
           <div className="min-w-0">
@@ -355,7 +355,7 @@ export function MoreSettingModalContent({
             <p className="mt-1 text-sm leading-6 text-white/56">{spec.helper}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] text-white/42">{privacyLabel(spec)}</span>
-              {spec.statusLabel ? <span className="rounded-full border border-[#A3FF12]/20 bg-[#A3FF12]/8 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] text-[#A3FF12]">{spec.statusLabel}</span> : null}
+              {spec.statusLabel ? <span className="rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/8 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] text-[#C4F24E]">{spec.statusLabel}</span> : null}
             </div>
           </div>
         </div>
@@ -367,7 +367,7 @@ export function MoreSettingModalContent({
             <p className="text-xs font-black uppercase tracking-[0.18em] text-white/40">Current controls</p>
             <span className={cn(
               "rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em]",
-              canEdit ? "border-[#A3FF12]/25 bg-[#A3FF12]/10 text-[#A3FF12]" : "border-white/10 bg-white/[0.035] text-white/40"
+              canEdit ? "border-[#C4F24E]/25 bg-[#C4F24E]/10 text-[#C4F24E]" : "border-white/10 bg-white/[0.035] text-white/40"
             )}>
               {canEdit ? "Save action wired" : "Save disabled"}
             </span>
@@ -393,7 +393,7 @@ export function MoreSettingModalContent({
           </p>
           <button
             type="button"
-            className="mt-4 min-h-11 rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/10 px-4 text-sm font-extrabold text-[#A3FF12] disabled:opacity-50"
+            className="mt-4 min-h-11 rounded-full border border-[#C4F24E]/30 bg-[#C4F24E]/10 px-4 text-sm font-extrabold text-[#C4F24E] disabled:opacity-50"
             onClick={() => void loadCurrentRecords()}
             disabled={loadState === "loading"}
           >
@@ -445,7 +445,7 @@ export function MoreSettingModalContent({
       {(spec.auditEventName || spec.algorithmSignals?.length) ? (
         <div className="rounded-[22px] border border-white/10 bg-white/[0.025] p-4">
           <div className="flex items-start gap-3">
-            <ShieldCheck className="mt-1 h-5 w-5 shrink-0 text-[#A3FF12]" aria-hidden="true" />
+            <ShieldCheck className="mt-1 h-5 w-5 shrink-0 text-[#C4F24E]" aria-hidden="true" />
             <div>
               <p className="text-sm font-extrabold text-white">Platform sync contract</p>
               {spec.auditEventName ? <p className="mt-1 text-sm leading-6 text-white/56">Audit event: <span className="font-bold text-white/72">{spec.auditEventName}</span></p> : null}
@@ -458,7 +458,7 @@ export function MoreSettingModalContent({
       {href ? (
         <Link
           href={href as never}
-          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 hover:border-[#A3FF12]/30 hover:text-[#A3FF12]"
+          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 hover:border-[#C4F24E]/30 hover:text-[#C4F24E]"
         >
           Open full workspace
           <ExternalLink className="h-4 w-4" aria-hidden="true" />

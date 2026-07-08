@@ -32,7 +32,7 @@ function formatDateTime(value?: string | null) {
 function badgeClasses(value: string) {
   const normalized = value.toLowerCase();
   if (normalized.includes("approved") || normalized.includes("active") || normalized.includes("verified")) {
-    return "border-[#7CFF00]/16 bg-[#7CFF00]/10 text-[#d7ffab]";
+    return "border-[#C4F24E]/16 bg-[#C4F24E]/10 text-[#e4f9b8]";
   }
   if (normalized.includes("pending") || normalized.includes("review") || normalized.includes("needs")) {
     return "border-amber-300/20 bg-amber-300/10 text-amber-100";
@@ -60,8 +60,8 @@ function Metric({
     <Link
       href={href}
       className={cn(
-        "block rounded-[22px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/45",
-        accent ? "[&_.bvr-glass-card]:border-[#7CFF00]/28 [&_.bvr-glass-card]:bg-[#7CFF00]/8" : undefined
+        "block rounded-[22px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/45",
+        accent ? "[&_.bvr-glass-card]:border-[#C4F24E]/28 [&_.bvr-glass-card]:bg-[#C4F24E]/8" : undefined
       )}
     >
       <DataStatCard label={label} value={value} detail={detail} />
@@ -80,7 +80,7 @@ function AccountMiniRow({ account }: { account: ArchitectAccountDirectoryItem })
   return (
     <Link
       href={`/architect/users/${account.profileId}`}
-      className="block rounded-[24px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/45"
+      className="block rounded-[24px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/45"
     >
       <GlassCard className="p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -139,8 +139,8 @@ export function ArchitectDashboard({ initialData }: { initialData: ArchitectDash
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:w-[26rem]">
-              <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                <p className="surface-label text-[#d7ffab]">Operating as</p>
+              <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4">
+                <p className="surface-label text-[#e4f9b8]">Operating as</p>
                 <p className="mt-3 text-lg font-semibold text-white">{data.actorName}</p>
                 <p className="mt-2 text-sm text-white/62">Platform administrator</p>
               </div>
@@ -189,7 +189,7 @@ export function ArchitectDashboard({ initialData }: { initialData: ArchitectDash
 
         {!hasAccounts ? (
           <Card className="rounded-[30px] border-dashed p-6 text-center">
-            <Users className="mx-auto h-8 w-8 text-[#baff69]" />
+            <Users className="mx-auto h-8 w-8 text-[#d9f985]" />
             <p className="mt-4 text-xl font-semibold text-white">No real accounts yet</p>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-white/58">
               Architect is connected to live account sources. When real profiles exist, they will appear here with zero fabricated rows.
@@ -204,7 +204,7 @@ export function ArchitectDashboard({ initialData }: { initialData: ArchitectDash
                 <p className="surface-label">Recent signups</p>
                 <p className="mt-2 text-sm text-white/58">Newest real accounts in the platform.</p>
               </div>
-              <Link href="/architect/users" className="text-sm font-semibold text-[#d7ffab] hover:text-white">Open users</Link>
+              <Link href="/architect/users" className="text-sm font-semibold text-[#e4f9b8] hover:text-white">Open users</Link>
             </div>
             <div className="mt-4 grid gap-3">
               {data.recentSignups.length ? data.recentSignups.map((account) => (
@@ -223,7 +223,7 @@ export function ArchitectDashboard({ initialData }: { initialData: ArchitectDash
                 <p className="surface-label">Recent approval actions</p>
                 <p className="mt-2 text-sm text-white/58">Founder actions recorded in audit history.</p>
               </div>
-              <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+              <ShieldCheck className="h-5 w-5 text-[#d9f985]" />
             </div>
             <div className="mt-4 grid gap-3">
               {data.recentApprovalActions.length ? data.recentApprovalActions.map((entry) => (

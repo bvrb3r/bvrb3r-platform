@@ -46,7 +46,7 @@ function buildEditableBarberProfilePayload(repair: BarberProfileRepairResult) {
       id: repair.barberProfile.id ?? repair.barberProfile.barber_reference,
       barberId: repair.barberReference,
       username,
-      photoAccent: "#a3ff12",
+      photoAccent: "#c4f24e",
       yearsExperience: repair.barberProfile.years_experience ?? 0,
       shopId: repair.barberProfile.shop_reference ?? undefined,
       headline: repair.barberProfile.bio ?? repair.barber.bio ?? "No public bio saved yet.",

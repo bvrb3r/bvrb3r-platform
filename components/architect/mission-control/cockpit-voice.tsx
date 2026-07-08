@@ -76,14 +76,14 @@ export function VoiceCommand({ onCommand }: { onCommand: (text: string) => void 
         {BARS.map((height, index) => (
           <span
             key={index}
-            className={cn("w-1 rounded-full bg-[#A3FF12]/70", listening && "animate-pulse")}
+            className={cn("w-1 rounded-full bg-[#C4F24E]/70", listening && "animate-pulse")}
             style={{ height: `${(listening ? height : height * 0.4) * 100}%`, animationDelay: `${index * 90}ms` }}
           />
         ))}
       </div>
       <div className="min-w-0">
         <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-white/56">Voice Command</div>
-        <div className={cn("font-mono text-[10px]", listening ? "text-[#d7ffab]" : "text-white/44")}>
+        <div className={cn("font-mono text-[10px]", listening ? "text-[#e4f9b8]" : "text-white/44")}>
           {supported ? (listening ? "Listening…" : "Standby") : "Unavailable"}
         </div>
       </div>
@@ -95,7 +95,7 @@ export function VoiceCommand({ onCommand }: { onCommand: (text: string) => void 
         data-testid="cockpit-voice-toggle"
         className={cn(
           "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition",
-          listening ? "border-[#A3FF12] bg-[#A3FF12]/16 text-[#d7ffab]" : "border-white/16 bg-white/[0.04] text-white/56",
+          listening ? "border-[#C4F24E] bg-[#C4F24E]/16 text-[#e4f9b8]" : "border-white/16 bg-white/[0.04] text-white/56",
           !supported && "opacity-40"
         )}
       >

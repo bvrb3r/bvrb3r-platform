@@ -734,7 +734,7 @@ export function ClientProfileScreen({
                     type="button"
                     aria-label="Edit profile photo"
                     onClick={() => openFilePicker(profileInputRef.current)}
-                    className="absolute -bottom-2 -right-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#d7ffab]/24 bg-black/90 text-[#d7ffab] transition hover:border-[#d7ffab]/40"
+                    className="absolute -bottom-2 -right-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#e4f9b8]/24 bg-black/90 text-[#e4f9b8] transition hover:border-[#e4f9b8]/40"
                   >
                     <Camera className="h-4 w-4" />
                   </button>
@@ -806,7 +806,7 @@ export function ClientProfileScreen({
               <div className="mt-4">
                 <Link
                   href="#profile-wallet"
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/86 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/86 transition hover:border-[#e4f9b8]/18 hover:text-[#e4f9b8]"
                 >
                   Manage in Wallet
                 </Link>
@@ -821,7 +821,7 @@ export function ClientProfileScreen({
               <div className="mt-4">
                 <button
                   type="button"
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/86 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/86 transition hover:border-[#e4f9b8]/18 hover:text-[#e4f9b8]"
                   onClick={openLocationModal}
                 >
                   Edit Location
@@ -845,10 +845,10 @@ export function ClientProfileScreen({
               src={clientPhotoUrl}
               alt={clientName}
               initials={initialsForName(clientName)}
-              className="h-24 w-24 rounded-[28px] border-2 border-[#d7ffab]/30 text-2xl"
+              className="h-24 w-24 rounded-[28px] border-2 border-[#e4f9b8]/30 text-2xl"
             />
             <div className="min-w-0">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Culture profile</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Culture profile</p>
               <h3 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{clientName}</h3>
               <p className="mt-2 text-sm leading-6 text-white/58">
                 Client public profiles appear only in Culture, follow, and social surfaces. Barber and shop marketplace search stays reserved for bookable businesses.
@@ -947,7 +947,7 @@ export function ClientProfileScreen({
         <div id="profile-preferences" className="grid scroll-mt-6 gap-4 xl:grid-cols-2">
           <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <Heart className="h-4 w-4 text-[#d7ffab]" />
+              <Heart className="h-4 w-4 text-[#e4f9b8]" />
               Preferred Barbers
             </div>
             <div className="mt-4 space-y-3">
@@ -991,7 +991,7 @@ export function ClientProfileScreen({
 
           <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <Store className="h-4 w-4 text-[#baff69]" />
+              <Store className="h-4 w-4 text-[#d9f985]" />
               Preferred Shops
             </div>
             <div className="mt-4 space-y-3">
@@ -1035,7 +1035,7 @@ export function ClientProfileScreen({
           {paywallSummary ? <ClientPlanAccessCard summary={paywallSummary} showFeatureGroups /> : null}
           <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <CreditCard className="h-4 w-4 text-[#baff69]" />
+              <CreditCard className="h-4 w-4 text-[#d9f985]" />
               Default payment method
             </div>
             <p className="mt-4 text-lg font-semibold text-white">{getPaymentMethodTitle(defaultPaymentMethod)}</p>
@@ -1060,7 +1060,7 @@ export function ClientProfileScreen({
               label="BVR Points"
               value={`${pointsBalance?.unlockedPoints ?? 0} pts`}
               icon={<Gift className="h-4 w-4" />}
-              className="border-[#a8ff47]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(8,8,8,0.98))]"
+              className="border-[#a8ff47]/16 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(8,8,8,0.98))]"
             />
             <DataStatCard label="Pending" value={`${pointsBalance?.pendingPoints ?? 0} pts`} />
             <DataStatCard label="Value" value={currency(pointsBalance?.inAppValue ?? 0)} />
@@ -1074,7 +1074,7 @@ export function ClientProfileScreen({
 
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <Gift className="h-4 w-4 text-[#d7ffab]" />
+              <Gift className="h-4 w-4 text-[#e4f9b8]" />
               Rewards activity
             </div>
             <div className="mt-4 space-y-3">
@@ -1085,7 +1085,7 @@ export function ClientProfileScreen({
                       <p className="font-medium text-white">{item.title}</p>
                       <p className="mt-2 text-sm text-white/58">{item.detail}</p>
                     </div>
-                    <span className="rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#e8ffc2]">
+                    <span className="rounded-full border border-[#e4f9b8]/16 bg-[#e4f9b8]/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#e8ffc2]">
                       {item.amountLabel}
                     </span>
                   </div>
@@ -1114,7 +1114,7 @@ export function ClientProfileScreen({
           <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
             <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
               <div className="inline-flex items-center gap-2 text-sm text-white/78">
-                <Copy className="h-4 w-4 text-[#d7ffab]" />
+                <Copy className="h-4 w-4 text-[#e4f9b8]" />
                 Referral code
               </div>
               <p className="mt-4 text-2xl font-semibold text-white">{referralSummary?.referralCode?.code ?? "No code yet"}</p>
@@ -1141,7 +1141,7 @@ export function ClientProfileScreen({
 
             <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
               <div className="inline-flex items-center gap-2 text-sm text-white/78">
-                <MailPlus className="h-4 w-4 text-[#baff69]" />
+                <MailPlus className="h-4 w-4 text-[#d9f985]" />
                 Direct invite
               </div>
               <p className="mt-4 text-sm text-white/58">Invite someone directly and track the real lifecycle from shared to credited.</p>
@@ -1183,8 +1183,8 @@ export function ClientProfileScreen({
               <p className="surface-label">Completed</p>
               <p className="mt-3 text-2xl font-semibold text-white">{referralSummary?.totals.completed ?? 0}</p>
             </div>
-            <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-              <p className="surface-label text-[#d7ffab]">Credited</p>
+            <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4">
+              <p className="surface-label text-[#e4f9b8]">Credited</p>
               <p className="mt-3 text-2xl font-semibold text-white">{referralSummary?.totals.credited ?? 0}</p>
               <p className="mt-2 text-sm text-white/64">{referralSummary?.totals.rewardPointsEarned ?? 0} pts earned</p>
             </div>
@@ -1192,7 +1192,7 @@ export function ClientProfileScreen({
 
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <ShieldCheck className="h-4 w-4 text-[#d7ffab]" />
+              <ShieldCheck className="h-4 w-4 text-[#e4f9b8]" />
               Recent referral progress
             </div>
             <div className="mt-4 space-y-3">
@@ -1203,7 +1203,7 @@ export function ClientProfileScreen({
                       <p className="font-medium text-white">{referral.referredClientEmail}</p>
                       <p className="mt-2 text-sm text-white/58">{formatOccurredAt(referral.creditedAt ?? referral.completedAt ?? referral.bookedAt ?? referral.signedUpAt ?? referral.createdAt) ?? "Recently"}</p>
                     </div>
-                    <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#d7ffab]">
+                    <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#e4f9b8]">
                       {referral.status.replaceAll("_", " ")}
                     </span>
                   </div>
@@ -1228,7 +1228,7 @@ export function ClientProfileScreen({
         <div id="profile-settings" className="grid scroll-mt-6 gap-4 md:grid-cols-3">
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <BellRing className="h-4 w-4 text-[#baff69]" />
+              <BellRing className="h-4 w-4 text-[#d9f985]" />
               Notification preferences
             </div>
             <p className="mt-3 text-sm text-white/58">Adjust the real notification channels already supported on your account.</p>
@@ -1258,7 +1258,7 @@ export function ClientProfileScreen({
 
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <MapPinned className="h-4 w-4 text-[#d7ffab]" />
+              <MapPinned className="h-4 w-4 text-[#e4f9b8]" />
               Location preference
             </div>
             <p className="mt-3 text-lg font-semibold text-white">{localBookingAreaTitle}</p>
@@ -1268,7 +1268,7 @@ export function ClientProfileScreen({
             <div className="mt-4">
               <button
                 type="button"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/84 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/84 transition hover:border-[#e4f9b8]/18 hover:text-[#e4f9b8]"
                 onClick={openLocationModal}
               >
                 {savedClientLocation || primaryShop ? "Edit Location" : "Add Location"}
@@ -1278,7 +1278,7 @@ export function ClientProfileScreen({
 
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <ShieldCheck className="h-4 w-4 text-[#d7ffab]" />
+              <ShieldCheck className="h-4 w-4 text-[#e4f9b8]" />
               Privacy & Security
             </div>
             <p className="mt-3 text-lg font-semibold text-white">Secure your contact details</p>
@@ -1331,9 +1331,9 @@ export function ClientProfileScreen({
 
       {locationModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
-          <div className="w-full max-w-lg rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 text-white shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)]">
+          <div className="w-full max-w-lg rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 text-white shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(196, 242, 78,0.12)]">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Quick setup</p>
               <h2 className="mt-2 text-2xl font-black tracking-[-0.04em]">Set location</h2>
               <p className="mt-2 text-sm text-white/58">Search still works without this. Saving a city helps booking flows move faster.</p>
             </div>
@@ -1356,7 +1356,7 @@ export function ClientProfileScreen({
             {locationModalError ? <div className="mt-4"><FeedbackBanner tone="error" message={locationModalError} /></div> : null}
             <div className="mt-5 flex gap-3">
               <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={() => setLocationModalOpen(false)}>Cancel</Button>
-              <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={isSavingLocation} aria-busy={isSavingLocation} onClick={() => void handleLocationSave()}>
+              <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#C4F24E] text-black hover:bg-[#b3e63a]" disabled={isSavingLocation} aria-busy={isSavingLocation} onClick={() => void handleLocationSave()}>
                 {isSavingLocation ? "Saving..." : "Save location"}
               </Button>
             </div>

@@ -10,7 +10,7 @@ export default function PricingPage() {
   return (
     <section className="page-shell safe-top-pad app-safe-bottom py-6 sm:py-8 lg:py-12">
       <div className="max-w-2xl">
-        <p className="text-sm uppercase tracking-[0.28em] text-[#baff69]">Pricing placeholder</p>
+        <p className="text-sm uppercase tracking-[0.28em] text-[#d9f985]">Pricing placeholder</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-[-0.03em] sm:text-4xl lg:text-5xl">Premium software pricing for a premium barbershop operation.</h1>
       </div>
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:mt-10 lg:grid-cols-3">

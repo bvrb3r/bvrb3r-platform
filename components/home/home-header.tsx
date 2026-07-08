@@ -9,7 +9,7 @@ export function HomeHeader() {
       >
         <Link
           href="/"
-          className="text-lg font-semibold uppercase tracking-[0.28em] text-white focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7cff00] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          className="text-lg font-semibold uppercase tracking-[0.28em] text-white focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4f24e] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           aria-label="BVRB3R home"
         >
           BVRB3R

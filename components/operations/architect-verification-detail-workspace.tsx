@@ -42,7 +42,7 @@ function badgeClasses(value: string) {
   const normalized = value.toLowerCase();
 
   if (normalized.includes("approved") || normalized.includes("verified")) {
-    return "border-[#7CFF00]/16 bg-[#7CFF00]/10 text-[#d7ffab]";
+    return "border-[#C4F24E]/16 bg-[#C4F24E]/10 text-[#e4f9b8]";
   }
 
   if (normalized.includes("submitted") || normalized.includes("review") || normalized.includes("pending")) {
@@ -142,7 +142,7 @@ export function ArchitectVerificationDetailWorkspace({
                       <span className="status-pill text-white/72">{formatLabel(profile.role)}</span>
                     </div>
                   )}
-                  className="border-[#7CFF00]/28 bg-[#7CFF00]/8"
+                  className="border-[#C4F24E]/28 bg-[#C4F24E]/8"
                 />
                 {profile.userId ? (
                   <Link href={`/architect/users/${profile.userId}`}>
@@ -211,7 +211,7 @@ export function ArchitectVerificationDetailWorkspace({
 
               <Card className="rounded-[30px] p-6">
                 <div className="flex items-center gap-2">
-                  <ShieldAlert className="h-4 w-4 text-[#baff69]" />
+                  <ShieldAlert className="h-4 w-4 text-[#d9f985]" />
                   <p className="surface-label">Review actions</p>
                 </div>
                 <div className="mt-4 grid gap-2">
@@ -340,7 +340,7 @@ export function ArchitectVerificationDetailWorkspace({
 
             <Card className="rounded-[30px] p-6">
               <div className="flex items-center gap-2">
-                <FileLock2 className="h-4 w-4 text-[#baff69]" />
+                <FileLock2 className="h-4 w-4 text-[#d9f985]" />
                 <p className="surface-label">Verification documents</p>
               </div>
               <div className="mt-4 grid gap-3">
@@ -437,7 +437,7 @@ export function ArchitectVerificationDetailWorkspace({
                   onChange={(event) => setReason(event.target.value)}
                   rows={4}
                   placeholder="Why is this action necessary?"
-                  className="min-h-[7rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#7CFF00]/55 focus:shadow-[0_0_0_4px_rgba(124,255,0,0.10)]"
+                  className="min-h-[7rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#C4F24E]/55 focus:shadow-[0_0_0_4px_rgba(196, 242, 78,0.10)]"
                 />
               </div>
               <div>
@@ -447,7 +447,7 @@ export function ArchitectVerificationDetailWorkspace({
                   onChange={(event) => setInternalNotes(event.target.value)}
                   rows={3}
                   placeholder="Optional context for internal review history."
-                  className="min-h-[6rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#7CFF00]/55 focus:shadow-[0_0_0_4px_rgba(124,255,0,0.10)]"
+                  className="min-h-[6rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#C4F24E]/55 focus:shadow-[0_0_0_4px_rgba(196, 242, 78,0.10)]"
                 />
               </div>
             </div>

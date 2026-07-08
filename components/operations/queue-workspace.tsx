@@ -48,7 +48,7 @@ function getStatusClass(status: string) {
     case "assigned":
       return "text-sky-200";
     case "converted":
-      return "text-[#d7ffab]";
+      return "text-[#e4f9b8]";
     case "cancelled":
     case "expired":
     case "no_show":
@@ -190,7 +190,7 @@ export function QueueWorkspace({
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">{getQueueCopy(viewerRole)}</p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/68">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">
                 <Clock3 className="h-4 w-4" />
                 {payload?.summary.averageWaitMinutes ?? 0} minute average wait
               </div>
@@ -235,7 +235,7 @@ export function QueueWorkspace({
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Queue intake</p>
-            <UserRoundPlus className="h-5 w-5 text-[#baff69]" />
+            <UserRoundPlus className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 grid gap-3">
             <Input
@@ -289,7 +289,7 @@ export function QueueWorkspace({
               onChange={(event) => setForm((current) => ({ ...current, flexibilityMinutes: event.target.value }))}
             />
             <textarea
-              className="min-h-[108px] rounded-[24px] border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
+              className="min-h-[108px] rounded-[24px] border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none transition focus:border-[#c4f24e]/30"
               placeholder="Queue notes (optional)"
               value={form.notes}
               onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
@@ -309,7 +309,7 @@ export function QueueWorkspace({
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Active queue</p>
-            <ListOrdered className="h-5 w-5 text-[#baff69]" />
+            <ListOrdered className="h-5 w-5 text-[#d9f985]" />
           </div>
 
           <div className="mt-4 space-y-3">
@@ -321,7 +321,7 @@ export function QueueWorkspace({
             ) : activeEntries.length ? activeEntries.map((entry) => {
               const selectedBarberId = assignmentSelections[entry.id] || entry.assignedBarberId || entry.bestAvailableBarber?.barberId || "";
               return (
-                <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+                <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="font-medium text-white">{entry.clientName}</p>
@@ -352,7 +352,7 @@ export function QueueWorkspace({
                   <p className="mt-3 text-sm text-white/58">{entry.shopLabel}</p>
                   {entry.notes ? <p className="mt-2 text-sm text-white/55">{entry.notes}</p> : null}
                   {entry.bestAvailableBarber ? (
-                    <p className="mt-2 text-sm text-[#d7ffab]">
+                    <p className="mt-2 text-sm text-[#e4f9b8]">
                       Best available: {entry.bestAvailableBarber.barberName}
                       {entry.bestAvailableBarber.nextAvailableAt ? ` at ${formatDateTime(entry.bestAvailableBarber.nextAvailableAt)}` : ""}
                     </p>
@@ -426,7 +426,7 @@ export function QueueWorkspace({
           <Card className="rounded-[32px] p-6">
             <div className="flex items-center justify-between gap-3">
               <p className="surface-label">Availability signal</p>
-              <Sparkles className="h-5 w-5 text-[#baff69]" />
+              <Sparkles className="h-5 w-5 text-[#d9f985]" />
             </div>
             <div className="mt-4 space-y-3">
               {(payload?.barbers ?? []).slice(0, 6).map((barber) => (
@@ -449,7 +449,7 @@ export function QueueWorkspace({
           <Card className="rounded-[32px] p-6">
             <div className="flex items-center justify-between gap-3">
               <p className="surface-label">Recent outcomes</p>
-              <BellRing className="h-5 w-5 text-[#baff69]" />
+              <BellRing className="h-5 w-5 text-[#d9f985]" />
             </div>
             <div className="mt-4 space-y-3">
               {recentResolvedEntries.length ? recentResolvedEntries.map((entry) => (

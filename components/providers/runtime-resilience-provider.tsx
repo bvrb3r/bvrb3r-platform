@@ -209,7 +209,7 @@ export function RuntimeResilienceProvider({ children }: { children: React.ReactN
               </Button>
               <a
                 href={loginPath}
-                className="inline-flex min-h-[40px] items-center justify-center rounded-full border border-[#cfff93]/40 bg-[linear-gradient(135deg,#7cff00_0%,#b7ff58_100%)] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(124,255,0,0.24)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(124,255,0,0.32)] sm:text-[11px] sm:tracking-[0.22em]"
+                className="inline-flex min-h-[40px] items-center justify-center rounded-full border border-[#e0f6a0]/40 bg-[linear-gradient(135deg,#c4f24e_0%,#d4f97a_100%)] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(196, 242, 78,0.24)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(196, 242, 78,0.32)] sm:text-[11px] sm:tracking-[0.22em]"
               >
                 Sign in
               </a>

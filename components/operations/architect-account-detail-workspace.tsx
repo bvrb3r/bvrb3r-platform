@@ -68,7 +68,7 @@ function formatDateTime(value?: string | null) {
 function badgeClasses(value?: string | null) {
   const normalized = `${value ?? ""}`.toLowerCase();
   if (normalized.includes("approved") || normalized.includes("active") || normalized.includes("verified")) {
-    return "border-[#7CFF00]/16 bg-[#7CFF00]/10 text-[#d7ffab]";
+    return "border-[#C4F24E]/16 bg-[#C4F24E]/10 text-[#e4f9b8]";
   }
   if (normalized.includes("pending") || normalized.includes("review") || normalized.includes("needs") || normalized.includes("submitted")) {
     return "border-amber-300/20 bg-amber-300/10 text-amber-100";
@@ -86,7 +86,7 @@ function actionToneClasses(actionClass: PlatformAdminActionClass) {
     case "sensitive":
       return "border-amber-300/20 bg-amber-300/10 text-amber-100";
     default:
-      return "border-[#7CFF00]/16 bg-[#7CFF00]/10 text-[#d7ffab]";
+      return "border-[#C4F24E]/16 bg-[#C4F24E]/10 text-[#e4f9b8]";
   }
 }
 
@@ -400,7 +400,7 @@ export function ArchitectAccountDetailWorkspace({
                 <p className="surface-label">Account basics</p>
                 <p className="mt-2 text-sm text-white/58">Canonical profile and onboarding identity.</p>
               </div>
-              <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+              <ShieldCheck className="h-5 w-5 text-[#d9f985]" />
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <Field label="Profile id" value={account.profile.id} />
@@ -590,7 +590,7 @@ export function ArchitectAccountDetailWorkspace({
                 ))}
               </div>
             ) : (
-              <div className="mt-4 rounded-[22px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 p-4 text-sm leading-7 text-white/68">
+              <div className="mt-4 rounded-[22px] border border-[#C4F24E]/16 bg-[#C4F24E]/8 p-4 text-sm leading-7 text-white/68">
                 No marketplace blockers are currently detected from live account data.
               </div>
             )}
@@ -838,7 +838,7 @@ export function ArchitectAccountDetailWorkspace({
                 onChange={(event) => setReason(event.target.value)}
                 rows={4}
                 placeholder="Why is this action necessary?"
-                className="min-h-[7.5rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#7CFF00]/55 focus:shadow-[0_0_0_4px_rgba(124,255,0,0.10)]"
+                className="min-h-[7.5rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#C4F24E]/55 focus:shadow-[0_0_0_4px_rgba(196, 242, 78,0.10)]"
               />
             </div>
             {pendingAction.kind === "verification" ? (
@@ -849,7 +849,7 @@ export function ArchitectAccountDetailWorkspace({
                   onChange={(event) => setInternalNotes(event.target.value)}
                   rows={3}
                   placeholder="Private review notes"
-                  className="min-h-[6rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#7CFF00]/55 focus:shadow-[0_0_0_4px_rgba(124,255,0,0.10)]"
+                  className="min-h-[6rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#C4F24E]/55 focus:shadow-[0_0_0_4px_rgba(196, 242, 78,0.10)]"
                 />
               </div>
             ) : null}

@@ -150,7 +150,7 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
             </p>
           </div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm text-white/68">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">
               <Rows3 className="h-4 w-4" />
               {modeLabel}
             </div>
@@ -188,8 +188,8 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
                 <p className="mt-3 text-3xl font-semibold" data-display="true">{counts.inService}</p>
                 <p className="mt-2 text-sm text-white/58">Active services currently on the floor</p>
               </div>
-              <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-4">
-                <p className="surface-label text-[#d7ffab]">Ready for checkout</p>
+              <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 px-4 py-4">
+                <p className="surface-label text-[#e4f9b8]">Ready for checkout</p>
                 <p className="mt-3 text-3xl font-semibold" data-display="true">{counts.readyForCheckout}</p>
                 <p className="mt-2 text-sm text-white/70">Tickets waiting on payment and tip capture</p>
               </div>
@@ -203,7 +203,7 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
               <p className="surface-label">Next desk action</p>
               <p className="mt-2 text-lg font-semibold">{nextGuest && nextGuestView ? `${nextGuestView.client?.name ?? nextGuest.clientId} is next to arrive` : "No immediate arrivals waiting"}</p>
             </div>
-            <span className="status-pill text-[#d7ffab]">{walkIns.length} walk-ins live</span>
+            <span className="status-pill text-[#e4f9b8]">{walkIns.length} walk-ins live</span>
           </div>
           <p className="mt-3 text-sm text-white/58">
             {nextGuest && nextGuestView
@@ -223,7 +223,7 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
             const view = getAppointmentViewModel(appointment, clients);
             const isPending = pendingAppointmentIds.includes(appointment.id);
             return (
-              <div key={appointment.id} className="grid gap-3 rounded-[26px] border border-white/8 bg-black/20 p-4 transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/30 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div key={appointment.id} className="grid gap-3 rounded-[26px] border border-white/8 bg-black/20 p-4 transition hover:-translate-y-0.5 hover:border-[#C4F24E]/16 hover:bg-black/30 lg:grid-cols-[1fr_auto] lg:items-center">
                 <div>
                   <div className="flex flex-wrap items-center gap-3">
                     <p className="text-lg font-semibold">{view.client?.name ?? appointment.clientId}</p>
@@ -243,7 +243,7 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
                   ) : null}
                   {appointment.status === "checked_in" ? <span className="status-pill text-amber-300">Waiting on barber</span> : null}
                   {appointment.status === "in_service" ? <span className="status-pill text-sky-300">In service</span> : null}
-                  {isAppointmentPaid(appointment) ? <span className="status-pill text-[#d7ffab]">Paid</span> : null}
+                  {isAppointmentPaid(appointment) ? <span className="status-pill text-[#e4f9b8]">Paid</span> : null}
                 </div>
               </div>
             );
@@ -265,7 +265,7 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
               <p className="surface-label">Checkout capture</p>
               <p className="mt-2 text-sm text-white/58">Close the service ticket, collect tip, and keep the line moving.</p>
             </div>
-            <ReceiptText className="h-5 w-5 text-[#baff69]" />
+            <ReceiptText className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-5 space-y-4">
             {isInitialLoading ? (
@@ -278,7 +278,7 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
               </div>
             ) : checkoutTarget && checkoutView ? (
               <>
-                <div className="rounded-[26px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
+                <div className="rounded-[26px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4">
                   <p className="text-lg font-semibold">{checkoutView.client?.name ?? checkoutTarget.clientId}</p>
                   <p className="mt-1 text-sm text-white/62">{checkoutView.service?.name}</p>
                   <p className="mt-4 text-3xl font-semibold" data-display="true">{currency(checkoutTarget.balanceDue)}</p>
@@ -313,7 +313,7 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
               <p className="surface-label">Walk-in queue</p>
               <p className="mt-2 text-sm text-white/58">Assign open chairs quickly and keep the waiting room readable.</p>
             </div>
-            <Users2 className="h-5 w-5 text-[#baff69]" />
+            <Users2 className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {isInitialLoading ? (
@@ -322,10 +322,10 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
                 <BoardRowSkeleton />
               </>
             ) : walkIns.length ? walkIns.map((entry) => (
-              <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+              <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-medium">{entry.clientName}</p>
-                  <span className="status-pill text-[#d7ffab]">{entry.statusLabel}</span>
+                  <span className="status-pill text-[#e4f9b8]">{entry.statusLabel}</span>
                 </div>
                 <p className="mt-1 text-sm text-white/55">{entry.serviceName}</p>
                 <p className="mt-3 text-sm text-white/58">Wait time {entry.waitMinutes} minutes</p>
@@ -336,7 +336,7 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
                       ? `Best fit ${entry.bestAvailableBarber.barberName}`
                       : "Waiting on barber assignment"}
                 </p>
-                {entry.queueSource === "kiosk" ? <p className="mt-2 text-sm text-[#d7ffab]">Captured from kiosk intake</p> : null}
+                {entry.queueSource === "kiosk" ? <p className="mt-2 text-sm text-[#e4f9b8]">Captured from kiosk intake</p> : null}
               </div>
             )) : (
               <div className="empty-state-panel rounded-[24px] p-5 text-sm text-white/55">
@@ -352,7 +352,7 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
               <p className="surface-label">Queue outcomes</p>
               <p className="mt-2 text-sm text-white/58">Track converted and cancelled walk-ins without leaving the desk board.</p>
             </div>
-            <Clock3 className="h-5 w-5 text-[#baff69]" />
+            <Clock3 className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {isInitialLoading ? (
@@ -361,7 +361,7 @@ export function FrontDeskWorkspace({ locationIds = [] }: { locationIds?: string[
                 <BoardRowSkeleton />
               </>
             ) : recentQueueOutcomes.length ? recentQueueOutcomes.map((entry) => (
-              <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+              <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                 <p className="font-medium">{entry.clientName}</p>
                 <p className="mt-1 text-sm text-white/55">{entry.serviceName}</p>
                 <p className="mt-3 text-sm text-white/58">

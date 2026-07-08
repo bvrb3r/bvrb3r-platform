@@ -132,7 +132,7 @@ function CultureDiscoveryGrid({ module }: { module: CultureFeedModule }) {
     <section className="overflow-hidden rounded-[24px] border border-white/10 bg-black/24 p-4" data-testid="culture-discovery-grid">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#d7ffab]">More like this</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#e4f9b8]">More like this</p>
           <h3 className="mt-1 text-lg font-extrabold text-white">{module.moduleTitle}</h3>
           <p className="mt-1 max-w-xl text-sm leading-6 text-white/50">{module.moduleSubtitle}</p>
         </div>
@@ -145,7 +145,7 @@ function CultureDiscoveryGrid({ module }: { module: CultureFeedModule }) {
           <Link
             key={item.id}
             href={item.route as Route}
-            className="block w-36 shrink-0 overflow-hidden rounded-[18px] border border-white/10 bg-white/[0.04] transition hover:border-[#d7ffab]/28"
+            className="block w-36 shrink-0 overflow-hidden rounded-[18px] border border-white/10 bg-white/[0.04] transition hover:border-[#e4f9b8]/28"
           >
             <div className="aspect-square bg-black/40">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -154,7 +154,7 @@ function CultureDiscoveryGrid({ module }: { module: CultureFeedModule }) {
             <div className="p-3">
               <p className="truncate text-sm font-black text-white">{item.title}</p>
               <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/48">{item.subtitle}</p>
-              <p className="mt-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#d7ffab]">{item.ctaLabel}</p>
+              <p className="mt-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#e4f9b8]">{item.ctaLabel}</p>
             </div>
           </Link>
         ))}
@@ -360,7 +360,7 @@ export function ClientCultureScreen({
               <button
                 type="button"
                 onClick={applyPendingTopItems}
-                className="rounded-full border border-[#d7ffab]/30 bg-[#d7ffab]/14 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#d7ffab]"
+                className="rounded-full border border-[#e4f9b8]/30 bg-[#e4f9b8]/14 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#e4f9b8]"
               >
                 New Culture posts
               </button>

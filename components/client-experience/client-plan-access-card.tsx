@@ -17,7 +17,7 @@ function featureTone(state: ClientPaywallFeatureState) {
 
 function stateIcon(state: ClientPaywallFeatureState) {
   if (state === "available") {
-    return <ShieldCheck className="h-4 w-4 text-[#baff69]" />;
+    return <ShieldCheck className="h-4 w-4 text-[#d9f985]" />;
   }
 
   if (state === "coming_soon") {
@@ -50,7 +50,7 @@ export function ClientPlanAccessCard({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#A3FF12]">Client plan access</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#C4F24E]">Client plan access</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.04em] text-white" data-display="true">
             {summary.currentPlanLabel} client access
           </h3>
@@ -109,7 +109,7 @@ export function ClientPlanAccessCard({
       <div className={compact ? "mt-4" : "mt-5"}>
         <Link
           href={summary.upgradeHref}
-          className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/28 bg-[#A3FF12]/10 px-5 text-xs font-black uppercase tracking-[0.14em] text-[#A3FF12] transition hover:border-[#A3FF12]/46 hover:bg-[#A3FF12]/15"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#C4F24E]/28 bg-[#C4F24E]/10 px-5 text-xs font-black uppercase tracking-[0.14em] text-[#C4F24E] transition hover:border-[#C4F24E]/46 hover:bg-[#C4F24E]/15"
         >
           {summary.upgradeActionLabel}
         </Link>

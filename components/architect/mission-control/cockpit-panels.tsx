@@ -2,7 +2,7 @@
 
 // Mission Control HOME cockpit — presentational panels.
 // These render the SAME snapshot the lane component uses, styled with @/design tokens
-// (GlassCard + brand #A3FF12 on black glass). No data fetching, no money mutation.
+// (GlassCard + brand #C4F24E on black glass). No data fetching, no money mutation.
 
 import Link from "next/link";
 import type { Route } from "next";
@@ -53,14 +53,14 @@ export function EnvStrip({
   return (
     <GlassCard className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[16px] px-4 py-3" data-testid="cockpit-env-strip">
       <div className="flex items-center gap-2 pr-3">
-        <span className="inline-flex h-5 w-5 items-center justify-center rounded-[6px] border border-[#A3FF12]/40">
-          <span className="h-1.5 w-1.5 rounded-[2px] bg-[#A3FF12] shadow-[0_0_8px_#A3FF12]" />
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded-[6px] border border-[#C4F24E]/40">
+          <span className="h-1.5 w-1.5 rounded-[2px] bg-[#C4F24E] shadow-[0_0_8px_#C4F24E]" />
         </span>
         <span className="text-[13px] font-black uppercase tracking-[0.2em] text-white">BVRB3R</span>
         <span className="text-[10px] uppercase tracking-[0.2em] text-white/44">Mission Control</span>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-white/56">
-        <span>ENV:&nbsp;<b className="text-[#d7ffab]">{data.env}</b></span>
+        <span>ENV:&nbsp;<b className="text-[#e4f9b8]">{data.env}</b></span>
         <span>COMMIT:&nbsp;<b className="text-white/78">{data.commit}</b></span>
         <span>DEPLOY:&nbsp;<b className="text-white/78">{data.deploy}</b></span>
       </div>
@@ -84,7 +84,7 @@ export function SessionRail({ user }: { user: { name: string; email: string } })
   return (
     <GlassCard className="rounded-[16px] p-4" data-testid="cockpit-session-rail">
       <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#A3FF12]/40 bg-[linear-gradient(135deg,rgba(163,255,18,0.18),rgba(8,8,8,0.95))] font-mono text-xs font-bold text-[#d7ffab]">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#C4F24E]/40 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.18),rgba(8,8,8,0.95))] font-mono text-xs font-bold text-[#e4f9b8]">
           BVR
         </div>
         <div className="min-w-0">
@@ -95,8 +95,8 @@ export function SessionRail({ user }: { user: { name: string; email: string } })
       <p className="mt-3 text-xs leading-5 text-white/56">
         Executive truth, workflow health, source vault, action boundaries, and Hive AI agents.
       </p>
-      <div className="mt-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[#d7ffab]">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#A3FF12]" />
+      <div className="mt-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[#e4f9b8]">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#C4F24E]" />
         Active session
       </div>
     </GlassCard>
@@ -175,14 +175,14 @@ export function ReadinessRing({ readiness }: { readiness: MissionReadinessBreakd
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#d7ffab]">V1 Readiness</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#e4f9b8]">V1 Readiness</span>
           <span className="text-3xl font-black leading-none text-white">{readiness.v1ReadinessPercent}%</span>
           <StatusPill status={readiness.overallStatus} tone={tone} />
         </div>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2 text-center font-mono text-[9px] uppercase tracking-[0.1em]">
         <div>
-          <div className="text-[#d7ffab]" data-testid="cockpit-readiness-pass">{readiness.v1RequiredPassCount}</div>
+          <div className="text-[#e4f9b8]" data-testid="cockpit-readiness-pass">{readiness.v1RequiredPassCount}</div>
           <div className="text-white/44">Pass</div>
         </div>
         <div>
@@ -220,7 +220,7 @@ export function WorkQueue({
             data-testid={`cockpit-work-queue-tab-${tab.id}`}
             className={cn(
               "border-b-2 pb-1 font-mono text-[10px] uppercase tracking-[0.08em] transition",
-              tab.id === active?.id ? "border-[#A3FF12] text-white" : "border-transparent text-white/48 hover:text-white/72"
+              tab.id === active?.id ? "border-[#C4F24E] text-white" : "border-transparent text-white/48 hover:text-white/72"
             )}
           >
             {tab.label} <span className="text-white/40">{tab.count}</span>
@@ -244,7 +244,7 @@ export function WorkQueue({
                     <button
                       type="button"
                       onClick={() => onCopyPacket(item.packetId as string)}
-                      className="inline-flex items-center gap-1 rounded-[6px] border border-[#A3FF12]/30 bg-[#A3FF12]/8 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-[#d7ffab] transition hover:bg-[#A3FF12]/14"
+                      className="inline-flex items-center gap-1 rounded-[6px] border border-[#C4F24E]/30 bg-[#C4F24E]/8 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-[#e4f9b8] transition hover:bg-[#C4F24E]/14"
                     >
                       <Clipboard className="h-3 w-3" /> Copy packet
                     </button>
@@ -281,7 +281,7 @@ export function OfficerLanes({
             key={lane.id}
             className={cn(
               "flex flex-col gap-1 rounded-[10px] border bg-black/24 p-2.5 transition",
-              lane.id === selectedId ? "border-[#A3FF12]/40" : "border-white/8"
+              lane.id === selectedId ? "border-[#C4F24E]/40" : "border-white/8"
             )}
           >
             <button
@@ -299,7 +299,7 @@ export function OfficerLanes({
             <Link
               href={lane.href as Route}
               data-testid={`cockpit-officer-link-${lane.id}`}
-              className="mt-1 rounded-[5px] border border-[#A3FF12]/22 px-2 py-1 text-center font-mono text-[9px] uppercase tracking-[0.08em] text-[#d7ffab] transition hover:bg-[#A3FF12]/10"
+              className="mt-1 rounded-[5px] border border-[#C4F24E]/22 px-2 py-1 text-center font-mono text-[9px] uppercase tracking-[0.08em] text-[#e4f9b8] transition hover:bg-[#C4F24E]/10"
             >
               Open lane
             </Link>
@@ -400,7 +400,7 @@ export function CommandChat({ transcript, onSend }: { transcript: string[]; onSe
           className="flex-1 bg-transparent text-[13px] text-white/86 outline-none placeholder:text-white/36"
           data-testid="cockpit-command-chat-input"
         />
-        <button type="button" onClick={submit} aria-label="Send command" className="text-[#d7ffab] transition hover:brightness-125">
+        <button type="button" onClick={submit} aria-label="Send command" className="text-[#e4f9b8] transition hover:brightness-125">
           <Send className="h-4 w-4" />
         </button>
       </div>

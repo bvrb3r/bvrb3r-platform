@@ -76,12 +76,12 @@ export function RoleSelectWorkspace() {
                 data-role-card={card.role}
                 className={`flex min-h-[220px] flex-col justify-between rounded-[28px] border p-5 text-left transition ${
                   isSelected
-                    ? "border-[#7cff00]/34 bg-[#7cff00]/10"
-                    : "border-white/8 bg-black/20 hover:border-[#7cff00]/20 hover:bg-black/30"
+                    ? "border-[#c4f24e]/34 bg-[#c4f24e]/10"
+                    : "border-white/8 bg-black/20 hover:border-[#c4f24e]/20 hover:bg-black/30"
                 }`}
               >
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-[#cfff93]">Lane</p>
+                  <p className="text-[11px] uppercase tracking-[0.22em] text-[#e0f6a0]">Lane</p>
                   <h2 className="mt-4 text-2xl font-semibold text-white">{card.title}</h2>
                   <p className="mt-4 text-sm leading-7 text-white/62">{card.copy}</p>
                 </div>

@@ -150,10 +150,10 @@ export function ForgotPasswordWorkspace() {
         </form>
 
         {errorMessage ? <p className="mt-4 text-sm leading-7 text-[#ff8f8f]">{errorMessage}</p> : null}
-        {successMessage ? <p className="mt-4 text-sm leading-7 text-[#d7ffab]">{successMessage}</p> : null}
+        {successMessage ? <p className="mt-4 text-sm leading-7 text-[#e4f9b8]">{successMessage}</p> : null}
 
         <p className="mt-6 text-sm leading-7 text-white/52">
-          <Link href="/login" className="text-[#cfff93]">
+          <Link href="/login" className="text-[#e0f6a0]">
             Back to login
           </Link>
         </p>
@@ -355,14 +355,14 @@ export function ResetPasswordWorkspace() {
           </Button>
         </form>
 
-        <p className={`mt-4 text-sm leading-7 ${isSuccess ? "text-[#d7ffab]" : isError ? "text-[#ff8f8f]" : "text-white/62"}`}>
+        <p className={`mt-4 text-sm leading-7 ${isSuccess ? "text-[#e4f9b8]" : isError ? "text-[#ff8f8f]" : "text-white/62"}`}>
           {message}
         </p>
 
         {status === "invalid" ? (
           <p className="mt-6 text-sm leading-7 text-white/52">
             Need a fresh link?{" "}
-            <Link href="/forgot-password" className="text-[#cfff93]">
+            <Link href="/forgot-password" className="text-[#e0f6a0]">
               Send another reset email
             </Link>
           </p>

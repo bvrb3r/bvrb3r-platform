@@ -68,7 +68,7 @@ function buildStatusForm(status: BarberStatusView): StatusFormState {
 
 function getLiveStatusTone(status: BarberStatusView["liveStatus"]) {
   if (status === "available") {
-    return "text-[#d7ffab]";
+    return "text-[#e4f9b8]";
   }
 
   if (status === "busy") {
@@ -259,7 +259,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
           subtitle="Fill your chair, serve the next client, protect checkout, and grow your public barber profile."
           action={
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-right">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">{formatLongDate(businessDate)}</p>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">{formatLongDate(businessDate)}</p>
               <p className="mt-2 text-sm text-white/78">{payload?.status.currentShopLabel ?? "Chair setup pending"}</p>
               <StatusBadge className="mt-2 inline-flex">{payload?.status.liveStatusLabel ?? barberTitle}</StatusBadge>
             </div>
@@ -365,7 +365,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
               <p className="surface-label">Quick actions</p>
               <p className="mt-2 text-sm text-white/58">Your next move uses existing routes or explains why setup is still required.</p>
             </div>
-            <WalletCards className="h-5 w-5 text-[#baff69]" />
+            <WalletCards className="h-5 w-5 text-[#d9f985]" />
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -391,7 +391,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
         ) : (
           <>
             <DataStatCard
-              className="border-[#7cff00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.14),rgba(8,8,8,0.98))]"
+              className="border-[#c4f24e]/16 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.14),rgba(8,8,8,0.98))]"
               label="Today's bookings"
               value={payload?.earnings.todayBookings ?? 0}
               detail={`${payload?.earnings.completedServices ?? 0} completed and ${payload?.earnings.upcomingBookings ?? 0} active.`}
@@ -417,7 +417,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
 
       <section className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
         <Card className="rounded-[32px] p-6">
-          <div className="flex items-start justify-between gap-3"><div><p className="surface-label">Next client</p><p className="mt-2 text-sm text-white/58">The next chair move should be obvious the moment the barber opens the app.</p></div><CalendarDays className="h-5 w-5 text-[#d7ffab]" /></div>
+          <div className="flex items-start justify-between gap-3"><div><p className="surface-label">Next client</p><p className="mt-2 text-sm text-white/58">The next chair move should be obvious the moment the barber opens the app.</p></div><CalendarDays className="h-5 w-5 text-[#e4f9b8]" /></div>
           {initialLoading ? <div className="mt-4"><MetricSkeleton /></div> : nextAppointment ? (
             <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -449,7 +449,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
         </Card>
 
         <Card className="rounded-[32px] p-6">
-          <div className="flex items-start justify-between gap-3"><div><p className="surface-label">Approval and payout posture</p><p className="mt-2 text-sm text-white/58">Verification, payout readiness, and blockers stay visible without inventing separate status truth.</p></div><ShieldCheck className="h-5 w-5 text-[#baff69]" /></div>
+          <div className="flex items-start justify-between gap-3"><div><p className="surface-label">Approval and payout posture</p><p className="mt-2 text-sm text-white/58">Verification, payout readiness, and blockers stay visible without inventing separate status truth.</p></div><ShieldCheck className="h-5 w-5 text-[#d9f985]" /></div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-[20px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Verification</p><p className="mt-2 text-lg font-semibold text-white">{trustQuery.data?.canonicalOverallStatus ? formatStatusLabel(trustQuery.data.canonicalOverallStatus) : "Loading"}</p><p className="mt-2 text-sm text-white/58">{bookingGate && !bookingGate.allowed ? bookingGate.reasons[0] : trustQuery.data?.publicBadgePreview?.[0] ?? "Verification details will stay visible here."}</p></div>
             <div className="rounded-[20px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Payout readiness</p><p className="mt-2 text-lg font-semibold text-white">{readinessQuery.data?.connectedAccount.operationalStatus ? formatStatusLabel(readinessQuery.data.connectedAccount.operationalStatus) : "Loading"}</p><p className="mt-2 text-sm text-white/58">{payoutGate && !payoutGate.allowed ? payoutGate.reasons[0] : readinessQuery.data?.routingSummary.blockedPaymentsCount ? `${readinessQuery.data.routingSummary.blockedPaymentsCount} payout blockers currently on file.` : "No payout blocker is currently stored for this barber."}</p></div>
@@ -467,7 +467,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
                         <p className="mt-1 text-sm text-white/58">{alert.reason}</p>
                         <p className="mt-2 text-sm text-white/48">{alert.explanation}</p>
                       </div>
-                      <Clock3 className="mt-1 h-4 w-4 shrink-0 text-[#d7ffab]" />
+                      <Clock3 className="mt-1 h-4 w-4 shrink-0 text-[#e4f9b8]" />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
@@ -488,7 +488,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
               }) : <p className="text-sm leading-6 text-white/58">No meaningful revenue gap is currently derived from this barber&apos;s live schedule, blocked times, and active services.</p>}
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">{blockerLabels.length ? blockerLabels.slice(0, 4).map((label) => <span key={label} className="status-pill text-white/72">{label}</span>) : <span className="status-pill text-[#d7ffab]">No active compliance blockers</span>}</div>
+          <div className="mt-4 flex flex-wrap gap-2">{blockerLabels.length ? blockerLabels.slice(0, 4).map((label) => <span key={label} className="status-pill text-white/72">{label}</span>) : <span className="status-pill text-[#e4f9b8]">No active compliance blockers</span>}</div>
           <div className="mt-4 flex flex-wrap gap-3">
             <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber")}>Open calendar</Button>
             <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}><WalletCards className="h-4 w-4" />Open checkout</Button>
@@ -498,7 +498,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
       </section>
 
       <Card className="rounded-[32px] p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="surface-label">Today&apos;s schedule</p><p className="mt-2 text-sm text-white/58">Canonical appointments only, with payment state and action entry points grounded in the shared lifecycle.</p></div><span className="status-pill text-[#d7ffab]">{todayAppointments.length} appointment{todayAppointments.length === 1 ? "" : "s"}</span></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="surface-label">Today&apos;s schedule</p><p className="mt-2 text-sm text-white/58">Canonical appointments only, with payment state and action entry points grounded in the shared lifecycle.</p></div><span className="status-pill text-[#e4f9b8]">{todayAppointments.length} appointment{todayAppointments.length === 1 ? "" : "s"}</span></div>
         <div className="mt-4 space-y-3">
           {initialLoading ? (
             <><MetricSkeleton /><MetricSkeleton /><MetricSkeleton /></>

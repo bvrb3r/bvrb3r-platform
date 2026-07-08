@@ -76,10 +76,10 @@ function ThreadRow({
       onClick={onSelect}
       className={cn(
         "grid w-full grid-cols-[2.75rem_1fr] gap-3 rounded-[22px] border p-3 text-left transition",
-        selected ? "border-[#7CFF00]/35 bg-[#7CFF00]/8" : "border-white/10 bg-black/20 hover:border-white/18"
+        selected ? "border-[#C4F24E]/35 bg-[#C4F24E]/8" : "border-white/10 bg-black/20 hover:border-white/18"
       )}
     >
-      <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 text-xs font-black uppercase text-[#d7ffab]">
+      <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 text-xs font-black uppercase text-[#e4f9b8]">
         {initials(displayName)}
       </span>
       <span className="min-w-0">
@@ -179,7 +179,7 @@ export function ArchitectMessagesWorkspace() {
         <section className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.92),rgba(5,5,5,0.96))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.34)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#d7ffab]">
+              <p className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#e4f9b8]">
                 <ShieldCheck className="h-4 w-4" />
                 Architect Messages
               </p>
@@ -197,7 +197,7 @@ export function ArchitectMessagesWorkspace() {
             <div
               className={cn(
                 "mt-4 rounded-[20px] border px-4 py-3 text-sm",
-                status.tone === "success" && "border-[#7CFF00]/25 bg-[#7CFF00]/10 text-[#d7ffab]",
+                status.tone === "success" && "border-[#C4F24E]/25 bg-[#C4F24E]/10 text-[#e4f9b8]",
                 status.tone === "info" && "border-white/10 bg-white/[0.04] text-white/70",
                 status.tone === "error" && "border-rose-400/25 bg-rose-400/10 text-rose-100"
               )}
@@ -214,7 +214,7 @@ export function ArchitectMessagesWorkspace() {
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42">Conversations</p>
                 <p className="mt-1 text-sm text-white/62">{inbox?.threads.length ?? 0} support threads</p>
               </div>
-              <MessageCircle className="h-5 w-5 text-[#d7ffab]" />
+              <MessageCircle className="h-5 w-5 text-[#e4f9b8]" />
             </div>
             <div className="mt-4 space-y-2">
               {loadingInbox ? (
@@ -247,7 +247,7 @@ export function ArchitectMessagesWorkspace() {
                       <p className="mt-3 max-w-3xl text-sm leading-6 text-white/58">{selectedThread.reportContext.preview}</p>
                     ) : null}
                   </div>
-                  <span className="rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-1 text-xs font-semibold text-[#d7ffab]">
+                  <span className="rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-1 text-xs font-semibold text-[#e4f9b8]">
                     {selectedThread.status}
                   </span>
                 </div>
@@ -258,7 +258,7 @@ export function ArchitectMessagesWorkspace() {
                   ) : threadPayload?.messages.length ? (
                     threadPayload.messages.map((message) => (
                       <div key={message.id} className={cn("flex", message.isOwn ? "justify-end" : "justify-start")}>
-                        <div className={cn("max-w-[82%] rounded-[22px] border px-4 py-3 text-sm leading-6", message.isOwn ? "border-[#7CFF00]/25 bg-[#7CFF00]/12 text-[#ecffd6]" : "border-white/10 bg-white/[0.045] text-white/78")}>
+                        <div className={cn("max-w-[82%] rounded-[22px] border px-4 py-3 text-sm leading-6", message.isOwn ? "border-[#C4F24E]/25 bg-[#C4F24E]/12 text-[#eef9d4]" : "border-white/10 bg-white/[0.045] text-white/78")}>
                           <p className="whitespace-pre-wrap">{message.body}</p>
                           <p className="mt-2 text-[11px] text-white/42">{formatRelativeTime(message.createdAt)}</p>
                         </div>
@@ -277,7 +277,7 @@ export function ArchitectMessagesWorkspace() {
                       value={reply}
                       onChange={(event) => setReply(event.target.value)}
                       placeholder="Reply as BVRB3R Support..."
-                      className="min-h-24 rounded-[22px] border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/32 focus:border-[#7CFF00]/35 focus:ring-2 focus:ring-[#7CFF00]/10"
+                      className="min-h-24 rounded-[22px] border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/32 focus:border-[#C4F24E]/35 focus:ring-2 focus:ring-[#C4F24E]/10"
                     />
                     <Button type="button" onClick={() => void handleReply()} disabled={sending || !reply.trim()}>
                       <Send className="h-4 w-4" />

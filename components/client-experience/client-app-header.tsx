@@ -13,11 +13,11 @@ export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
     <header className="bvr-glass-card rounded-[28px] px-4 py-3.5 sm:px-5">
       <div className="flex items-center justify-between gap-4">
         <Link href={homeHref} className="flex min-w-0 items-center gap-3 text-white">
-          <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-[#7CFF00]/20 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(15,15,15,0.96))] text-sm font-semibold tracking-[0.22em] text-[#d7ffab] shadow-[0_16px_34px_rgba(124,255,0,0.14)]">
+          <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-[#C4F24E]/20 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.18),rgba(15,15,15,0.96))] text-sm font-semibold tracking-[0.22em] text-[#e4f9b8] shadow-[0_16px_34px_rgba(196, 242, 78,0.14)]">
             BV
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-[0.26em] text-[#cfff93]">BVRB3R</p>
+            <p className="text-[10px] uppercase tracking-[0.26em] text-[#e0f6a0]">BVRB3R</p>
             <p className="mt-1 truncate text-sm font-medium text-white/78">
               {isGuest ? "Guest marketplace" : "Search, book, and manage visits"}
             </p>
@@ -25,10 +25,10 @@ export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
         </Link>
         {isGuest ? (
           <div className="flex items-center gap-2">
-            <Link href="/login" className="rounded-full border border-white/10 bg-black/25 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
+            <Link href="/login" className="rounded-full border border-white/10 bg-black/25 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#C4F24E]/20 hover:text-white">
               Log in
             </Link>
-            <Link href="/signup?lane=client" className="hidden rounded-full bg-[#7cff00] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-[#b7ff58] sm:inline-flex">
+            <Link href="/signup?lane=client" className="hidden rounded-full bg-[#c4f24e] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-[#d4f97a] sm:inline-flex">
               Join BVRB3R
             </Link>
           </div>

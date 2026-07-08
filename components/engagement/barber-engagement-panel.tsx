@@ -169,17 +169,17 @@ export function BarberEngagementPanel() {
       <Card className="rounded-[32px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="surface-label text-[#d7ffab]">Growth layer</p>
+            <p className="surface-label text-[#e4f9b8]">Growth layer</p>
             <h3 className="mt-3 text-3xl font-semibold sm:text-4xl" data-display="true">Reputation, ranking, and marketplace momentum</h3>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-white/64">This layer turns your chair activity into visible proof, marketplace demand, premium visibility, and now mobile activation without mixing in anyone else&apos;s numbers.</p>
           </div>
-          <span className="status-pill text-[#d7ffab]">{summary.socialProof.trendingBadge ?? "Growth hooks scaffolded"}</span>
+          <span className="status-pill text-[#e4f9b8]">{summary.socialProof.trendingBadge ?? "Growth hooks scaffolded"}</span>
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Today</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(summary.earnings.today)}</p><p className="mt-2 text-sm text-white/58">Earnings from today&apos;s posted chair activity</p></div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">This week</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(summary.earnings.week)}</p><p className="mt-2 text-sm text-white/58">Seven-day earnings view for momentum tracking</p></div>
-          <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">This month</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(summary.earnings.month)}</p><p className="mt-2 text-sm text-white/62">Month-to-date growth signal for long-term visibility</p></div>
+          <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">This month</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(summary.earnings.month)}</p><p className="mt-2 text-sm text-white/62">Month-to-date growth signal for long-term visibility</p></div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Followers</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.followerCount}</p><p className="mt-2 text-sm text-white/58">Clients following your public profile</p></div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Profile views</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.marketplace.profileViews}</p><p className="mt-2 text-sm text-white/58">Marketplace proof your profile is getting real attention</p></div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Conversion</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.marketplace.conversionRate}%</p><p className="mt-2 text-sm text-white/58">Bookings created from clients who clicked into your chair</p></div>
@@ -188,7 +188,7 @@ export function BarberEngagementPanel() {
 
       <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
         <Card className="rounded-[32px] p-6">
-          <div className="flex items-center justify-between gap-3"><p className="surface-label">Reputation system</p><Award className="h-5 w-5 text-[#baff69]" /></div>
+          <div className="flex items-center justify-between gap-3"><p className="surface-label">Reputation system</p><Award className="h-5 w-5 text-[#d9f985]" /></div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Overall score</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.reputation?.overallScore.toFixed(1) ?? "--"}</p><p className="mt-2 text-sm text-white/58">{summary.reputation?.tier ?? "standard"} trust tier</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Average tip</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(summary.earnings.averageTip)}</p><p className="mt-2 text-sm text-white/58">Average from the current posted earnings window</p></div>
@@ -205,11 +205,11 @@ export function BarberEngagementPanel() {
 
         <div className="grid gap-4">
           <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3"><p className="surface-label">Ranking inputs</p><TrendingUp className="h-5 w-5 text-[#baff69]" /></div>
+            <div className="flex items-center justify-between gap-3"><p className="surface-label">Ranking inputs</p><TrendingUp className="h-5 w-5 text-[#d9f985]" /></div>
             <div className="mt-4 space-y-3">
               {summary.rankings.length ? summary.rankings.map((ranking) => (
                 <div key={ranking.id} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4">
-                  <div className="flex items-center justify-between gap-3"><p className="font-medium">{ranking.label}</p><span className="status-pill text-[#d7ffab]">#{ranking.rankPosition}</span></div>
+                  <div className="flex items-center justify-between gap-3"><p className="font-medium">{ranking.label}</p><span className="status-pill text-[#e4f9b8]">#{ranking.rankPosition}</span></div>
                   <p className="mt-2 text-sm text-white/58">{ranking.dimension.replaceAll("_", " ")} score {ranking.score}</p>
                 </div>
               )) : <div className="empty-state-panel rounded-[22px] p-5 text-sm text-white/58">Ranking snapshots will appear here as marketplace leaderboards expand city by city.</div>}
@@ -217,11 +217,11 @@ export function BarberEngagementPanel() {
           </Card>
 
           <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3"><p className="surface-label">Growth coaching hooks</p><Crown className="h-5 w-5 text-[#baff69]" /></div>
+            <div className="flex items-center justify-between gap-3"><p className="surface-label">Growth coaching hooks</p><Crown className="h-5 w-5 text-[#d9f985]" /></div>
             <div className="mt-4 space-y-3">
               {summary.growthRecommendations.length ? summary.growthRecommendations.map((recommendation) => (
                 <div key={recommendation.id} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4">
-                  <div className="flex items-center justify-between gap-3"><p className="font-medium">{recommendation.title}</p><span className="status-pill text-[#d7ffab]">{recommendation.priority}</span></div>
+                  <div className="flex items-center justify-between gap-3"><p className="font-medium">{recommendation.title}</p><span className="status-pill text-[#e4f9b8]">{recommendation.priority}</span></div>
                   <p className="mt-2 text-sm leading-7 text-white/60">{recommendation.description}</p>
                   <p className="mt-3 text-[11px] uppercase tracking-[0.22em] text-white/40">{recommendation.actionLabel}</p>
                 </div>
@@ -234,14 +234,14 @@ export function BarberEngagementPanel() {
       {summary.trust ? (
         <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
           <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3"><p className="surface-label">Verification and trust</p><ShieldCheck className="h-5 w-5 text-[#baff69]" /></div>
+            <div className="flex items-center justify-between gap-3"><p className="surface-label">Verification and trust</p><ShieldCheck className="h-5 w-5 text-[#d9f985]" /></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Trust score</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.trustScore}</p></div>
+              <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Trust score</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.trustScore}</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Verification progress</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.verificationProgress}%</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Completion rate</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.completionRate}%</p></div>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">{summary.trust.publicBadgePreview.length ? summary.trust.publicBadgePreview.map((badge) => <span key={badge} className="status-pill text-[#d7ffab]">{badge}</span>) : <span className="status-pill text-white/72">Public trust badges will appear here as verification clears.</span>}</div>
-            <div className="mt-4 space-y-3">{summary.trust.verificationItems.map((item) => <div key={item.category} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex flex-wrap items-center justify-between gap-3"><p className="font-medium">{item.label}</p><span className={`status-pill ${item.status === "verified" ? "text-[#d7ffab]" : item.status === "pending" ? "text-amber-200" : "text-white/72"}`}>{item.status.replaceAll("_", " ")}</span></div><p className="mt-2 text-sm text-white/58">{item.notes ?? item.nextStep}</p>{item.expiresAt ? <p className="mt-2 text-[11px] uppercase tracking-[0.22em] text-white/40">Expires {item.expiresAt}</p> : null}</div>)}</div>
+            <div className="mt-4 flex flex-wrap gap-2">{summary.trust.publicBadgePreview.length ? summary.trust.publicBadgePreview.map((badge) => <span key={badge} className="status-pill text-[#e4f9b8]">{badge}</span>) : <span className="status-pill text-white/72">Public trust badges will appear here as verification clears.</span>}</div>
+            <div className="mt-4 space-y-3">{summary.trust.verificationItems.map((item) => <div key={item.category} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex flex-wrap items-center justify-between gap-3"><p className="font-medium">{item.label}</p><span className={`status-pill ${item.status === "verified" ? "text-[#e4f9b8]" : item.status === "pending" ? "text-amber-200" : "text-white/72"}`}>{item.status.replaceAll("_", " ")}</span></div><p className="mt-2 text-sm text-white/58">{item.notes ?? item.nextStep}</p>{item.expiresAt ? <p className="mt-2 text-[11px] uppercase tracking-[0.22em] text-white/40">Expires {item.expiresAt}</p> : null}</div>)}</div>
             <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="surface-label">Provider-driven verification</p>
@@ -255,7 +255,7 @@ export function BarberEngagementPanel() {
                       {provider.providerStatus ? <span className="status-pill text-white/72">{provider.providerStatus.replaceAll("_", " ")}</span> : null}
                     </div>
                     <p className="mt-2 text-sm text-white/62">{provider.summary}</p>
-                    {provider.remediationMessage ? <p className="mt-2 text-sm text-[#d7ffab]">{provider.remediationMessage}</p> : null}
+                    {provider.remediationMessage ? <p className="mt-2 text-sm text-[#e4f9b8]">{provider.remediationMessage}</p> : null}
                     {provider.requirementsCurrentlyDue.length ? <p className="mt-2 text-sm text-white/58">Current requirements: {provider.requirementsCurrentlyDue.join(" | ")}</p> : null}
                     {provider.requirementsPastDue.length ? <p className="mt-2 text-sm text-amber-200">Past due: {provider.requirementsPastDue.join(" | ")}</p> : null}
                   </div>
@@ -269,7 +269,7 @@ export function BarberEngagementPanel() {
           </Card>
 
           <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3"><p className="surface-label">Activation and premium visibility</p><Zap className="h-5 w-5 text-[#baff69]" /></div>
+            <div className="flex items-center justify-between gap-3"><p className="surface-label">Activation and premium visibility</p><Zap className="h-5 w-5 text-[#d9f985]" /></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Delivered alerts</p><p className="mt-3 text-3xl font-semibold">{activation?.deliverySummary.delivered ?? 0}</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Queued alerts</p><p className="mt-3 text-3xl font-semibold">{activation?.deliverySummary.queued ?? 0}</p></div>
@@ -277,8 +277,8 @@ export function BarberEngagementPanel() {
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Push status</p><p className="mt-3 text-3xl font-semibold">{mobileSummary?.pushEnabled ? "Live" : pwa.pushPermission === "granted" ? "Ready" : "Off"}</p><p className="mt-2 text-sm text-white/58">{mobileSummary?.activeSubscriptionCount ?? 0} active device route{(mobileSummary?.activeSubscriptionCount ?? 0) === 1 ? "" : "s"}</p></div>
-              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><div className="flex items-center justify-between gap-3"><p className="surface-label">Native-ready links</p><Smartphone className="h-4 w-4 text-[#baff69]" /></div><p className="mt-3 text-3xl font-semibold">{mobileSummary?.deepLinks.length ?? 0}</p><p className="mt-2 text-sm text-white/58">Chair updates, booking links, and profile routes are app-link ready.</p></div>
-              <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Offline read lanes</p><p className="mt-3 text-3xl font-semibold">{mobileSummary?.offlineSupport.cachedRoutes.length ?? 0}</p><p className="mt-2 text-sm text-white/62">Already-opened discovery and dashboard reads stay visible when signal drops.</p></div>
+              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><div className="flex items-center justify-between gap-3"><p className="surface-label">Native-ready links</p><Smartphone className="h-4 w-4 text-[#d9f985]" /></div><p className="mt-3 text-3xl font-semibold">{mobileSummary?.deepLinks.length ?? 0}</p><p className="mt-2 text-sm text-white/58">Chair updates, booking links, and profile routes are app-link ready.</p></div>
+              <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Offline read lanes</p><p className="mt-3 text-3xl font-semibold">{mobileSummary?.offlineSupport.cachedRoutes.length ?? 0}</p><p className="mt-2 text-sm text-white/62">Already-opened discovery and dashboard reads stay visible when signal drops.</p></div>
             </div>
             <div className="mt-4 flex flex-wrap gap-3">
               {mobileSummary?.pushEnabled ? <Button className="h-11 px-5" variant="secondary" onClick={() => void handleDisablePush()}>Turn off mobile alerts</Button> : <Button className="h-11 px-5" variant="secondary" onClick={() => void handleEnablePush()}>Enable chair alerts</Button>}
@@ -287,7 +287,7 @@ export function BarberEngagementPanel() {
             <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4 text-sm text-white/64">{activation?.monetizationEligibility.reason ?? "Activation rules are loading."}</div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                <div className="flex items-center justify-between gap-3"><p className="surface-label">Secure verification upload</p><UploadCloud className="h-4 w-4 text-[#baff69]" /></div>
+                <div className="flex items-center justify-between gap-3"><p className="surface-label">Secure verification upload</p><UploadCloud className="h-4 w-4 text-[#d9f985]" /></div>
                 <div className="mt-4 space-y-3">
                   <div>
                     <label className="mb-2 block surface-label">Verification category</label>
@@ -326,7 +326,7 @@ export function BarberEngagementPanel() {
                 </div>
               </div>
             </div>
-            <div className="mt-4 space-y-3">{activation?.activeBoosts.length ? activation.activeBoosts.map((campaign) => <div key={campaign.id} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{campaign.placementLabel}</p><span className="status-pill text-[#d7ffab]">{currency(campaign.spendCents / 100)}</span></div><p className="mt-2 text-sm text-white/58">{campaign.trustReason}</p></div>) : <div className="empty-state-panel rounded-[22px] p-5 text-sm text-white/58">Trust-aware premium visibility will appear here once your profile meets activation requirements.</div>}</div>
+            <div className="mt-4 space-y-3">{activation?.activeBoosts.length ? activation.activeBoosts.map((campaign) => <div key={campaign.id} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{campaign.placementLabel}</p><span className="status-pill text-[#e4f9b8]">{currency(campaign.spendCents / 100)}</span></div><p className="mt-2 text-sm text-white/58">{campaign.trustReason}</p></div>) : <div className="empty-state-panel rounded-[22px] p-5 text-sm text-white/58">Trust-aware premium visibility will appear here once your profile meets activation requirements.</div>}</div>
           </Card>
         </section>
       ) : null}

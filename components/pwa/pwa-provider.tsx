@@ -724,20 +724,20 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       ) : null}
       {showInstallPrompt ? (
         <div className="pointer-events-none fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+7.5rem)] z-50 flex justify-center sm:inset-x-6 lg:bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
-          <div className="pointer-events-auto w-full max-w-xl rounded-[28px] border border-[#7CFF00]/16 bg-[rgba(8,8,8,0.94)] p-4 shadow-[0_22px_48px_rgba(0,0,0,0.42)] backdrop-blur">
+          <div className="pointer-events-auto w-full max-w-xl rounded-[28px] border border-[#C4F24E]/16 bg-[rgba(8,8,8,0.94)] p-4 shadow-[0_22px_48px_rgba(0,0,0,0.42)] backdrop-blur">
             <div className="flex items-start gap-3">
-              <div className="rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/10 p-2 text-[#d7ffab]">
+              <div className="rounded-full border border-[#C4F24E]/18 bg-[#C4F24E]/10 p-2 text-[#e4f9b8]">
                 {installEvent ? <Download className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#d7ffab]">Install the BVRB3R app</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e4f9b8]">Install the BVRB3R app</p>
                 <p className="mt-1 text-sm text-white/76">
                   {installEvent
                     ? "Add the platform to your home screen for faster launch, persistent sessions, and a cleaner app-style experience."
                     : "On iPhone or iPad, use Share then Add to Home Screen to install the BVRB3R app shell."}
                 </p>
                 <p className="mt-3 flex items-center gap-2 text-xs text-white/48">
-                  <BellRing className="h-4 w-4 text-[#baff69]" />
+                  <BellRing className="h-4 w-4 text-[#d9f985]" />
                   Push subscriptions, deep links, and notification delivery are now wired into the mobile layer.
                 </p>
               </div>
@@ -759,11 +759,11 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
         <div className="pointer-events-none fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+7.5rem)] z-50 flex justify-center sm:inset-x-6">
           <div className="pointer-events-auto w-full max-w-xl rounded-[28px] border border-white/10 bg-[rgba(7,7,7,0.94)] p-4 shadow-[0_22px_48px_rgba(0,0,0,0.42)] backdrop-blur">
             <div className="flex items-start gap-3">
-              <div className="rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/10 p-2 text-[#d7ffab]">
+              <div className="rounded-full border border-[#C4F24E]/18 bg-[#C4F24E]/10 p-2 text-[#e4f9b8]">
                 <Smartphone className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#d7ffab]">Activate mobile alerts</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e4f9b8]">Activate mobile alerts</p>
                 <p className="mt-1 text-sm text-white/76">Enable push alerts for booking confirmations, marketplace momentum, and role-specific updates on this device.</p>
                 {pushMessage ? <p className="mt-3 text-xs text-white/52">{pushMessage}</p> : null}
               </div>
