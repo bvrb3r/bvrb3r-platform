@@ -9,7 +9,7 @@ export function GlassCard({
   return (
     <div
       className={cn(
-        "bvr-glass-card min-w-0 transition duration-200 hover:-translate-y-0.5 hover:border-[rgba(163,255,18,0.25)]",
+        "bvr-glass-card min-w-0 transition duration-200 hover:-translate-y-0.5 hover:border-[var(--bvr-green-border)]",
         active && "bvr-glass-card-active",
         className
       )}

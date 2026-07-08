@@ -1,40 +1,86 @@
 :root {
-  --bg-main: #050505;
-  --bg-soft: #080808;
-  --bg-panel: #0d0d0d;
-  --bg-card: #111111;
-  --bg-card-soft: #151515;
-  --bvr-green: #9bff18;
-  --bvr-green-bright: #a3ff12;
-  --bvr-green-dark: #4d7f0b;
-  --bvr-green-soft: rgba(163, 255, 18, 0.14);
-  --bvr-green-border: rgba(163, 255, 18, 0.35);
-  --bvr-green-glow: rgba(163, 255, 18, 0.28);
-  --text-primary: #ffffff;
-  --text-secondary: #c7c7c7;
-  --text-muted: #8a8a8a;
-  --text-faint: #5e5e5e;
+  --bg-main: #0a0a0c;
+  --bg-soft: #0e0e11;
+  --bg-panel: #111114;
+  --bg-card: #141418;
+  --bg-card-soft: #17171b;
+
+  /* Signal Green — interactive / action / live accent (var names unchanged) */
+  --bvr-green: #c4f24e;
+  --bvr-green-bright: #c4f24e;
+  --bvr-green-dark: #8fbf2e;
+  --bvr-green-ink: #0a0a0c;
+  --bvr-green-text: #c4f24e;
+  --bvr-green-soft: rgba(196, 242, 78, 0.12);
+  --bvr-green-border: rgba(196, 242, 78, 0.34);
+  --bvr-green-glow: rgba(196, 242, 78, 0.14);
+
+  /* Gold — luxury / editorial accent */
+  --bvr-gold: #c9a24d;
+  --bvr-gold-bright: #d9b461;
+  --bvr-gold-dark: #8c6f2e;
+  --bvr-gold-soft: rgba(201, 162, 77, 0.14);
+  --bvr-gold-border: rgba(201, 162, 77, 0.38);
+  --bvr-gold-glow: rgba(201, 162, 77, 0.12);
+
+  --text-primary: #f5f1e8;
+  --text-secondary: rgba(245, 241, 232, 0.64);
+  --text-muted: rgba(245, 241, 232, 0.5);
+  --text-faint: rgba(245, 241, 232, 0.34);
+
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 18px;
   --radius-xl: 22px;
   --radius-2xl: 28px;
   --radius-pill: 999px;
-  --shadow-night-card: 0 20px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --shadow-green-action: 0 12px 35px rgba(163, 255, 18, 0.28);
+
+  --shadow-night-card: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-green-action: 0 12px 35px rgba(196, 242, 78, 0.22);
+  --shadow-gold-action: 0 12px 35px rgba(201, 162, 77, 0.22);
+
+  --font-display: var(--font-archivo), Archivo, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --font-serif: var(--font-instrument-serif), "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-body: var(--font-inter), Inter, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --font-kicker: var(--font-space-mono), "Space Mono", ui-monospace, monospace;
 }
 
 [data-theme="day"] {
-  --bg-main: #f6f7f5;
+  --bg-main: #f6f5f1;
   --bg-soft: #ffffff;
   --bg-panel: #ffffff;
   --bg-card: #ffffff;
   --bg-card-soft: #ffffff;
-  --text-primary: #0a0a0a;
-  --text-secondary: #4a4a4a;
-  --text-muted: #777777;
-  --text-faint: #8a8a8a;
-  --shadow-night-card: 0 12px 30px rgba(0, 0, 0, 0.08);
+
+  /* Signal Green on light: the button FILL stays punchy (with dark ink), but the
+     TEXT/accent tone deepens so it's legible on white (AA). Consumers that use
+     --bvr-green for a fill get a slightly deeper lime; those that use it as text
+     should reference --bvr-green-text. */
+  --bvr-green: #b4e637;
+  --bvr-green-bright: #a6db24;
+  --bvr-green-dark: #5e7a12;
+  --bvr-green-ink: #141400;
+  --bvr-green-text: #5e7a12;
+  --bvr-green-soft: rgba(150, 196, 44, 0.16);
+  --bvr-green-border: rgba(120, 160, 30, 0.4);
+  --bvr-green-glow: rgba(150, 196, 44, 0.28);
+
+  /* Gold darkens for AA contrast on white */
+  --bvr-gold: #b08a32;
+  --bvr-gold-bright: #9a7526;
+  --bvr-gold-dark: #6f561d;
+  --bvr-gold-soft: rgba(201, 162, 77, 0.16);
+  --bvr-gold-border: rgba(176, 138, 50, 0.34);
+  --bvr-gold-glow: rgba(201, 162, 77, 0.22);
+
+  --text-primary: #161513;
+  --text-secondary: #5a564e;
+  --text-muted: #817c72;
+  --text-faint: #a39d91;
+
+  --shadow-night-card: 0 14px 34px rgba(20, 18, 15, 0.08);
+  --shadow-green-action: 0 12px 30px rgba(150, 196, 44, 0.28);
+  --shadow-gold-action: 0 12px 30px rgba(201, 162, 77, 0.24);
 }
 
 .bvr-screen {
@@ -42,8 +88,16 @@
   min-height: 100svh;
   color: var(--text-primary);
   background:
-    radial-gradient(circle at top right, rgba(163, 255, 18, 0.1), transparent 28%),
-    radial-gradient(circle at bottom left, rgba(163, 255, 18, 0.06), transparent 22%),
+    radial-gradient(58% 42% at 84% -2%, var(--bvr-gold-glow), transparent 60%),
+    radial-gradient(46% 38% at -4% 6%, var(--bvr-green-glow), transparent 55%),
+    var(--bg-main);
+  transition: background 0.5s ease, color 0.3s ease;
+}
+
+[data-theme="day"] .bvr-screen {
+  background:
+    radial-gradient(58% 42% at 84% -2%, rgba(201, 162, 77, 0.16), transparent 58%),
+    radial-gradient(46% 38% at -4% 6%, rgba(150, 196, 44, 0.12), transparent 55%),
     var(--bg-main);
 }
 
@@ -54,47 +108,64 @@
 }
 
 .bvr-glass-card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(245, 241, 232, 0.05), rgba(245, 241, 232, 0.02));
+  border: 1px solid rgba(245, 241, 232, 0.09);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-night-card);
   backdrop-filter: blur(18px);
 }
 
+[data-theme="day"] .bvr-glass-card {
+  background: #ffffff;
+  border-color: rgba(20, 18, 15, 0.1);
+  backdrop-filter: none;
+}
+
+[data-theme="day"] .bvr-primary-action {
+  color: var(--bvr-green-ink);
+}
+
+[data-theme="day"] .bvr-section-label {
+  color: var(--bvr-gold-bright);
+}
+
 .bvr-glass-card-active {
-  border-color: rgba(163, 255, 18, 0.4);
+  border-color: var(--bvr-green-border);
   box-shadow:
-    0 0 0 1px rgba(163, 255, 18, 0.1),
-    0 20px 70px rgba(163, 255, 18, 0.1);
+    0 0 0 1px var(--bvr-green-glow),
+    0 20px 70px var(--bvr-green-glow);
 }
 
 .bvr-primary-action {
   border-radius: var(--radius-pill);
-  background: linear-gradient(135deg, #a3ff12, #7dce00);
-  color: #050505;
+  background: var(--bvr-green);
+  color: #0a0a0c;
+  font-weight: 700;
   box-shadow: var(--shadow-green-action);
 }
 
 .bvr-secondary-action {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(245, 241, 232, 0.14);
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.035);
-  color: #ffffff;
+  background: rgba(245, 241, 232, 0.04);
+  color: var(--text-primary);
 }
 
 .bvr-search-field {
   min-height: 56px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(245, 241, 232, 0.1);
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(245, 241, 232, 0.045);
 }
 
+/* Kicker / eyebrow label — now gold + Space Mono to match the editorial signature */
 .bvr-section-label {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
+  font-family: var(--font-kicker);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--bvr-green-bright);
+  color: var(--bvr-gold-bright);
 }
 
 .bvr-status-badge {

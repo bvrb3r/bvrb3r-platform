@@ -2,18 +2,28 @@
 @import "../design/theme.css";
 
 :root {
-  --bg: #050505;
-  --bg-soft: #080808;
-  --panel: #0d0d0d;
-  --panel-strong: #151515;
-  --panel-edge: rgba(255, 255, 255, 0.08);
-  --text: #ffffff;
-  --muted: rgba(199, 199, 199, 0.72);
-  --accent: #9bff18;
-  --accent-bright: #a3ff12;
-  --accent-soft: rgba(163, 255, 18, 0.14);
-  --font-display: Inter, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
-  --font-body: Inter, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --bg: #0a0a0c;
+  --bg-soft: #0e0e11;
+  --panel: #111114;
+  --panel-strong: #17171b;
+  --panel-edge: rgba(245, 241, 232, 0.08);
+  --text: #f5f1e8;
+  --muted: rgba(245, 241, 232, 0.6);
+
+  /* Signal Green (interactive) */
+  --accent: #c4f24e;
+  --accent-bright: #c4f24e;
+  --accent-soft: rgba(196, 242, 78, 0.12);
+
+  /* Gold (editorial / luxury) */
+  --gold: #c9a24d;
+  --gold-bright: #d9b461;
+  --gold-soft: rgba(201, 162, 77, 0.14);
+
+  --font-display: var(--font-archivo), Archivo, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --font-serif: var(--font-instrument-serif), "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-body: var(--font-inter), Inter, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --font-kicker: var(--font-space-mono), "Space Mono", ui-monospace, monospace;
 }
 
 * {
@@ -77,9 +87,9 @@ body {
   min-height: 100svh;
   min-height: 100dvh;
   background:
-    radial-gradient(circle at top right, rgba(163, 255, 18, 0.1), transparent 28%),
-    radial-gradient(circle at bottom left, rgba(163, 255, 18, 0.06), transparent 22%),
-    linear-gradient(180deg, #040404 0%, #080808 42%, #050505 100%);
+    radial-gradient(58% 42% at 84% -2%, rgba(201, 162, 77, 0.1), transparent 60%),
+    radial-gradient(46% 38% at -4% 6%, rgba(196, 242, 78, 0.07), transparent 55%),
+    linear-gradient(180deg, #08080a 0%, #0b0b0e 42%, #0a0a0c 100%);
   color: var(--text);
   font-family: var(--font-body);
   letter-spacing: 0;
@@ -95,9 +105,9 @@ body::before {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    repeating-linear-gradient(135deg, rgba(163, 255, 18, 0.025) 0 2px, transparent 2px 18px);
+    linear-gradient(rgba(245, 241, 232, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 241, 232, 0.02) 1px, transparent 1px),
+    repeating-linear-gradient(135deg, rgba(201, 162, 77, 0.02) 0 2px, transparent 2px 18px);
   background-size: 72px 72px, 72px 72px, 100% 100%;
   mask-image: radial-gradient(circle at center, black, transparent 82%);
   opacity: 0.75;
@@ -111,16 +121,43 @@ body::after {
   width: 30rem;
   height: 30rem;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(163, 255, 18, 0.18), transparent 70%);
+  background: radial-gradient(circle, rgba(201, 162, 77, 0.16), transparent 70%);
   filter: blur(48px);
-  opacity: 0.55;
+  opacity: 0.5;
   pointer-events: none;
   animation: drift 18s ease-in-out infinite alternate;
 }
 
 ::selection {
-  background: rgba(163, 255, 18, 0.32);
-  color: #050505;
+  background: rgba(196, 242, 78, 0.32);
+  color: #0a0a0c;
+}
+
+/* ---- Day / light mode body treatment ---- */
+[data-theme="day"] body {
+  background:
+    radial-gradient(58% 42% at 84% -2%, rgba(201, 162, 77, 0.16), transparent 58%),
+    radial-gradient(46% 38% at -4% 6%, rgba(150, 196, 44, 0.12), transparent 55%),
+    linear-gradient(180deg, #f8f7f3 0%, #f4f2ec 100%);
+  color: #161513;
+}
+
+[data-theme="day"] body::before {
+  background-image:
+    linear-gradient(rgba(20, 18, 15, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 18, 15, 0.03) 1px, transparent 1px),
+    repeating-linear-gradient(135deg, rgba(201, 162, 77, 0.03) 0 2px, transparent 2px 18px);
+  opacity: 0.6;
+}
+
+[data-theme="day"] body::after {
+  background: radial-gradient(circle, rgba(201, 162, 77, 0.2), transparent 70%);
+  opacity: 0.55;
+}
+
+[data-theme="day"] ::selection {
+  background: rgba(150, 196, 44, 0.3);
+  color: #161513;
 }
 
 a {
@@ -165,6 +202,7 @@ main {
   z-index: 1;
 }
 
+/* Section titles use Archivo display; the big editorial headlines opt into serif via .font-serif */
 h1,
 h2,
 h3,
@@ -172,8 +210,16 @@ h4,
 [data-display="true"],
 .font-display {
   font-family: var(--font-display);
-  letter-spacing: -0.05em;
-  line-height: 0.94;
+  letter-spacing: -0.02em;
+  line-height: 0.98;
+}
+
+.font-serif,
+[data-serif="true"] {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+  line-height: 1.02;
+  font-weight: 400;
 }
 
 p,
@@ -194,20 +240,22 @@ span {
   text-wrap: balance;
 }
 
+/* Editorial kicker — Space Mono, gold */
 .editorial-kicker {
   display: inline-flex;
   align-items: center;
   gap: 0.75rem;
+  font-family: var(--font-kicker);
   text-transform: uppercase;
-  letter-spacing: 0.32em;
-  font-size: 0.7rem;
-  color: var(--accent-bright);
+  letter-spacing: 0.26em;
+  font-size: 0.66rem;
+  color: var(--gold-bright);
 }
 
 .accent-rule {
-  width: 5.5rem;
+  width: 2.5rem;
   height: 1px;
-  background: linear-gradient(90deg, rgba(163, 255, 18, 0.85), rgba(163, 255, 18, 0));
+  background: linear-gradient(90deg, var(--gold), transparent);
 }
 
 .fade-rise {
@@ -215,15 +263,16 @@ span {
 }
 
 .surface-label {
-  font-size: 0.68rem;
+  font-family: var(--font-kicker);
+  font-size: 0.66rem;
   text-transform: uppercase;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.24em;
   color: rgba(245, 241, 232, 0.52);
 }
 
 .empty-state-panel {
-  border: 1px dashed rgba(255, 255, 255, 0.1);
-  background: linear-gradient(180deg, rgba(20, 20, 20, 0.7), rgba(8, 8, 8, 0.85));
+  border: 1px dashed rgba(245, 241, 232, 0.1);
+  background: linear-gradient(180deg, rgba(20, 20, 22, 0.7), rgba(9, 9, 11, 0.85));
 }
 
 .status-pill {
@@ -231,7 +280,7 @@ span {
   align-items: center;
   gap: 0.5rem;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(245, 241, 232, 0.1);
   background: rgba(0, 0, 0, 0.25);
   padding: 0.55rem 0.85rem;
   font-size: 0.65rem;
@@ -269,7 +318,7 @@ span {
 }
 
 .mobile-dock {
-  background: linear-gradient(180deg, rgba(18, 18, 18, 0.94), rgba(7, 7, 7, 0.98));
+  background: linear-gradient(180deg, rgba(18, 18, 20, 0.94), rgba(8, 8, 10, 0.98));
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
 }
@@ -322,11 +371,11 @@ span {
 
   .editorial-kicker {
     gap: 0.55rem;
-    letter-spacing: 0.24em;
+    letter-spacing: 0.2em;
   }
 
   .surface-label {
-    letter-spacing: 0.24em;
+    letter-spacing: 0.2em;
   }
 
   .status-pill {

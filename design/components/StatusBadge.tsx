@@ -10,9 +10,9 @@ export function StatusBadge({
     <span
       className={cn(
         "bvr-status-badge",
-        tone === "green" && "border border-[rgba(163,255,18,0.25)] bg-[rgba(163,255,18,0.12)] text-[#a3ff12]",
-        tone === "neutral" && "border border-white/10 bg-white/[0.06] text-[#c7c7c7]",
-        tone === "danger" && "border border-red-400/25 bg-red-500/10 text-[#ff4d4d]",
+        tone === "green" && "border border-[var(--bvr-green-border)] bg-[var(--bvr-green-soft)] text-[var(--bvr-green-bright)]",
+        tone === "neutral" && "border border-white/10 bg-white/[0.06] text-[var(--text-secondary)]",
+        tone === "danger" && "border border-[#f0563c]/30 bg-[#f0563c]/12 text-[#f0563c]",
         className
       )}
       {...props}
