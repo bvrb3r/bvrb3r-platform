@@ -15,7 +15,7 @@ export function Avatar({
   return (
     <div
       className={cn(
-        "flex aspect-square shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(163,255,18,0.16),rgba(12,12,12,0.96))] text-sm font-extrabold text-[#a3ff12]",
+        "flex aspect-square shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-[linear-gradient(135deg,var(--bvr-green-soft),rgba(12,12,12,0.96))] text-sm font-extrabold text-[var(--bvr-green-bright)]",
         className
       )}
     >

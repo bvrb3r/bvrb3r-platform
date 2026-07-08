@@ -1,7 +1,43 @@
 import type { Metadata, Viewport } from "next";
+import { Archivo, Instrument_Serif, Inter, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/providers/app-providers";
 import { runtimeConfig } from "@/lib/config/runtime";
+
+// --- BVRB3R type system ---------------------------------------------------
+// Archivo   → display / section headings
+// Instrument Serif → editorial headlines (the gold-period signature)
+// Inter     → body / UI text
+// Space Mono → kickers, eyebrow labels, mono tags
+const archivo = Archivo({
+  subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
+  variable: "--font-archivo",
+  display: "swap"
+});
+
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  variable: "--font-instrument-serif",
+  display: "swap"
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap"
+});
+
+const spaceMono = Space_Mono({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-space-mono",
+  display: "swap"
+});
+
+const fontVariables = `${archivo.variable} ${instrumentSerif.variable} ${inter.variable} ${spaceMono.variable}`;
 
 const iosDeepLink = `${runtimeConfig.appLinkScheme}://open?href=%2Fdiscover`;
 const androidDeepLink = `${runtimeConfig.appLinkScheme}://open?href=%2Fdiscover`;
@@ -28,14 +64,14 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
-  themeColor: "#050505",
+  themeColor: "#0A0A0C",
   colorScheme: "dark",
   interactiveWidget: "resizes-content"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={fontVariables}>
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />

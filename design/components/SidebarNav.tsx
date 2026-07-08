@@ -28,14 +28,14 @@ export function SidebarNav({ items, activeKey }: { items: DesignNavItem[]; activ
               className={cn(
                 "flex items-center gap-3 rounded-[22px] border px-3 py-3 text-sm font-extrabold transition duration-200",
                 active
-                  ? "border-[#a3ff12]/30 bg-[#a3ff12]/12 text-white shadow-[0_14px_34px_rgba(163,255,18,0.12)]"
+                  ? "border-[var(--bvr-green-border)] bg-[var(--bvr-green-soft)] text-white shadow-[0_14px_34px_var(--bvr-green-glow)]"
                   : "border-transparent text-white/68 hover:border-white/10 hover:bg-white/[0.035] hover:text-white"
               )}
             >
               <span
                 className={cn(
                   "flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border",
-                  active ? "border-[#a3ff12]/35 bg-[#a3ff12]/12 text-[#a3ff12]" : "border-white/10 bg-black/20 text-white/60"
+                  active ? "border-[var(--bvr-green-border)] bg-[var(--bvr-green-soft)] text-[var(--bvr-green-bright)]" : "border-white/10 bg-black/20 text-white/60"
                 )}
               >
                 <Icon className="h-5 w-5" />
