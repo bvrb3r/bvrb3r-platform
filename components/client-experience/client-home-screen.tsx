@@ -7,14 +7,16 @@ import {
   Clock3,
   MapPin,
   Scissors,
-  Sparkles
+  Sparkles,
+  Zap
 } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
 import { ClientGetCutNowAction } from "@/components/client-experience/client-get-cut-now-action";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
-import { ClientShopDiscoveryCard } from "@/components/client-experience/client-shop-discovery-card";
+import { FavoriteRailCard } from "@/components/client-experience/favorite-rail-card";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
+import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -220,7 +222,7 @@ export function ClientHomeScreen({
 
   return (
     <div className="space-y-4" data-testid="client-home-screen">
-      <Card className="rounded-[38px] border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(6,6,6,0.99))] p-5 shadow-[0_30px_70px_rgba(0,0,0,0.32)] sm:p-6">
+      <Card className="relative overflow-hidden rounded-[38px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(6,6,6,0.99))] p-6 shadow-[0_30px_70px_rgba(0,0,0,0.32)] sm:p-8">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(196, 242, 78,0.12),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_26%)]" />
         <div className="relative">
           <PageHeader
@@ -230,13 +232,13 @@ export function ClientHomeScreen({
           />
 
           <div className="mt-6 max-w-xl">
-            <div className="rounded-[28px] border border-[#e4f9b8]/14 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(8,8,8,0.98))] p-4">
-              <div className="inline-flex items-center gap-2 text-sm text-white/92">
-                <CalendarDays className="h-4 w-4 text-[#e4f9b8]" />
-                Get a Cut Now
+            <div className="rounded-[28px] border border-[#c4f24e]/22 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(8,8,8,0.98))] p-5 shadow-[inset_0_1px_0_rgba(196,242,78,0.12),0_0_44px_rgba(196,242,78,0.06)]">
+              <div className="inline-flex items-center gap-2 text-sm font-semibold text-white/92">
+                <Zap className="h-4 w-4 text-[#c4f24e]" />
+                Get a cut now
               </div>
               <p className="mt-3 text-sm leading-7 text-white/68">
-                See the next eligible chair, confirm details, and pay safely.
+                We&apos;ll find the next eligible chair, confirm the details, and hold it while you pay.
               </p>
               <div className="mt-4">
                 <ClientGetCutNowAction
@@ -244,6 +246,7 @@ export function ClientHomeScreen({
                   nextAvailableChair={payload?.nextAvailableChair ?? null}
                   defaultPaymentMethod={defaultPaymentMethod}
                   size="lg"
+                  triggerLabel="Find the next chair →"
                 />
               </div>
             </div>
@@ -254,58 +257,81 @@ export function ClientHomeScreen({
 
       {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
 
-      <ClientSectionBlock
-        eyebrow="Barbers"
-        title="Favorite Barbers"
-        subtitle={savedFavoriteBarbers.length
-          ? "Saved chairs from your real client profile."
-          : "Saved and eligible barbers will appear here."}
-      >
+      <section data-testid="home-favorite-barbers">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="bvr-section-label">Barbers</p>
+            <h2 className="mt-2 text-2xl font-extrabold leading-tight text-[var(--text-primary)] sm:text-3xl" data-display="true">Favorite Barbers</h2>
+          </div>
+          <Link href={`${CLIENT_PRIMARY_TAB_HREFS.search}?type=barbers` as Route} className="shrink-0 text-sm font-semibold text-white/64 transition hover:text-white">
+            See all
+          </Link>
+        </div>
         {savedFavoriteBarbers.length ? (
-          <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
-            {savedFavoriteBarbers.map((result) => (
-              <ClientDiscoveryCard key={result.barberId} result={result} canFavorite={Boolean(clientId)} />
-            ))}
+          <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {savedFavoriteBarbers.map((result) => {
+              const barberDisplayName = getClientFacingBarberName({ username: result.username, barberName: result.barberName });
+              const distanceLine = result.cityLabel ?? result.locationLabel ?? (typeof result.distanceMiles === "number" ? `${result.distanceMiles.toFixed(1)} mi` : null);
+              return (
+                <FavoriteRailCard
+                  key={result.barberId}
+                  coverUrl={result.galleryPreviewUrls?.[0] ?? result.profilePhotoUrl}
+                  name={barberDisplayName}
+                  subtitle={[result.shopName ?? "Independent", distanceLine].filter(Boolean).join(" · ")}
+                  availabilityLabel={result.availabilityLabel ?? "Available now"}
+                  actionLabel={`Rebook · $${result.priceRange[0]}`}
+                  actionHref={buildMarketplaceBookingHref({
+                    barberId: result.barberId,
+                    username: result.username,
+                    locationId: result.locationId,
+                    sourceKind: "discovery",
+                    query: result.mostBookedService ?? undefined
+                  })}
+                  nameHref={`/barber/${result.username}` as Route}
+                />
+              );
+            })}
           </div>
         ) : (
-          <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
+          <div className="mt-4 rounded-[var(--radius-lg,18px)] border border-dashed border-white/10 bg-white/[0.02] p-6 sm:p-7">
             <h3 className="text-2xl font-semibold text-white" data-display="true">No favorite barbers yet.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
               Save barbers you trust. They&apos;ll show here for faster rebooking.
             </p>
           </div>
         )}
-      </ClientSectionBlock>
+      </section>
 
-      <ClientSectionBlock
-        eyebrow="Shops"
-        title="Favorite Shops"
-        subtitle={savedFavoriteShops.length
-          ? "Saved shop context from your real client profile."
-          : "Saved and eligible shops will appear here."}
-      >
-        {savedFavoriteShops.length ? (
-          <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
-            {savedFavoriteShops.map((shop) => (
-              <ClientShopDiscoveryCard
-                key={shop.id}
-                location={{
-                  ...shop,
-                  viewHref: `/shop/${encodeURIComponent(shop.id)}` as Route
-                }}
-                canFavorite={Boolean(clientId)}
-              />
-            ))}
+      {savedFavoriteShops.length ? (
+        <section data-testid="home-favorite-shops">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="bvr-section-label">Shops</p>
+              <h2 className="mt-2 text-2xl font-extrabold leading-tight text-[var(--text-primary)] sm:text-3xl" data-display="true">Favorite Shops</h2>
+            </div>
+            <Link href={`${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` as Route} className="shrink-0 text-sm font-semibold text-white/64 transition hover:text-white">
+              See all
+            </Link>
           </div>
-        ) : (
-          <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
-            <h3 className="text-2xl font-semibold text-white" data-display="true">No favorite shops yet.</h3>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Save a shop from Search or book from a shop roster to keep trusted locations close.
-            </p>
+          <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {savedFavoriteShops.map((shop) => {
+              const shopHref = (shop.viewHref ?? `/shop/${encodeURIComponent(shop.id)}`) as Route;
+              return (
+                <FavoriteRailCard
+                  key={shop.id}
+                  coverUrl={shop.coverPhotoUrl ?? shop.profilePhotoUrl}
+                  name={shop.name}
+                  subtitle={shop.brandLine?.trim() || [shop.neighborhood, shop.city].filter(Boolean).join(", ")}
+                  availabilityLabel={shop.nextAvailableLabel}
+                  actionLabel="View shop"
+                  actionHref={shopHref}
+                  nameHref={shopHref}
+                />
+              );
+            })}
           </div>
-        )}
-      </ClientSectionBlock>
+        </section>
+      ) : null}
 
       <ClientSectionBlock
         eyebrow="Discovery"

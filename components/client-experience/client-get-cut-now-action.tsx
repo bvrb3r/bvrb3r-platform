@@ -58,6 +58,7 @@ type ClientGetCutNowActionProps = {
   defaultPaymentMethod?: ClientPaymentMethodSummary | null;
   size?: ActionSize;
   variant?: ActionVariant;
+  triggerLabel?: string;
   className?: string;
 };
 
@@ -67,6 +68,7 @@ export function ClientGetCutNowAction({
   defaultPaymentMethod = null,
   size = "lg",
   variant = "primary",
+  triggerLabel = "Get a Cut Now",
   className
 }: ClientGetCutNowActionProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -118,7 +120,7 @@ export function ClientGetCutNowAction({
         onClick={() => setIsOpen((current) => !current)}
         className={getClientActionClassName({ size, variant })}
       >
-        Get a Cut Now
+        {triggerLabel}
       </button>
 
       {isOpen ? (

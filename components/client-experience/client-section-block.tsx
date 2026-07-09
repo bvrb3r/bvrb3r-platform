@@ -8,7 +8,8 @@ export function ClientSectionBlock({
   subtitle,
   action,
   children,
-  className
+  className,
+  bare = false
 }: {
   eyebrow?: string;
   title: string;
@@ -16,9 +17,10 @@ export function ClientSectionBlock({
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  bare?: boolean;
 }) {
   return (
-    <section className={cn("bvr-glass-card rounded-[28px] p-5 sm:p-6", className)}>
+    <section className={cn(bare ? "" : "bvr-glass-card rounded-[28px] p-5 sm:p-6", className)}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-2xl">
           {eyebrow ? <p className="bvr-section-label">{eyebrow}</p> : null}

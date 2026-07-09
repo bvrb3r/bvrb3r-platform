@@ -387,6 +387,7 @@ export function ClientSearchScreen({
 
   const barbersSection = (
     <ClientSectionBlock
+      bare
       eyebrow="Barbers"
       title="Barbers near you"
       subtitle="Real profiles, ratings, and next openings."
@@ -412,6 +413,7 @@ export function ClientSearchScreen({
 
   const shopsSection = (
     <ClientSectionBlock
+      bare
       eyebrow="Shops"
       title="Shops near you"
       subtitle="Choose the shop first, then pick the chair."
@@ -463,7 +465,6 @@ export function ClientSearchScreen({
         onValueChange={setQuery}
         onSubmit={handleSearchSubmit}
         placeholder="Search barber or shop name"
-        className="bg-[rgba(10,10,10,0.95)] backdrop-blur-xl"
         isSubmitting={discoveryBusy}
       />
 
@@ -471,12 +472,9 @@ export function ClientSearchScreen({
         <FeedbackBanner tone="info" message="Set your city to prioritize nearby barbers. Search still shows live BVRB3R barbers across the platform." />
       ) : null}
 
-      <ClientSectionBlock
-        eyebrow="Filters"
-        title="Filters"
-        subtitle={isGuest ? "All, Barbers, Shops." : "Tap once to tighten the search."}
-      >
-        <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 [&>*]:shrink-0">
+      <section data-testid="client-search-filters">
+        <p className="bvr-section-label">Filters</p>
+        <div className="mt-3 flex gap-2 overflow-x-auto hide-scrollbar pb-1 [&>*]:shrink-0">
           {isGuest ? (
             <>
               <FilterChip active={!prefersShopDiscovery && !hasActiveSearchQuery} onClick={() => router.replace("/discover?entry=guest")}>
@@ -524,7 +522,7 @@ export function ClientSearchScreen({
             Verified only
           </FilterChip>
         </div>
-      </ClientSectionBlock>
+      </section>
 
       {prefersShopDiscovery ? shopsSection : barbersSection}
       {prefersShopDiscovery ? barbersSection : shopsSection}

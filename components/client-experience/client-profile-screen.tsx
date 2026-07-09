@@ -648,7 +648,7 @@ export function ClientProfileScreen({
   return (
     <div className="relative bvr-stack-lg overflow-hidden" data-testid="client-profile-screen" data-more-modal-root="client">
       <MorePageHeader
-        title="More"
+        title="Account"
         subtitle="Manage your account, booking activity, payments, rewards, and preferences."
       />
 

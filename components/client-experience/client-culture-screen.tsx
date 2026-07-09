@@ -162,6 +162,63 @@ function CultureDiscoveryGrid({ module }: { module: CultureFeedModule }) {
   );
 }
 
+function storyInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .map((part) => part[0])
+    .filter(Boolean)
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+// Story-avatars row derived from real feed authors (unique posters, newest first).
+// No dedicated stories source exists, so this reuses the top feed authors — never
+// fabricated names.
+function CultureStoryRail({ items }: { items: CultureFeedItem[] }) {
+  const seen = new Set<string>();
+  const authors: CultureFeedItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.authorProfileId)) {
+      continue;
+    }
+    seen.add(item.authorProfileId);
+    authors.push(item);
+    if (authors.length >= 10) {
+      break;
+    }
+  }
+
+  if (!authors.length) {
+    return null;
+  }
+
+  return (
+    <div className="mb-4 flex gap-4 overflow-x-auto hide-scrollbar pb-1" data-testid="culture-story-rail">
+      {authors.map((author) => {
+        const firstName = author.authorDisplayName.trim().split(/\s+/)[0] || author.authorDisplayName;
+        return (
+          <Link
+            key={author.authorProfileId}
+            href={author.profileUrl as Route}
+            className="flex w-16 shrink-0 flex-col items-center gap-1.5"
+          >
+            <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 border-[#c4f24e]/55 bg-black/40 text-sm font-semibold text-white">
+              {author.authorAvatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={author.authorAvatarUrl} alt={author.authorDisplayName} className="h-full w-full object-cover" />
+              ) : (
+                storyInitials(author.authorDisplayName)
+              )}
+            </span>
+            <span className="max-w-full truncate text-[11px] text-white/64">{firstName}</span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ClientCultureScreen({
   feed,
   posts = [],
@@ -350,8 +407,8 @@ export function ClientCultureScreen({
       <section className="mx-auto max-w-2xl">
         <PageHeader
           className="mb-6"
-          label="Feed"
-          title="Culture pulse"
+          label="The Feed"
+          title="Culture."
           action={
             <div className="flex flex-wrap items-center gap-2">
               {pendingTopItems.length ? (
@@ -367,6 +424,8 @@ export function ClientCultureScreen({
             </div>
           }
         />
+
+        <CultureStoryRail items={visibleFeedItems} />
 
         {refreshError ? (
           <p className="mb-3 rounded-[18px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100" role="alert">
