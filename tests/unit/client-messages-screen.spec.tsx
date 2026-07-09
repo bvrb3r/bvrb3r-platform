@@ -2226,10 +2226,10 @@ describe("client messages screen", () => {
     const modal = screen.getByTestId("message-thread-modal");
     expect(within(modal).getByText("First appointment follow-up")).toBeInTheDocument();
     expect(within(modal).getByText("Second appointment update")).toBeInTheDocument();
-    expect(within(modal).getByTestId("message-thread-context-line")).toHaveTextContent("beard detail • May 21 • Completed");
-    expect(within(modal).getByTestId("message-thread-context-line")).not.toHaveTextContent("test cut • May 19 • Cancelled");
-    expect(within(modal).getByTestId("related-appointment-contexts")).toHaveTextContent("beard detail");
-    expect(within(modal).getByTestId("related-appointment-contexts")).toHaveTextContent("test cut");
+    // The redundant appointment-context bar + pill strip were removed (PR10); the
+    // combined-thread behavior is still proven by both messages appearing together.
+    expect(within(modal).queryByTestId("message-thread-context-line")).not.toBeInTheDocument();
+    expect(within(modal).queryByTestId("related-appointment-contexts")).not.toBeInTheDocument();
   });
 
   it("renders barber profile photos in the inbox row, avatar rail, and modal header", () => {
@@ -2356,7 +2356,7 @@ describe("client messages screen", () => {
     expect(screen.queryByText("Phillip mcgee")).not.toBeInTheDocument();
     expect(screen.getAllByText("Barber").length).toBeGreaterThan(0);
     expect(screen.getAllByText("8516 Island Breeze Ln - Temple Terrace, FL 33607").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("message-thread-context-line")).toHaveTextContent(/test cut.*May 19.*Cancelled/);
+    expect(screen.queryByTestId("message-thread-context-line")).not.toBeInTheDocument();
     expect(screen.getAllByText("Conversation opened...").length).toBeGreaterThan(1);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/client/profile-view/barber/phillipforsure?sourceThreadId=thread-appointment-1");
     expect(screen.getByRole("link", { name: "Rebook" })).toHaveAttribute("href", "/booking/new?barber=phillipforsure&barberId=barber-43b3cda2");
@@ -3033,7 +3033,7 @@ describe("client messages screen", () => {
     expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/barber/profile-view/client/jordanellis?sourceThreadId=thread-appointment-1");
     expect(screen.getAllByText("I am outside.").length).toBeGreaterThan(1);
-    expect(screen.getByTestId("message-thread-context-line")).toHaveTextContent(/test cut.*May 19.*Cancelled/);
+    expect(screen.queryByTestId("message-thread-context-line")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new");
   });
 

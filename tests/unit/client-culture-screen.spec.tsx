@@ -170,7 +170,7 @@ describe("client culture screen", () => {
     // an author with no profile route must render as a plain (non-anchor) avatar —
     // the fix renders a <div> instead of a next/link <a> so href={null} never reaches it.
     expect(rail.querySelector("a")).toBeNull();
-    expect(within(rail).getByText("Blaze")).toBeInTheDocument();
+    expect(within(rail).getByText("blaze")).toBeInTheDocument();
   });
 
   it("renders a safe empty feed state distinct from a feed error", () => {

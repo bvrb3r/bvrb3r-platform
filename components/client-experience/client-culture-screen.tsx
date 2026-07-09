@@ -196,9 +196,10 @@ function CultureStoryRail({ items }: { items: CultureFeedItem[] }) {
   return (
     <div className="mb-4 flex gap-4 overflow-x-auto hide-scrollbar pb-1" data-testid="culture-story-rail">
       {authors.map((author) => {
-        const displayName = (author.authorDisplayName ?? "").trim() || "Creator";
-        const firstName = displayName.split(/\s+/)[0] || displayName;
-        const cardClassName = "flex w-16 shrink-0 flex-col items-center gap-1.5";
+        const displayName = author.authorDisplayName?.trim() || author.authorRoleLabel || "BVRB3R";
+        const username = author.authorUsername?.trim().replace(/^@+/, "");
+        const label = username || displayName;
+        const cardClassName = "flex w-20 shrink-0 flex-col items-center gap-1.5";
         const avatar = (
           <>
             <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 border-[#c4f24e]/55 bg-black/40 text-sm font-semibold text-white">
@@ -209,7 +210,7 @@ function CultureStoryRail({ items }: { items: CultureFeedItem[] }) {
                 storyInitials(displayName)
               )}
             </span>
-            <span className="max-w-full truncate text-[11px] text-white/64">{firstName}</span>
+            <span className="w-full truncate text-center text-[11px] text-white/64">{label}</span>
           </>
         );
 
