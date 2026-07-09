@@ -504,8 +504,11 @@ describe("Culture service", () => {
 
     const feed = await listCultureFeed({ role: "client", limit: 10 }, { supabase: supabase.client });
 
-    expect(feed.items.map((item) => item.id)).toEqual(["auto-feed-barber", "auto-feed-owner"]);
-    expect(feed.items[0]).toMatchObject({
+    // Recency-tier items are session-shuffled (PR12), so assert by id rather than position.
+    expect([...feed.items.map((item) => item.id)].sort()).toEqual(["auto-feed-barber", "auto-feed-owner"]);
+    const barberItem = feed.items.find((item) => item.id === "auto-feed-barber");
+    const shopItem = feed.items.find((item) => item.id === "auto-feed-owner");
+    expect(barberItem).toMatchObject({
       authorDisplayName: "Blaze Cuts",
       authorUsername: "@blazecuts",
       authorAvatarUrl: "https://cdn.bvrb3r.test/blaze-public.jpg",
@@ -513,7 +516,7 @@ describe("Culture service", () => {
       profileUrl: expect.stringContaining("/barber/blazecuts?source=culture"),
       media: { url: "https://cdn.bvrb3r.test/barber-auto.jpg" }
     });
-    expect(feed.items[1]).toMatchObject({
+    expect(shopItem).toMatchObject({
       authorDisplayName: "Ybor Shop",
       authorUsername: "@yborshop",
       authorAvatarUrl: "https://cdn.bvrb3r.test/shop-logo.jpg",
@@ -522,7 +525,7 @@ describe("Culture service", () => {
       shopUrl: expect.stringContaining("/shop/yborshop?source=culture"),
       media: { url: "https://cdn.bvrb3r.test/owner-auto.jpg" }
     });
-    expect(JSON.stringify(feed.items[1])).not.toContain("Owner Pat");
+    expect(JSON.stringify(shopItem)).not.toContain("Owner Pat");
   });
 
   it("builds Discovery Grid modules only from real approved Barber and Shop posts with media and routes", async () => {
@@ -701,6 +704,28 @@ describe("Culture service", () => {
     const ranked = rankCultureFeedItems([olderPost, publishedPost], {}, undefined);
 
     expect(ranked.map((post) => post.id)).toEqual([publishedPost.id, olderPost.id]);
+  });
+
+  it("shuffles the recency tier per session seed while keeping order stable within a session", () => {
+    const posts = Array.from({ length: 12 }, (_, index) => ({
+      ...publishedPost,
+      id: `recency-${index}`,
+      created_at: `2026-06-12T10:${String(index).padStart(2, "0")}:00.000Z`
+    } satisfies CulturePostRow));
+
+    const orderA = rankCultureFeedItems(posts, {}, undefined, "session-a").map((post) => post.id);
+    const orderAAgain = rankCultureFeedItems(posts, {}, undefined, "session-a").map((post) => post.id);
+    const orderB = rankCultureFeedItems(posts, {}, undefined, "session-b").map((post) => post.id);
+    const deterministic = rankCultureFeedItems(posts, {}, undefined).map((post) => post.id);
+
+    // Stable within a session (same seed → identical order → paging can't dupe/skip).
+    expect(orderA).toEqual(orderAAgain);
+    // Same set of items — nothing lost or duplicated by the shuffle.
+    expect([...orderA].sort()).toEqual([...deterministic].sort());
+    // A different session reshuffles, so the feed doesn't feel the same.
+    expect(orderA).not.toEqual(orderB);
+    // No seed → deterministic created_at ordering is preserved.
+    expect(deterministic).toEqual(posts.map((post) => post.id).reverse());
   });
 
   it("boosts followed and saved Culture signals while suppressing reported or hidden posts", async () => {
