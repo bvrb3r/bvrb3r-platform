@@ -243,22 +243,16 @@ describe("client home screen", () => {
     expect(screen.getByText("Upcoming Appointment")).toBeInTheDocument();
     expect(screen.getByText("Favorite Barbers")).toBeInTheDocument();
     expect(screen.queryByText("Favorite Shops")).not.toBeInTheDocument();
-    expect(screen.getByText("Recommended Barbers")).toBeInTheDocument();
-    expect(screen.getByText("Culture Preview")).toBeInTheDocument();
-    expect(screen.getByText("Recent Activity")).toBeInTheDocument();
-    expect(screen.getByText("Favorite Barbers").compareDocumentPosition(screen.getByText("Recommended Barbers"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(screen.getByText("Recommended Barbers").compareDocumentPosition(screen.getByText("Culture Preview"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(screen.getByText("Culture Preview").compareDocumentPosition(screen.getByText("Upcoming Appointment"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.queryByText("Recommended Barbers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Culture Preview")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recent Activity")).not.toBeInTheDocument();
+    expect(screen.getByText("Favorite Barbers").compareDocumentPosition(screen.getByText("Upcoming Appointment"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.queryByRole("link", { name: "View barbers" })).not.toBeInTheDocument();
     expect(screen.getByText("No favorite barbers yet.")).toBeInTheDocument();
     expect(screen.getByText("Save barbers you trust. They'll show here for faster rebooking.")).toBeInTheDocument();
     expect(screen.queryByText("No favorite shops yet.")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barberId=barber-wave&barber=wave&locationId=loc-ybor&source=discovery&query=Signature+Precision+Cut");
-    expect(screen.getAllByText("wave").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Wave Carter").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "Book" })).not.toBeInTheDocument();
     expect(screen.getByText("Booked")).toBeInTheDocument();
-    expect(screen.getByText("Completed")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Rebook from Search" })).toHaveAttribute("href", "/dashboard/client/search?type=barbers");
     expect(screen.queryByText("Search Availability")).not.toBeInTheDocument();
     expect(screen.queryByText("Explore Services")).not.toBeInTheDocument();
     expect(screen.queryByText("Open Activity")).not.toBeInTheDocument();
@@ -306,8 +300,8 @@ describe("client home screen", () => {
     expect(screen.getByText("Add your location to find the next available barber near you.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add Location" })).toBeInTheDocument();
     expect(screen.getByText("No cut booked yet.")).toBeInTheDocument();
-    expect(screen.getByText("No past visits yet.")).toBeInTheDocument();
-    expect(screen.getByText("Culture lives here - cuts, shops, style, and the BVRB3R community.")).toBeInTheDocument();
+    expect(screen.queryByText("No past visits yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Culture lives here - cuts, shops, style, and the BVRB3R community.")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Find a Barber" })).not.toBeInTheDocument();
   });
 
@@ -350,7 +344,7 @@ describe("client home screen", () => {
     expect(screen.getByRole("link", { name: "Search Barbers" })).toBeInTheDocument();
     expect(screen.getByText("No favorite barbers yet.")).toBeInTheDocument();
     expect(screen.queryByText("No favorite shops yet.")).not.toBeInTheDocument();
-    expect(screen.getByText("No barber recommendations yet.")).toBeInTheDocument();
+    expect(screen.queryByText("No barber recommendations yet.")).not.toBeInTheDocument();
   });
 
   it("shows payment setup guidance before continuing a get-a-cut-now booking", () => {

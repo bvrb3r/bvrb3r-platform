@@ -8,6 +8,7 @@ const {
   useProfileMediaWorkspaceQueryMock,
   useMutateProfileMediaMutationMock,
   useClientBookingsQueryMock,
+  useClientHomeQueryMock,
   useClientMembershipQueryMock,
   usePointsBalanceQueryMock,
   usePointsHistoryQueryMock,
@@ -18,6 +19,7 @@ const {
   useProfileMediaWorkspaceQueryMock: vi.fn(),
   useMutateProfileMediaMutationMock: vi.fn(),
   useClientBookingsQueryMock: vi.fn(),
+  useClientHomeQueryMock: vi.fn(),
   useClientMembershipQueryMock: vi.fn(),
   usePointsBalanceQueryMock: vi.fn(),
   usePointsHistoryQueryMock: vi.fn(),
@@ -38,6 +40,7 @@ vi.mock("@tanstack/react-query", async () => {
 
 vi.mock("@/lib/booking/client", () => ({
   useClientBookingsQuery: useClientBookingsQueryMock,
+  useClientHomeQuery: useClientHomeQueryMock,
   useClientMembershipQuery: useClientMembershipQueryMock
 }));
 
@@ -148,6 +151,8 @@ describe("client profile screen", () => {
     useProfileMediaWorkspaceQueryMock.mockReset();
     useMutateProfileMediaMutationMock.mockReset();
     useClientBookingsQueryMock.mockReset();
+    useClientHomeQueryMock.mockReset();
+    useClientHomeQueryMock.mockReturnValue({ data: undefined, isLoading: false, error: null });
     useClientMembershipQueryMock.mockReset();
     usePointsBalanceQueryMock.mockReset();
     usePointsHistoryQueryMock.mockReset();
