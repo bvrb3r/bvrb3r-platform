@@ -44,7 +44,7 @@ export function ClientPrimarySearchBar({
           disabled={isSubmitting}
           aria-busy={isSubmitting}
           className={cn(
-            "inline-flex items-center justify-center gap-2 rounded-full border border-[#c8f17f]/38 bg-[linear-gradient(180deg,#8ed62c_0%,#6fb61b_100%)] px-5 text-[14px] font-semibold text-[#050b03] ring-1 ring-[#d4ff96]/18 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_30px_rgba(111,182,27,0.24)] transition hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_36px_rgba(111,182,27,0.3)]",
+            "inline-flex items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-5 text-[14px] font-semibold text-white transition hover:-translate-y-0.5 hover:border-white/24 hover:bg-white/[0.1]",
             isSubmitting ? "cursor-wait opacity-80 hover:translate-y-0" : "",
             compact ? "h-12" : "h-14"
           )}
@@ -60,7 +60,7 @@ export function ClientPrimarySearchBar({
               key={action.label}
               type="button"
               onClick={action.onSelect}
-              className="rounded-full border border-white/8 bg-black/20 px-3 py-2 text-white/72 transition hover:border-[#C4F24E]/18 hover:text-[#e4f9b8]"
+              className="rounded-full border border-white/8 bg-black/20 px-3 py-2 text-white/72 transition hover:border-white/20 hover:text-white"
             >
               {action.label}
             </button>

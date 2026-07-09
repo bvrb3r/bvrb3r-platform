@@ -3,8 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StatusBadge } from "@/design/components";
-import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
+import { PageHeader, StatusBadge } from "@/design/components";
 import { CulturePostCard } from "@/components/culture/culture-post-card";
 import type { CultureFeedItem, CultureFeedModule, CultureFeedResponse } from "@/lib/culture/service";
 import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
@@ -166,8 +165,7 @@ function CultureDiscoveryGrid({ module }: { module: CultureFeedModule }) {
 export function ClientCultureScreen({
   feed,
   posts = [],
-  surface = "client",
-  paywallSummary
+  surface = "client"
 }: {
   feed?: CultureFeedResponse;
   posts?: ClientCulturePost[];
@@ -350,24 +348,25 @@ export function ClientCultureScreen({
   return (
     <div className="space-y-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]" data-testid="client-culture-screen">
       <section className="mx-auto max-w-2xl">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="bvr-section-label">Feed</p>
-            <h2 className="mt-1 text-2xl font-extrabold leading-tight text-white" data-display="true">Culture pulse</h2>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {pendingTopItems.length ? (
-              <button
-                type="button"
-                onClick={applyPendingTopItems}
-                className="rounded-full border border-[#e4f9b8]/30 bg-[#e4f9b8]/14 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#e4f9b8]"
-              >
-                New Culture posts
-              </button>
-            ) : null}
-            <StatusBadge tone={feedError ? "danger" : hasPosts ? "green" : "neutral"}>{feedError ? "Feed error" : hasPosts ? "Live feed" : "Empty"}</StatusBadge>
-          </div>
-        </div>
+        <PageHeader
+          className="mb-6"
+          label="Feed"
+          title="Culture pulse"
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              {pendingTopItems.length ? (
+                <button
+                  type="button"
+                  onClick={applyPendingTopItems}
+                  className="rounded-full border border-[#e4f9b8]/30 bg-[#e4f9b8]/14 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#e4f9b8]"
+                >
+                  New Culture posts
+                </button>
+              ) : null}
+              <StatusBadge tone={feedError ? "danger" : hasPosts ? "green" : "neutral"}>{feedError ? "Feed error" : hasPosts ? "Live feed" : "Empty"}</StatusBadge>
+            </div>
+          }
+        />
 
         {refreshError ? (
           <p className="mb-3 rounded-[18px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100" role="alert">
@@ -376,7 +375,9 @@ export function ClientCultureScreen({
         ) : null}
 
         <div className="space-y-4">
-          {paywallSummary ? <ClientPlanAccessCard summary={paywallSummary} compact /> : null}
+          {showDiscoveryModules ? feedModules.map((module) => (
+            <CultureDiscoveryGrid key={module.id} module={module} />
+          )) : null}
 
           {feedError ? (
             <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 p-5 text-sm text-red-100">
@@ -391,9 +392,6 @@ export function ClientCultureScreen({
                 feedSessionId={feedSessionId}
                 onPostVisibilityChange={updatePostVisibility}
               />
-              {showDiscoveryModules && index === 4 ? feedModules.map((module) => (
-                <CultureDiscoveryGrid key={module.id} module={module} />
-              )) : null}
             </div>
           )) : (
             <div className="rounded-[24px] border border-dashed border-white/12 bg-black/18 p-5 text-sm text-white/58">

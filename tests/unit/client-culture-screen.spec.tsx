@@ -137,7 +137,7 @@ describe("client culture screen", () => {
 
     expect(screen.getByText("Feed")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Culture pulse" })).toBeInTheDocument();
-    expect(screen.getByTestId("client-plan-access-card")).toBeInTheDocument();
+    expect(screen.queryByTestId("client-plan-access-card")).not.toBeInTheDocument();
     expect(screen.getByText("Live feed")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Culture" })).not.toBeInTheDocument();
     expect(screen.queryByText("Client Culture")).not.toBeInTheDocument();
@@ -249,7 +249,7 @@ describe("client culture screen", () => {
     expect(screen.getByText("Queued Culture post")).toBeInTheDocument();
   });
 
-  it("keeps full posts first and discovery modules lower in the feed only", () => {
+  it("promotes discovery modules to a top rail once enough posts exist", () => {
     const gridModule = discoveryModule();
     const fourPosts = ["post-1", "post-2", "post-3", "post-4"].map((id) => culturePost(id));
     const fivePosts = [...fourPosts, culturePost("post-5")];
@@ -279,12 +279,12 @@ describe("client culture screen", () => {
     }} />);
 
     expect(feedDomEntries(secondRender.container).map((entry) => entry.getAttribute("data-testid"))).toEqual([
+      "culture-discovery-grid",
       "culture-post-card",
       "culture-post-card",
       "culture-post-card",
       "culture-post-card",
-      "culture-post-card",
-      "culture-discovery-grid"
+      "culture-post-card"
     ]);
     expect(screen.queryByText(/Top Rated|rating|from \$45|Available Today|Near You/i)).not.toBeInTheDocument();
   });

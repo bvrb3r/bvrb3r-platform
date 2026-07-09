@@ -23,8 +23,8 @@ export function ThemeToggle({ className }: { className?: string }) {
         aria-pressed={!day}
         onClick={() => setTheme("night")}
         className={cn(
-          "inline-flex h-[34px] items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-bold transition",
-          !day ? "bg-[var(--bvr-green)] text-[var(--bvr-green-ink,#0a0a0c)]" : "text-[var(--text-muted)]"
+          "inline-flex h-[34px] items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold transition",
+          !day ? "bg-white/[0.12] text-[var(--text-primary,#f5f1e8)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary,#f5f1e8)]"
         )}
       >
         <Moon className="h-3.5 w-3.5" />
@@ -35,8 +35,8 @@ export function ThemeToggle({ className }: { className?: string }) {
         aria-pressed={day}
         onClick={() => setTheme("day")}
         className={cn(
-          "inline-flex h-[34px] items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-bold transition",
-          day ? "bg-[var(--bvr-green)] text-[var(--bvr-green-ink,#0a0a0c)]" : "text-[var(--text-muted)]"
+          "inline-flex h-[34px] items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold transition",
+          day ? "bg-white/[0.12] text-[var(--text-primary,#f5f1e8)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary,#f5f1e8)]"
         )}
       >
         <Sun className="h-3.5 w-3.5" />

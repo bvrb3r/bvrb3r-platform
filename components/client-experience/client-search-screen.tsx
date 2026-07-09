@@ -6,7 +6,6 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Clock3, RefreshCw, ShieldCheck, Star } from "lucide-react";
 import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
-import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
 import { ClientPrimarySearchBar } from "@/components/client-experience/client-primary-search-bar";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { ClientShopDiscoveryCard } from "@/components/client-experience/client-shop-discovery-card";
@@ -151,8 +150,7 @@ export function ClientSearchScreen({
   initialAvailability = "any",
   initialSpecialty = "",
   initialVerifiedOnly = false,
-  routeBase = "/search",
-  paywallSummary
+  routeBase = "/search"
 }: {
   mode?: "client" | "guest";
   clientId?: string;
@@ -478,7 +476,7 @@ export function ClientSearchScreen({
         title="Filters"
         subtitle={isGuest ? "All, Barbers, Shops." : "Tap once to tighten the search."}
       >
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 [&>*]:shrink-0">
           {isGuest ? (
             <>
               <FilterChip active={!prefersShopDiscovery && !hasActiveSearchQuery} onClick={() => router.replace("/discover?entry=guest")}>
@@ -527,8 +525,6 @@ export function ClientSearchScreen({
           </FilterChip>
         </div>
       </ClientSectionBlock>
-
-      {paywallSummary ? <ClientPlanAccessCard summary={paywallSummary} compact /> : null}
 
       {prefersShopDiscovery ? shopsSection : barbersSection}
       {prefersShopDiscovery ? barbersSection : shopsSection}

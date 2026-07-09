@@ -288,6 +288,60 @@ span {
   letter-spacing: 0.22em;
 }
 
+/* --- Polish & parity: opt-in calm layout utilities -----------------------
+   Purely additive. Screens opt into these to restore a single accent, a
+   40px section rhythm, and calmer surfaces — nothing references them unless
+   a className is added, so existing screens are unaffected. */
+
+/* 40px vertical rhythm between the major sections of a screen. */
+.bvr-stack-lg {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+/* One section = header + body, grouped with a tighter internal rhythm. */
+.bvr-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* Calm card — the quiet sibling of .bvr-glass-card: solid panel, soft edge,
+   restrained shadow, no competing accent glow. */
+.bvr-card-calm {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-2xl);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme="day"] .bvr-card-calm {
+  background: #ffffff;
+  border-color: rgba(20, 18, 15, 0.1);
+  box-shadow: var(--shadow-night-card);
+}
+
+/* Neutral chip — non-accent filter chip so only the active chip carries
+   Signal-Green. Pair with the accent classes on the selected state. */
+.bvr-chip-neutral {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--panel-edge);
+  background: rgba(245, 241, 232, 0.04);
+  color: var(--muted);
+  padding: 0.55rem 0.95rem;
+  font-size: 0.8rem;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.bvr-chip-neutral:hover {
+  color: var(--text);
+  border-color: rgba(245, 241, 232, 0.18);
+}
+
 .hide-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
