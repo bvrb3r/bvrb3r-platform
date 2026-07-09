@@ -1323,12 +1323,40 @@ function culturePostPersonalizationScore(post: CulturePostRow, lookups: LookupMa
   return score;
 }
 
+// Deterministic PRNG seeded from a string (xmur3 + a small mulberry-style step),
+// so a given feedSessionId always produces the same order — stable across pages
+// within a session, different across sessions.
+function seedFromString(seed: string) {
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return () => {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+}
+
+function seededShuffle<T>(items: T[], seed: string): T[] {
+  const rng = seedFromString(seed);
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 export function rankCultureFeedItems(
   posts: CulturePostRow[],
   lookups: LookupMaps = {},
-  signals: CulturePersonalizationSignals = emptyCulturePersonalizationSignals()
+  signals: CulturePersonalizationSignals = emptyCulturePersonalizationSignals(),
+  feedSessionId = ""
 ) {
-  return [...posts]
+  const ranked = [...posts]
     .filter((post) => !signals.suppressedPostIds.has(post.id))
     .sort((left, right) => {
       const scoreDelta = culturePostPersonalizationScore(right, lookups, signals) - culturePostPersonalizationScore(left, lookups, signals);
@@ -1343,6 +1371,18 @@ export function rankCultureFeedItems(
 
       return String(right.id).localeCompare(String(left.id));
     });
+
+  // Keep pagination stable (the created_at cursor still drives the SQL page) and
+  // preserve the promoted/followed/saved/liked head; only shuffle the recency tail
+  // (score 0) using the session seed, so the feed varies per session without
+  // duplicating or skipping items across pages.
+  if (!feedSessionId) {
+    return ranked;
+  }
+
+  const prioritized = ranked.filter((post) => culturePostPersonalizationScore(post, lookups, signals) > 0);
+  const recency = ranked.filter((post) => culturePostPersonalizationScore(post, lookups, signals) === 0);
+  return [...prioritized, ...seededShuffle(recency, feedSessionId)];
 }
 
 function discoveryItemImage(item: CultureFeedItem) {
@@ -2559,7 +2599,7 @@ export async function listCultureFeed(input: {
 
   const lookups = await loadFeedLookups(supabase, result.posts);
   const signals = await getCulturePersonalizationSignals(supabase, input.viewerProfileId);
-  const rankedPosts = rankCultureFeedItems(result.posts, lookups, signals);
+  const rankedPosts = rankCultureFeedItems(result.posts, lookups, signals, feedSessionId);
   const items = rankedPosts.map((post) => mapCulturePostToSafeFeedItem(post, lookups, signals));
 
   return {
