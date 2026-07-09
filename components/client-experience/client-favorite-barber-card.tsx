@@ -37,7 +37,7 @@ export function ClientFavoriteBarberCard({
 
   return (
     <article className="relative overflow-hidden rounded-[34px] border border-[#d9ff9e]/18 bg-[linear-gradient(180deg,rgba(19,24,12,0.96),rgba(8,8,8,0.99))] shadow-[0_28px_56px_rgba(0,0,0,0.24)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,255,0,0.14),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_28%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(196, 242, 78,0.14),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_28%)]" />
       <div className="relative grid gap-0 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <div className="relative min-h-[14rem] overflow-hidden border-b border-white/8 bg-[linear-gradient(145deg,rgba(163,255,69,0.42),rgba(255,255,255,0.12),rgba(8,8,8,0.98))] lg:border-b-0 lg:border-r">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.28),transparent_56%)]" />
@@ -56,7 +56,7 @@ export function ClientFavoriteBarberCard({
         <div className="p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 max-w-2xl">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[#d7ffab]">Favorite barber</p>
+              <p className="text-[10px] uppercase tracking-[0.24em] text-[#e4f9b8]">Favorite barber</p>
               <h3 className="mt-3 text-balance text-3xl font-semibold text-white sm:text-4xl" data-display="true">
                 {name}
               </h3>
@@ -67,7 +67,7 @@ export function ClientFavoriteBarberCard({
             <div className="rounded-[22px] border border-white/10 bg-black/25 px-4 py-3 text-right shadow-[0_14px_30px_rgba(0,0,0,0.18)]">
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/48">Rating</p>
               <p className="mt-2 flex items-center gap-1.5 text-base font-semibold text-white">
-                <Star className="h-4 w-4 fill-current text-[#d7ffab]" />
+                <Star className="h-4 w-4 fill-current text-[#e4f9b8]" />
                 {rating.toFixed(1)}
               </p>
             </div>
@@ -79,7 +79,7 @@ export function ClientFavoriteBarberCard({
               <p className="mt-3 text-sm leading-7 text-white/74">{headline}</p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/18 px-3 py-2 text-sm text-white/72">
-              <MapPin className="h-4 w-4 text-[#baff69]" />
+              <MapPin className="h-4 w-4 text-[#d9f985]" />
               {locationLabel}
             </div>
           </div>

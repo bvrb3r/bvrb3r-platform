@@ -175,10 +175,10 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
               <img
                 src={viewerPhotoUrl}
                 alt={user.name}
-                className="h-20 w-20 rounded-[26px] border border-white/10 object-cover shadow-[0_18px_36px_rgba(124,255,0,0.12)]"
+                className="h-20 w-20 rounded-[26px] border border-white/10 object-cover shadow-[0_18px_36px_rgba(196, 242, 78,0.12)]"
               />
             ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-[26px] border border-[#7CFF00]/20 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(15,15,15,0.96))] text-2xl font-semibold tracking-[0.18em] text-[#d7ffab] shadow-[0_18px_36px_rgba(124,255,0,0.12)]">
+              <div className="flex h-20 w-20 items-center justify-center rounded-[26px] border border-[#C4F24E]/20 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.18),rgba(15,15,15,0.96))] text-2xl font-semibold tracking-[0.18em] text-[#e4f9b8] shadow-[0_18px_36px_rgba(196, 242, 78,0.12)]">
                 {initialsForName(user.name)}
               </div>
             )}
@@ -191,12 +191,12 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <div className="inline-flex items-center gap-2 text-sm text-white/78"><UserRound className="h-4 w-4 text-[#baff69]" />Role and title</div>
+              <div className="inline-flex items-center gap-2 text-sm text-white/78"><UserRound className="h-4 w-4 text-[#d9f985]" />Role and title</div>
               <p className="mt-3 text-lg font-semibold text-white">{user.title}</p>
               <p className="mt-2 text-sm text-white/58">{user.email}</p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <div className="inline-flex items-center gap-2 text-sm text-white/78"><Building2 className="h-4 w-4 text-[#d7ffab]" />Location scope</div>
+              <div className="inline-flex items-center gap-2 text-sm text-white/78"><Building2 className="h-4 w-4 text-[#e4f9b8]" />Location scope</div>
               <p className="mt-3 text-lg font-semibold text-white">{visibleLocations.map((location) => location.name).join(" | ") || "No assigned locations"}</p>
               <p className="mt-2 text-sm text-white/58">Assigned footprint and default operating territory.</p>
             </div>
@@ -216,7 +216,7 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
                     {badgeBlocker ?? payoutBlocker ?? "Keep identity, payout posture, and guest communication confidence visible in one calm place."}
                   </p>
                 </div>
-                <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+                <ShieldCheck className="h-5 w-5 text-[#d9f985]" />
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -243,7 +243,7 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <span className="status-pill text-[#d7ffab]">
+                <span className="status-pill text-[#e4f9b8]">
                   {badgeGate?.allowed ? trustQuery.data?.publicBadgePreview?.[0] ?? "Verification visible" : "Verification restricted"}
                 </span>
                 <span className="status-pill text-white/72">
@@ -263,7 +263,7 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
                 <p className="mt-3 text-lg font-semibold">Channel controls</p>
                 <p className="mt-2 text-sm leading-6 text-white/60">Messaging alerts, reminders, and operational updates stay grounded in the existing notification preference system.</p>
               </div>
-              <BellRing className="h-5 w-5 text-[#baff69]" />
+              <BellRing className="h-5 w-5 text-[#d9f985]" />
             </div>
 
             <div className="mt-4 grid gap-3">
@@ -278,7 +278,7 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
                 return (
                   <label key={item.key} className="flex items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-black/20 px-4 py-3 text-sm text-white/72">
                     <span className="inline-flex items-center gap-2">
-                      <Icon className="h-4 w-4 text-[#baff69]" />
+                      <Icon className="h-4 w-4 text-[#d9f985]" />
                       {item.label}
                     </span>
                     <input
@@ -300,7 +300,7 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
                 <p className="mt-3 text-lg font-semibold">{permissions?.allows.length ?? 0} active capabilities</p>
                 <p className="mt-2 text-sm leading-6 text-white/60">Role boundaries remain visible so staff always know what sits inside this workspace.</p>
               </div>
-              <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+              <ShieldCheck className="h-5 w-5 text-[#d9f985]" />
             </div>
           </Card>
           {isBarber ? (
@@ -311,14 +311,14 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
                   <p className="mt-3 text-lg font-semibold">{barberCompensationModel === "booth_rent" ? "Independent chair revenue" : "Commission split visibility"}</p>
                   <p className="mt-2 text-sm leading-6 text-white/60">Barber-facing revenue settings stay readable without leaking owner-only financial configuration.</p>
                 </div>
-                <WalletCards className="h-5 w-5 text-[#baff69]" />
+                <WalletCards className="h-5 w-5 text-[#d9f985]" />
               </div>
 
               <div className="mt-4 rounded-[20px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Role posture</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <span className={`status-pill ${barberCompensationModel === "commission" ? "text-[#d7ffab]" : "text-white/72"}`}>Commission</span>
-                  <span className={`status-pill ${barberCompensationModel === "booth_rent" ? "text-[#d7ffab]" : "text-white/72"}`}>Booth rent</span>
+                  <span className={`status-pill ${barberCompensationModel === "commission" ? "text-[#e4f9b8]" : "text-white/72"}`}>Commission</span>
+                  <span className={`status-pill ${barberCompensationModel === "booth_rent" ? "text-[#e4f9b8]" : "text-white/72"}`}>Booth rent</span>
                   <span className="status-pill text-white/52">Freelance</span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-white/58">

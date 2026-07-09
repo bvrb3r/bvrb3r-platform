@@ -118,7 +118,7 @@ export function ProfilePhotoManagerCard({
             className="h-20 w-20 rounded-[24px] border border-white/10 object-cover shadow-[0_18px_34px_rgba(0,0,0,0.22)]"
           />
         ) : (
-          <div className="flex h-20 w-20 items-center justify-center rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(12,12,12,0.96))] text-xl font-semibold text-[#d7ffab]">
+          <div className="flex h-20 w-20 items-center justify-center rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.18),rgba(12,12,12,0.96))] text-xl font-semibold text-[#e4f9b8]">
             {fallbackLabel}
           </div>
         )}
@@ -186,7 +186,7 @@ export function GalleryManagerCard({
           onChange={(event) => setCaption(event.target.value)}
           maxLength={140}
           placeholder="Optional caption"
-          className="h-12 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/28"
+          className="h-12 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#c4f24e]/28"
         />
         <label className="flex h-12 items-center gap-3 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white/72">
           <input

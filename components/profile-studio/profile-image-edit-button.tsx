@@ -60,7 +60,7 @@ export function ProfileImageEditButton({
         type="button"
         aria-label={label}
         disabled={disabled}
-        className="absolute bottom-3 right-3 flex h-[52px] w-[52px] items-center justify-center rounded-full border-2 border-[#a3ff12] bg-[rgba(163,255,18,0.10)] text-[#a3ff12] shadow-[0_0_28px_rgba(163,255,18,0.25)] transition hover:bg-[rgba(163,255,18,0.16)] focus:outline-none focus:ring-2 focus:ring-[#a3ff12]/40 disabled:cursor-not-allowed disabled:opacity-50"
+        className="absolute bottom-3 right-3 flex h-[52px] w-[52px] items-center justify-center rounded-full border-2 border-[#c4f24e] bg-[rgba(196, 242, 78,0.10)] text-[#c4f24e] shadow-[0_0_28px_rgba(196, 242, 78,0.25)] transition hover:bg-[rgba(196, 242, 78,0.16)] focus:outline-none focus:ring-2 focus:ring-[#c4f24e]/40 disabled:cursor-not-allowed disabled:opacity-50"
         onClick={() => {
           if (uploadEnabled) {
             openFilePicker(inputRef.current);

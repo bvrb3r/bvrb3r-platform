@@ -111,7 +111,7 @@ export function OwnerGrowthWorkspace() {
             </p>
           </div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">
               <Sparkles className="h-4 w-4" />
               {promotions.filter((promotion) => promotion.availabilityState === "active").length} campaigns live
             </div>
@@ -129,8 +129,8 @@ export function OwnerGrowthWorkspace() {
             </>
           ) : (
             <>
-              <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                <p className="surface-label text-[#d7ffab]">Active campaigns</p>
+              <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4">
+                <p className="surface-label text-[#e4f9b8]">Active campaigns</p>
                 <p className="mt-3 text-3xl font-semibold" data-display="true">{promotions.filter((promotion) => promotion.availabilityState === "active").length}</p>
                 <p className="mt-2 text-sm text-white/62">Offers clients can use right now.</p>
               </div>
@@ -158,7 +158,7 @@ export function OwnerGrowthWorkspace() {
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Referrals and campaigns</p>
-            <Megaphone className="h-5 w-5 text-[#baff69]" />
+            <Megaphone className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {isInitialLoading ? (
@@ -182,7 +182,7 @@ export function OwnerGrowthWorkspace() {
               <div key={promotion.id} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="font-medium text-white">{promotion.name}</p>
-                  <span className="status-pill text-[#d7ffab]">{promotion.availabilityState}</span>
+                  <span className="status-pill text-[#e4f9b8]">{promotion.availabilityState}</span>
                 </div>
                 <p className="mt-2 text-sm text-white/58">{promotion.shopLabel} • {promotion.usageCount} redemptions • {promotion.discountType === "percent" ? `${promotion.discountValue}% off` : `${currency(promotion.discountValue)} off`}</p>
               </div>
@@ -193,7 +193,7 @@ export function OwnerGrowthWorkspace() {
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">BVR Points ROI</p>
-            <Target className="h-5 w-5 text-[#baff69]" />
+            <Target className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {isInitialLoading ? (
@@ -205,7 +205,7 @@ export function OwnerGrowthWorkspace() {
               </>
             ) : (
               <>
-                <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Issued points</p><p className="mt-3 text-2xl font-semibold">{points?.issuedPoints ?? 0}</p><p className="mt-2 text-sm text-white/62">{currency(points?.issuedInAppValue ?? 0)} in issued value.</p></div>
+                <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Issued points</p><p className="mt-3 text-2xl font-semibold">{points?.issuedPoints ?? 0}</p><p className="mt-2 text-sm text-white/62">{currency(points?.issuedInAppValue ?? 0)} in issued value.</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Redeemed / cash-out</p><p className="mt-3 text-2xl font-semibold">{points?.redeemedPoints ?? 0} / {points?.cashedOutPoints ?? 0}</p><p className="mt-2 text-sm text-white/58">{points?.redemptionRate ?? 0}% redeemed • {points?.cashoutRate ?? 0}% cashed out.</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Point liability</p><p className="mt-3 text-2xl font-semibold">{currency(points?.pointLiabilityValue ?? 0)}</p><p className="mt-2 text-sm text-white/58">{points?.pointLiabilityPoints ?? 0} points still outstanding.</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Reward cost rate</p><p className="mt-3 text-2xl font-semibold">{points?.rewardSpendRate ?? 0}%</p><p className="mt-2 text-sm text-white/58">{points?.fraudReviewRate ?? 0}% fraud review rate • {points?.reversalRate ?? 0}% reversals.</p></div>
@@ -219,7 +219,7 @@ export function OwnerGrowthWorkspace() {
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Retention signals</p>
-            <Users className="h-5 w-5 text-[#baff69]" />
+            <Users className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {isInitialLoading ? (
@@ -243,7 +243,7 @@ export function OwnerGrowthWorkspace() {
               <div key={client.clientId} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="font-medium text-white">{client.clientName}</p>
-                  <span className="status-pill text-[#d7ffab]">{client.loyaltySegment.replaceAll("_", " ")}</span>
+                  <span className="status-pill text-[#e4f9b8]">{client.loyaltySegment.replaceAll("_", " ")}</span>
                 </div>
                 <p className="mt-2 text-sm text-white/58">{client.completedVisits} completed visits • {currency(client.lifetimeValue)} lifetime value • Last visit {formatDate(client.lastVisitAt)}</p>
               </div>
@@ -254,9 +254,9 @@ export function OwnerGrowthWorkspace() {
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Growth opportunities</p>
-            <Sparkles className="h-5 w-5 text-[#baff69]" />
+            <Sparkles className="h-5 w-5 text-[#d9f985]" />
           </div>
-          <div className="mt-4 rounded-[24px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 p-4">
+          <div className="mt-4 rounded-[24px] border border-[#C4F24E]/16 bg-[#C4F24E]/8 p-4">
             <p className="text-sm leading-7 text-white/78">{growthInsight}</p>
           </div>
           <div className="mt-4 space-y-3">
@@ -265,7 +265,7 @@ export function OwnerGrowthWorkspace() {
                 <div key={window} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="font-medium text-white">Low coverage window</p>
-                    <span className="status-pill text-[#d7ffab]">{formatHour(window)}</span>
+                    <span className="status-pill text-[#e4f9b8]">{formatHour(window)}</span>
                   </div>
                   <p className="mt-2 text-sm text-white/58">A lighter appointment hour where a targeted promotion or walk-in push could lift same-day revenue.</p>
                 </div>
@@ -275,7 +275,7 @@ export function OwnerGrowthWorkspace() {
               <div key={barber.barberId} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="font-medium text-white">Promote {barber.barberName}</p>
-                  <span className="status-pill text-[#d7ffab]">{currency(barber.revenue)}</span>
+                  <span className="status-pill text-[#e4f9b8]">{currency(barber.revenue)}</span>
                 </div>
                 <p className="mt-2 text-sm text-white/58">{barber.followerCount} follows • reputation {barber.reputationScore.toFixed(1)} • best candidate for featured placement.</p>
               </div>

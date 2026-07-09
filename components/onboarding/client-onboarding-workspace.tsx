@@ -320,7 +320,7 @@ export function ClientOnboardingWorkspace({ step }: { step: ClientOnboardingStep
               <OptionSelect id="bookingTiming" label="Booking Timing" value={bookingTiming} options={CLIENT_BOOKING_TIMING_OPTIONS} onChange={setBookingTiming} />
               <OptionSelect id="searchPriority" label="Search Priority" value={searchPriority} options={CLIENT_SEARCH_PRIORITY_OPTIONS} onChange={setSearchPriority} />
               <OptionSelect id="firstBookingMission" label="First Booking Mission" value={firstBookingMission} options={CLIENT_FIRST_BOOKING_MISSION_OPTIONS} onChange={setFirstBookingMission} />
-              <div className="rounded-[22px] border border-[#A3FF12]/16 bg-[#A3FF12]/8 p-4 text-sm leading-7 text-white/70">
+              <div className="rounded-[22px] border border-[#C4F24E]/16 bg-[#C4F24E]/8 p-4 text-sm leading-7 text-white/70">
                 First action route: {firstBookingMission === "enter_client_home" ? "Enter Client Home" : "Find My First Cut"}
               </div>
               <Button type="submit" className="h-12 w-full" disabled={busy}>
@@ -328,10 +328,10 @@ export function ClientOnboardingWorkspace({ step }: { step: ClientOnboardingStep
               </Button>
             </form>
             {errorMessage ? <p className="mt-4 text-sm leading-7 text-[#ff8f8f]">{errorMessage}</p> : null}
-            {successMessage ? <p className="mt-4 text-sm leading-7 text-[#d7ffab]">{successMessage}</p> : null}
+            {successMessage ? <p className="mt-4 text-sm leading-7 text-[#e4f9b8]">{successMessage}</p> : null}
           </Card>
           <Card className="rounded-[34px] p-6 sm:p-8 lg:p-10">
-            <p className="surface-label text-[#d7ffab]">Booking ready gate</p>
+            <p className="surface-label text-[#e4f9b8]">Booking ready gate</p>
             <h2 className="mt-4 text-2xl font-semibold">Booking confirmation stays gated.</h2>
             <p className="mt-4 text-sm leading-7 text-white/62">
               First Booking Mission routes to discovery or Client Home. Final confirmation still requires a real barber or shop, service, time, policy acceptance, and payment method only when payment is required.
@@ -400,7 +400,7 @@ export function ClientOnboardingWorkspace({ step }: { step: ClientOnboardingStep
                 type="checkbox"
                 checked={trustRulesAccepted}
                 onChange={(event) => setTrustRulesAccepted(event.target.checked)}
-                className="mt-1 h-4 w-4 accent-[#A3FF12]"
+                className="mt-1 h-4 w-4 accent-[#C4F24E]"
                 required
               />
               <span>I accept the BVRB3R trust rules required before serious account and booking actions unlock.</span>
@@ -410,7 +410,7 @@ export function ClientOnboardingWorkspace({ step }: { step: ClientOnboardingStep
             </Button>
           </form>
           {errorMessage ? <p className="mt-4 text-sm leading-7 text-[#ff8f8f]">{errorMessage}</p> : null}
-          {successMessage ? <p className="mt-4 text-sm leading-7 text-[#d7ffab]">{successMessage}</p> : null}
+          {successMessage ? <p className="mt-4 text-sm leading-7 text-[#e4f9b8]">{successMessage}</p> : null}
         </Card>
         <OnboardingReadinessSummary result={readiness} title="Client readiness" sectionOrder={["account", "booking"]} />
       </div>

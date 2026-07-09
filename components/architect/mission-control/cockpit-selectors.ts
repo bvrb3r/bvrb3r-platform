@@ -41,7 +41,7 @@ export function toneForStatus(status: string | null | undefined): CockpitTone {
 }
 
 export const TONE_CLASSES: Record<CockpitTone, string> = {
-  pass: "border-[#A3FF12]/25 bg-[#A3FF12]/10 text-[#d7ffab]",
+  pass: "border-[#C4F24E]/25 bg-[#C4F24E]/10 text-[#e4f9b8]",
   warning: "border-amber-300/25 bg-amber-300/10 text-amber-100",
   review: "border-amber-300/22 bg-amber-300/8 text-amber-100",
   failed: "border-rose-400/25 bg-rose-400/10 text-rose-100",
@@ -50,7 +50,7 @@ export const TONE_CLASSES: Record<CockpitTone, string> = {
 };
 
 export const TONE_DOT: Record<CockpitTone, string> = {
-  pass: "#A3FF12",
+  pass: "#C4F24E",
   warning: "#fbbf24",
   review: "#fbbf24",
   failed: "#fb7185",

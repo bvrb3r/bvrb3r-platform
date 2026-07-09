@@ -25,7 +25,7 @@ export function ClientSectionBlock({
           <h2 className="mt-2 text-balance text-2xl font-extrabold leading-tight text-[var(--text-primary)] sm:text-3xl" data-display="true">{title}</h2>
           {subtitle ? <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{subtitle}</p> : null}
         </div>
-        {action ? <div className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)]">{action}<ChevronRight className="h-4 w-4 text-[#baff69]" /></div> : null}
+        {action ? <div className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)]">{action}<ChevronRight className="h-4 w-4 text-[#d9f985]" /></div> : null}
       </div>
       <div className="mt-4">{children}</div>
     </section>

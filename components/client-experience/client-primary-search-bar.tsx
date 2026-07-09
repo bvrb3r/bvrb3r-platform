@@ -60,7 +60,7 @@ export function ClientPrimarySearchBar({
               key={action.label}
               type="button"
               onClick={action.onSelect}
-              className="rounded-full border border-white/8 bg-black/20 px-3 py-2 text-white/72 transition hover:border-[#7CFF00]/18 hover:text-[#d7ffab]"
+              className="rounded-full border border-white/8 bg-black/20 px-3 py-2 text-white/72 transition hover:border-[#C4F24E]/18 hover:text-[#e4f9b8]"
             >
               {action.label}
             </button>

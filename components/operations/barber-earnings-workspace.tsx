@@ -125,7 +125,7 @@ function MoneyProgressRow({
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-white/8">
         <div
-          className="h-full rounded-full bg-[linear-gradient(90deg,rgba(124,255,0,0.92),rgba(201,255,147,0.88))] transition-[width] duration-500"
+          className="h-full rounded-full bg-[linear-gradient(90deg,rgba(196, 242, 78,0.92),rgba(201,255,147,0.88))] transition-[width] duration-500"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -430,8 +430,8 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
               Know what landed today, what is ready now, and what is paying out next without turning this into accounting software.
             </p>
           </div>
-          <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Checkout tab</p>
+          <div className="rounded-[24px] border border-[#c4f24e]/16 bg-[#c4f24e]/10 px-4 py-3 text-right">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">Checkout tab</p>
             <p className="mt-2 text-sm font-medium text-white">{currency(todayEarned)} today</p>
             <p className="mt-1 text-sm text-white/58">
               {money?.wallet.availableBalance
@@ -457,8 +457,8 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
           </>
         ) : (
           <>
-            <Card className="rounded-[28px] border-[#7cff00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.14),rgba(8,8,8,0.98))] p-5">
-              <p className="surface-label text-[#d7ffab]">Today earned</p>
+            <Card className="rounded-[28px] border-[#c4f24e]/16 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.14),rgba(8,8,8,0.98))] p-5">
+              <p className="surface-label text-[#e4f9b8]">Today earned</p>
               <p
                 className={`mt-4 text-[2.5rem] font-semibold tracking-[-0.05em] transition-transform duration-500 ${pulseTodayEarned ? "scale-[1.02] text-[#f1ffd7]" : ""}`}
                 data-display="true"
@@ -499,7 +499,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
               <p className="surface-label">Today goal</p>
               <p className="mt-2 text-sm text-white/58">A calm pace check built from real earnings and booked-guest progress.</p>
             </div>
-            <Target className="h-5 w-5 text-[#d7ffab]" />
+            <Target className="h-5 w-5 text-[#e4f9b8]" />
           </div>
 
           <div className="mt-5 space-y-4">
@@ -534,14 +534,14 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
               <p className="surface-label">Payout readiness</p>
               <p className="mt-2 text-sm text-white/58">See what is safe, what is next, and what instant speed costs before you tap anything.</p>
             </div>
-            <span className="status-pill text-[#d7ffab]">
+            <span className="status-pill text-[#e4f9b8]">
               {activePayout ? formatMoneyStatus(activePayout.status) : "standard ready"}
             </span>
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-[22px] border border-[#7cff00]/18 bg-[#7cff00]/8 p-4 xl:col-span-2">
-              <p className="surface-label text-[#d7ffab]">Next payout amount</p>
+            <div className="rounded-[22px] border border-[#c4f24e]/18 bg-[#c4f24e]/8 p-4 xl:col-span-2">
+              <p className="surface-label text-[#e4f9b8]">Next payout amount</p>
               <p className="mt-3 text-3xl font-semibold" data-display="true">
                 {currency(activePayout?.eligibleAmount ?? standardAvailable)}
               </p>
@@ -576,7 +576,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
                     {formatMoneyStatus(reason)}
                   </span>
                 ))
-              : <span className="status-pill text-[#d7ffab]">No active holds</span>}
+              : <span className="status-pill text-[#e4f9b8]">No active holds</span>}
           </div>
         </Card>
       </section>
@@ -588,12 +588,12 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
               <p className="surface-label">Weekly performance</p>
               <p className="mt-2 text-sm text-white/58">This week should tell you if the chair is climbing, cooling off, or leaving money on the table.</p>
             </div>
-            <TrendingUp className="h-5 w-5 text-[#baff69]" />
+            <TrendingUp className="h-5 w-5 text-[#d9f985]" />
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-[22px] border border-[#7cff00]/18 bg-[#7cff00]/8 p-4">
-              <p className="surface-label text-[#d7ffab]">Week earnings</p>
+            <div className="rounded-[22px] border border-[#c4f24e]/18 bg-[#c4f24e]/8 p-4">
+              <p className="surface-label text-[#e4f9b8]">Week earnings</p>
               <p className="mt-3 text-3xl font-semibold" data-display="true">{currency(growth?.weekRevenue ?? 0)}</p>
             </div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
@@ -616,7 +616,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
 
           <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4">
             <p className="surface-label">Insight</p>
-            <p className={`mt-3 text-xl font-semibold ${weeklyDelta >= 0 ? "text-[#d7ffab]" : "text-amber-200"}`}>
+            <p className={`mt-3 text-xl font-semibold ${weeklyDelta >= 0 ? "text-[#e4f9b8]" : "text-amber-200"}`}>
               {weeklyInsight}
             </p>
             <p className="mt-2 text-sm text-white/58">
@@ -634,13 +634,13 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
                 {opportunity?.detail ?? "As availability, repeat demand, and service mix grow, the best next earning move will stay visible here."}
               </p>
             </div>
-            <Clock3 className="h-5 w-5 text-[#d7ffab]" />
+            <Clock3 className="h-5 w-5 text-[#e4f9b8]" />
           </div>
 
           <div className="mt-5 rounded-[22px] border border-white/8 bg-black/20 p-4">
             <div className="flex flex-wrap gap-2">
               {overview?.status.nextAvailableAt ? (
-                <span className="status-pill text-[#d7ffab]">{formatDateTime(overview.status.nextAvailableAt)} open</span>
+                <span className="status-pill text-[#e4f9b8]">{formatDateTime(overview.status.nextAvailableAt)} open</span>
               ) : null}
               {topRepeatClientWithoutBooking ? (
                 <span className="status-pill text-white/72">{topRepeatClientWithoutBooking.clientName} ready to rebook</span>
@@ -653,7 +653,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
               <div className="mt-4">
                 <Link
                   href={opportunity.href}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/18 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/82 transition hover:border-[#7cff00]/18 hover:text-[#d7ffab] sm:text-[11px] sm:tracking-[0.22em]"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/18 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/82 transition hover:border-[#c4f24e]/18 hover:text-[#e4f9b8] sm:text-[11px] sm:tracking-[0.22em]"
                 >
                   {opportunity.cta}
                   <ArrowUpRight className="h-4 w-4" />
@@ -664,7 +664,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
 
           <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4">
             <p className="surface-label">Momentum</p>
-            <p className="mt-3 text-2xl font-semibold text-[#d7ffab]">{growth?.bestDayLabel ?? "Building history"}</p>
+            <p className="mt-3 text-2xl font-semibold text-[#e4f9b8]">{growth?.bestDayLabel ?? "Building history"}</p>
             <p className="mt-2 text-sm text-white/58">
               Best earning day {growth?.bestDayRevenue ? `${currency(growth.bestDayRevenue)} posted.` : "will appear once more revenue history builds."}
             </p>
@@ -678,7 +678,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
             <p className="surface-label">Earnings activity</p>
             <p className="mt-2 text-sm text-white/58">Completed cuts, tips, payouts, fees, booth rent, and reversals stay readable in one calm list.</p>
           </div>
-          <ReceiptText className="h-5 w-5 text-[#d7ffab]" />
+          <ReceiptText className="h-5 w-5 text-[#e4f9b8]" />
         </div>
 
         <div className="mt-4 space-y-3">
@@ -687,7 +687,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={`status-pill ${row.tone === "positive" ? "text-[#d7ffab]" : row.tone === "warning" ? "text-amber-200" : "text-white/72"}`}>
+                    <span className={`status-pill ${row.tone === "positive" ? "text-[#e4f9b8]" : row.tone === "warning" ? "text-amber-200" : "text-white/72"}`}>
                       {getTimelineKindLabel(row.kind)}
                     </span>
                     <p className="font-medium text-white">{row.label}</p>
@@ -695,7 +695,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
                   <p className="mt-2 text-sm text-white/58">{row.detail}</p>
                 </div>
                 <div className="text-right">
-                  <p className={`text-lg font-semibold ${row.tone === "positive" ? "text-[#d7ffab]" : row.tone === "warning" ? "text-amber-200" : "text-white"}`}>
+                  <p className={`text-lg font-semibold ${row.tone === "positive" ? "text-[#e4f9b8]" : row.tone === "warning" ? "text-amber-200" : "text-white"}`}>
                     {isNegativeMoneyKind(row.kind) ? "-" : "+"}{currency(row.amount)}
                   </p>
                   <p className="mt-1 text-sm text-white/48">{row.occurredAt ? formatDateTime(row.occurredAt) : "Live"}</p>
@@ -717,7 +717,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
               <p className="surface-label">Tax / fee visibility</p>
               <p className="mt-2 text-sm text-white/58">Visible enough to build trust, quiet enough to keep the screen money-focused.</p>
             </div>
-            <CircleDollarSign className="h-5 w-5 text-[#baff69]" />
+            <CircleDollarSign className="h-5 w-5 text-[#d9f985]" />
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -784,7 +784,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
               <p className="surface-label">Points cash-out</p>
               <p className="mt-2 text-sm text-white/58">Keep earned points visible without letting them compete with haircut money.</p>
             </div>
-            <WalletCards className="h-5 w-5 text-[#d7ffab]" />
+            <WalletCards className="h-5 w-5 text-[#e4f9b8]" />
           </div>
 
             <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
@@ -798,7 +798,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
                 </div>
                 <div className="text-right">
                   <p className="surface-label">Cash value</p>
-                  <p className="mt-3 text-2xl font-semibold text-[#d7ffab]">{currency(pointsBalance?.cashoutValue ?? 0)}</p>
+                  <p className="mt-3 text-2xl font-semibold text-[#e4f9b8]">{currency(pointsBalance?.cashoutValue ?? 0)}</p>
                   <p className="mt-2 text-sm text-white/58">In-app {currency(pointsBalance?.inAppValue ?? 0)}</p>
                 </div>
               </div>
@@ -819,7 +819,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
                   <span className="status-pill text-white/72">Requested {money.cashoutSummary.requested}</span>
                   <span className="status-pill text-white/72">Under review {money.cashoutSummary.underReview}</span>
                   <span className="status-pill text-white/72">Approved {money.cashoutSummary.approved}</span>
-                  <span className="status-pill text-[#d7ffab]">Paid {money.cashoutSummary.paid}</span>
+                  <span className="status-pill text-[#e4f9b8]">Paid {money.cashoutSummary.paid}</span>
                 </>
               ) : null}
             </div>
@@ -846,7 +846,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
                         <p className="mt-1 text-sm text-white/58">{entry.detail}</p>
                       </div>
                       <div className="text-right">
-                        <p className={`font-semibold ${entry.tone === "positive" ? "text-[#d7ffab]" : entry.tone === "warning" ? "text-amber-200" : "text-white/76"}`}>
+                        <p className={`font-semibold ${entry.tone === "positive" ? "text-[#e4f9b8]" : entry.tone === "warning" ? "text-amber-200" : "text-white/76"}`}>
                           {entry.amountLabel}
                         </p>
                         <p className="mt-1 text-xs uppercase tracking-[0.16em] text-white/42">{entry.statusLabel}</p>
@@ -869,18 +869,18 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
             <p className="surface-label">Quiet motivation</p>
             <p className="mt-2 text-sm text-white/58">Progress stays visible here without turning Checkout into dashboard noise.</p>
           </div>
-          <Sparkles className="h-5 w-5 text-[#d7ffab]" />
+          <Sparkles className="h-5 w-5 text-[#e4f9b8]" />
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-[22px] border border-[#7cff00]/18 bg-[#7cff00]/8 p-4">
-            <p className="surface-label text-[#d7ffab]">Best earning day</p>
+          <div className="rounded-[22px] border border-[#c4f24e]/18 bg-[#c4f24e]/8 p-4">
+            <p className="surface-label text-[#e4f9b8]">Best earning day</p>
             <p className="mt-3 text-2xl font-semibold">{growth?.bestDayLabel ?? "Building history"}</p>
             <p className="mt-2 text-sm text-white/62">{currency(growth?.bestDayRevenue ?? 0)}</p>
           </div>
           <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
             <p className="surface-label">This week vs last week</p>
-            <p className={`mt-3 text-2xl font-semibold ${weeklyDelta >= 0 ? "text-[#d7ffab]" : "text-amber-200"}`}>
+            <p className={`mt-3 text-2xl font-semibold ${weeklyDelta >= 0 ? "text-[#e4f9b8]" : "text-amber-200"}`}>
               {weeklyDelta >= 0 ? "+" : "-"}{currency(Math.abs(weeklyDelta))}
             </p>
             <p className="mt-2 text-sm text-white/58">{currency(growth?.previousWeekRevenue ?? 0)} last week baseline.</p>

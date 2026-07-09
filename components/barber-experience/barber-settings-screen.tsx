@@ -367,7 +367,7 @@ function StatusPill({ children, tone = "green" }: { children: ReactNode; tone?: 
     <span
       className={cn(
         "inline-flex min-h-7 items-center rounded-full border px-3 py-1 text-xs font-extrabold",
-        tone === "green" && "border-[#a3ff12]/25 bg-[#a3ff12]/12 text-[#a3ff12]",
+        tone === "green" && "border-[#c4f24e]/25 bg-[#c4f24e]/12 text-[#c4f24e]",
         tone === "amber" && "border-amber-300/28 bg-amber-300/10 text-amber-200",
         tone === "danger" && "border-red-400/28 bg-red-500/10 text-red-200",
         tone === "neutral" && "border-white/10 bg-white/[0.06] text-white/70"
@@ -380,7 +380,7 @@ function StatusPill({ children, tone = "green" }: { children: ReactNode; tone?: 
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-[#a3ff12]">
+    <p className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-[#c4f24e]">
       {children}
     </p>
   );
@@ -390,7 +390,7 @@ function CircleIcon({ icon: Icon, className }: { icon: LucideIcon; className?: s
   return (
     <span
       className={cn(
-        "inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#a3ff12]/25 bg-[#a3ff12]/10 text-[#a3ff12] shadow-[0_0_24px_rgba(163,255,18,0.16)]",
+        "inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#c4f24e]/25 bg-[#c4f24e]/10 text-[#c4f24e] shadow-[0_0_24px_rgba(196, 242, 78,0.16)]",
         className
       )}
     >
@@ -529,7 +529,7 @@ function TransactionReceiptModal({
       aria-labelledby="transaction-receipt-title"
       data-testid="transaction-receipt-modal"
     >
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)] sm:rounded-[28px] sm:p-6">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(196, 242, 78,0.12)] sm:rounded-[28px] sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <SectionLabel>Receipt</SectionLabel>
@@ -543,7 +543,7 @@ function TransactionReceiptModal({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/72 transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/72 transition hover:border-[#c4f24e]/35 hover:text-[#c4f24e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4f24e]/55"
             aria-label="Close receipt"
           >
             <XCircle className="h-5 w-5" aria-hidden="true" />
@@ -574,8 +574,8 @@ function TransactionReceiptModal({
             </div>
 
             {isBoothRentServicePayout ? (
-              <div className="rounded-[18px] border border-[#a3ff12]/18 bg-[#a3ff12]/8 p-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#a3ff12]">Booth rent barber</p>
+              <div className="rounded-[18px] border border-[#c4f24e]/18 bg-[#c4f24e]/8 p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#c4f24e]">Booth rent barber</p>
                 <p className="mt-2 text-sm font-bold leading-6 text-white/72">
                   Service payout goes to barber after BVRB3R fee. Booth rent is billed separately.
                 </p>
@@ -610,7 +610,7 @@ function TransactionReceiptModal({
                       <span className={cn(
                         "mt-1 h-3 w-3 shrink-0 rounded-full border",
                         item.tone === "green"
-                          ? "border-[#a3ff12] bg-[#a3ff12]"
+                          ? "border-[#c4f24e] bg-[#c4f24e]"
                           : item.tone === "danger"
                             ? "border-red-300 bg-red-300"
                             : item.tone === "amber"
@@ -649,7 +649,7 @@ function BusinessToolPanel({
       <button
         type="button"
         onClick={onBack}
-        className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 text-xs font-extrabold uppercase tracking-[0.16em] text-white/62 transition hover:border-[#a3ff12]/30 hover:text-[#a3ff12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
+        className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 text-xs font-extrabold uppercase tracking-[0.16em] text-white/62 transition hover:border-[#c4f24e]/30 hover:text-[#c4f24e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4f24e]/55"
       >
         <ChevronRight className="h-4 w-4 rotate-180" aria-hidden="true" />
         Back
@@ -683,7 +683,7 @@ function BusinessToolRow({
   const content = (
     <>
       {Icon ? (
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#a3ff12]/18 bg-[#a3ff12]/10 text-[#a3ff12]">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#c4f24e]/18 bg-[#c4f24e]/10 text-[#c4f24e]">
           <Icon className="h-4 w-4" aria-hidden="true" />
         </span>
       ) : null}
@@ -696,7 +696,7 @@ function BusinessToolRow({
     </>
   );
 
-  const className = "flex min-h-16 w-full items-center gap-3 rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-left transition hover:border-[#a3ff12]/25 hover:bg-white/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55";
+  const className = "flex min-h-16 w-full items-center gap-3 rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-left transition hover:border-[#c4f24e]/25 hover:bg-white/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4f24e]/55";
 
   return onClick ? (
     <button type="button" data-testid={testId} onClick={onClick} className={className}>
@@ -766,12 +766,12 @@ function SalesPulseChart({
 
   return (
     <section
-      className="overflow-hidden rounded-[20px] border border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.12),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+      className="overflow-hidden rounded-[20px] border border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(196, 242, 78,0.12),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
       data-testid="sales-pulse-section"
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#a3ff12]">Performance</p>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#c4f24e]">Performance</p>
           <h3 className="mt-2 text-xl font-black text-white">Sales Pulse</h3>
           <p className="mt-1 text-sm leading-5 text-white/56">Compare cash, card/app, and gross sales over time.</p>
         </div>
@@ -784,7 +784,7 @@ function SalesPulseChart({
               onClick={() => onRangeChange(option.key)}
               className={cn(
                 "rounded-full px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white/52 transition",
-                range === option.key && "bg-[#a3ff12] text-black shadow-[0_0_18px_rgba(163,255,18,0.2)]",
+                range === option.key && "bg-[#c4f24e] text-black shadow-[0_0_18px_rgba(196, 242, 78,0.2)]",
                 range !== option.key && "hover:bg-white/[0.06] hover:text-white"
               )}
             >
@@ -803,8 +803,8 @@ function SalesPulseChart({
           <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[#9fd7ff]" aria-hidden="true" />
           Card/App: {currency(centsToDollars(totals.cardAppCents))}
         </div>
-        <div className="rounded-[14px] border border-[#a3ff12]/18 bg-[#a3ff12]/10 px-3 py-2 text-sm font-black text-[#a3ff12]">
-          <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[#a3ff12]" aria-hidden="true" />
+        <div className="rounded-[14px] border border-[#c4f24e]/18 bg-[#c4f24e]/10 px-3 py-2 text-sm font-black text-[#c4f24e]">
+          <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[#c4f24e]" aria-hidden="true" />
           Gross: {currency(centsToDollars(totals.grossCents))}
         </div>
       </div>
@@ -819,8 +819,8 @@ function SalesPulseChart({
           >
             <defs>
               <linearGradient id="sales-pulse-gross-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#a3ff12" stopOpacity="0.24" />
-                <stop offset="100%" stopColor="#a3ff12" stopOpacity="0" />
+                <stop offset="0%" stopColor="#c4f24e" stopOpacity="0.24" />
+                <stop offset="100%" stopColor="#c4f24e" stopOpacity="0" />
               </linearGradient>
               <filter id="sales-pulse-glow" x="-20%" y="-20%" width="140%" height="140%">
                 <feGaussianBlur stdDeviation="3" result="blur" />
@@ -844,7 +844,7 @@ function SalesPulseChart({
             <path d={grossAreaPath} fill="url(#sales-pulse-gross-fill)" />
             <path d={pathFor("cashCents")} fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
             <path d={pathFor("cardAppCents")} fill="none" stroke="#9fd7ff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-            <path d={pathFor("grossCents")} fill="none" stroke="#a3ff12" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" filter="url(#sales-pulse-glow)" />
+            <path d={pathFor("grossCents")} fill="none" stroke="#c4f24e" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" filter="url(#sales-pulse-glow)" />
             {points.map((point, index) => (
               index % labelStep === 0 || index === points.length - 1 ? (
                 <text key={`${point.label}-${index}`} x={xFor(index)} y={chart.height - 14} textAnchor="middle" fill="rgba(255,255,255,0.42)" fontSize="10" fontWeight="800">
@@ -1857,8 +1857,8 @@ export function BarberSettingsScreen({
 
   return (
     <div className="relative space-y-6 overflow-hidden pb-4 text-white" data-testid="barber-settings-screen" data-more-modal-root="barber">
-      <div className="pointer-events-none absolute inset-x-[-4rem] top-[-8rem] h-72 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.12),transparent_32%)]" aria-hidden="true" />
-      <div className="pointer-events-none absolute inset-x-[-4rem] bottom-[-8rem] h-72 bg-[radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.07),transparent_34%)]" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-x-[-4rem] top-[-8rem] h-72 bg-[radial-gradient(circle_at_top_right,rgba(196, 242, 78,0.12),transparent_32%)]" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-x-[-4rem] bottom-[-8rem] h-72 bg-[radial-gradient(circle_at_bottom_center,rgba(196, 242, 78,0.07),transparent_34%)]" aria-hidden="true" />
 
       <div className="relative space-y-6">
         {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
@@ -2024,7 +2024,7 @@ export function BarberSettingsScreen({
               </div>
               );
             }) : hasAcceptedShopLink || recentConnectedShopLabel ? (
-              <div className="rounded-[24px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 p-5 text-sm leading-7 text-[#d7ffab]">
+              <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-5 text-sm leading-7 text-[#e4f9b8]">
                 Shop connected{recentConnectedShopLabel ? `: ${recentConnectedShopLabel}` : ""}. Owner team and shop-floor surfaces now read this relationship from the canonical membership.
               </div>
             ) : (
@@ -2047,7 +2047,7 @@ export function BarberSettingsScreen({
                 {hasPayoutAmount ? (
                   <>
                     <p className="mt-4 text-sm font-semibold text-white/54">Eligible balance</p>
-                    <p className="mt-2 text-4xl font-black tracking-[-0.05em] text-[#a3ff12] drop-shadow-[0_0_24px_rgba(163,255,18,0.22)]">
+                    <p className="mt-2 text-4xl font-black tracking-[-0.05em] text-[#c4f24e] drop-shadow-[0_0_24px_rgba(196, 242, 78,0.22)]">
                       {payoutCurrency(eligiblePayoutAmount)}
                     </p>
                     <p className="mt-2 text-sm text-white/48">
@@ -2154,7 +2154,7 @@ export function BarberSettingsScreen({
             </div>
             <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
               <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">App Payout Eligible</p>
-              <p className="mt-3 text-2xl font-black text-[#a3ff12]">{currency(appPayoutEligible)}</p>
+              <p className="mt-3 text-2xl font-black text-[#c4f24e]">{currency(appPayoutEligible)}</p>
               <p className="mt-2 text-sm text-white/56">Eligible balance excludes cash.</p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
@@ -2184,7 +2184,7 @@ export function BarberSettingsScreen({
                         onClick={() => setAvailabilityTab(tab)}
                         className={cn(
                           "min-h-10 rounded-full px-4 text-xs font-black uppercase tracking-[0.16em] transition",
-                          availabilityTab === tab ? "bg-[#a3ff12] text-black" : "text-white/56 hover:text-white"
+                          availabilityTab === tab ? "bg-[#c4f24e] text-black" : "text-white/56 hover:text-white"
                         )}
                       >
                         {tab === "hours" ? "Hours" : "Blocked Time"}
@@ -2200,8 +2200,8 @@ export function BarberSettingsScreen({
                           <StatusPill tone={day.schedule ? "green" : "neutral"}>{day.schedule ? "Open" : "Closed"}</StatusPill>
                         </div>
                       ))}
-                      <div className="rounded-[20px] border border-[#A3FF12]/18 bg-[#A3FF12]/[0.045] p-4">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Edit working hours</p>
+                      <div className="rounded-[20px] border border-[#C4F24E]/18 bg-[#C4F24E]/[0.045] p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Edit working hours</p>
                         <p className="mt-2 text-sm leading-6 text-white/58">
                           These fields use the existing barber activation availability endpoint so booking, search, and kiosk reads stay on the same schedule source.
                         </p>
@@ -2214,7 +2214,7 @@ export function BarberSettingsScreen({
                               className={cn(
                                 "min-h-11 rounded-2xl border text-xs font-black",
                                 availabilityDraft.days.includes(day.value)
-                                  ? "border-[#A3FF12]/55 bg-[#A3FF12] text-black"
+                                  ? "border-[#C4F24E]/55 bg-[#C4F24E] text-black"
                                   : "border-white/10 bg-white/[0.035] text-white/62"
                               )}
                             >
@@ -2239,7 +2239,7 @@ export function BarberSettingsScreen({
                           <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => setAvailabilityLocationMode("later")}>
                             Save hours only
                           </Button>
-                          <Button type="button" className="h-11 px-5 bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={activationAvailabilityMutation.isPending} onClick={() => void handleQuickSetAvailability()}>
+                          <Button type="button" className="h-11 px-5 bg-[#C4F24E] text-black hover:bg-[#b3e63a]" disabled={activationAvailabilityMutation.isPending} onClick={() => void handleQuickSetAvailability()}>
                             {activationAvailabilityMutation.isPending ? "Saving..." : "Save Changes"}
                           </Button>
                         </div>
@@ -2344,7 +2344,7 @@ export function BarberSettingsScreen({
                                   checked={checked as boolean}
                                   disabled={mediaMutation.isPending}
                                   onChange={(event) => void handleNotificationToggle(key as "inAppEnabled" | "smsEnabled" | "emailEnabled" | "pushEnabled", event.target.checked)}
-                                  className="h-4 w-4 rounded border-white/20 bg-black accent-[#a3ff12]"
+                                  className="h-4 w-4 rounded border-white/20 bg-black accent-[#c4f24e]"
                                   aria-label={`Toggle ${label}`}
                                 />
                               ) : <StatusPill tone="neutral">Soon</StatusPill>}
@@ -2367,7 +2367,7 @@ export function BarberSettingsScreen({
                         onClick={() => setTransactionFilter(filter)}
                         className={cn(
                           "min-h-9 rounded-full border px-3 text-[10px] font-black uppercase tracking-[0.16em] transition",
-                          transactionFilter === filter ? "border-[#a3ff12] bg-[#a3ff12] text-black" : "border-white/10 bg-black/24 text-white/56 hover:text-white"
+                          transactionFilter === filter ? "border-[#c4f24e] bg-[#c4f24e] text-black" : "border-white/10 bg-black/24 text-white/56 hover:text-white"
                         )}
                       >
                         {filter === "card" ? "Card/App" : formatStatusLabel(filter)}
@@ -2466,7 +2466,7 @@ export function BarberSettingsScreen({
                   <div className="flex flex-wrap gap-3 pt-3">
                     <Button type="button" variant="secondary" className="h-11 px-4" disabled={identitySessionMutation.isPending} onClick={() => void handleIdentityLaunch()}>{identitySessionMutation.isPending ? "Opening identity..." : "Start identity review"}</Button>
                     <Button type="button" className="h-11 px-4" onClick={() => setActiveBusinessPanel("verification-upload")}>Upload License</Button>
-                    <Link href="/activation-status" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-white transition hover:border-[#a3ff12]/25 hover:text-[#a3ff12]">Activation status</Link>
+                    <Link href="/activation-status" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-white transition hover:border-[#c4f24e]/25 hover:text-[#c4f24e]">Activation status</Link>
                   </div>
                 </div>
               ) : null}
@@ -2502,12 +2502,12 @@ export function BarberSettingsScreen({
               {activeBusinessTool === "account" && activeBusinessPanel === "account-profile" ? (
                 <BusinessToolPanel title="Profile" description="Private profile basics and profile-photo entry points." onBack={() => setActiveBusinessPanel(null)}>
                   <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
-                    <Avatar src={barberPhotoUrl} alt={`${user.name} avatar`} initials={getInitials(user.name)} className="h-20 w-20 border border-[#a3ff12]/40" />
+                    <Avatar src={barberPhotoUrl} alt={`${user.name} avatar`} initials={getInitials(user.name)} className="h-20 w-20 border border-[#c4f24e]/40" />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <BusinessToolRow title="Name" subtitle={user.name} />
                       <BusinessToolRow title="Email" subtitle={user.email} />
                       <BusinessToolRow title="Phone" subtitle={user.phone ?? "Not set"} />
-                      <Link href="/dashboard/barber/profile" className="inline-flex min-h-12 items-center justify-center rounded-[18px] border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-4 text-sm font-extrabold text-[#a3ff12]">Edit profile</Link>
+                      <Link href="/dashboard/barber/profile" className="inline-flex min-h-12 items-center justify-center rounded-[18px] border border-[#c4f24e]/35 bg-[#c4f24e]/10 px-4 text-sm font-extrabold text-[#c4f24e]">Edit profile</Link>
                     </div>
                   </div>
                 </BusinessToolPanel>
@@ -2526,7 +2526,7 @@ export function BarberSettingsScreen({
                       return (
                         <label key={item.key} className="flex min-h-12 items-center justify-between gap-3 rounded-[16px] border border-white/8 bg-black/24 px-4 text-sm font-bold text-white/74">
                           <span>{item.label}</span>
-                          <input type="checkbox" checked={checked as boolean} disabled={mediaMutation.isPending} onChange={(event) => void handleNotificationToggle(item.key as "inAppEnabled" | "smsEnabled" | "emailEnabled" | "pushEnabled", event.target.checked)} className="h-5 w-5 rounded border-white/20 bg-black accent-[#a3ff12]" aria-label={`Toggle ${item.label}`} />
+                          <input type="checkbox" checked={checked as boolean} disabled={mediaMutation.isPending} onChange={(event) => void handleNotificationToggle(item.key as "inAppEnabled" | "smsEnabled" | "emailEnabled" | "pushEnabled", event.target.checked)} className="h-5 w-5 rounded border-white/20 bg-black accent-[#c4f24e]" aria-label={`Toggle ${item.label}`} />
                         </label>
                       );
                     })}
@@ -2570,9 +2570,9 @@ export function BarberSettingsScreen({
                   </div>
 
                   {inlineServiceEditor ? (
-                    <div className="mt-5 space-y-4 rounded-[24px] border border-[#A3FF12]/18 bg-[#A3FF12]/[0.045] p-4">
+                    <div className="mt-5 space-y-4 rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/[0.045] p-4">
                       <div>
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">
                           {inlineServiceEditor.mode === "edit" ? "Edit Service" : "Add Service"}
                         </p>
                         <h3 className="mt-2 text-xl font-black text-white">
@@ -2639,7 +2639,7 @@ export function BarberSettingsScreen({
                               type="checkbox"
                               checked={inlineServiceEditor.draft.active}
                               onChange={(event) => updateInlineServiceDraft({ active: event.target.checked })}
-                              className="h-5 w-5 shrink-0 accent-[#A3FF12]"
+                              className="h-5 w-5 shrink-0 accent-[#C4F24E]"
                             />
                           </label>
                           <label className="flex min-h-20 items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/24 px-4 py-3 text-sm font-bold text-white/72">
@@ -2652,7 +2652,7 @@ export function BarberSettingsScreen({
                               checked={inlineServiceEditor.draft.active && inlineServiceEditor.draft.bookable}
                               disabled={!inlineServiceEditor.draft.active}
                               onChange={(event) => updateInlineServiceDraft({ bookable: event.target.checked })}
-                              className="h-5 w-5 shrink-0 accent-[#A3FF12] disabled:opacity-45"
+                              className="h-5 w-5 shrink-0 accent-[#C4F24E] disabled:opacity-45"
                             />
                           </label>
                         </div>
@@ -2684,7 +2684,7 @@ export function BarberSettingsScreen({
                           </Button>
                           <Button
                             type="button"
-                            className="h-11 px-5 bg-[#A3FF12] text-black hover:bg-[#8de300]"
+                            className="h-11 px-5 bg-[#C4F24E] text-black hover:bg-[#b3e63a]"
                             disabled={createServiceMutation.isPending || updateServiceMutation.isPending}
                             onClick={() => void handleInlineServiceSave()}
                           >
@@ -2779,7 +2779,7 @@ export function BarberSettingsScreen({
                         checked={checked as boolean}
                         disabled={mediaMutation.isPending}
                         onChange={(event) => void handleNotificationToggle(item.key as "inAppEnabled" | "smsEnabled" | "emailEnabled" | "pushEnabled", event.target.checked)}
-                        className="h-5 w-5 rounded border-white/20 bg-black accent-[#a3ff12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
+                        className="h-5 w-5 rounded border-white/20 bg-black accent-[#c4f24e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4f24e]/55"
                         aria-label={`Toggle ${item.label}`}
                       />
                     </label>
@@ -2806,10 +2806,10 @@ export function BarberSettingsScreen({
                     type="button"
                     onClick={() => setSelectedSubtype(option.subtype)}
                     className={cn(
-                      "rounded-[20px] border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55",
+                      "rounded-[20px] border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4f24e]/55",
                       selectedSubtype === option.subtype
-                        ? "border-[#a3ff12]/40 bg-[#a3ff12]/12 text-white shadow-[0_0_24px_rgba(163,255,18,0.12)]"
-                        : "border-white/8 bg-black/24 text-white/74 hover:border-[#a3ff12]/24 hover:text-white"
+                        ? "border-[#c4f24e]/40 bg-[#c4f24e]/12 text-white shadow-[0_0_24px_rgba(196, 242, 78,0.12)]"
+                        : "border-white/8 bg-black/24 text-white/74 hover:border-[#c4f24e]/24 hover:text-white"
                     )}
                   >
                     <p className="font-extrabold">{option.label}</p>
@@ -2899,7 +2899,7 @@ export function BarberSettingsScreen({
                 <Button type="button" variant="secondary" className="h-11 px-4" disabled={identitySessionMutation.isPending} onClick={() => void handleIdentityLaunch()}>
                   {identitySessionMutation.isPending ? "Opening identity..." : "Start identity review"}
                 </Button>
-                <Link href="/activation-status" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-white transition hover:border-[#a3ff12]/25 hover:text-[#a3ff12]">
+                <Link href="/activation-status" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-white transition hover:border-[#c4f24e]/25 hover:text-[#c4f24e]">
                   Activation status
                 </Link>
               </div>
@@ -3017,7 +3017,7 @@ export function BarberSettingsScreen({
               </div>
               <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
                 <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">App Payout Eligible</p>
-                <p className="mt-3 text-2xl font-black text-[#a3ff12]">{currency(appPayoutEligible)}</p>
+                <p className="mt-3 text-2xl font-black text-[#c4f24e]">{currency(appPayoutEligible)}</p>
                 <p className="mt-2 text-sm text-white/56">Eligible balance excludes cash.</p>
               </div>
               <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
@@ -3067,7 +3067,7 @@ export function BarberSettingsScreen({
                             ? "border-amber-300/30 bg-amber-300/10 text-amber-200"
                             : transaction.transactionType === "pos_request"
                               ? "border-white/10 bg-white/[0.04] text-white/56"
-                              : "border-[#a3ff12]/30 bg-[#a3ff12]/10 text-[#a3ff12]"
+                              : "border-[#c4f24e]/30 bg-[#c4f24e]/10 text-[#c4f24e]"
                         )}>
                           {transaction.paymentMethodLabel}
                         </span>
@@ -3215,7 +3215,7 @@ export function BarberSettingsScreen({
             {quickSetupModal === "service" ? (
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Quick setup</p>
                   <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Add your first service</h2>
                   <p className="mt-2 text-sm text-white/58">This creates a real marketplace service that can appear in booking, checkout, and your public profile.</p>
                 </div>
@@ -3225,7 +3225,7 @@ export function BarberSettingsScreen({
                       key={preset}
                       type="button"
                       onClick={() => setServiceDraft((current) => ({ ...current, name: preset }))}
-                      className="rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/8 px-3 py-2 text-xs font-extrabold text-[#A3FF12]"
+                      className="rounded-full border border-[#C4F24E]/30 bg-[#C4F24E]/8 px-3 py-2 text-xs font-extrabold text-[#C4F24E]"
                     >
                       {preset}
                     </button>
@@ -3251,12 +3251,12 @@ export function BarberSettingsScreen({
                     type="checkbox"
                     checked={serviceDraft.active}
                     onChange={(event) => setServiceDraft((current) => ({ ...current, active: event.target.checked }))}
-                    className="h-5 w-5 accent-[#A3FF12]"
+                    className="h-5 w-5 accent-[#C4F24E]"
                   />
                 </label>
                 <div className="flex gap-3">
                   <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
-                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={createServiceMutation.isPending} onClick={() => void handleQuickAddService()}>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#C4F24E] text-black hover:bg-[#b3e63a]" disabled={createServiceMutation.isPending} onClick={() => void handleQuickAddService()}>
                     Save service
                   </Button>
                 </div>
@@ -3266,7 +3266,7 @@ export function BarberSettingsScreen({
             {quickSetupModal === "availability" ? (
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Quick setup</p>
                   <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Set your working hours</h2>
                   <p className="mt-2 text-sm text-white/58">Set your hours first. Then choose where clients can book you.</p>
                 </div>
@@ -3280,7 +3280,7 @@ export function BarberSettingsScreen({
                       className={cn(
                         "min-h-11 rounded-2xl border text-xs font-black",
                         availabilityDraft.days.includes(day.value)
-                          ? "border-[#A3FF12]/55 bg-[#A3FF12] text-black"
+                          ? "border-[#C4F24E]/55 bg-[#C4F24E] text-black"
                           : "border-white/10 bg-white/[0.035] text-white/62"
                       )}
                     >
@@ -3316,11 +3316,11 @@ export function BarberSettingsScreen({
                           className={cn(
                             "flex min-h-16 items-center gap-3 rounded-2xl border p-3 text-left transition",
                             active
-                              ? "border-[#A3FF12]/55 bg-[#A3FF12]/10 text-white shadow-[0_0_24px_rgba(163,255,18,0.12)]"
-                              : "border-white/10 bg-white/[0.035] text-white/70 hover:border-[#A3FF12]/25"
+                              ? "border-[#C4F24E]/55 bg-[#C4F24E]/10 text-white shadow-[0_0_24px_rgba(196, 242, 78,0.12)]"
+                              : "border-white/10 bg-white/[0.035] text-white/70 hover:border-[#C4F24E]/25"
                           )}
                         >
-                          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#A3FF12]/10 text-[#A3FF12]">
+                          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#C4F24E]/10 text-[#C4F24E]">
                             <Icon className="h-4 w-4" aria-hidden="true" />
                           </span>
                           <span>
@@ -3378,8 +3378,8 @@ export function BarberSettingsScreen({
                             className={cn(
                               "w-full rounded-2xl border p-3 text-left transition",
                               selectedJoinShopId === shop.shopId
-                                ? "border-[#A3FF12]/55 bg-[#A3FF12]/10"
-                                : "border-white/10 bg-white/[0.035] hover:border-[#A3FF12]/25",
+                                ? "border-[#C4F24E]/55 bg-[#C4F24E]/10"
+                                : "border-white/10 bg-white/[0.035] hover:border-[#C4F24E]/25",
                               !shop.canRequest && !shop.alreadyAssigned && "opacity-60"
                             )}
                           >
@@ -3388,7 +3388,7 @@ export function BarberSettingsScreen({
                                 <span className="block text-sm font-black text-white">{shop.shopLabel}</span>
                                 <span className="mt-1 block text-xs text-white/52">{[shop.city, shop.state].filter(Boolean).join(", ") || "Location details pending"}</span>
                               </span>
-                              {selectedJoinShopId === shop.shopId ? <CheckCircle2 className="h-5 w-5 text-[#A3FF12]" aria-hidden="true" /> : <Send className="h-4 w-4 text-white/35" aria-hidden="true" />}
+                              {selectedJoinShopId === shop.shopId ? <CheckCircle2 className="h-5 w-5 text-[#C4F24E]" aria-hidden="true" /> : <Send className="h-4 w-4 text-white/35" aria-hidden="true" />}
                             </span>
                             <span className="mt-3 flex flex-wrap gap-2">
                               {shop.readinessLabels.map((label) => (
@@ -3413,7 +3413,7 @@ export function BarberSettingsScreen({
                 </div>
                 <div className="flex gap-3">
                   <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
-                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={activationAvailabilityMutation.isPending} onClick={() => void handleQuickSetAvailability()}>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#C4F24E] text-black hover:bg-[#b3e63a]" disabled={activationAvailabilityMutation.isPending} onClick={() => void handleQuickSetAvailability()}>
                     Save hours
                   </Button>
                 </div>
@@ -3428,7 +3428,7 @@ export function BarberSettingsScreen({
                 </div>
                 <div className="flex gap-3">
                   <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
-                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={activationMutation.isPending} onClick={() => void handleQuickTurnPublic()}>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#C4F24E] text-black hover:bg-[#b3e63a]" disabled={activationMutation.isPending} onClick={() => void handleQuickTurnPublic()}>
                     Turn Public
                   </Button>
                 </div>
@@ -3441,13 +3441,13 @@ export function BarberSettingsScreen({
                   <h2 className="text-2xl font-black tracking-[-0.04em] text-white">Accept bookings</h2>
                   <p className="mt-2 text-sm leading-6 text-white/58">This moves your live status to Active and lets the booking engine consider you once setup is complete.</p>
                 </div>
-                <div className="rounded-2xl border border-[#A3FF12]/22 bg-[#A3FF12]/8 p-4">
+                <div className="rounded-2xl border border-[#C4F24E]/22 bg-[#C4F24E]/8 p-4">
                   <p className="text-sm font-black text-white">Status preview</p>
-                  <p className="mt-1 text-lg font-black text-[#A3FF12]">Active / accepting bookings</p>
+                  <p className="mt-1 text-lg font-black text-[#C4F24E]">Active / accepting bookings</p>
                 </div>
                 <div className="flex gap-3">
                   <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
-                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={statusMutation.isPending} onClick={() => void handleQuickGoActive()}>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#C4F24E] text-black hover:bg-[#b3e63a]" disabled={statusMutation.isPending} onClick={() => void handleQuickGoActive()}>
                     Go active
                   </Button>
                 </div>
@@ -3483,7 +3483,7 @@ export function BarberSettingsScreen({
                         </Button>
                         <Button
                           type="button"
-                          className="min-h-11 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]"
+                          className="min-h-11 flex-1 rounded-2xl bg-[#C4F24E] text-black hover:bg-[#b3e63a]"
                           disabled={respondTeamInviteMutation.isPending || isResponding}
                           onClick={() => void handleTeamInviteResponse(invite.id, "accepted")}
                         >
@@ -3493,7 +3493,7 @@ export function BarberSettingsScreen({
                     </div>
                     );
                   }) : hasAcceptedShopLink || recentConnectedShopLabel ? (
-                    <div className="rounded-2xl border border-[#A3FF12]/18 bg-[#A3FF12]/8 p-4 text-sm leading-6 text-[#d7ffab]">
+                    <div className="rounded-2xl border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4 text-sm leading-6 text-[#e4f9b8]">
                       Shop connected{recentConnectedShopLabel ? `: ${recentConnectedShopLabel}` : ""}.
                     </div>
                   ) : (

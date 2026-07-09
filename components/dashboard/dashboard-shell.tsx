@@ -521,8 +521,8 @@ export function DashboardShell({
     <div className="bvr-screen app-screen safe-top-pad overflow-x-clip px-3 py-3 pb-[calc(env(safe-area-inset-bottom,0px)+6.5rem)] sm:px-4 sm:py-4 lg:px-5 lg:py-5 lg:pb-5">
       <div className="mx-auto grid max-w-[88rem] gap-5 lg:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[19rem_minmax(0,1fr)]">
         <Card className="hidden h-fit rounded-[34px] bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(8,8,8,0.98))] p-4 lg:sticky lg:top-4 lg:block">
-          <div className="rounded-[28px] border border-[#7CFF00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(124,255,0,0.04))] p-5">
-            <p className="surface-label text-[#cfff93]">Platform</p>
+          <div className="rounded-[28px] border border-[#C4F24E]/16 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(196, 242, 78,0.04))] p-5">
+            <p className="surface-label text-[#e0f6a0]">Platform</p>
             <h1 className="mt-3 text-3xl font-semibold" data-display="true" data-testid="shell-business-name">BVRB3R</h1>
             <p className="mt-4 text-sm text-white/64" data-testid="shell-identity-name">{workspaceSubtitle}</p>
             <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-white/40" data-testid="shell-identity-title">Unified dashboard</p>
@@ -531,7 +531,7 @@ export function DashboardShell({
           {showShellContext ? (
             <div className="mt-5 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(20,20,20,0.92),rgba(8,8,8,0.96))] p-4">
               <div className="flex items-start gap-3">
-                <div className="mt-1 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/10 p-2 text-[#d7ffab]">
+                <div className="mt-1 rounded-full border border-[#C4F24E]/18 bg-[#C4F24E]/10 p-2 text-[#e4f9b8]">
                   <ShieldCheck className="h-4 w-4" />
                 </div>
                 <div>
@@ -555,7 +555,7 @@ export function DashboardShell({
                         <p className="mt-3 text-2xl font-semibold" data-display="true">{card.value}</p>
                         <p className="mt-2 text-sm leading-6 text-white/58">{card.detail}</p>
                       </div>
-                      <Icon className="mt-1 h-5 w-5 text-[#baff69]" />
+                      <Icon className="mt-1 h-5 w-5 text-[#d9f985]" />
                     </div>
                   </div>
                 );
@@ -583,15 +583,15 @@ export function DashboardShell({
                     className={cn(
                       "group flex items-center justify-between rounded-[22px] border px-4 py-3 text-[11px] uppercase tracking-[0.22em] transition hover:-translate-y-0.5",
                       isActive
-                        ? "border-[#7CFF00]/28 bg-[linear-gradient(135deg,rgba(124,255,0,0.16),rgba(16,16,16,0.94))] text-white shadow-[0_18px_40px_rgba(124,255,0,0.08)]"
-                        : "border-white/6 bg-black/20 text-white/72 hover:border-[#7CFF00]/20 hover:bg-[#121212] hover:text-white"
+                        ? "border-[#C4F24E]/28 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.16),rgba(16,16,16,0.94))] text-white shadow-[0_18px_40px_rgba(196, 242, 78,0.08)]"
+                        : "border-white/6 bg-black/20 text-white/72 hover:border-[#C4F24E]/20 hover:bg-[#121212] hover:text-white"
                     )}
                   >
                     <span className="flex items-center gap-3">
-                      <Icon className={cn("h-4 w-4 transition", isActive ? "text-[#d7ffab]" : "text-[#baff69] group-hover:scale-105")} />
+                      <Icon className={cn("h-4 w-4 transition", isActive ? "text-[#e4f9b8]" : "text-[#d9f985] group-hover:scale-105")} />
                       {item.label}
                     </span>
-                    {isActive ? <ArrowUpRight className="h-4 w-4 text-[#d7ffab]" /> : <span className="h-1.5 w-1.5 rounded-full bg-white/12 transition group-hover:bg-[#7cff00]" />}
+                    {isActive ? <ArrowUpRight className="h-4 w-4 text-[#e4f9b8]" /> : <span className="h-1.5 w-1.5 rounded-full bg-white/12 transition group-hover:bg-[#c4f24e]" />}
                   </Link>
                 );
               })}
@@ -602,13 +602,13 @@ export function DashboardShell({
             <div className="mt-6 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(26,26,26,0.9),rgba(10,10,10,0.96))] p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="surface-label">{getLocationScopeLabel(user.role)}</p>
-                <MapPinned className="h-4 w-4 text-[#baff69]" />
+                <MapPinned className="h-4 w-4 text-[#d9f985]" />
               </div>
               <div className="mt-4 space-y-3 text-sm text-white/78">
                 {visibleLocations.length ? visibleLocations.map((location) => (
                   <div key={location.id} className="flex items-center justify-between gap-3 rounded-[20px] border border-white/6 bg-black/25 px-3 py-3">
                     <span>{location.name}</span>
-                    <span className="text-[10px] uppercase tracking-[0.22em] text-[#cfff93]">{location.city}</span>
+                    <span className="text-[10px] uppercase tracking-[0.22em] text-[#e0f6a0]">{location.city}</span>
                   </div>
                 )) : (
                   <div className="rounded-[20px] border border-dashed border-white/10 bg-black/25 px-3 py-3 text-white/52">
@@ -624,11 +624,11 @@ export function DashboardShell({
           <Card className="rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.98))] p-4">
             <div className="flex items-center justify-between gap-3">
               <Link href={nav[0]?.href ?? getDefaultRouteForUser(user)} className="flex min-w-0 items-center gap-3 text-white">
-                <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-[#7CFF00]/20 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(15,15,15,0.96))] text-sm font-semibold tracking-[0.22em] text-[#d7ffab] shadow-[0_16px_34px_rgba(124,255,0,0.14)]">
+                <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-[#C4F24E]/20 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.18),rgba(15,15,15,0.96))] text-sm font-semibold tracking-[0.22em] text-[#e4f9b8] shadow-[0_16px_34px_rgba(196, 242, 78,0.14)]">
                   BV
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] uppercase tracking-[0.26em] text-[#cfff93]">BVRB3R</p>
+                  <p className="text-[10px] uppercase tracking-[0.26em] text-[#e0f6a0]">BVRB3R</p>
                   <p className="mt-1 truncate text-sm font-medium text-white/74" data-testid="shell-mobile-business-name">{workspaceSubtitle}</p>
                 </div>
               </Link>
@@ -669,7 +669,7 @@ export function DashboardShell({
                     </div>
                     <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
                       <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-white/68">
-                        <Bell className="h-4 w-4 text-[#baff69]" />
+                        <Bell className="h-4 w-4 text-[#d9f985]" />
                         {getHeroNavigationCountLabel(user.role, nav.length)}
                       </div>
                       <p className="mt-3 text-sm leading-6 text-white/56">{getBoundaryCopy(user.role)}</p>
@@ -680,8 +680,8 @@ export function DashboardShell({
             </Card>
           ) : null}
           {showShellContext && approvalBanner ? (
-            <Card className="rounded-[30px] border border-[#cfff93]/18 bg-[linear-gradient(180deg,rgba(124,255,0,0.08),rgba(10,10,10,0.98))] p-5 sm:p-6">
-              <p className="surface-label text-[#d7ffab]">{approvalBanner.eyebrow}</p>
+            <Card className="rounded-[30px] border border-[#e0f6a0]/18 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.08),rgba(10,10,10,0.98))] p-5 sm:p-6">
+              <p className="surface-label text-[#e4f9b8]">{approvalBanner.eyebrow}</p>
               <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-3xl">
                   <p className="text-2xl font-semibold text-white">{approvalBanner.title}</p>
@@ -689,7 +689,7 @@ export function DashboardShell({
                 </div>
                 <Link
                   href={approvalBanner.href}
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#cfff93]/34 bg-[#7cff00]/10 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e8ffc2] transition hover:border-[#cfff93]/52 hover:bg-[#7cff00]/16"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#e0f6a0]/34 bg-[#c4f24e]/10 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e8ffc2] transition hover:border-[#e0f6a0]/52 hover:bg-[#c4f24e]/16"
                 >
                   {approvalBanner.ctaLabel}
                 </Link>
@@ -715,11 +715,11 @@ export function DashboardShell({
                   className={cn(
                     "flex min-h-12 min-w-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-[22px] border px-2.5 py-3 text-center transition sm:min-w-[5.5rem] sm:px-3",
                     isActive
-                      ? "border-[#7CFF00]/26 bg-[#7CFF00]/10 text-white"
-                      : "border-white/8 bg-black/18 text-white/66 hover:border-[#7CFF00]/20 hover:text-white"
+                      ? "border-[#C4F24E]/26 bg-[#C4F24E]/10 text-white"
+                      : "border-white/8 bg-black/18 text-white/66 hover:border-[#C4F24E]/20 hover:text-white"
                   )}
                 >
-                  <Icon className={cn("h-4 w-4", isActive ? "text-[#d7ffab]" : "text-[#baff69]")} />
+                  <Icon className={cn("h-4 w-4", isActive ? "text-[#e4f9b8]" : "text-[#d9f985]")} />
                   <span aria-hidden="true" className="max-w-full truncate text-[10px] font-semibold uppercase leading-none tracking-[0.14em] sm:tracking-[0.18em]">{item.mobileLabel ?? item.label}</span>
                 </Link>
               );

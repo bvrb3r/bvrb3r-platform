@@ -138,7 +138,7 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm text-white/68">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">
                 <ShieldCheck className="h-4 w-4" />
                 Live shop dashboard
               </div>
@@ -159,17 +159,17 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
               </>
             ) : (
               <>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                   <p className="surface-label">Needs attention now</p>
                   <p className="mt-3 text-3xl font-semibold" data-display="true">{(summary?.readyForCheckoutCount ?? 0) + walkIns.length + lateWatchCount}</p>
                   <p className="mt-2 text-sm text-white/58">Checkout waits, walk-ins, and late arrivals are the next floor actions.</p>
                 </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                   <p className="surface-label">Route walk-ins to</p>
                   <p className="mt-3 text-lg font-semibold">{availableBarbers.map((entry) => entry.name).join(", ") || "All chairs occupied"}</p>
                   <p className="mt-2 text-sm text-white/58">Available chairs update from live status changes and schedule flow.</p>
                 </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                   <p className="surface-label">Front desk pulse</p>
                   <p className="mt-3 text-3xl font-semibold" data-display="true">{frontDeskEvents.length}</p>
                   <p className="mt-2 text-sm text-white/58">Recent desk actions are mirrored here so the floor stays aligned.</p>
@@ -205,7 +205,7 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
               <p className="surface-label">Full shop schedule</p>
               <p className="mt-2 text-sm text-white/58">Scan booked, checked-in, in-service, completed, and cancelled tickets without leaving the floor view.</p>
             </div>
-            <span className="status-pill text-[#d7ffab]">{completedCount} completed today</span>
+            <span className="status-pill text-[#e4f9b8]">{completedCount} completed today</span>
           </div>
           <div className="mt-4 space-y-3">
             {isInitialLoading ? (
@@ -215,7 +215,7 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
                 <BoardRowSkeleton />
               </>
             ) : dayAppointments.length ? dayAppointments.slice(0, 8).map((appointment) => (
-              <div key={appointment.id} className="rounded-[26px] border border-white/8 bg-black/20 p-4 transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/30">
+              <div key={appointment.id} className="rounded-[26px] border border-white/8 bg-black/20 p-4 transition hover:-translate-y-0.5 hover:border-[#C4F24E]/16 hover:bg-black/30">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-lg font-semibold">{appointment.display.clientName}</p>
@@ -241,7 +241,7 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Barber utilization</p>
-            <UsersRound className="h-5 w-5 text-[#baff69]" />
+            <UsersRound className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {isInitialLoading ? (
@@ -251,13 +251,13 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
                 <UtilityCardSkeleton />
               </>
             ) : floorBarbers.length ? floorBarbers.map((entry) => (
-              <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+              <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="font-medium">{entry.name}</p>
                     <p className="mt-1 text-sm text-white/52">{getCompensationLabel(entry.compensationModel)}</p>
                   </div>
-                  <span className="status-pill text-[#d7ffab]">{entry.utilization}% utilized</span>
+                  <span className="status-pill text-[#e4f9b8]">{entry.utilization}% utilized</span>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <div className="rounded-[20px] border border-white/8 bg-black/25 p-3">
@@ -305,10 +305,10 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
                   <UtilityCardSkeleton />
                 </>
               ) : walkIns.length ? walkIns.map((entry) => (
-                <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+                <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">#{entry.position} • {entry.clientName}</p>
-                    <span className="status-pill text-[#d7ffab]">{entry.display.statusLabel}</span>
+                    <span className="status-pill text-[#e4f9b8]">{entry.display.statusLabel}</span>
                   </div>
                   <p className="mt-1 text-sm text-white/55">{entry.requestedService}</p>
                   <p className="mt-3 text-sm text-white/58">{entry.display.locationLabel}</p>
@@ -329,10 +329,10 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
                   <UtilityCardSkeleton />
                 </>
               ) : frontDeskEvents.length ? frontDeskEvents.map((event) => (
-                <div key={`${event.appointmentReference}-${event.createdAt}`} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+                <div key={`${event.appointmentReference}-${event.createdAt}`} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                   <p className="font-medium">{event.title}</p>
                   <p className="mt-1 text-sm text-white/55">{event.detail}</p>
-                  <p className="mt-3 text-[11px] uppercase tracking-[0.22em] text-[#cfff93]">Front desk | {formatActivityTimestamp(event.createdAt)}</p>
+                  <p className="mt-3 text-[11px] uppercase tracking-[0.22em] text-[#e0f6a0]">Front desk | {formatActivityTimestamp(event.createdAt)}</p>
                 </div>
               )) : (
                 <div className="empty-state-panel rounded-[24px] p-5 text-sm text-white/55">
@@ -346,7 +346,7 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Approvals and operational alerts</p>
-            <ClipboardCheck className="h-5 w-5 text-[#baff69]" />
+            <ClipboardCheck className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {isInitialLoading ? (

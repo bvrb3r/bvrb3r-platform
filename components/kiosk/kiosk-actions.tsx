@@ -111,11 +111,11 @@ export function KioskSettingsCard({
   return (
     <GlassCard className="p-5 sm:p-6">
       <div className="flex items-start gap-3">
-        <span className="rounded-[14px] border border-[#A3FF12]/20 bg-[#A3FF12]/10 p-3 text-[#A3FF12]">
+        <span className="rounded-[14px] border border-[#C4F24E]/20 bg-[#C4F24E]/10 p-3 text-[#C4F24E]">
           <TabletSmartphone className="h-5 w-5" />
         </span>
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Kiosk Settings</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Kiosk Settings</p>
           <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{title}</h2>
           <p className="mt-2 text-sm leading-6 text-white/58">{subtitle}</p>
         </div>

@@ -65,7 +65,7 @@ export function KioskControlPanel({
               : "Turn this device into a locked front-desk intake flow for bookings and walk-ins."}
           </p>
         </div>
-        <span className={`status-pill ${kioskDevice.isActive ? "text-[#d7ffab]" : "text-white/58"}`}>
+        <span className={`status-pill ${kioskDevice.isActive ? "text-[#e4f9b8]" : "text-white/58"}`}>
           {kioskDevice.isActive ? "Active on this device" : "Inactive"}
         </span>
       </div>
@@ -97,7 +97,7 @@ export function KioskControlPanel({
             <p className="mt-3 text-lg font-semibold text-white">{payload?.shop.shopName ?? selectedShopLabel ?? "Shop kiosk"}</p>
             <p className="mt-2 text-sm text-white/58">{payload?.shop.subtitle ?? "Check in or book your appointment"}</p>
           </div>
-          <div className="rounded-full border border-[#7CFF00]/16 bg-[#7CFF00]/8 p-3 text-[#d7ffab]">
+          <div className="rounded-full border border-[#C4F24E]/16 bg-[#C4F24E]/8 p-3 text-[#e4f9b8]">
             <TabletSmartphone className="h-5 w-5" />
           </div>
         </div>
@@ -159,7 +159,7 @@ export function KioskControlPanel({
         </Button>
         <Link
           href={resolvedShopId ? `/kiosk/${resolvedShopId}` : "#"}
-          className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
+          className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#c4f24e]/20 hover:text-[#e4f9b8] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
         >
           Preview
         </Link>
@@ -171,7 +171,7 @@ export function KioskControlPanel({
       </div>
 
       <div className="mt-4 rounded-[24px] border border-white/8 bg-black/18 p-4 text-sm text-white/62">
-        <div className="flex items-center gap-2 text-[#d7ffab]">
+        <div className="flex items-center gap-2 text-[#e4f9b8]">
           <LockKeyhole className="h-4 w-4" />
           Unlock requires staff sign-in
         </div>

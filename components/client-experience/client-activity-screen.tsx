@@ -33,7 +33,7 @@ function formatOccurredAt(iso: string) {
 
 function getToneClassName(tone: PointsActivityView["tone"]) {
   if (tone === "positive") {
-    return "border-[#d7ffab]/18 bg-[#d7ffab]/8 text-[#eaffcb]";
+    return "border-[#e4f9b8]/18 bg-[#e4f9b8]/8 text-[#eaffcb]";
   }
 
   if (tone === "warning") {
@@ -79,7 +79,7 @@ export function ClientActivityScreen() {
       <header className="overflow-hidden rounded-[34px] border border-[#d8ff9d]/16 bg-[linear-gradient(180deg,rgba(18,22,14,0.96),rgba(8,8,8,0.98))] p-5 shadow-[0_24px_48px_rgba(0,0,0,0.22)] sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[#cfff93]">Rewards</p>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-[#e0f6a0]">Rewards</p>
             <h1 className="mt-3 text-balance text-3xl font-semibold text-white sm:text-4xl" data-display="true">
               BVR Points, kept simple.
             </h1>
@@ -87,7 +87,7 @@ export function ClientActivityScreen() {
               This is the calm rewards hub: what you have, what it is worth, what is still unlocking, and what just moved through the ledger.
             </p>
           </div>
-          <div className="rounded-[24px] border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-4 py-4 text-right">
+          <div className="rounded-[24px] border border-[#e4f9b8]/16 bg-[#e4f9b8]/10 px-4 py-4 text-right">
             <p className="text-[10px] uppercase tracking-[0.2em] text-[#e8ffc2]">Balance</p>
             <p className="mt-2 text-3xl font-semibold text-white" data-display="true">{balance?.unlockedPoints ?? 0} pts</p>
             <p className="mt-2 text-sm text-white/72">{currency(balance?.inAppValue ?? 0)} in app</p>
@@ -106,8 +106,8 @@ export function ClientActivityScreen() {
           <ActivitySkeleton />
         ) : (
           <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-            <div className="rounded-[30px] border border-[#a8ff47]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(8,8,8,0.98))] p-5 shadow-[0_18px_36px_rgba(0,0,0,0.18)] sm:p-6">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Balance header</p>
+            <div className="rounded-[30px] border border-[#a8ff47]/16 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(8,8,8,0.98))] p-5 shadow-[0_18px_36px_rgba(0,0,0,0.18)] sm:p-6">
+              <p className="text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">Balance header</p>
               <h2 className="mt-3 text-4xl font-semibold text-white sm:text-5xl" data-display="true">
                 {balance?.unlockedPoints ?? 0} pts
               </h2>
@@ -131,7 +131,7 @@ export function ClientActivityScreen() {
               <div className="rounded-[28px] border border-white/8 bg-black/20 p-5">
                 <div className="flex items-center justify-between gap-3">
                   <p className="surface-label">Progress</p>
-                  <span className="status-pill text-[#d7ffab]">
+                  <span className="status-pill text-[#e4f9b8]">
                     {balance?.explanation.pointsToNextMilestone ?? 0} pts to go
                   </span>
                 </div>
@@ -140,7 +140,7 @@ export function ClientActivityScreen() {
                 </p>
                 <div className="mt-4 h-2 rounded-full bg-white/8">
                   <div
-                    className="h-2 rounded-full bg-[linear-gradient(90deg,#7cff00,#d7ffab)]"
+                    className="h-2 rounded-full bg-[linear-gradient(90deg,#c4f24e,#e4f9b8)]"
                     style={{ width: `${balance?.explanation.progressPercent ?? 0}%` }}
                   />
                 </div>
@@ -159,7 +159,7 @@ export function ClientActivityScreen() {
                 </p>
                 {latestPositiveActivity ? (
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <span className="status-pill text-[#d7ffab]">{latestPositiveActivity.amountLabel}</span>
+                    <span className="status-pill text-[#e4f9b8]">{latestPositiveActivity.amountLabel}</span>
                     <span className="status-pill text-white/72">{latestPositiveActivity.statusLabel}</span>
                   </div>
                 ) : null}
@@ -177,7 +177,7 @@ export function ClientActivityScreen() {
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <WalletCards className="h-4 w-4 text-[#baff69]" />
+              <WalletCards className="h-4 w-4 text-[#d9f985]" />
               Redeem
             </div>
             <p className="mt-3 text-lg font-semibold text-white">Use points on your next booking</p>
@@ -190,7 +190,7 @@ export function ClientActivityScreen() {
           </div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <Link2 className="h-4 w-4 text-[#d7ffab]" />
+              <Link2 className="h-4 w-4 text-[#e4f9b8]" />
               Refer
             </div>
             <p className="mt-3 text-lg font-semibold text-white">Keep the growth loop moving</p>
@@ -205,7 +205,7 @@ export function ClientActivityScreen() {
           </div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <Gift className="h-4 w-4 text-[#baff69]" />
+              <Gift className="h-4 w-4 text-[#d9f985]" />
               Activity
             </div>
             <p className="mt-3 text-lg font-semibold text-white">See the exact ledger trail</p>
@@ -213,7 +213,7 @@ export function ClientActivityScreen() {
             <div className="mt-4">
               <a
                 href="#points-activity"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/18 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/82 transition hover:border-[#7cff00]/18 hover:text-[#d7ffab] sm:text-[11px] sm:tracking-[0.22em]"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/18 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/82 transition hover:border-[#c4f24e]/18 hover:text-[#e4f9b8] sm:text-[11px] sm:tracking-[0.22em]"
               >
                 View activity
               </a>
@@ -235,7 +235,7 @@ export function ClientActivityScreen() {
               <ActivitySkeleton />
             </>
           ) : activity.length ? activity.map((item) => (
-            <article key={item.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/28">
+            <article key={item.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/28">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-white">{item.title}</p>

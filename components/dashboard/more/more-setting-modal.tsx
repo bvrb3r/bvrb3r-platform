@@ -172,13 +172,13 @@ export function MoreSettingModal({
         <div className="sticky top-0 z-20 border-b border-white/10 bg-black/80 p-5 backdrop-blur-xl sm:p-6">
           <button
             type="button"
-            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.045] text-white/70 hover:border-[#A3FF12]/30 hover:text-[#A3FF12]"
+            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.045] text-white/70 hover:border-[#C4F24E]/30 hover:text-[#C4F24E]"
             onClick={requestClose}
             aria-label={closeLabel}
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
-          <p className="pr-12 text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">{activeSpec.eyebrow}</p>
+          <p className="pr-12 text-xs font-black uppercase tracking-[0.2em] text-[#C4F24E]">{activeSpec.eyebrow}</p>
           <h2 id="more-setting-modal-title" className="mt-2 pr-12 text-3xl font-black tracking-[-0.045em] text-white">{activeSpec.title}</h2>
           <p className="mt-2 max-w-xl pr-12 text-sm leading-6 text-white/58">{activeSpec.helper}</p>
         </div>
@@ -202,7 +202,7 @@ export function MoreSettingModal({
             </div>
           ) : null}
           {error ? <p className="mt-4 rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">{error}</p> : null}
-          {success ? <p className="mt-4 rounded-[18px] border border-[#A3FF12]/25 bg-[#A3FF12]/10 p-4 text-sm font-semibold text-[#d7ffab]">{success}</p> : null}
+          {success ? <p className="mt-4 rounded-[18px] border border-[#C4F24E]/25 bg-[#C4F24E]/10 p-4 text-sm font-semibold text-[#e4f9b8]">{success}</p> : null}
         </div>
 
         <footer
@@ -222,7 +222,7 @@ export function MoreSettingModal({
               type="button"
               className={cn(
                 "min-h-12 rounded-full border px-5 text-sm font-extrabold",
-                canSave ? "border-[#A3FF12]/45 bg-[#A3FF12] text-black hover:bg-[#8de300]" : "border-white/10 bg-white/[0.04] text-white/34"
+                canSave ? "border-[#C4F24E]/45 bg-[#C4F24E] text-black hover:bg-[#b3e63a]" : "border-white/10 bg-white/[0.04] text-white/34"
               )}
               onClick={() => void handleSave()}
               disabled={!canSave || isSaving}

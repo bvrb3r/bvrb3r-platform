@@ -23,7 +23,7 @@ function MetricSkeleton() {
 function priorityTone(priority: ShopManagerSuggestion["priority"]) {
   switch (priority) {
     case "high":
-      return "text-[#d7ffab]";
+      return "text-[#e4f9b8]";
     case "medium":
       return "text-white/76";
     default:
@@ -75,7 +75,7 @@ export function ShopManagerPanel({
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.22em]">
-          <span className="status-pill text-[#d7ffab]">{payload?.mode ?? "assist"} mode</span>
+          <span className="status-pill text-[#e4f9b8]">{payload?.mode ?? "assist"} mode</span>
           <span className="status-pill text-white/56">{payload?.autoModeAvailable ? "Auto ready" : "Auto locked"}</span>
         </div>
       </div>
@@ -129,10 +129,10 @@ export function ShopManagerPanel({
           </>
         ) : payload?.suggestions.length ? (
           payload.suggestions.map((suggestion) => (
-            <div key={suggestion.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+            <div key={suggestion.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="rounded-full border border-white/8 bg-black/25 p-2 text-[#d7ffab]">
+                  <div className="rounded-full border border-white/8 bg-black/25 p-2 text-[#e4f9b8]">
                     {suggestion.priority === "high" ? <TriangleAlert className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                   </div>
                   <div>
@@ -150,7 +150,7 @@ export function ShopManagerPanel({
                   {suggestion.action.kind === "link" ? (
                     <a
                       href={suggestion.action.href}
-                      className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#cfff93]/40 bg-[linear-gradient(135deg,#7cff00_0%,#b7ff58_100%)] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(124,255,0,0.24)] transition hover:-translate-y-0.5 sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
+                      className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#e0f6a0]/40 bg-[linear-gradient(135deg,#c4f24e_0%,#d4f97a_100%)] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(196, 242, 78,0.24)] transition hover:-translate-y-0.5 sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
                     >
                       {suggestion.action.label}
                     </a>
@@ -161,7 +161,7 @@ export function ShopManagerPanel({
                   )}
                   {suggestion.safeAutomation ? (
                     <span className="inline-flex min-h-11 items-center rounded-full border border-white/8 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/60 sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
-                      <Sparkles className="mr-2 h-4 w-4 text-[#baff69]" />
+                      <Sparkles className="mr-2 h-4 w-4 text-[#d9f985]" />
                       Safe assist
                     </span>
                   ) : null}
@@ -177,7 +177,7 @@ export function ShopManagerPanel({
       </div>
 
       <div className="mt-4 rounded-[24px] border border-white/8 bg-black/18 p-4 text-sm text-white/62">
-        <p className="text-[#d7ffab]">Auto mode stays off by default.</p>
+        <p className="text-[#e4f9b8]">Auto mode stays off by default.</p>
         <p className="mt-2 leading-6">{payload?.autoModeReason ?? "Only safe, staff-approved automation lanes are eligible for future auto mode."}</p>
       </div>
     </Card>

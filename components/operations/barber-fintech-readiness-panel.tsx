@@ -95,7 +95,7 @@ export function BarberFintechReadinessPanel() {
           </p>
         </div>
         <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">
             <ShieldCheck className="h-4 w-4" />
             {operationalStatusLabel}
           </div>
@@ -135,7 +135,7 @@ export function BarberFintechReadinessPanel() {
                     {account.operationalStatus.replaceAll("_", " ")}
                   </p>
                 </div>
-                <span className="status-pill text-[#d7ffab]">{account.onboardingStatus.replaceAll("_", " ")}</span>
+                <span className="status-pill text-[#e4f9b8]">{account.onboardingStatus.replaceAll("_", " ")}</span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[20px] border border-white/8 bg-black/18 p-3">
@@ -203,7 +203,7 @@ export function BarberFintechReadinessPanel() {
                   <p className="surface-label">Legal actions</p>
                   <p className="mt-2 text-sm text-white/58">Record current agreement versions directly into the acceptance ledger.</p>
                 </div>
-                <BadgeDollarSign className="h-5 w-5 text-[#d7ffab]" />
+                <BadgeDollarSign className="h-5 w-5 text-[#e4f9b8]" />
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {(["platform_terms", "barber_agreement", "payout_tax_acknowledgment"] as const).map((agreementType) => {
@@ -230,7 +230,7 @@ export function BarberFintechReadinessPanel() {
                   <p className="surface-label">Routing snapshot</p>
                   <p className="mt-2 text-sm text-white/58">These numbers come from the payment routing ledger, not a payout estimate shortcut.</p>
                 </div>
-                <span className="status-pill text-[#d7ffab]">{currency(payload.routingSummary.readyForPayoutAmount)} ready</span>
+                <span className="status-pill text-[#e4f9b8]">{currency(payload.routingSummary.readyForPayoutAmount)} ready</span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[20px] border border-white/8 bg-black/18 p-3">
@@ -261,7 +261,7 @@ export function BarberFintechReadinessPanel() {
                   <p className="surface-label">Payout execution</p>
                   <p className="mt-2 text-sm text-white/58">Watch what has actually transferred, what reversed after refunds, and what is still blocked before it becomes a payout promise.</p>
                 </div>
-                <span className="status-pill text-[#d7ffab]">{currency(payoutsPayload?.summary.executedAmount ?? 0)} executed</span>
+                <span className="status-pill text-[#e4f9b8]">{currency(payoutsPayload?.summary.executedAmount ?? 0)} executed</span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-4">
                 <div className="rounded-[20px] border border-white/8 bg-black/18 p-3">
@@ -296,7 +296,7 @@ export function BarberFintechReadinessPanel() {
                           {execution.executionType.replaceAll("_", " ")} | {execution.reconciliationStatus.replaceAll("_", " ")}
                         </p>
                       </div>
-                      <span className="status-pill text-[#d7ffab]">{currency(execution.amount)}</span>
+                      <span className="status-pill text-[#e4f9b8]">{currency(execution.amount)}</span>
                     </div>
                     <p className="mt-3 text-sm text-white/58">{execution.failureReason ?? execution.blockedReason ?? "Execution is synced to the canonical payout ledger."}</p>
                   </div>
@@ -322,7 +322,7 @@ export function BarberFintechReadinessPanel() {
                           {membership.boothRentAmount !== null ? ` | ${currency(membership.boothRentAmount)} booth rent` : ""}
                         </p>
                       </div>
-                      <span className="status-pill text-[#d7ffab]">
+                      <span className="status-pill text-[#e4f9b8]">
                         {membership.shopAccount?.payoutReadinessStatus.replaceAll("_", " ") ?? "shop pending"}
                       </span>
                     </div>

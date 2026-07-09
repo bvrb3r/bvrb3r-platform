@@ -232,7 +232,7 @@ export function TeamWorkspace({
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">{getWorkspaceCopy(viewerRole)}</p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/68">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">
                 <Building2 className="h-4 w-4" />
                 {activeLocationLabels.join(" | ")}
               </div>
@@ -277,7 +277,7 @@ export function TeamWorkspace({
                 <p className="mt-3 text-3xl font-semibold" data-display="true">{bookedToday}</p>
                 <p className="mt-2 text-sm leading-6 text-white/60">Booked tickets still moving through today&apos;s lane.</p>
               </div>
-              <Clock3 className="h-5 w-5 text-[#baff69]" />
+              <Clock3 className="h-5 w-5 text-[#d9f985]" />
             </div>
           </Card>
           <Card className="rounded-[32px] p-6">
@@ -287,7 +287,7 @@ export function TeamWorkspace({
                 <p className="mt-3 text-3xl font-semibold" data-display="true">{liveServiceLoad}</p>
                 <p className="mt-2 text-sm leading-6 text-white/60">Checked-in or in-service appointments right now.</p>
               </div>
-              <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+              <ShieldCheck className="h-5 w-5 text-[#d9f985]" />
             </div>
           </Card>
           <Card className="rounded-[32px] p-6">
@@ -297,7 +297,7 @@ export function TeamWorkspace({
                 <p className="mt-3 text-3xl font-semibold" data-display="true">{completedToday}</p>
                 <p className="mt-2 text-sm leading-6 text-white/60">Work already closed across the team today.</p>
               </div>
-              <WalletCards className="h-5 w-5 text-[#baff69]" />
+              <WalletCards className="h-5 w-5 text-[#d9f985]" />
             </div>
           </Card>
         </div>
@@ -310,7 +310,7 @@ export function TeamWorkspace({
               <p className="surface-label">Team roster</p>
               <p className="mt-2 text-sm text-white/58">A real roster view of who is on the floor, what model they work under, and where the next chair pressure sits.</p>
             </div>
-            <span className="status-pill text-[#d7ffab]">Role-aware roster</span>
+            <span className="status-pill text-[#e4f9b8]">Role-aware roster</span>
           </div>
           <div className="mt-4 space-y-3">
             {isInitialLoading ? (
@@ -321,13 +321,13 @@ export function TeamWorkspace({
               </>
             ) : team.length ? (
               team.map((barber) => (
-                <div key={barber.id} className="rounded-[26px] border border-white/8 bg-black/20 p-5 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
+                <div key={barber.id} className="rounded-[26px] border border-white/8 bg-black/20 p-5 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-lg font-semibold text-white">{barber.name}</p>
                       <p className="mt-1 text-sm text-white/55">{formatCompensationLabel(barber.compensationModel)}</p>
                     </div>
-                    <span className="status-pill text-[#d7ffab]">{barber.statusLabel}</span>
+                    <span className="status-pill text-[#e4f9b8]">{barber.statusLabel}</span>
                   </div>
                   <p className="mt-3 text-sm text-white/60">{barber.statusDetail}</p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-4">
@@ -362,7 +362,7 @@ export function TeamWorkspace({
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Follow-up and desk pressure</p>
-            <Users className="h-5 w-5 text-[#baff69]" />
+            <Users className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {isInitialLoading ? (
@@ -376,7 +376,7 @@ export function TeamWorkspace({
                   key={item.id}
                   className={`rounded-[24px] border p-4 text-sm leading-7 ${
                     item.tone === "accent"
-                      ? "border-[#7CFF00]/16 bg-[#7CFF00]/8 text-white"
+                      ? "border-[#C4F24E]/16 bg-[#C4F24E]/8 text-white"
                       : "border-white/8 bg-black/20 text-white/62"
                   }`}
                 >
@@ -393,7 +393,7 @@ export function TeamWorkspace({
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
               href="/appointments"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#cfff93]/40 bg-[linear-gradient(135deg,#7cff00_0%,#b7ff58_100%)] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(124,255,0,0.24)] transition hover:-translate-y-0.5 sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#e0f6a0]/40 bg-[linear-gradient(135deg,#c4f24e_0%,#d4f97a_100%)] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(196, 242, 78,0.24)] transition hover:-translate-y-0.5 sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
             >
               Open full schedule
             </Link>

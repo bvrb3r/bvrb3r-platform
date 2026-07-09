@@ -63,7 +63,7 @@ function SearchEmptyState({
   href?: string;
   onAction?: () => void;
 }) {
-  const actionClassName = "mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#A3FF12]/28 bg-[#A3FF12]/10 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:border-[#A3FF12]/48 hover:bg-[#A3FF12]/15";
+  const actionClassName = "mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#C4F24E]/28 bg-[#C4F24E]/10 px-5 text-sm font-extrabold text-[#C4F24E] transition hover:border-[#C4F24E]/48 hover:bg-[#C4F24E]/15";
 
   return (
     <div className="rounded-[28px] border border-dashed border-white/10 bg-black/18 p-5">
@@ -107,25 +107,25 @@ function MarketplaceFeedCard({
   return (
     <Link
       href={profileHref}
-      className="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] shadow-[0_18px_38px_rgba(0,0,0,0.18)] transition hover:border-[#d7ffab]/18"
+      className="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] shadow-[0_18px_38px_rgba(0,0,0,0.18)] transition hover:border-[#e4f9b8]/18"
     >
       <div className="relative h-56 overflow-hidden">
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt={`${result.barberName} feed post`} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
-          <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(124,255,0,0.3),rgba(255,255,255,0.08),rgba(8,8,8,0.96))]" />
+          <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(196, 242, 78,0.3),rgba(255,255,255,0.08),rgba(8,8,8,0.96))]" />
         )}
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.12),transparent_42%,rgba(0,0,0,0.78))]" />
         <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/88">
           {verifiedLabel ? (
             <>
-              <ShieldCheck className="h-3.5 w-3.5 text-[#baff69]" />
+              <ShieldCheck className="h-3.5 w-3.5 text-[#d9f985]" />
               {verifiedLabel}
             </>
           ) : (
             <>
-              <Clock3 className="h-3.5 w-3.5 text-[#d7ffab]" />
+              <Clock3 className="h-3.5 w-3.5 text-[#e4f9b8]" />
               Latest work
             </>
           )}
@@ -446,14 +446,14 @@ export function ClientSearchScreen({
   return (
     <div className="space-y-4" data-testid="client-search-screen">
       <Card className="rounded-[34px] border-white/10 bg-[linear-gradient(180deg,rgba(17,17,17,0.96),rgba(6,6,6,0.98))] p-5 shadow-[0_26px_60px_rgba(0,0,0,0.24)] sm:p-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,255,0,0.12),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.06),transparent_26%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(196, 242, 78,0.12),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.06),transparent_26%)]" />
         <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <PageHeader
             title={isGuest ? "Guest Culture Feed" : "Find the right barber."}
             subtitle={isGuest ? "Discover barbers. See the culture. Book what you like." : "Search live barbers and shops."}
           />
           {isGuest ? (
-            <Link href="/signup?lane=client" className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#7cff00] px-5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-black transition hover:bg-[#b7ff58]">
+            <Link href="/signup?lane=client" className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#c4f24e] px-5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-black transition hover:bg-[#d4f97a]">
               Join BVRB3R
             </Link>
           ) : null}

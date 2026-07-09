@@ -133,7 +133,7 @@ export function CockpitHome({
             </div>
             <Link
               href="/architect"
-              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-[8px] border border-[#A3FF12]/28 bg-[#A3FF12]/12 px-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-[#A3FF12]/16"
+              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-[8px] border border-[#C4F24E]/28 bg-[#C4F24E]/12 px-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-[#C4F24E]/16"
             >
               Retry evidence collection
             </Link>

@@ -374,10 +374,10 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
   return (
     <div className="space-y-5" data-testid="client-workspace">
       <Card className="overflow-hidden rounded-[38px] border-white/10 bg-[linear-gradient(180deg,rgba(18,22,14,0.96),rgba(8,8,8,0.99))] p-5 shadow-[0_28px_60px_rgba(0,0,0,0.28)] sm:p-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,255,0,0.12),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_24%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(196, 242, 78,0.12),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_24%)]" />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[#d7ffab]">Client dashboard</p>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-[#e4f9b8]">Client dashboard</p>
             <h2 className="mt-3 text-balance text-3xl font-semibold sm:text-5xl" data-display="true">
               {getWindowCopy(engagementSummary?.intelligence.rebookingWindow)} for {firstName}.
             </h2>
@@ -385,7 +385,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
               Your dashboard now guides the next move for you: rebook with {favoriteBarberName}, keep an eye on live availability, and act on the reminders, rewards, and promotions already waiting in the system.
             </p>
             <div className="mt-5 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-white/58">
-              <span className="rounded-full border border-[#d7ffab]/20 bg-[#d7ffab]/10 px-3 py-2 text-[#e7ffc5]">
+              <span className="rounded-full border border-[#e4f9b8]/20 bg-[#e4f9b8]/10 px-3 py-2 text-[#e7ffc5]">
                 {engagementSummary ? `${engagementSummary.pointsBalance} loyalty points` : "Client intelligence"}
               </span>
               <span className="rounded-full border border-white/10 bg-black/20 px-3 py-2">
@@ -408,7 +408,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
             </div>
           </div>
           <div className="w-full max-w-sm rounded-[28px] border border-white/10 bg-black/24 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Next best action</p>
+            <p className="text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">Next best action</p>
             <p className="mt-3 text-xl font-semibold text-white">{engagementSummary?.intelligence.nextBestAction ?? "Lock your next chair."}</p>
             <p className="mt-3 text-sm leading-7 text-white/62">
               {engagementSummary?.intelligence.explanation
@@ -448,9 +448,9 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
               return (
                 <article key={item.id} className="w-[20rem] shrink-0 rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] p-5 shadow-[0_18px_36px_rgba(0,0,0,0.18)]">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">{item.eyebrow}</span>
+                    <span className="text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">{item.eyebrow}</span>
                     <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-white/68">
-                      <Icon className="h-3.5 w-3.5 text-[#baff69]" />
+                      <Icon className="h-3.5 w-3.5 text-[#d9f985]" />
                       {item.badge ?? item.kind}
                     </span>
                   </div>
@@ -536,7 +536,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
               <HistorySkeleton />
             </>
           ) : favoriteCandidates.length ? favoriteCandidates.map((candidate) => (
-            <div key={candidate.barberId} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/28">
+            <div key={candidate.barberId} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/28">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-lg font-semibold text-white">{candidate.barberName}</p>
@@ -607,7 +607,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                     Your wallet now stays visible alongside rewards and referrals, so booking discounts and progress are easy to understand before checkout.
                   </p>
                 </div>
-                <span className="rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#e8ffc2]">
+                <span className="rounded-full border border-[#e4f9b8]/16 bg-[#e4f9b8]/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#e8ffc2]">
                   {currency(pointsBalance?.inAppValue ?? 0)} value
                 </span>
               </div>
@@ -639,13 +639,13 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                       {pointsBalance?.explanation.unlockHint ?? "Pending rewards move into unlocked value after their validation window closes."}
                     </p>
                   </div>
-                  <span className="status-pill text-[#d7ffab]">
+                  <span className="status-pill text-[#e4f9b8]">
                     {pointsBalance?.explanation.valueAdvantageLabel ?? "In-app value stays stronger than cash-out."}
                   </span>
                 </div>
                 <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8">
                   <div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,rgba(124,255,0,0.92),rgba(201,255,147,0.88))] transition-[width] duration-500"
+                    className="h-full rounded-full bg-[linear-gradient(90deg,rgba(196, 242, 78,0.92),rgba(201,255,147,0.88))] transition-[width] duration-500"
                     style={{ width: `${pointsBalance?.explanation.progressPercent ?? 0}%` }}
                   />
                 </div>
@@ -666,7 +666,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                     Loyalty is no longer hidden in the backend. Claim what is unlocked, see what is next, and keep the next visit feeling earned.
                   </p>
                 </div>
-                <span className="rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#e8ffc2]">
+                <span className="rounded-full border border-[#e4f9b8]/16 bg-[#e4f9b8]/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#e8ffc2]">
                   {engagementSummary?.pointsBalance ?? 0} pts
                 </span>
               </div>
@@ -682,7 +682,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                             : `${Math.max(0, reward.pointsRequired - (engagementSummary?.pointsBalance ?? 0))} more points until this unlocks.`}
                         </p>
                       </div>
-                      <span className={`status-pill ${reward.unlocked ? "text-[#d7ffab]" : "text-white/68"}`}>
+                      <span className={`status-pill ${reward.unlocked ? "text-[#e4f9b8]" : "text-white/68"}`}>
                         {reward.pointsRequired} pts
                       </span>
                     </div>
@@ -699,7 +699,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                         </Button>
                       ) : null}
                       <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/62">
-                        <Ticket className="h-3.5 w-3.5 text-[#baff69]" />
+                        <Ticket className="h-3.5 w-3.5 text-[#d9f985]" />
                         {reward.unlocked ? "Redemption live" : "Progress tracked"}
                       </span>
                     </div>
@@ -725,7 +725,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                   </p>
                 </div>
                 {bookingsPayload?.membershipValue ? (
-                  <span className="status-pill text-[#d7ffab]">
+                  <span className="status-pill text-[#e4f9b8]">
                     {bookingsPayload.membershipValue.subscriptionStatus.replaceAll("_", " ")}
                   </span>
                 ) : null}
@@ -798,7 +798,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                     </p>
                   </div>
                   {latestInvoice ? (
-                    <span className={`status-pill ${latestInvoice.status === "paid" ? "text-[#d7ffab]" : latestInvoice.status === "failed" || latestInvoice.status === "past_due" ? "text-amber-200" : "text-white/72"}`}>
+                    <span className={`status-pill ${latestInvoice.status === "paid" ? "text-[#e4f9b8]" : latestInvoice.status === "failed" || latestInvoice.status === "past_due" ? "text-amber-200" : "text-white/72"}`}>
                       {latestInvoice.status.replaceAll("_", " ")}
                     </span>
                   ) : null}
@@ -829,7 +829,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                         <a
                           href={latestInvoice.hostedInvoiceUrl}
                           rel="noreferrer"
-                          className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#9bff2f]/45 px-5 text-[14px] font-semibold tracking-[-0.01em] text-[#d7ffab] transition duration-200 hover:border-[#b7ff58]/72 hover:bg-[#b7ff58]/8 hover:text-[#efffd4]"
+                          className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#9bff2f]/45 px-5 text-[14px] font-semibold tracking-[-0.01em] text-[#e4f9b8] transition duration-200 hover:border-[#d4f97a]/72 hover:bg-[#d4f97a]/8 hover:text-[#efffd4]"
                         >
                           Open invoice
                         </a>
@@ -853,7 +853,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                     {referralSummary?.shareMessage ?? "Share your code where the motivation is highest so referrals turn into future points and discovery growth."}
                   </p>
                 </div>
-                <span className="rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#e8ffc2]">
+                <span className="rounded-full border border-[#e4f9b8]/16 bg-[#e4f9b8]/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#e8ffc2]">
                   {referralSummary?.totals.rewardPointsEarned ?? 0} pts earned
                 </span>
               </div>
@@ -897,7 +897,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                     Strong reviews, favorite-barber history, and repeat-booking signals are already shaping what this app prioritizes for you.
                   </p>
                 </div>
-                <span className="status-pill text-[#d7ffab]">
+                <span className="status-pill text-[#e4f9b8]">
                   {lockedRewards.length ? `${lockedRewards[0].pointsRequired - (engagementSummary?.pointsBalance ?? 0)} pts to next reward` : "Reward lane active"}
                 </span>
               </div>
@@ -945,7 +945,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                 <HistorySkeleton />
               </>
             ) : bookingsPayload?.history.length ? bookingsPayload.history.slice(0, 4).map((appointment) => (
-              <div key={appointment.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/28">
+              <div key={appointment.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/28">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-white">{appointment.view?.service?.name ?? "Completed service"}</p>
@@ -1002,7 +1002,7 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
                 <HistorySkeleton />
               </>
             ) : unreadNotifications.length ? unreadNotifications.map((notification) => (
-              <div key={notification.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/28">
+              <div key={notification.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/28">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-white">{notification.title}</p>

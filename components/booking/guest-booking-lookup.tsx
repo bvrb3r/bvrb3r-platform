@@ -35,7 +35,7 @@ export function GuestBookingLookup({
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <Card className="rounded-[34px] p-6 sm:p-8">
-        <p className="surface-label text-[#d7ffab]">Booking lookup</p>
+        <p className="surface-label text-[#e4f9b8]">Booking lookup</p>
         <h1 className="mt-3 text-3xl font-semibold text-white sm:text-5xl" data-display="true">
           Find booking support without exposing private data.
         </h1>
@@ -72,10 +72,10 @@ export function GuestBookingLookup({
             <Button className="min-h-12 px-5" disabled={!canSubmit}>
               Check booking
             </Button>
-            <a href={supportHref} className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+            <a href={supportHref} className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8]">
               Contact support
             </a>
-            <Link href="/discover?entry=guest" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+            <Link href="/discover?entry=guest" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8]">
               Back to marketplace
             </Link>
           </div>

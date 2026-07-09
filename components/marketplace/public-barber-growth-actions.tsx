@@ -10,8 +10,8 @@ import { useBarberFollowState, useFollowBarberMutation, useUnfollowBarberMutatio
 import { useMarketplaceAnalyticsMutation, type MarketplaceApiError } from "@/lib/marketplace/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
-const actionButtonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.045] px-4 py-2 text-sm font-bold text-white transition hover:border-[#a3ff12]/35 hover:bg-white/[0.075] hover:text-[#d7ffab] disabled:pointer-events-none disabled:opacity-55";
-const primaryActionButtonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#a3ff12]/45 bg-[#a3ff12] px-4 py-2 text-sm font-black text-black shadow-[0_14px_36px_rgba(163,255,18,0.2)] transition hover:bg-[#d7ffab] disabled:pointer-events-none disabled:opacity-55";
+const actionButtonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.045] px-4 py-2 text-sm font-bold text-white transition hover:border-[#c4f24e]/35 hover:bg-white/[0.075] hover:text-[#e4f9b8] disabled:pointer-events-none disabled:opacity-55";
+const primaryActionButtonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#c4f24e]/45 bg-[#c4f24e] px-4 py-2 text-sm font-black text-black shadow-[0_14px_36px_rgba(196, 242, 78,0.2)] transition hover:bg-[#e4f9b8] disabled:pointer-events-none disabled:opacity-55";
 
 export function PublicBarberGrowthActions({ barberId, username, canFollow, initialFollowerCount }: { barberId: string; username: string; canFollow: boolean; initialFollowerCount: number; }) {
   const followStateQuery = useBarberFollowState(barberId, canFollow);
@@ -132,7 +132,7 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, initi
             {isSaved ? "Saved" : favoriteMutation.isPending ? "Saving..." : "Save"}
           </button>
         ) : null}
-        <span className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-4 text-sm font-bold text-[#d7ffab]">
+        <span className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#c4f24e]/20 bg-[#c4f24e]/10 px-4 text-sm font-bold text-[#e4f9b8]">
           <Sparkles className="h-4 w-4" />
           {followerCount} {followerCount === 1 ? "follower" : "followers"}
         </span>

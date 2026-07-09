@@ -1166,10 +1166,10 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
     return (
       <div className="mx-auto max-w-3xl">
         <Card className="rounded-[34px] p-6 sm:p-8">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[#7CFF00]/24 bg-[#7CFF00]/12 text-[#d7ffab]">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[#C4F24E]/24 bg-[#C4F24E]/12 text-[#e4f9b8]">
             <CheckCircle2 className="h-7 w-7" />
           </div>
-          <p className="mt-6 surface-label text-[#d7ffab]">Appointment booked</p>
+          <p className="mt-6 surface-label text-[#e4f9b8]">Appointment booked</p>
           <h2 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">
             You are on the books.
           </h2>
@@ -1193,9 +1193,9 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                 {showLocationDetail ? <span className="mt-1 block text-white/58">{selectedLocationDetail}</span> : null}
               </span>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 px-4 py-3">
               <span>Total</span>
-              <span className="font-semibold text-[#d7ffab]">{currency(displayedQuote.grandTotal)}</span>
+              <span className="font-semibold text-[#e4f9b8]">{currency(displayedQuote.grandTotal)}</span>
             </div>
           </div>
           <p className="mt-5 text-sm leading-7 text-white/62">
@@ -1208,28 +1208,28 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
           <div className="mt-7 grid gap-3 sm:grid-cols-3">
             {isGuestMode ? (
               <>
-                <Link href={bookingLookupHref} className="inline-flex h-12 items-center justify-center rounded-full bg-[#7CFF00] px-5 text-sm font-semibold text-black transition hover:bg-[#baff69]">
+                <Link href={bookingLookupHref} className="inline-flex h-12 items-center justify-center rounded-full bg-[#C4F24E] px-5 text-sm font-semibold text-black transition hover:bg-[#d9f985]">
                   Look up booking
                 </Link>
-                <a href={supportHref} className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                <a href={supportHref} className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8]">
                   Contact support
                 </a>
-                <Link href={accountHref} className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                <Link href={accountHref} className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8]">
                   Create or sign in
                 </Link>
-                <Link href="/discover?entry=guest" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab] sm:col-span-3">
+                <Link href="/discover?entry=guest" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8] sm:col-span-3">
                   Back to marketplace
                 </Link>
               </>
             ) : (
               <>
-                <Link href="/dashboard/client/activity" className="inline-flex h-12 items-center justify-center rounded-full bg-[#7CFF00] px-5 text-sm font-semibold text-black transition hover:bg-[#baff69]">
+                <Link href="/dashboard/client/activity" className="inline-flex h-12 items-center justify-center rounded-full bg-[#C4F24E] px-5 text-sm font-semibold text-black transition hover:bg-[#d9f985]">
                   View Appointment
                 </Link>
-                <Link href="/dashboard/client/messages" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                <Link href="/dashboard/client/messages" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8]">
                   Message Barber
                 </Link>
-                <Link href="/dashboard/client" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                <Link href="/dashboard/client" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8]">
                   Back Home
                 </Link>
               </>
@@ -1265,7 +1265,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                   className={cn(
                     "rounded-full border px-3 py-2 text-left transition",
                     isActive || isComplete
-                      ? "border-[#7CFF00]/24 bg-[#7CFF00]/10 text-[#d7ffab]"
+                      ? "border-[#C4F24E]/24 bg-[#C4F24E]/10 text-[#e4f9b8]"
                       : "border-white/8 bg-black/25 text-white/48"
                   )}
                   onClick={() => {
@@ -1291,13 +1291,13 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
           {bookingStep === "service" ? (
             <section className="mt-5 space-y-5" aria-labelledby="booking-service-step">
               <div>
-                <p className="surface-label text-[#d7ffab]">Step 1</p>
+                <p className="surface-label text-[#e4f9b8]">Step 1</p>
                 <h3 id="booking-service-step" className="mt-2 text-2xl font-semibold text-white">Choose service</h3>
                 <p className="mt-2 text-sm text-white/58">Choose an active online-bookable service. Blocked services explain what needs attention.</p>
               </div>
 
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label text-[#d7ffab]">Booking with</p>
+                <p className="surface-label text-[#e4f9b8]">Booking with</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div>
                     <p className="text-lg font-semibold text-white">{clientFacingBarberName}</p>
@@ -1329,9 +1329,9 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                         className={cn(
                           "rounded-[24px] border p-4 text-left transition",
                           selected
-                            ? "border-[#7CFF00]/34 bg-[#7CFF00]/10 shadow-[0_16px_30px_rgba(124,255,0,0.08)]"
+                            ? "border-[#C4F24E]/34 bg-[#C4F24E]/10 shadow-[0_16px_30px_rgba(196, 242, 78,0.08)]"
                             : bookability.bookable
-                              ? "border-white/8 bg-black/20 hover:border-[#7CFF00]/22"
+                              ? "border-white/8 bg-black/20 hover:border-[#C4F24E]/22"
                               : "border-white/[0.06] bg-black/12 opacity-70"
                         )}
                         onClick={() => {
@@ -1347,7 +1347,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                             <p className="text-lg font-semibold text-white">{service.name}</p>
                             <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/58">{service.description ?? "Book this service."}</p>
                           </div>
-                          {selected ? <CheckCircle2 className="h-5 w-5 shrink-0 text-[#d7ffab]" /> : null}
+                          {selected ? <CheckCircle2 className="h-5 w-5 shrink-0 text-[#e4f9b8]" /> : null}
                         </div>
                         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-white/68">
                           <span className="rounded-full border border-white/8 bg-black/24 px-3 py-1.5">{getServicePriceLabel(service)}</span>
@@ -1366,7 +1366,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                 <div className="empty-state-panel rounded-[24px] p-5 text-sm text-white/58">
                   <p className="text-lg font-semibold text-white">No bookable services yet.</p>
                   <p className="mt-2 leading-7">This barber has not published an active service clients can book. Choose another barber or check back later.</p>
-                  <Link href="/dashboard/client/search" className="mt-4 inline-flex h-11 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                  <Link href="/dashboard/client/search" className="mt-4 inline-flex h-11 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8]">
                     Back to search
                   </Link>
                 </div>
@@ -1398,7 +1398,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
           {bookingStep === "time" ? (
             <section className="mt-5 space-y-5" aria-labelledby="booking-time-step">
               <div>
-                <p className="surface-label text-[#d7ffab]">Step 2</p>
+                <p className="surface-label text-[#e4f9b8]">Step 2</p>
                 <h3 id="booking-time-step" className="mt-2 text-2xl font-semibold text-white">Pick date and time</h3>
                 <p className="mt-2 text-sm text-white/58">Times shown in {timezoneLabel}.</p>
               </div>
@@ -1406,7 +1406,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
               <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.075),rgba(255,255,255,0.025))] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)]">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="surface-label text-[#d7ffab]">Selected date</p>
+                    <p className="surface-label text-[#e4f9b8]">Selected date</p>
                     <p className="mt-1 truncate text-xl font-black tracking-[-0.03em] text-white">{selectedDateLabel}</p>
                     <p className="mt-1 text-xs font-medium text-white/52">Times shown in {timezoneLabel}.</p>
                   </div>
@@ -1456,18 +1456,18 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                         className={cn(
                           "min-w-[7.9rem] snap-start rounded-[22px] border px-4 py-3 text-left transition",
                           isSelected
-                            ? "border-[#7CFF00]/45 bg-[#7CFF00]/14 text-white shadow-[0_16px_42px_rgba(124,255,0,0.12)]"
+                            ? "border-[#C4F24E]/45 bg-[#C4F24E]/14 text-white shadow-[0_16px_42px_rgba(196, 242, 78,0.12)]"
                             : hasSlots
-                              ? "border-white/10 bg-black/22 text-white/74 hover:border-[#7CFF00]/24 hover:text-white"
+                              ? "border-white/10 bg-black/22 text-white/74 hover:border-[#C4F24E]/24 hover:text-white"
                               : "border-white/[0.06] bg-black/14 text-white/38"
                         )}
                         onClick={() => selectBookingDate(dateKey)}
                       >
-                        <span className={cn("block text-[11px] font-extrabold uppercase tracking-[0.14em]", isSelected ? "text-[#d7ffab]" : "text-white/48")}>{dateCard.weekday}</span>
+                        <span className={cn("block text-[11px] font-extrabold uppercase tracking-[0.14em]", isSelected ? "text-[#e4f9b8]" : "text-white/48")}>{dateCard.weekday}</span>
                         <span className="mt-1 block text-base font-black tracking-[-0.02em]">{dateCard.date}</span>
                         <span className={cn(
                           "mt-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold",
-                          hasSlots ? "bg-[#7CFF00]/16 text-[#d7ffab]" : "bg-white/[0.045] text-white/40"
+                          hasSlots ? "bg-[#C4F24E]/16 text-[#e4f9b8]" : "bg-white/[0.045] text-white/40"
                         )}>
                           {slotLabel}
                         </span>
@@ -1497,7 +1497,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                     return (
                       <div key={period} className="rounded-[26px] border border-white/8 bg-black/18 p-4">
                         <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
-                          <Clock3 className="h-4 w-4 text-[#d7ffab]" />
+                          <Clock3 className="h-4 w-4 text-[#e4f9b8]" />
                           {period}
                         </div>
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -1511,8 +1511,8 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                                 className={cn(
                                   "min-h-12 rounded-full border px-4 py-3 text-sm font-extrabold transition",
                                   selected
-                                    ? "border-[#7CFF00] bg-[#7CFF00] text-black shadow-[0_12px_34px_rgba(124,255,0,0.22)]"
-                                    : "border-white/8 bg-black/24 text-white/82 hover:border-[#7CFF00]/22 hover:text-[#d7ffab]"
+                                    ? "border-[#C4F24E] bg-[#C4F24E] text-black shadow-[0_12px_34px_rgba(196, 242, 78,0.22)]"
+                                    : "border-white/8 bg-black/24 text-white/82 hover:border-[#C4F24E]/22 hover:text-[#e4f9b8]"
                                 )}
                                 onClick={() => form.setValue("appointmentTime", slot.startsAt)}
                               >
@@ -1565,14 +1565,14 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
           {bookingStep === "review" ? (
             <section className="mt-5 space-y-5" aria-labelledby="booking-review-step">
               <div>
-                <p className="surface-label text-[#d7ffab]">Step 3</p>
+                <p className="surface-label text-[#e4f9b8]">Step 3</p>
                 <h3 id="booking-review-step" className="mt-2 text-2xl font-semibold text-white">Review appointment</h3>
                 <p className="mt-2 text-sm text-white/58">Nothing is booked until the secure server confirmation finishes.</p>
               </div>
 
               <div className="grid gap-3 text-sm text-white/72">
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
-                  <span className="inline-flex items-center gap-2"><Scissors className="h-4 w-4 text-[#d7ffab]" />Service</span>
+                  <span className="inline-flex items-center gap-2"><Scissors className="h-4 w-4 text-[#e4f9b8]" />Service</span>
                   <span className="font-medium text-white">{currentService?.name ?? "Choose a service"}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
@@ -1580,11 +1580,11 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                   <span className="font-medium text-white">{clientFacingBarberName}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
-                  <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#d7ffab]" />Date and time</span>
+                  <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#e4f9b8]" />Date and time</span>
                   <span className="font-medium text-white">{selectedSlotLabel}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
-                  <span className="inline-flex items-center gap-2"><MapPin className="h-4 w-4 text-[#d7ffab]" />Location</span>
+                  <span className="inline-flex items-center gap-2"><MapPin className="h-4 w-4 text-[#e4f9b8]" />Location</span>
                   <span className="text-right font-medium text-white">
                     {selectedLocationName}
                     {showLocationDetail ? <span className="mt-1 block text-white/58">{selectedLocationDetail}</span> : null}
@@ -1621,13 +1621,13 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                     <button
                       key={promotion.id}
                       type="button"
-                      className="w-full rounded-[20px] border border-white/8 bg-black/18 px-4 py-3 text-left transition hover:border-[#7CFF00]/24 hover:bg-black/25"
+                      className="w-full rounded-[20px] border border-white/8 bg-black/18 px-4 py-3 text-left transition hover:border-[#C4F24E]/24 hover:bg-black/25"
                       onClick={() => void applyPromotion({ promotionId: promotion.id })}
                       disabled={applyPromotionMutation.isPending || !isOnline}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm font-medium text-white">{promotion.name}</span>
-                        <span className="text-sm text-[#d7ffab]">Save {currency(promotion.estimatedDiscount)}</span>
+                        <span className="text-sm text-[#e4f9b8]">Save {currency(promotion.estimatedDiscount)}</span>
                       </div>
                       <p className="mt-1 text-xs leading-6 text-white/58">
                         {promotion.code ? `${promotion.code} • ` : ""}
@@ -1700,7 +1700,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                     />
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-white/56">
                       <span>{pointsRedemptionPreview.approvedPoints} pts applied</span>
-                      <span className="text-[#d7ffab]">-{currency(pointsRedemptionPreview.discountAmount)}</span>
+                      <span className="text-[#e4f9b8]">-{currency(pointsRedemptionPreview.discountAmount)}</span>
                     </div>
                   </div>
                 ) : null}
@@ -1710,8 +1710,8 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
               </div>
                 </>
               ) : (
-                <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                  <p className="surface-label text-[#d7ffab]">Guest booking identity</p>
+                <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4">
+                  <p className="surface-label text-[#e4f9b8]">Guest booking identity</p>
                   <p className="mt-3 text-sm leading-7 text-white/68">
                     Guests can book without full onboarding. Your email and phone stay private and are used only for confirmation, lookup, and support.
                   </p>
@@ -1768,7 +1768,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                       <>
                         <p className="font-semibold text-rose-100">This appointment requires {currency(displayedQuote.grandTotal)} due today.</p>
                         <p>Guest online payment setup is not connected yet. Sign in or create an account to add a payment method before booking.</p>
-                        <Link href={`/login?redirect=${encodeURIComponent(getCurrentBookingRoute())}` as Route} className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full bg-[#7CFF00] px-5 text-sm font-semibold text-black transition hover:bg-[#baff69]">
+                        <Link href={`/login?redirect=${encodeURIComponent(getCurrentBookingRoute())}` as Route} className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full bg-[#C4F24E] px-5 text-sm font-semibold text-black transition hover:bg-[#d9f985]">
                           Sign in to continue
                         </Link>
                       </>
@@ -1816,13 +1816,13 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                   {displayedQuote.discountTotal > 0 || appliedPromotion ? (
                     <div className="flex items-center justify-between gap-3">
                       <span>Discount</span>
-                      <span className="font-medium text-[#d7ffab]">-{currency(displayedQuote.discountTotal)}</span>
+                      <span className="font-medium text-[#e4f9b8]">-{currency(displayedQuote.discountTotal)}</span>
                     </div>
                   ) : null}
                   {membershipPricingAdjustment ? (
                     <div className="flex items-center justify-between gap-3">
                       <span>{membershipPricingAdjustment.label}</span>
-                      <span className="font-medium text-[#d7ffab]">-{currency(membershipPricingAdjustment.discountAmount)}</span>
+                      <span className="font-medium text-[#e4f9b8]">-{currency(membershipPricingAdjustment.discountAmount)}</span>
                     </div>
                   ) : null}
                   {displayedQuote.taxTotal > 0 ? (
@@ -1834,18 +1834,18 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                   {pointsRedemptionPreview.discountAmount > 0 ? (
                     <div className="flex items-center justify-between gap-3">
                       <span>BVR Points</span>
-                      <span className="font-medium text-[#d7ffab]">-{currency(pointsRedemptionPreview.discountAmount)}</span>
+                      <span className="font-medium text-[#e4f9b8]">-{currency(pointsRedemptionPreview.discountAmount)}</span>
                     </div>
                   ) : null}
                   <div className="flex items-center justify-between gap-3 border-t border-white/8 pt-3">
                     <span className="font-semibold text-white">Total due today</span>
-                    <span className="text-lg font-semibold text-[#d7ffab]">{currency(displayedQuote.grandTotal)}</span>
+                    <span className="text-lg font-semibold text-[#e4f9b8]">{currency(displayedQuote.grandTotal)}</span>
                   </div>
                 </div>
               </div>
 
               <label className="flex items-start gap-3 rounded-[24px] border border-white/8 bg-black/20 p-5 text-sm leading-7 text-white/72">
-                <input type="checkbox" className="mt-1 accent-[#7CFF00]" {...form.register("acknowledgePolicy")} />
+                <input type="checkbox" className="mt-1 accent-[#C4F24E]" {...form.register("acknowledgePolicy")} />
                 <span>I acknowledge the cancellation policy.</span>
               </label>
               {form.formState.errors.acknowledgePolicy ? (
@@ -1881,9 +1881,9 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
               {showLocationDetail ? <span className="mt-1 block text-white/58">{selectedLocationDetail}</span> : null}
             </span>
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-[20px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3">
+          <div className="flex items-center justify-between gap-3 rounded-[20px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 px-4 py-3">
             <span>Total</span>
-            <span className="text-right font-semibold text-[#d7ffab]">{currency(displayedQuote.grandTotal)}</span>
+            <span className="text-right font-semibold text-[#e4f9b8]">{currency(displayedQuote.grandTotal)}</span>
           </div>
         </div>
       </Card>

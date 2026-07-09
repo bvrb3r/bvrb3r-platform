@@ -30,7 +30,7 @@ export function HeroSection() {
               <Card key={metric.label} className="rounded-[26px] bg-[linear-gradient(180deg,rgba(34,34,34,0.88),rgba(10,10,10,0.95))] p-4">
                 <p className="surface-label">{metric.label}</p>
                 <p className="mt-3 text-3xl font-semibold" data-display="true">{metric.value}</p>
-                <p className="mt-2 text-sm text-[#cfff93]">{metric.delta}</p>
+                <p className="mt-2 text-sm text-[#e0f6a0]">{metric.delta}</p>
               </Card>
             ))}
           </div>
@@ -49,7 +49,7 @@ export function HeroSection() {
                       <p className="text-lg font-semibold">{location.name}</p>
                       <p className="mt-1 text-sm text-white/55">{location.neighborhood}, {location.city}</p>
                     </div>
-                    <div className="rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-[#cfff93]">{location.chairs} chairs</div>
+                    <div className="rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-[#e0f6a0]">{location.chairs} chairs</div>
                   </div>
                   <p className="mt-4 text-sm text-white/60">Open rhythm: {location.hours}</p>
                 </div>
@@ -64,7 +64,7 @@ export function HeroSection() {
                 <p className="mt-4 text-sm text-white/60">{service.durationMin} min</p>
                 <div className="mt-5 flex items-center justify-between border-t border-white/8 pt-4 text-sm">
                   <span className="text-white/55">Deposit</span>
-                  <span className="text-[#cfff93]">${service.deposit || 0}</span>
+                  <span className="text-[#e0f6a0]">${service.deposit || 0}</span>
                 </div>
               </Card>
             ))}

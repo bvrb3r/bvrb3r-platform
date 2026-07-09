@@ -217,7 +217,7 @@ function statusLabel(status: TransactionStatus) {
 function statusClass(status: TransactionStatus) {
   switch (status) {
     case "completed":
-      return "text-[#A3FF12]";
+      return "text-[#C4F24E]";
     case "pending":
       return "text-amber-300";
     case "failed":
@@ -279,7 +279,7 @@ function CommandIconButton({
   return (
     <summary
       aria-label={label}
-      className="inline-flex h-12 w-12 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#A3FF12]/35 hover:text-white hover:shadow-[0_0_24px_rgba(163,255,18,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70 sm:h-14 sm:w-14"
+      className="inline-flex h-12 w-12 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#C4F24E]/35 hover:text-white hover:shadow-[0_0_24px_rgba(196, 242, 78,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/70 sm:h-14 sm:w-14"
     >
       {children}
     </summary>
@@ -356,22 +356,22 @@ function ChartLine({ points }: { points: ChartPoint[] }) {
         <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Revenue trend chart" className="h-56 w-full overflow-visible">
           <defs>
             <linearGradient id="owner-money-chart-fill" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#A3FF12" stopOpacity="0.24" />
-              <stop offset="100%" stopColor="#A3FF12" stopOpacity="0" />
+              <stop offset="0%" stopColor="#C4F24E" stopOpacity="0.24" />
+              <stop offset="100%" stopColor="#C4F24E" stopOpacity="0" />
             </linearGradient>
           </defs>
           <polygon points={areaPoints} fill="url(#owner-money-chart-fill)" />
           <polyline
             fill="none"
             points={linePoints}
-            stroke="#A3FF12"
+            stroke="#C4F24E"
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth="6"
-            filter="drop-shadow(0 0 12px rgba(163,255,18,0.35))"
+            filter="drop-shadow(0 0 12px rgba(196, 242, 78,0.35))"
           />
           {coordinates.map((point, index) => (
-            <circle key={`${points[index]?.date}-${index}`} cx={point.x} cy={point.y} r={index === coordinates.length - 1 ? 7 : 0} fill="#A3FF12" />
+            <circle key={`${points[index]?.date}-${index}`} cx={point.x} cy={point.y} r={index === coordinates.length - 1 ? 7 : 0} fill="#C4F24E" />
           ))}
         </svg>
         <div className="mt-2 grid" style={{ gridTemplateColumns: `repeat(${Math.min(points.length, 7)}, minmax(0, 1fr))` }}>
@@ -394,7 +394,7 @@ function BreakdownDot({ tone }: { tone: BreakdownTone }) {
     <span
       className={cn(
         "h-3.5 w-3.5 rounded-full",
-        tone === "green" && "bg-[#A3FF12]",
+        tone === "green" && "bg-[#C4F24E]",
         tone === "blue" && "bg-sky-400",
         tone === "amber" && "bg-amber-300",
         tone === "neutral" && "bg-white/45"
@@ -418,13 +418,13 @@ function PerformanceMetric({
 }) {
   const content = (
     <>
-      <span className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[#A3FF12]/22 bg-[#A3FF12]/10 text-[#A3FF12] shadow-[0_0_18px_rgba(163,255,18,0.14)]">
+      <span className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[#C4F24E]/22 bg-[#C4F24E]/10 text-[#C4F24E] shadow-[0_0_18px_rgba(196, 242, 78,0.14)]">
         {icon}
       </span>
       <span className="min-w-0">
         <span className="block text-sm font-semibold text-white/68">{label}</span>
         <span className="mt-2 block text-2xl font-black tracking-[-0.04em] text-white">{value}</span>
-        {trend ? <span className="mt-2 block text-sm font-extrabold text-[#A3FF12]">{trend}</span> : null}
+        {trend ? <span className="mt-2 block text-sm font-extrabold text-[#C4F24E]">{trend}</span> : null}
       </span>
     </>
   );
@@ -622,12 +622,12 @@ export function OwnerMoneyWorkspace() {
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <details className="group relative">
-            <summary className="inline-flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-5 text-sm font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#A3FF12]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70 sm:min-h-14 sm:px-6 sm:text-base">
+            <summary className="inline-flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-5 text-sm font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#C4F24E]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/70 sm:min-h-14 sm:px-6 sm:text-base">
               {selectedRangeOption.label}
               <ChevronDown className="h-5 w-5" />
             </summary>
             <GlassCard className="absolute right-0 z-20 mt-3 w-56 p-3">
-              <p className="px-3 py-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#A3FF12]">Timeframe</p>
+              <p className="px-3 py-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#C4F24E]">Timeframe</p>
               {rangeOptions.map((option) => (
                 <button
                   key={`header-range-${option.key}`}
@@ -636,7 +636,7 @@ export function OwnerMoneyWorkspace() {
                   className="flex w-full items-center justify-between rounded-[14px] px-3 py-3 text-left text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white"
                 >
                   {option.label}
-                  {selectedRange === option.key ? <span className="h-2 w-2 rounded-full bg-[#A3FF12]" /> : null}
+                  {selectedRange === option.key ? <span className="h-2 w-2 rounded-full bg-[#C4F24E]" /> : null}
                 </button>
               ))}
             </GlassCard>
@@ -646,7 +646,7 @@ export function OwnerMoneyWorkspace() {
               <SlidersHorizontal className="h-5 w-5" />
             </CommandIconButton>
             <GlassCard className="absolute right-0 z-20 mt-3 w-72 p-4">
-              <p className="px-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#A3FF12]">Money filters</p>
+              <p className="px-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#C4F24E]">Money filters</p>
               <div className="mt-3 grid gap-2">
                 <Link href="/dashboard/owner/money?section=transactions" className="rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white">Transactions</Link>
                 <Link href="/dashboard/owner/money?view=fintech&section=payouts" className="rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white">Payout operations</Link>
@@ -664,7 +664,7 @@ export function OwnerMoneyWorkspace() {
 
       <GlassCard className="grid gap-4 p-5 md:grid-cols-4">
         <div className="md:col-span-2">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Owner money control</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Owner money control</p>
           <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">Revenue now. Splits later.</p>
           <p className="mt-2 text-sm leading-6 text-white/56">
             This tab reads owner-facing money posture only. Architect remains the release authority for Phase 1 payouts.
@@ -689,18 +689,18 @@ export function OwnerMoneyWorkspace() {
             {isInitialLoading ? (
               <Skeleton className="mt-6 h-16 w-72" />
             ) : (
-              <p className={cn("mt-6 text-5xl font-black leading-none tracking-[-0.08em] drop-shadow-[0_0_28px_rgba(163,255,18,0.18)] sm:text-7xl", totalRevenue === null ? "text-amber-200" : "text-[#A3FF12]")} data-display="true">
+              <p className={cn("mt-6 text-5xl font-black leading-none tracking-[-0.08em] drop-shadow-[0_0_28px_rgba(196, 242, 78,0.18)] sm:text-7xl", totalRevenue === null ? "text-amber-200" : "text-[#C4F24E]")} data-display="true">
                 {totalRevenue === null ? "Needs Review" : currency(totalRevenue)}
               </p>
             )}
-            <p className={cn("mt-5 inline-flex items-center gap-2 text-lg font-extrabold", trend.positive === false ? "text-red-300" : trend.available ? "text-[#A3FF12]" : "text-white/54")}>
+            <p className={cn("mt-5 inline-flex items-center gap-2 text-lg font-extrabold", trend.positive === false ? "text-red-300" : trend.available ? "text-[#C4F24E]" : "text-white/54")}>
               {trend.available ? (
                 trend.positive ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />
               ) : null}
               {trend.text}
             </p>
           </div>
-          <Link href="/dashboard/owner/money?section=revenue" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]">
+          <Link href="/dashboard/owner/money?section=revenue" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#C4F24E]/35 hover:text-[#C4F24E]">
             Revenue detail
             <ChevronRight className="h-4 w-4" />
           </Link>
@@ -711,7 +711,7 @@ export function OwnerMoneyWorkspace() {
       <GlassCard className="p-6">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">Revenue Breakdown</h2>
-          <Link href="/dashboard/owner/money?section=breakdown" className="inline-flex items-center gap-2 text-base font-extrabold text-[#A3FF12]">
+          <Link href="/dashboard/owner/money?section=breakdown" className="inline-flex items-center gap-2 text-base font-extrabold text-[#C4F24E]">
             View details
             <ChevronRight className="h-5 w-5" />
           </Link>
@@ -753,9 +753,9 @@ export function OwnerMoneyWorkspace() {
             type="button"
             onClick={() => setSelectedRange(option.key)}
             className={cn(
-              "min-h-12 rounded-full text-base font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70",
+              "min-h-12 rounded-full text-base font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/70",
               selectedRange === option.key
-                ? "bg-[linear-gradient(135deg,#A3FF12_0%,#7DCE00_100%)] text-black shadow-[0_0_28px_rgba(163,255,18,0.24)]"
+                ? "bg-[linear-gradient(135deg,#C4F24E_0%,#8FBF2E_100%)] text-black shadow-[0_0_28px_rgba(196, 242, 78,0.24)]"
                 : "text-white/72 hover:bg-white/[0.035] hover:text-white",
               index > 0 && selectedRange !== option.key && "border-l border-white/8"
             )}
@@ -808,7 +808,7 @@ export function OwnerMoneyWorkspace() {
         <SectionHeader
           title="Recent Transactions"
           action={
-            <Link href="/dashboard/owner/money?section=transactions" className="text-base font-extrabold text-[#A3FF12]">
+            <Link href="/dashboard/owner/money?section=transactions" className="text-base font-extrabold text-[#C4F24E]">
               View all
             </Link>
           }
@@ -863,7 +863,7 @@ export function OwnerMoneyWorkspace() {
       <GlassCard className="p-6" id="owner-money-payouts">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">Payout Status</h2>
-          <Link href="/dashboard/owner/money?view=fintech&section=payouts" className="inline-flex items-center gap-2 text-base font-extrabold text-[#A3FF12]">
+          <Link href="/dashboard/owner/money?view=fintech&section=payouts" className="inline-flex items-center gap-2 text-base font-extrabold text-[#C4F24E]">
             View all payouts
             <ChevronRight className="h-5 w-5" />
           </Link>
@@ -874,7 +874,7 @@ export function OwnerMoneyWorkspace() {
           <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-center">
             <div className="lg:border-r lg:border-white/10 lg:pr-6">
               <p className="text-base font-semibold text-white/62">Available Balance</p>
-              <p className="mt-4 text-4xl font-black tracking-[-0.055em] text-[#A3FF12]">{currency(payoutReadyAmount)}</p>
+              <p className="mt-4 text-4xl font-black tracking-[-0.055em] text-[#C4F24E]">{currency(payoutReadyAmount)}</p>
             </div>
             <div className="lg:border-r lg:border-white/10 lg:pr-6">
               <p className="text-base font-semibold text-white/62">Next Payout</p>
@@ -882,11 +882,11 @@ export function OwnerMoneyWorkspace() {
             </div>
             <div>
               <p className="text-base font-semibold text-white/62">Status</p>
-              <p className={cn("mt-4 text-2xl font-black", payoutStatus.tone === "green" ? "text-[#A3FF12]" : "text-amber-300")}>{payoutStatus.label}</p>
+              <p className={cn("mt-4 text-2xl font-black", payoutStatus.tone === "green" ? "text-[#C4F24E]" : "text-amber-300")}>{payoutStatus.label}</p>
             </div>
             <Link
               href={payoutStatus.href}
-              className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[18px] border border-[#A3FF12]/44 bg-black/25 px-6 text-base font-black text-[#A3FF12] transition hover:-translate-y-0.5 hover:bg-[#A3FF12]/10"
+              className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[18px] border border-[#C4F24E]/44 bg-black/25 px-6 text-base font-black text-[#C4F24E] transition hover:-translate-y-0.5 hover:bg-[#C4F24E]/10"
             >
               <Building2 className="h-5 w-5" />
               {payoutStatus.detail}
@@ -897,13 +897,13 @@ export function OwnerMoneyWorkspace() {
 
       <section className="grid gap-4 md:grid-cols-2">
         <GlassCard className="p-5">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Platform-collected revenue</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Platform-collected revenue</p>
           <p className="mt-3 text-sm leading-6 text-white/58">
             Card/app payments flow through BVRB3R records. Cash collected outside the platform should stay separate from payout readiness.
           </p>
         </GlassCard>
         <GlassCard className="p-5">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Shop split readiness</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Shop split readiness</p>
           <p className="mt-3 text-sm leading-6 text-white/58">
             Commission and shop-owner payout release are future phases. This view shows honest readiness without moving money.
           </p>

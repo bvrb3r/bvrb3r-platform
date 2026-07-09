@@ -42,7 +42,7 @@ export function PublicBarberMessageAction({
     <span className="inline-flex flex-col gap-2">
       <button
         type="button"
-        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.045] px-4 py-2 text-sm font-bold text-white transition hover:border-[#a3ff12]/35 hover:bg-white/[0.075] hover:text-[#d7ffab] disabled:opacity-60"
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.045] px-4 py-2 text-sm font-bold text-white transition hover:border-[#c4f24e]/35 hover:bg-white/[0.075] hover:text-[#e4f9b8] disabled:opacity-60"
         disabled={createThread.isPending}
         onClick={() => void handleMessage()}
       >

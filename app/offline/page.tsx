@@ -8,7 +8,7 @@ export default function OfflinePage() {
     <main className="page-shell safe-top-pad app-safe-bottom flex min-h-[100svh] min-h-[100dvh] items-center py-6 sm:py-10">
       <Card className="w-full rounded-[34px] p-6 sm:p-10">
         <div className="mx-auto flex max-w-2xl flex-col items-start gap-5">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#d7ffab]">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/18 bg-[#C4F24E]/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e4f9b8]">
             <SignalZero className="h-4 w-4" />
             Offline-safe mode
           </div>
@@ -37,7 +37,7 @@ export default function OfflinePage() {
             </Link>
             <Link
               href="/discover"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-black/25 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab] sm:w-auto"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-black/25 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#C4F24E]/24 hover:text-[#e4f9b8] sm:w-auto"
             >
               Keep browsing
             </Link>

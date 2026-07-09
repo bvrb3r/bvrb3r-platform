@@ -317,17 +317,17 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
       <Card className="rounded-[32px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="surface-label text-[#d7ffab]">Owner intelligence</p>
+            <p className="surface-label text-[#e4f9b8]">Owner intelligence</p>
             <h3 className="mt-3 text-3xl font-semibold sm:text-4xl" data-display="true">Retention, loyalty, referrals, and marketplace lift</h3>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-white/64">The operating system now has a monetization, trust, and mobile activation layer for featured placement, boosted discovery, rollout density, and delivery-aware marketplace reporting.</p>
           </div>
-          <span className="status-pill text-[#d7ffab]">{summary.assignedLocationIds.length} locations in scope</span>
+          <span className="status-pill text-[#e4f9b8]">{summary.assignedLocationIds.length} locations in scope</span>
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Revenue in scope</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(summary.network.revenue)}</p><p className="mt-2 text-sm text-white/58">Current business-date revenue from the owner analytics rails</p></div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Marketplace bookings</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.marketplace.bookingsCreated}</p><p className="mt-2 text-sm text-white/58">Bookings created through discover, profile, or haircut-now flows</p></div>
-          <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Loyalty participants</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.loyaltyParticipants}</p><p className="mt-2 text-sm text-white/62">Clients already inside the BVRB3R Points economy</p></div>
+          <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Loyalty participants</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.loyaltyParticipants}</p><p className="mt-2 text-sm text-white/62">Clients already inside the BVRB3R Points economy</p></div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Referral conversions</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.referralConversions}</p><p className="mt-2 text-sm text-white/58">Completed or credited referral events in owner scope</p></div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Chair utilization</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.network.chairUtilization}%</p><p className="mt-2 text-sm text-white/58">Utilization scaffold tied to active chair throughput</p></div>
         </div>
@@ -340,11 +340,11 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
               <p className="surface-label">Monetization command</p>
               <p className="mt-2 text-sm text-white/58">Subscriptions, platform fees, repeat-client revenue, and operator-grade revenue-at-risk visibility now sit on the same reporting lane.</p>
             </div>
-            <HandCoins className="h-5 w-5 text-[#baff69]" />
+            <HandCoins className="h-5 w-5 text-[#d9f985]" />
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Gross revenue</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.grossRevenue)}</p><p className="mt-2 text-sm text-white/62">Completed service revenue in current owner scope.</p></div>
+            <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Gross revenue</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.grossRevenue)}</p><p className="mt-2 text-sm text-white/62">Completed service revenue in current owner scope.</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Platform fees</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.platformFeeRevenue)}</p><p className="mt-2 text-sm text-white/58">Canonical fee visibility from payment routing records.</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Subscriptions</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.subscriptionRevenue)}</p><p className="mt-2 text-sm text-white/58">{monetization.subscriptions.active} active or trialing rows across barber and shop scope.</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Repeat-client revenue</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.repeatClientRevenue)}</p><p className="mt-2 text-sm text-white/58">{monetization.revenue.retainedRevenueShare}% retained revenue share from repeat behavior.</p></div>
@@ -352,7 +352,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <span className="status-pill text-[#d7ffab]">{monetization.subscriptions.totalTracked} tracked subscriptions</span>
+            <span className="status-pill text-[#e4f9b8]">{monetization.subscriptions.totalTracked} tracked subscriptions</span>
             <span className="status-pill text-white/72">{monetization.subscriptions.billingAttention} need billing attention</span>
             <span className="status-pill text-white/72">{monetization.subscriptions.entitlementReady} entitlement-ready</span>
             <span className="status-pill text-white/72">Processor fee visibility {currency(monetization.revenue.processorFeeVisibility)}</span>
@@ -362,7 +362,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
           {points ? (
             <>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Points issued</p><p className="mt-3 text-2xl font-semibold">{points.issuedPoints}</p><p className="mt-2 text-sm text-white/62">{currency(points.issuedInAppValue)} in app value issued.</p></div>
+                <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Points issued</p><p className="mt-3 text-2xl font-semibold">{points.issuedPoints}</p><p className="mt-2 text-sm text-white/62">{currency(points.issuedInAppValue)} in app value issued.</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Redeemed / cash-out</p><p className="mt-3 text-2xl font-semibold">{points.redeemedPoints} / {points.cashedOutPoints}</p><p className="mt-2 text-sm text-white/58">{currency(points.redeemedInAppValue)} redeemed | {currency(points.cashedOutValue)} cashed out.</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Reward spend rate</p><p className="mt-3 text-2xl font-semibold">{points.rewardSpendRate}%</p><p className="mt-2 text-sm text-white/58">Share of gross revenue spent on BVR Points rewards.</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Referral reward rate</p><p className="mt-3 text-2xl font-semibold">{points.referralConversionRate}%</p><p className="mt-2 text-sm text-white/58">{points.referralRewardTransactions} referral reward transactions credited.</p></div>
@@ -404,7 +404,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/62">
-                  <span className="status-pill text-[#d7ffab]">{subscription.billingState.replaceAll("_", " ")}</span>
+                  <span className="status-pill text-[#e4f9b8]">{subscription.billingState.replaceAll("_", " ")}</span>
                   <span className="status-pill text-white/72">{subscription.entitlementStatus.replaceAll("_", " ")}</span>
                   <span className="status-pill text-white/72">{subscription.subjectType}</span>
                 </div>
@@ -419,7 +419,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
               <p className="surface-label">Offer and revenue performance</p>
               <p className="mt-2 text-sm text-white/58">Promotion redemptions, discount impact, barber contribution, and rebooking-linked revenue all stay grounded in persisted appointment and payout truth.</p>
             </div>
-            <span className="status-pill text-[#d7ffab]">{monetization.promotions.totalRedemptions} total redemptions</span>
+            <span className="status-pill text-[#e4f9b8]">{monetization.promotions.totalRedemptions} total redemptions</span>
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -435,7 +435,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                 <div key={offer.promotionId} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{offer.promotionName}</p>
-                    <span className="status-pill text-[#d7ffab]">{offer.redemptions} redeems</span>
+                    <span className="status-pill text-[#e4f9b8]">{offer.redemptions} redeems</span>
                   </div>
                   <p className="mt-2 text-sm text-white/58">{offer.shopLabel} | {offer.availabilityState}</p>
                   <p className="mt-2 text-sm text-white/58">Discount {currency(offer.discountImpact)} | Net {currency(offer.netRevenueAfterDiscount)} | Avg {currency(offer.averageDiscount)}</p>
@@ -449,7 +449,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                 <div key={row.barberId} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{row.barberName}</p>
-                    <span className="status-pill text-[#d7ffab]">{currency(row.grossRevenue)}</span>
+                    <span className="status-pill text-[#e4f9b8]">{currency(row.grossRevenue)}</span>
                   </div>
                   <p className="mt-2 text-sm text-white/58">Completed services {row.completedServices} | Repeat-client revenue {currency(row.repeatClientRevenue)}</p>
                   <p className="mt-2 text-sm text-white/58">Platform fee generated {currency(row.platformFeeGenerated)}</p>
@@ -467,12 +467,12 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
               <p className="surface-label">Money command</p>
               <p className="mt-2 text-sm text-white/58">Gross-to-net clarity, payout flow, points incentive cost, and cash-out review all now read from the same reconstructable money layer.</p>
             </div>
-            <span className="status-pill text-[#d7ffab]">{viewerRole === "owner" ? "Owner controls" : "Manager visibility"}</span>
+            <span className="status-pill text-[#e4f9b8]">{viewerRole === "owner" ? "Owner controls" : "Manager visibility"}</span>
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-              <p className="surface-label text-[#d7ffab]">Net revenue</p>
+            <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4">
+              <p className="surface-label text-[#e4f9b8]">Net revenue</p>
               <p className="mt-3 text-3xl font-semibold" data-display="true">{currency(money.revenueBreakdown.netRevenue)}</p>
               <p className="mt-2 text-sm text-white/62">Gross less platform and processor fees.</p>
             </div>
@@ -509,7 +509,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3 text-sm text-white/72">Subscriptions {currency(money.revenueBreakdown.subscriptionRevenue)}</div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="status-pill text-[#d7ffab]">Revenue per user {currency(money.revenuePerUser)}</span>
+                  <span className="status-pill text-[#e4f9b8]">Revenue per user {currency(money.revenuePerUser)}</span>
                   <span className="status-pill text-white/72">Barber earnings growth {money.barberEarningsGrowth}%</span>
                   <span className="status-pill text-white/72">Avg payout delay {money.payoutFlow.avgPayoutDelayHours}h</span>
                 </div>
@@ -554,7 +554,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   <p className="surface-label">Points cash-out review</p>
                   <p className="mt-2 text-sm text-white/58">Review queue, fraud flags, and payout references stay on one audit trail. Owners can transition requests here without creating a parallel payout tool.</p>
                 </div>
-                <span className="status-pill text-[#d7ffab]">{money.recentCashouts.length} recent requests</span>
+                <span className="status-pill text-[#e4f9b8]">{money.recentCashouts.length} recent requests</span>
               </div>
 
               <div className="mt-4 space-y-3">
@@ -565,7 +565,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                         <p className="font-medium">{request.userLabel}</p>
                         <p className="mt-1 text-sm text-white/58">{request.role} | {request.pointsRequested} pts | {currency(request.cashValue)}</p>
                       </div>
-                      <span className={`status-pill ${request.status === "paid" ? "text-[#d7ffab]" : request.status === "rejected" ? "text-rose-200" : "text-white/72"}`}>
+                      <span className={`status-pill ${request.status === "paid" ? "text-[#e4f9b8]" : request.status === "rejected" ? "text-rose-200" : "text-white/72"}`}>
                         {request.status.replaceAll("_", " ")}
                       </span>
                     </div>
@@ -664,10 +664,10 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   <p className="surface-label">Scheduled execution health</p>
                   <p className="mt-2 text-sm text-white/58">Recurring finance and growth jobs now write canonical execution records instead of relying on invisible helper calls.</p>
                 </div>
-                <span className="status-pill text-[#d7ffab]">{money.scheduledJobs.summary.running} running</span>
+                <span className="status-pill text-[#e4f9b8]">{money.scheduledJobs.summary.running} running</span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <div className="rounded-[18px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-3 py-3 text-sm text-white/72">Completed {money.scheduledJobs.summary.completed}</div>
+                <div className="rounded-[18px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 px-3 py-3 text-sm text-white/72">Completed {money.scheduledJobs.summary.completed}</div>
                 <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3 text-sm text-white/72">Queued {money.scheduledJobs.summary.queued}</div>
                 <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3 text-sm text-white/72">Running {money.scheduledJobs.summary.running}</div>
                 <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3 text-sm text-white/72">Failed {money.scheduledJobs.summary.failed}</div>
@@ -681,7 +681,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   <div key={run.id} className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="font-medium">{run.jobName.replaceAll("_", " ")}</p>
-                      <span className={`status-pill ${run.status === "completed" ? "text-[#d7ffab]" : run.status === "failed" ? "text-rose-200" : "text-white/72"}`}>
+                      <span className={`status-pill ${run.status === "completed" ? "text-[#e4f9b8]" : run.status === "failed" ? "text-rose-200" : "text-white/72"}`}>
                         {run.status.replaceAll("_", " ")}
                       </span>
                     </div>
@@ -698,7 +698,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   <p className="surface-label">Financial anomaly queue</p>
                   <p className="mt-2 text-sm text-white/58">Payout stalls, cash-out failures, refund hold mismatches, and liability spikes are now persisted as operator-visible exceptions.</p>
                 </div>
-                <span className="status-pill text-[#d7ffab]">{money.anomalies.summary.open} open</span>
+                <span className="status-pill text-[#e4f9b8]">{money.anomalies.summary.open} open</span>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className="status-pill text-white/72">Investigating {money.anomalies.summary.investigating}</span>
@@ -711,7 +711,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   <div key={anomaly.id} className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="font-medium">{anomaly.summary}</p>
-                      <span className={`status-pill ${anomaly.severity === "critical" ? "text-amber-200" : anomaly.status === "resolved" ? "text-[#d7ffab]" : "text-white/72"}`}>
+                      <span className={`status-pill ${anomaly.severity === "critical" ? "text-amber-200" : anomaly.status === "resolved" ? "text-[#e4f9b8]" : "text-white/72"}`}>
                         {anomaly.status.replaceAll("_", " ")} / {anomaly.severity}
                       </span>
                     </div>
@@ -756,13 +756,13 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
 
       <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
         <Card className="rounded-[32px] p-6">
-          <div className="flex items-center justify-between gap-3"><p className="surface-label">Retention signals</p><RefreshCcw className="h-5 w-5 text-[#baff69]" /></div>
+          <div className="flex items-center justify-between gap-3"><p className="surface-label">Retention signals</p><RefreshCcw className="h-5 w-5 text-[#d9f985]" /></div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Repeat client rate</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.repeatClientRate}%</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Rebooking effectiveness</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.rebookingEffectiveness}%</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Points issued</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.loyaltyPointsIssued}</p><p className="mt-2 text-sm text-white/58">Ready to feed conversion reporting and ranking weight later.</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Referral invites</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.marketplace.referralInvites}</p><p className="mt-2 text-sm text-white/58">Tracked invites flowing through the client growth loop.</p></div>
-            <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Rebooking opportunities</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.rebookingOpportunities}</p><p className="mt-2 text-sm text-white/62">Clients due soon, due now, or overdue without an active booking.</p></div>
+            <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Rebooking opportunities</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.rebookingOpportunities}</p><p className="mt-2 text-sm text-white/62">Clients due soon, due now, or overdue without an active booking.</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">High-risk clients</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.churnRiskClients}</p><p className="mt-2 text-sm text-white/58">Repeat guests whose current cadence suggests a retention save opportunity.</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Re-engagement eligible</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.reengagementEligibleClients}</p><p className="mt-2 text-sm text-white/58">Good candidates for reminder, promo, or follow-up automation later.</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Loyal clients</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.loyalClients}</p><p className="mt-2 text-sm text-white/58">Clients already behaving like reliable repeat business.</p></div>
@@ -771,7 +771,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
           <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4">
             <div className="flex items-center justify-between gap-3">
               <p className="surface-label">Discovery conversion</p>
-              <Target className="h-4 w-4 text-[#baff69]" />
+              <Target className="h-4 w-4 text-[#d9f985]" />
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">
@@ -796,7 +796,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
               </div>
             </div>
           </div>
-          <div className="mt-4 space-y-3">{summary.bookingTrends.map((trend) => <div key={trend.label} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{trend.label}</p><span className="status-pill text-[#d7ffab]">{trend.value}</span></div></div>)}</div>
+          <div className="mt-4 space-y-3">{summary.bookingTrends.map((trend) => <div key={trend.label} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{trend.label}</p><span className="status-pill text-[#e4f9b8]">{trend.value}</span></div></div>)}</div>
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
               <p className="surface-label">Top returning clients</p>
@@ -805,7 +805,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   <div key={client.clientId} className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-medium">{client.clientName}</p>
-                      <span className="status-pill text-[#d7ffab]">{client.completedVisits} visits</span>
+                      <span className="status-pill text-[#e4f9b8]">{client.completedVisits} visits</span>
                     </div>
                     <p className="mt-2 text-sm text-white/58">Lifetime value {currency(client.lifetimeValue)} | {client.loyaltySegment.replaceAll("_", " ")} | {client.churnRisk} risk</p>
                   </div>
@@ -819,7 +819,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   <div key={row.barberId} className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-medium">{row.barberName}</p>
-                      <span className="status-pill text-[#d7ffab]">{row.rebookingOpportunities} rebook opps</span>
+                      <span className="status-pill text-[#e4f9b8]">{row.rebookingOpportunities} rebook opps</span>
                     </div>
                     <p className="mt-2 text-sm text-white/58">Repeat clients {row.repeatClients} | At-risk {row.atRiskClients} | Completed services {row.completedServices}</p>
                   </div>
@@ -831,21 +831,21 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
 
         <div className="grid gap-4">
           <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3"><p className="surface-label">Top barbers in scope</p><Users className="h-5 w-5 text-[#baff69]" /></div>
-            <div className="mt-4 space-y-3">{summary.topBarbers.map((barber) => <div key={barber.barberId} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{barber.barberName}</p><span className="status-pill text-[#d7ffab]">{currency(barber.revenue)}</span></div><div className="mt-3 grid gap-3 text-sm text-white/60 sm:grid-cols-3"><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Followers {barber.followerCount}</div><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Reputation {barber.reputationScore.toFixed(1)}</div><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Revenue {currency(barber.revenue)}</div></div></div>)}</div>
+            <div className="flex items-center justify-between gap-3"><p className="surface-label">Top barbers in scope</p><Users className="h-5 w-5 text-[#d9f985]" /></div>
+            <div className="mt-4 space-y-3">{summary.topBarbers.map((barber) => <div key={barber.barberId} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{barber.barberName}</p><span className="status-pill text-[#e4f9b8]">{currency(barber.revenue)}</span></div><div className="mt-3 grid gap-3 text-sm text-white/60 sm:grid-cols-3"><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Followers {barber.followerCount}</div><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Reputation {barber.reputationScore.toFixed(1)}</div><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Revenue {currency(barber.revenue)}</div></div></div>)}</div>
           </Card>
 
           <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3"><p className="surface-label">Notification hooks</p><HandCoins className="h-5 w-5 text-[#baff69]" /></div>
-            <div className="mt-4 space-y-3">{summary.recentNotifications.length ? summary.recentNotifications.map((notification) => <div key={notification.id} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{notification.title}</p><span className="status-pill text-[#d7ffab]">{notification.type.replaceAll("_", " ")}</span></div><p className="mt-2 text-sm leading-7 text-white/60">{notification.body}</p></div>) : <div className="empty-state-panel rounded-[22px] p-5 text-sm text-white/58">Owner-facing engagement alerts will appear here as the growth engine begins firing live notifications.</div>}</div>
+            <div className="flex items-center justify-between gap-3"><p className="surface-label">Notification hooks</p><HandCoins className="h-5 w-5 text-[#d9f985]" /></div>
+            <div className="mt-4 space-y-3">{summary.recentNotifications.length ? summary.recentNotifications.map((notification) => <div key={notification.id} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{notification.title}</p><span className="status-pill text-[#e4f9b8]">{notification.type.replaceAll("_", " ")}</span></div><p className="mt-2 text-sm leading-7 text-white/60">{notification.body}</p></div>) : <div className="empty-state-panel rounded-[22px] p-5 text-sm text-white/58">Owner-facing engagement alerts will appear here as the growth engine begins firing live notifications.</div>}</div>
             <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/64">Nearby-client instant booking alerts, loyalty milestone nudges, referral monitoring, verification updates, and push-ready activation all route through the same delivery ledger.</div>
             <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/64">Top growth sources: {summary.marketplace.topSources.length ? summary.marketplace.topSources.map((source) => `${source.sourceKind} ${source.count}`).join(" | ") : "Building source attribution"}</div>
           </Card>
 
           <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3"><p className="surface-label">Automation command</p><RefreshCcw className="h-5 w-5 text-[#baff69]" /></div>
+            <div className="flex items-center justify-between gap-3"><p className="surface-label">Automation command</p><RefreshCcw className="h-5 w-5 text-[#d9f985]" /></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Due now</p><p className="mt-3 text-3xl font-semibold" data-display="true">{automation.dueNowRuns}</p><p className="mt-2 text-sm text-white/62">Queued reminders that can safely run right now.</p></div>
+              <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Due now</p><p className="mt-3 text-3xl font-semibold" data-display="true">{automation.dueNowRuns}</p><p className="mt-2 text-sm text-white/62">Queued reminders that can safely run right now.</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Pending runs</p><p className="mt-3 text-3xl font-semibold" data-display="true">{automation.pendingRuns}</p><p className="mt-2 text-sm text-white/58">Still waiting on their due window or the next execution pass.</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Backlog</p><p className="mt-3 text-3xl font-semibold" data-display="true">{automation.backlogRuns}</p><p className="mt-2 text-sm text-white/58">Runs currently pending, queued, processing, or waiting on retry.</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Retry scheduled</p><p className="mt-3 text-3xl font-semibold" data-display="true">{automation.retryScheduledRuns}</p><p className="mt-2 text-sm text-white/58">Transient failures that have a next retry window already scheduled.</p></div>
@@ -854,7 +854,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Failed</p><p className="mt-3 text-3xl font-semibold" data-display="true">{automation.failedRuns}</p><p className="mt-2 text-sm text-white/58">Runs that need a later retry or operator review.</p></div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <span className="status-pill text-[#d7ffab]">{automation.rebookingReminderEligible} rebooking eligible</span>
+              <span className="status-pill text-[#e4f9b8]">{automation.rebookingReminderEligible} rebooking eligible</span>
               <span className="status-pill text-white/72">{automation.reengagementEligible} re-engagement eligible</span>
               <span className="status-pill text-white/72">{automation.promotionEligible} promotion eligible</span>
               <span className="status-pill text-white/72">{automation.rewardEligible} reward eligible</span>
@@ -870,7 +870,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                 <div key={`${run.clientId}-${run.automationType}-${run.dueAt}`} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{run.clientEmail}</p>
-                    <span className="status-pill text-[#d7ffab]">{run.automationType.replaceAll("_", " ")}</span>
+                    <span className="status-pill text-[#e4f9b8]">{run.automationType.replaceAll("_", " ")}</span>
                   </div>
                   <p className="mt-2 text-sm text-white/58">{run.title}</p>
                 </div>
@@ -881,7 +881,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   <div key={activity.eventId} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-medium">{activity.clientEmail ?? activity.clientId}</p>
-                      <span className="status-pill text-[#d7ffab]">{activity.status.replaceAll("_", " ")}</span>
+                      <span className="status-pill text-[#e4f9b8]">{activity.status.replaceAll("_", " ")}</span>
                     </div>
                     <p className="mt-2 text-sm text-white/58">{activity.automationType.replaceAll("_", " ")} via {activity.triggerSource}</p>
                     <p className="mt-2 text-sm text-white/58">{activity.reason ?? "Recent lifecycle activity is available for this run."}</p>
@@ -903,9 +903,9 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
       {summary.trust ? (
         <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
           <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3"><p className="surface-label">Trust and verification command</p><ShieldCheck className="h-5 w-5 text-[#baff69]" /></div>
+            <div className="flex items-center justify-between gap-3"><p className="surface-label">Trust and verification command</p><ShieldCheck className="h-5 w-5 text-[#d9f985]" /></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Open reports</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.openReports}</p></div>
+              <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Open reports</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.openReports}</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Open disputes</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.openDisputes}</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">High-risk flags</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.highRiskFlags}</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Integrity alerts</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.reviewIntegrityAlerts}</p></div>
@@ -915,12 +915,12 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Pending</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.staffVerification.pending}</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Expired or rejected</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.trust.staffVerification.expired + summary.trust.staffVerification.rejected}</p></div>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">{summary.trust.shopTrustBadges.length ? summary.trust.shopTrustBadges.map((badge) => <span key={badge} className="status-pill text-[#d7ffab]">{badge}</span>) : <span className="status-pill text-white/72">Shop trust badges will appear here as verification clears.</span>}</div>
-            <div className="mt-4 space-y-3">{summary.trust.shopStatuses.map((shop) => <div key={shop.shopId} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex flex-wrap items-center justify-between gap-3"><p className="font-medium">{shop.shopName}</p><span className={`status-pill ${shop.status === "verified" ? "text-[#d7ffab]" : shop.status === "pending" ? "text-amber-200" : "text-white/72"}`}>{shop.badgeLabel}</span></div><p className="mt-2 text-sm text-white/58">Verified categories: {shop.verifiedCategories.length ? shop.verifiedCategories.map((category) => category.replaceAll("_", " ")).join(" | ") : "Verification still in progress"}</p></div>)}</div>
+            <div className="mt-4 flex flex-wrap gap-2">{summary.trust.shopTrustBadges.length ? summary.trust.shopTrustBadges.map((badge) => <span key={badge} className="status-pill text-[#e4f9b8]">{badge}</span>) : <span className="status-pill text-white/72">Shop trust badges will appear here as verification clears.</span>}</div>
+            <div className="mt-4 space-y-3">{summary.trust.shopStatuses.map((shop) => <div key={shop.shopId} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex flex-wrap items-center justify-between gap-3"><p className="font-medium">{shop.shopName}</p><span className={`status-pill ${shop.status === "verified" ? "text-[#e4f9b8]" : shop.status === "pending" ? "text-amber-200" : "text-white/72"}`}>{shop.badgeLabel}</span></div><p className="mt-2 text-sm text-white/58">Verified categories: {shop.verifiedCategories.length ? shop.verifiedCategories.map((category) => category.replaceAll("_", " ")).join(" | ") : "Verification still in progress"}</p></div>)}</div>
           </Card>
 
           <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3"><p className="surface-label">Activation and monetization</p><Globe2 className="h-5 w-5 text-[#baff69]" /></div>
+            <div className="flex items-center justify-between gap-3"><p className="surface-label">Activation and monetization</p><Globe2 className="h-5 w-5 text-[#d9f985]" /></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Boost impressions</p><p className="mt-3 text-3xl font-semibold">{activation?.monetizationTotals.boostImpressions ?? 0}</p></div>
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Featured bookings</p><p className="mt-3 text-3xl font-semibold">{activation?.monetizationTotals.featuredBookings ?? 0}</p></div>
@@ -928,8 +928,8 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Push status</p><p className="mt-3 text-3xl font-semibold">{mobileSummary?.pushEnabled ? "Live" : pwa.pushPermission === "granted" ? "Ready" : "Off"}</p><p className="mt-2 text-sm text-white/58">{mobileSummary?.activeSubscriptionCount ?? 0} executive device route{(mobileSummary?.activeSubscriptionCount ?? 0) === 1 ? "" : "s"}</p></div>
-              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><div className="flex items-center justify-between gap-3"><p className="surface-label">Native-ready routes</p><Smartphone className="h-4 w-4 text-[#baff69]" /></div><p className="mt-3 text-3xl font-semibold">{mobileSummary?.deepLinks.length ?? 0}</p><p className="mt-2 text-sm text-white/58">Owner, discovery, and leaderboard links are ready for app-open behavior.</p></div>
-              <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4"><p className="surface-label text-[#d7ffab]">Offline read lanes</p><p className="mt-3 text-3xl font-semibold">{mobileSummary?.offlineSupport.cachedRoutes.length ?? 0}</p><p className="mt-2 text-sm text-white/62">High-level metrics stay readable while live actions remain safely online-only.</p></div>
+              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><div className="flex items-center justify-between gap-3"><p className="surface-label">Native-ready routes</p><Smartphone className="h-4 w-4 text-[#d9f985]" /></div><p className="mt-3 text-3xl font-semibold">{mobileSummary?.deepLinks.length ?? 0}</p><p className="mt-2 text-sm text-white/58">Owner, discovery, and leaderboard links are ready for app-open behavior.</p></div>
+              <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Offline read lanes</p><p className="mt-3 text-3xl font-semibold">{mobileSummary?.offlineSupport.cachedRoutes.length ?? 0}</p><p className="mt-2 text-sm text-white/62">High-level metrics stay readable while live actions remain safely online-only.</p></div>
             </div>
             {releaseReadiness ? (
               <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4">
@@ -938,13 +938,13 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                     <p className="surface-label">Release readiness</p>
                     <p className="mt-2 text-sm text-white/58">Android wrapper, push bridge, env secrets, and launch docs are checked from the same runtime assumptions the wrapped app will use.</p>
                   </div>
-                  <span className={`status-pill ${releaseReadiness.summary.attentionCount ? "text-amber-200" : "text-[#d7ffab]"}`}>
+                  <span className={`status-pill ${releaseReadiness.summary.attentionCount ? "text-amber-200" : "text-[#e4f9b8]"}`}>
                     {releaseReadiness.summary.readyCount} ready / {releaseReadiness.summary.attentionCount} attention
                   </span>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {releaseReadiness.checks.slice(0, 5).map((check) => (
-                    <span key={check.id} className={`status-pill ${check.status === "ready" ? "text-[#d7ffab]" : "text-amber-200"}`}>
+                    <span key={check.id} className={`status-pill ${check.status === "ready" ? "text-[#e4f9b8]" : "text-amber-200"}`}>
                       {check.label}
                     </span>
                   ))}
@@ -966,7 +966,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <div className="flex items-center justify-between gap-3"><p className="surface-label">Shop verification upload</p><UploadCloud className="h-4 w-4 text-[#baff69]" /></div>
+                  <div className="flex items-center justify-between gap-3"><p className="surface-label">Shop verification upload</p><UploadCloud className="h-4 w-4 text-[#d9f985]" /></div>
                   <Input className="mt-4" value={shopDocumentName} onChange={(event) => setShopDocumentName(event.target.value)} />
                   <Button className="mt-4 h-11 w-full" disabled={isPending} onClick={() => void handleShopVerification()}>{uploadMutation.isPending || submitShopVerificationMutation.isPending ? "Submitting verification..." : "Submit shop verification"}</Button>
                   <div className="mt-4 rounded-[18px] border border-white/8 bg-black/25 px-4 py-4">
@@ -982,7 +982,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                             {provider.providerStatus ? <span className="status-pill text-white/72">{provider.providerStatus.replaceAll("_", " ")}</span> : null}
                           </div>
                           <p className="mt-2 text-sm text-white/62">{provider.summary}</p>
-                          {provider.remediationMessage ? <p className="mt-2 text-sm text-[#d7ffab]">{provider.remediationMessage}</p> : null}
+                          {provider.remediationMessage ? <p className="mt-2 text-sm text-[#e4f9b8]">{provider.remediationMessage}</p> : null}
                           {provider.requirementsCurrentlyDue.length ? <p className="mt-2 text-sm text-white/58">Current requirements: {provider.requirementsCurrentlyDue.join(" | ")}</p> : null}
                           {provider.requirementsPastDue.length ? <p className="mt-2 text-sm text-amber-200">Past due: {provider.requirementsPastDue.join(" | ")}</p> : null}
                         </div>
@@ -999,8 +999,8 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                 </div>
               </div>
             </div>
-            <div className="mt-4 space-y-3">{activation?.boostCampaigns.length ? activation.boostCampaigns.slice(0, 3).map((campaign) => <div key={campaign.id} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{campaign.placementLabel}</p><span className="status-pill text-[#d7ffab]">{currency(campaign.spendCents / 100)}</span></div><p className="mt-2 text-sm text-white/58">{campaign.trustReason}</p></div>) : <div className="empty-state-panel rounded-[22px] p-5 text-sm text-white/58">Boost campaigns will appear here once premium placement inventory is active.</div>}</div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">{activation?.topMarkets.map((market) => <div key={market.citySlug} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{market.cityLabel}</p><span className="status-pill text-[#d7ffab]">{market.activationState}</span></div><p className="mt-2 text-sm text-white/58">Density {market.densityScore}</p></div>)}</div>
+            <div className="mt-4 space-y-3">{activation?.boostCampaigns.length ? activation.boostCampaigns.slice(0, 3).map((campaign) => <div key={campaign.id} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{campaign.placementLabel}</p><span className="status-pill text-[#e4f9b8]">{currency(campaign.spendCents / 100)}</span></div><p className="mt-2 text-sm text-white/58">{campaign.trustReason}</p></div>) : <div className="empty-state-panel rounded-[22px] p-5 text-sm text-white/58">Boost campaigns will appear here once premium placement inventory is active.</div>}</div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">{activation?.topMarkets.map((market) => <div key={market.citySlug} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{market.cityLabel}</p><span className="status-pill text-[#e4f9b8]">{market.activationState}</span></div><p className="mt-2 text-sm text-white/58">Density {market.densityScore}</p></div>)}</div>
           </Card>
         </section>
       ) : null}

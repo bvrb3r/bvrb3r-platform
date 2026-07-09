@@ -24,7 +24,7 @@ function featureTone(state: ShopOwnerPaywallFeatureState) {
 
 function stateIcon(state: ShopOwnerPaywallFeatureState) {
   if (state === "available") {
-    return <ShieldCheck className="h-4 w-4 text-[#baff69]" />;
+    return <ShieldCheck className="h-4 w-4 text-[#d9f985]" />;
   }
 
   if (state === "coming_soon") {
@@ -39,7 +39,7 @@ function PlanAction({ summary }: { summary: ShopOwnerPaywallSummary }) {
     return (
       <Link
         href={summary.upgradeHref}
-        className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/28 bg-[#A3FF12]/10 px-5 text-xs font-black uppercase tracking-[0.14em] text-[#A3FF12] transition hover:border-[#A3FF12]/46 hover:bg-[#A3FF12]/15"
+        className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#C4F24E]/28 bg-[#C4F24E]/10 px-5 text-xs font-black uppercase tracking-[0.14em] text-[#C4F24E] transition hover:border-[#C4F24E]/46 hover:bg-[#C4F24E]/15"
       >
         {summary.upgradeActionLabel}
       </Link>
@@ -106,7 +106,7 @@ export function ShopOwnerPlanAccessCard({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#A3FF12]">Shop owner plan access</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#C4F24E]">Shop owner plan access</p>
           <h3 className="mt-2 text-xl font-black tracking-[-0.04em] text-white" data-display="true">
             {summary.currentPlanLabel} shop access
           </h3>
@@ -156,7 +156,7 @@ export function ShopOwnerPlanAccessCard({
         <PlanAction summary={summary} />
         <Link
           href={summary.fallbackHref}
-          className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-5 text-xs font-black uppercase tracking-[0.14em] text-white/68 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-5 text-xs font-black uppercase tracking-[0.14em] text-white/68 transition hover:border-[#C4F24E]/28 hover:text-[#C4F24E]"
         >
           {summary.fallbackActionLabel}
         </Link>
@@ -181,11 +181,11 @@ export function ShopOwnerLockedFeatureOverlay({
       {children ? <div className="opacity-50 blur-[0.5px]">{children}</div> : null}
       <div className="mt-4 rounded-[22px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(4,4,4,0.98))] p-4">
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[#A3FF12]/20 bg-[#A3FF12]/10 text-[#A3FF12]">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#C4F24E]">
             <LockKeyhole className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Locked shop tool</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Locked shop tool</p>
             <h3 className="mt-2 text-xl font-black tracking-[-0.04em] text-white">{feature.title}</h3>
             <p className="mt-2 text-sm leading-6 text-white/58">{feature.description}</p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -211,11 +211,11 @@ export function ShopOwnerUpgradePrompt({
     <section data-testid="shop-owner-upgrade-prompt" className="space-y-4">
       <div className="rounded-[24px] border border-white/10 bg-white/[0.035] p-4">
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[#A3FF12]/20 bg-[#A3FF12]/10 text-[#A3FF12]">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#C4F24E]">
             <Building2 className="h-5 w-5" />
           </span>
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Plan access</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Plan access</p>
             <h3 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">
               {feature ? feature.title : `${summary.currentPlanLabel} shop access`}
             </h3>
@@ -239,7 +239,7 @@ export function ShopOwnerUpgradePrompt({
         <PlanAction summary={summary} />
         <Link
           href={summary.fallbackHref}
-          className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-5 text-xs font-black uppercase tracking-[0.14em] text-white/68 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-5 text-xs font-black uppercase tracking-[0.14em] text-white/68 transition hover:border-[#C4F24E]/28 hover:text-[#C4F24E]"
         >
           {summary.fallbackActionLabel}
         </Link>

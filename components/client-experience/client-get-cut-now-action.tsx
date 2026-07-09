@@ -126,7 +126,7 @@ export function ClientGetCutNowAction({
           {state === "location" ? (
             <div className="space-y-4">
               <div className="inline-flex items-center gap-2 text-sm font-semibold text-white">
-                <MapPin className="h-4 w-4 text-[#d7ffab]" />
+                <MapPin className="h-4 w-4 text-[#e4f9b8]" />
                 Add your location to find the next available barber near you.
               </div>
               <p className="text-sm leading-7 text-white/60">
@@ -141,7 +141,7 @@ export function ClientGetCutNowAction({
           {state === "unavailable" ? (
             <div className="space-y-4">
               <div className="inline-flex items-center gap-2 text-sm font-semibold text-white">
-                <Store className="h-4 w-4 text-[#d7ffab]" />
+                <Store className="h-4 w-4 text-[#e4f9b8]" />
                 No available barber near you right now.
               </div>
               <p className="text-sm leading-7 text-white/60">
@@ -162,7 +162,7 @@ export function ClientGetCutNowAction({
                     {nextAvailableChair.shopName ?? "Location available in booking"}
                   </p>
                 </div>
-                <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#d7ffab]">
+                <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#e4f9b8]">
                   {nextAvailableChair.matchedFrom.replaceAll("_", " ")}
                 </span>
               </div>
@@ -187,9 +187,9 @@ export function ClientGetCutNowAction({
               </div>
 
               {state === "payment" ? (
-                <div className="rounded-[18px] border border-[#d7ffab]/18 bg-[#d7ffab]/8 px-4 py-3 text-sm text-white/74">
+                <div className="rounded-[18px] border border-[#e4f9b8]/18 bg-[#e4f9b8]/8 px-4 py-3 text-sm text-white/74">
                   <div className="inline-flex items-center gap-2 text-white">
-                    <CreditCard className="h-4 w-4 text-[#d7ffab]" />
+                    <CreditCard className="h-4 w-4 text-[#e4f9b8]" />
                     Add a payment method to confirm this booking.
                   </div>
                   <p className="mt-2 leading-7 text-white/60">
@@ -199,7 +199,7 @@ export function ClientGetCutNowAction({
               ) : (
                 <div className="rounded-[18px] border border-white/8 bg-black/18 px-4 py-3 text-sm text-white/74">
                   <div className="inline-flex items-center gap-2 text-white">
-                    <Scissors className="h-4 w-4 text-[#d7ffab]" />
+                    <Scissors className="h-4 w-4 text-[#e4f9b8]" />
                     You will confirm the chair inside the existing booking flow.
                   </div>
                   <p className="mt-2 leading-7 text-white/60">

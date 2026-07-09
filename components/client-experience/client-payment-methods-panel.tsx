@@ -562,7 +562,7 @@ export function ClientPaymentMethodsPanel({
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="inline-flex items-center gap-2 text-sm text-white/78">
-            <CreditCard className="h-4 w-4 text-[#baff69]" />
+            <CreditCard className="h-4 w-4 text-[#d9f985]" />
             Card on file
           </div>
           <p className="mt-3 text-lg font-semibold text-white">Card on file</p>
@@ -570,7 +570,7 @@ export function ClientPaymentMethodsPanel({
             Add a card so booking and rebooking stay fast. Protected and encrypted by Stripe.
           </p>
         </div>
-        <div className="rounded-[20px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
+        <div className="rounded-[20px] border border-[#C4F24E]/16 bg-[#C4F24E]/8 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">
           {methods.length} saved
         </div>
       </div>
@@ -594,7 +594,7 @@ export function ClientPaymentMethodsPanel({
         <div className="mt-4 rounded-[22px] border border-white/10 bg-black/25 px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[#7CFF00]/20 bg-[#7CFF00]/10 text-[#d7ffab]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#e4f9b8]">
                 <CreditCard className="h-5 w-5" />
               </div>
               <div>
@@ -719,7 +719,7 @@ export function ClientPaymentMethodsPanel({
           <label className="mt-4 flex items-start gap-3 text-sm leading-6 text-white/68">
             <input
               type="checkbox"
-              className="mt-1 accent-[#7CFF00]"
+              className="mt-1 accent-[#C4F24E]"
               checked={authorized}
               onChange={(event) => setAuthorized(event.target.checked)}
             />

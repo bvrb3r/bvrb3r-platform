@@ -58,7 +58,7 @@ export function ActivationStatusWorkspace() {
           ))}
         </div>
         {query.data?.warnings?.length ? (
-          <div className="mt-5 rounded-[22px] border border-[#cfff93]/18 bg-[#7cff00]/[0.08] p-4 text-sm leading-7 text-[#ddffb8]">
+          <div className="mt-5 rounded-[22px] border border-[#e0f6a0]/18 bg-[#c4f24e]/[0.08] p-4 text-sm leading-7 text-[#e8f6c8]">
             {query.data.warnings.join(" ")}
           </div>
         ) : null}

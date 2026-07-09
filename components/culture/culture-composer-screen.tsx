@@ -274,7 +274,7 @@ export function CultureComposerScreen({
                 value={postType}
                 onChange={(event) => setPostType(event.target.value)}
                 disabled={Boolean(blockedReason) || isBusy}
-                className="mt-2 w-full rounded-[14px] border border-white/10 bg-black/50 px-4 py-3 text-sm text-white outline-none focus:border-[#d7ffab]/45"
+                className="mt-2 w-full rounded-[14px] border border-white/10 bg-black/50 px-4 py-3 text-sm text-white outline-none focus:border-[#e4f9b8]/45"
               >
                 {postTypeOptions.map((option) => (
                   <option key={`${option.label}-${option.value}`} value={option.value}>{option.label}</option>
@@ -291,7 +291,7 @@ export function CultureComposerScreen({
                 maxLength={2200}
                 rows={7}
                 placeholder={role === "barber" ? "Tell clients what makes this cut worth booking." : "Tell the community what is happening in the shop."}
-                className="mt-2 w-full resize-none rounded-[18px] border border-white/10 bg-black/50 px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/30 focus:border-[#d7ffab]/45"
+                className="mt-2 w-full resize-none rounded-[18px] border border-white/10 bg-black/50 px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/30 focus:border-[#e4f9b8]/45"
               />
             </label>
 
@@ -302,13 +302,13 @@ export function CultureComposerScreen({
                 onChange={(event) => setTags(event.target.value)}
                 disabled={Boolean(blockedReason) || isBusy}
                 placeholder="fade, beard, ybor"
-                className="mt-2 w-full rounded-[14px] border border-white/10 bg-black/50 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#d7ffab]/45"
+                className="mt-2 w-full rounded-[14px] border border-white/10 bg-black/50 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#e4f9b8]/45"
               />
               <span className="mt-2 block text-xs text-white/42">Comma-separated tags. Invalid or duplicate tags are ignored server-side.</span>
             </label>
 
             <div className="rounded-[22px] border border-dashed border-white/12 bg-white/[0.03] p-4">
-              <ImagePlus className="h-5 w-5 text-[#d7ffab]" />
+              <ImagePlus className="h-5 w-5 text-[#e4f9b8]" />
               <p className="mt-3 text-sm font-semibold text-white">{copy.mediaTitle}</p>
               <p className="mt-2 text-sm leading-6 text-white/54">{copy.mediaCopy}</p>
               <div className="mt-4 space-y-3">
@@ -323,7 +323,7 @@ export function CultureComposerScreen({
                       setError(null);
                       setMessage(null);
                     }}
-                    className="block w-full rounded-[14px] border border-white/10 bg-black/40 px-3 py-3 text-sm text-white/72 file:mr-4 file:rounded-full file:border-0 file:bg-[#d7ffab] file:px-4 file:py-2 file:text-xs file:font-black file:uppercase file:tracking-[0.12em] file:text-[#050505] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="block w-full rounded-[14px] border border-white/10 bg-black/40 px-3 py-3 text-sm text-white/72 file:mr-4 file:rounded-full file:border-0 file:bg-[#e4f9b8] file:px-4 file:py-2 file:text-xs file:font-black file:uppercase file:tracking-[0.12em] file:text-[#050505] disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </label>
                 {selectedFile ? (
@@ -332,7 +332,7 @@ export function CultureComposerScreen({
                   </p>
                 ) : null}
                 {attachedMedia?.url || attachedMedia?.thumbnailUrl ? (
-                  <div className="overflow-hidden rounded-[18px] border border-[#d7ffab]/16 bg-black/30">
+                  <div className="overflow-hidden rounded-[18px] border border-[#e4f9b8]/16 bg-black/30">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={attachedMedia.url ?? attachedMedia.thumbnailUrl ?? ""} alt="" className="aspect-[4/3] w-full object-cover" />
                   </div>
@@ -341,7 +341,7 @@ export function CultureComposerScreen({
                   type="button"
                   onClick={uploadSelectedMedia}
                   disabled={!selectedFile || Boolean(blockedReason) || isBusy}
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#d7ffab]/24 bg-[#d7ffab]/10 px-4 text-xs font-black uppercase tracking-[0.14em] text-[#d7ffab] disabled:cursor-not-allowed disabled:opacity-45"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#e4f9b8]/24 bg-[#e4f9b8]/10 px-4 text-xs font-black uppercase tracking-[0.14em] text-[#e4f9b8] disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {state === "uploading" ? "Uploading..." : "Attach Image"}
                 </button>
@@ -363,7 +363,7 @@ export function CultureComposerScreen({
             </div>
 
             {message ? (
-              <div className="flex items-center gap-2 rounded-[18px] border border-[#d7ffab]/20 bg-[#d7ffab]/10 px-4 py-3 text-sm text-[#d7ffab]">
+              <div className="flex items-center gap-2 rounded-[18px] border border-[#e4f9b8]/20 bg-[#e4f9b8]/10 px-4 py-3 text-sm text-[#e4f9b8]">
                 <CheckCircle2 className="h-4 w-4" />
                 {message}
               </div>
@@ -393,7 +393,7 @@ export function CultureComposerScreen({
                 type="button"
                 onClick={submitForReview}
                 disabled={!canSubmit}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#d7ffab]/35 bg-[#A3FF12] px-5 text-sm font-black text-[#050505] disabled:cursor-not-allowed disabled:opacity-45"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#e4f9b8]/35 bg-[#C4F24E] px-5 text-sm font-black text-[#050505] disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Send className="h-4 w-4" />
                 {state === "submitting" ? "Submitting..." : copy.submitLabel}
@@ -404,10 +404,10 @@ export function CultureComposerScreen({
 
         <aside className="space-y-4">
           <Card className="rounded-[28px] border-white/10 bg-black/24 p-5">
-            <Sparkles className="h-5 w-5 text-[#d7ffab]" />
+            <Sparkles className="h-5 w-5 text-[#e4f9b8]" />
             <p className="mt-4 text-lg font-semibold text-white">Preview card</p>
             <div className="mt-4 overflow-hidden rounded-[22px] border border-white/10 bg-black/30">
-              <div className="aspect-[4/3] bg-[linear-gradient(135deg,rgba(124,255,0,0.16),rgba(255,255,255,0.06)_42%,rgba(0,0,0,0.78))]">
+              <div className="aspect-[4/3] bg-[linear-gradient(135deg,rgba(196, 242, 78,0.16),rgba(255,255,255,0.06)_42%,rgba(0,0,0,0.78))]">
                 {attachedMedia?.url || attachedMedia?.thumbnailUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={attachedMedia.url ?? attachedMedia.thumbnailUrl ?? ""} alt="" className="h-full w-full object-cover" />

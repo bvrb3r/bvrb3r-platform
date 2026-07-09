@@ -57,7 +57,7 @@ function formatLabel(value: string) {
 function badgeClasses(value: string) {
   const normalized = value.toLowerCase();
   if (normalized.includes("approved") || normalized.includes("active") || normalized.includes("verified")) {
-    return "border-[#7CFF00]/16 bg-[#7CFF00]/10 text-[#d7ffab]";
+    return "border-[#C4F24E]/16 bg-[#C4F24E]/10 text-[#e4f9b8]";
   }
   if (normalized.includes("pending") || normalized.includes("review") || normalized.includes("needs")) {
     return "border-amber-300/20 bg-amber-300/10 text-amber-100";
@@ -202,7 +202,7 @@ export function ArchitectAccountDirectoryWorkspace({
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:w-[24rem]">
-              <DataStatCard label="Users in view" value={data.accounts.length} detail="Filtered from live account truth." className="border-[#7CFF00]/28 bg-[#7CFF00]/8" />
+              <DataStatCard label="Users in view" value={data.accounts.length} detail="Filtered from live account truth." className="border-[#C4F24E]/28 bg-[#C4F24E]/8" />
               <DataStatCard label="Total accounts" value={data.counts.totalAccounts} detail="No sample rows." />
             </div>
           </div>
@@ -294,7 +294,7 @@ export function ArchitectAccountDirectoryWorkspace({
           {isSearching && !query.data ? (
             <Card className="rounded-[30px] border border-white/8 bg-black/20 p-6">
               <div className="flex items-center gap-3 text-white/72">
-                <Loader2 className="h-5 w-5 animate-spin text-[#baff69]" />
+                <Loader2 className="h-5 w-5 animate-spin text-[#d9f985]" />
                 <p className="font-semibold">Searching accounts...</p>
               </div>
               <div className="mt-5 grid gap-3">

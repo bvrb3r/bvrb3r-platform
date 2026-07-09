@@ -26,7 +26,7 @@ export default function ContactPage() {
             <Input placeholder="Work email" className="sm:col-span-1" />
             <Input placeholder="Business name" className="sm:col-span-1" />
             <Input placeholder="Phone" className="sm:col-span-1" />
-            <textarea className="min-h-36 w-full min-w-0 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-3 text-base text-[#f5f1e8] outline-none placeholder:text-white/32 focus:border-[#7CFF00]/55 focus:shadow-[0_0_0_4px_rgba(124,255,0,0.10)] sm:col-span-2 sm:min-h-40 sm:text-sm" placeholder="Tell us about your shop, locations, and rollout goals." />
+            <textarea className="min-h-36 w-full min-w-0 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-3 text-base text-[#f5f1e8] outline-none placeholder:text-white/32 focus:border-[#C4F24E]/55 focus:shadow-[0_0_0_4px_rgba(196, 242, 78,0.10)] sm:col-span-2 sm:min-h-40 sm:text-sm" placeholder="Tell us about your shop, locations, and rollout goals." />
             <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row">
               <Button className="px-6">Request demo</Button>
               <Link href="/login" className="sm:w-auto">

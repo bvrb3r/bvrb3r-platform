@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 const toneMap = {
   success: {
     icon: CheckCircle2,
-    className: "border-[#7CFF00]/18 bg-[#7CFF00]/8 text-white/82",
-    iconClassName: "text-[#d7ffab]"
+    className: "border-[#C4F24E]/18 bg-[#C4F24E]/8 text-white/82",
+    iconClassName: "text-[#e4f9b8]"
   },
   error: {
     icon: AlertCircle,
@@ -15,7 +15,7 @@ const toneMap = {
   info: {
     icon: Info,
     className: "border-white/10 bg-black/25 text-white/78",
-    iconClassName: "text-[#baff69]"
+    iconClassName: "text-[#d9f985]"
   }
 } as const;
 

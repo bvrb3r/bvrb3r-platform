@@ -26,11 +26,11 @@ const statusMeta: Record<AppointmentVisualStatus, { label: string; className: st
   },
   ready_for_checkout: {
     label: "Ready for checkout",
-    className: "border-[#7CFF00]/18 bg-[#7CFF00]/10 text-[#d7ffab]"
+    className: "border-[#C4F24E]/18 bg-[#C4F24E]/10 text-[#e4f9b8]"
   },
   completed: {
     label: "Completed",
-    className: "border-[#7CFF00]/16 bg-[#7CFF00]/8 text-[#d7ffab]"
+    className: "border-[#C4F24E]/16 bg-[#C4F24E]/8 text-[#e4f9b8]"
   },
   cancelled: {
     label: "Cancelled",

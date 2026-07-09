@@ -37,7 +37,7 @@ function badgeClasses(value: string) {
   const normalized = value.toLowerCase();
 
   if (normalized.includes("approved") || normalized.includes("verified")) {
-    return "border-[#7CFF00]/16 bg-[#7CFF00]/10 text-[#d7ffab]";
+    return "border-[#C4F24E]/16 bg-[#C4F24E]/10 text-[#e4f9b8]";
   }
 
   if (normalized.includes("submitted") || normalized.includes("review") || normalized.includes("pending")) {
@@ -126,7 +126,7 @@ export function ArchitectVerificationQueueWorkspace({
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:w-[24rem]">
-              <DataStatCard label="Cases in view" value={data.items.length} detail="Filtered queue rows ready for review." className="border-[#7CFF00]/28 bg-[#7CFF00]/8" />
+              <DataStatCard label="Cases in view" value={data.items.length} detail="Filtered queue rows ready for review." className="border-[#C4F24E]/28 bg-[#C4F24E]/8" />
               <DataStatCard label="Current lane" value="Verification control" detail="Actions always write review and audit history." icon={<ShieldCheck className="h-4 w-4" />} />
             </div>
           </div>
@@ -158,8 +158,8 @@ export function ArchitectVerificationQueueWorkspace({
             <p className="mt-3 text-3xl font-semibold text-white">{queueGroups.pending}</p>
             <p className="mt-2 text-sm leading-6 text-white/56">Submitted, under review, or needing an update.</p>
           </GlassCard>
-          <GlassCard className="border-[#7CFF00]/16 bg-[#7CFF00]/8 p-5">
-            <p className="surface-label text-[#d7ffab]">Approved</p>
+          <GlassCard className="border-[#C4F24E]/16 bg-[#C4F24E]/8 p-5">
+            <p className="surface-label text-[#e4f9b8]">Approved</p>
             <p className="mt-3 text-3xl font-semibold text-white">{queueGroups.approved}</p>
             <p className="mt-2 text-sm leading-6 text-white/56">Trusted records already clear in this view.</p>
           </GlassCard>

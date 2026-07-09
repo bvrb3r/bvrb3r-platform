@@ -220,7 +220,7 @@ function getTaxStatus(status?: string) {
 function statusClasses(tone: SettingTone = "muted") {
   switch (tone) {
     case "green":
-      return "border-[#A3FF12]/25 bg-[#A3FF12]/10 text-[#A3FF12]";
+      return "border-[#C4F24E]/25 bg-[#C4F24E]/10 text-[#C4F24E]";
     case "yellow":
       return "border-amber-300/25 bg-amber-300/10 text-amber-300";
     case "red":
@@ -840,7 +840,7 @@ export function OwnerSettingsWorkspace({
               <p className="mt-2 text-sm text-white/58">Add your shop name, address, and contact details before branding media can be attached.</p>
               <Link
                 href="/onboarding/owner/shop"
-                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/10 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/15"
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-[#C4F24E]/30 bg-[#C4F24E]/10 px-5 text-sm font-extrabold text-[#C4F24E] transition hover:bg-[#C4F24E]/15"
               >
                 Add shop details
               </Link>
@@ -933,7 +933,7 @@ export function OwnerSettingsWorkspace({
           footerPrimary={quickSetupModal === "hours" ? (
             <button
               type="button"
-              className="min-h-12 rounded-full border border-[#A3FF12]/45 bg-[#A3FF12] px-5 text-sm font-extrabold text-black hover:bg-[#8de300] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-white/34"
+              className="min-h-12 rounded-full border border-[#C4F24E]/45 bg-[#C4F24E] px-5 text-sm font-extrabold text-black hover:bg-[#b3e63a] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-white/34"
               disabled={ownerHoursSaving}
               onClick={() => void handleQuickShopHoursSave()}
             >
@@ -944,7 +944,7 @@ export function OwnerSettingsWorkspace({
             {quickSetupModal === "hours" ? (
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Quick setup</p>
                   <h2 className="mt-2 text-2xl font-black tracking-[-0.04em]">Set shop hours</h2>
                   <p className="mt-2 text-sm text-white/58">These hours feed the owner schedule and public shop readiness.</p>
                 </div>
@@ -957,7 +957,7 @@ export function OwnerSettingsWorkspace({
                       className={cn(
                         "min-h-11 rounded-2xl border text-xs font-black",
                         shopHoursDraft.days.includes(day.value)
-                          ? "border-[#A3FF12]/55 bg-[#A3FF12] text-black"
+                          ? "border-[#C4F24E]/55 bg-[#C4F24E] text-black"
                           : "border-white/10 bg-white/[0.035] text-white/62"
                       )}
                     >
@@ -981,7 +981,7 @@ export function OwnerSettingsWorkspace({
             {quickSetupModal === "invite" ? (
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Team setup</p>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Team setup</p>
                   <h2 className="mt-2 text-2xl font-black tracking-[-0.04em]">Invite barber</h2>
                   <p className="mt-2 text-sm text-white/58">Search real barber accounts and send a canonical team invite.</p>
                 </div>
@@ -1022,7 +1022,7 @@ export function OwnerSettingsWorkspace({
                       </div>
                       <Button
                         type="button"
-                        className="min-h-11 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]"
+                        className="min-h-11 rounded-2xl bg-[#C4F24E] text-black hover:bg-[#b3e63a]"
                         disabled={!barber.canInvite || createInviteMutation.isPending}
                         onClick={() => void handleQuickInviteBarber(barber.barberId)}
                       >
@@ -1046,7 +1046,7 @@ export function OwnerSettingsWorkspace({
                 </div>
                 <div className="flex gap-3">
                   <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
-                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" onClick={() => void handleQuickTurnShopPublic()}>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#C4F24E] text-black hover:bg-[#b3e63a]" onClick={() => void handleQuickTurnShopPublic()}>
                     Turn shop public
                   </Button>
                 </div>

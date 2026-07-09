@@ -89,14 +89,14 @@ export function ClientEngagementPanel() {
       <Card className="rounded-[32px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="surface-label text-[#d7ffab]">Engagement lane</p>
+            <p className="surface-label text-[#e4f9b8]">Engagement lane</p>
             <h3 className="mt-3 text-3xl font-semibold sm:text-4xl" data-display="true">Stay on your barber rhythm</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/64">
               Rebooking signals, BVRB3R Points, follows, reminders, and now mobile activation are all designed to make booking feel natural instead of transactional.
             </p>
           </div>
-          <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-4">
-            <p className="surface-label text-[#d7ffab]">BVRB3R Points</p>
+          <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 px-4 py-4">
+            <p className="surface-label text-[#e4f9b8]">BVRB3R Points</p>
             <p className="mt-3 text-3xl font-semibold" data-display="true">{summary.pointsBalance}</p>
             <p className="mt-2 text-sm text-white/60">{summary.tier.toUpperCase()} tier with {summary.referralCredits} referral credit{summary.referralCredits === 1 ? "" : "s"}</p>
           </div>
@@ -110,12 +110,12 @@ export function ClientEngagementPanel() {
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="surface-label">Smart rebooking</p>
-              <Repeat2 className="h-5 w-5 text-[#baff69]" />
+              <Repeat2 className="h-5 w-5 text-[#d9f985]" />
             </div>
             <p className="mt-4 text-lg font-semibold">{rebooking?.message ?? "We are still learning your ideal refresh cadence."}</p>
             <p className="mt-3 text-sm leading-7 text-white/62">{rebooking?.reason ?? "Complete a few more visits and the platform will tighten your reminder window automatically."}</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <span className="status-pill text-[#d7ffab]">{formatSignalLabel(intelligence.rebookingWindow)}</span>
+              <span className="status-pill text-[#e4f9b8]">{formatSignalLabel(intelligence.rebookingWindow)}</span>
               <span className="status-pill text-white/72">{formatSignalLabel(intelligence.churnRisk)} risk</span>
               <span className="status-pill text-white/72">{formatSignalLabel(intelligence.loyaltySegment)}</span>
             </div>
@@ -131,7 +131,7 @@ export function ClientEngagementPanel() {
                   : "No live follow-up run is pending right now. As your cadence, loyalty, and offer fit change, queued nudges will show here."}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <span className="status-pill text-[#d7ffab]">{automation.pendingRuns} pending</span>
+                <span className="status-pill text-[#e4f9b8]">{automation.pendingRuns} pending</span>
                 <span className="status-pill text-white/72">{automation.retryScheduledRuns} retry scheduled</span>
                 <span className="status-pill text-white/72">{automation.completedRuns} completed</span>
                 <span className="status-pill text-white/72">{automation.failedRuns} failed</span>
@@ -139,12 +139,12 @@ export function ClientEngagementPanel() {
               </div>
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <span className="status-pill text-[#d7ffab]">{rebooking ? `Suggested ${dateLabel(rebooking.remindAt)}` : "Cadence building"}</span>
-              <Link href="/booking/new" className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/78 transition hover:border-[#7CFF00]/18 hover:text-[#d7ffab]">
+              <span className="status-pill text-[#e4f9b8]">{rebooking ? `Suggested ${dateLabel(rebooking.remindAt)}` : "Cadence building"}</span>
+              <Link href="/booking/new" className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/78 transition hover:border-[#C4F24E]/18 hover:text-[#e4f9b8]">
                 Rebook from this signal
                 <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link href="/discover" className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/78 transition hover:border-[#7CFF00]/18 hover:text-[#d7ffab]">
+              <Link href="/discover" className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/78 transition hover:border-[#C4F24E]/18 hover:text-[#e4f9b8]">
                 Discover more barbers
               </Link>
             </div>
@@ -153,14 +153,14 @@ export function ClientEngagementPanel() {
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="surface-label">Loyalty economy</p>
-              <Gift className="h-5 w-5 text-[#baff69]" />
+              <Gift className="h-5 w-5 text-[#d9f985]" />
             </div>
             <div className="mt-4 space-y-3">
               {summary.rewards.map((reward) => (
                 <div key={reward.id} className="rounded-[20px] border border-white/8 bg-black/25 px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{reward.title}</p>
-                    <span className={reward.unlocked ? "status-pill text-[#d7ffab]" : "status-pill text-white/58"}>{reward.pointsRequired} pts</span>
+                    <span className={reward.unlocked ? "status-pill text-[#e4f9b8]" : "status-pill text-white/58"}>{reward.pointsRequired} pts</span>
                   </div>
                   <p className="mt-2 text-sm text-white/58">{reward.unlocked ? "Ready to claim from your client home." : "Keep booking, reviewing, and referring to reach this reward."}</p>
                 </div>
@@ -174,7 +174,7 @@ export function ClientEngagementPanel() {
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Mobile app activation</p>
-            <Smartphone className="h-5 w-5 text-[#baff69]" />
+            <Smartphone className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
@@ -187,8 +187,8 @@ export function ClientEngagementPanel() {
               <p className="mt-3 text-2xl font-semibold" data-display="true">{mobileSummary?.offlineSupport.cachedRoutes.length ?? 0}</p>
               <p className="mt-2 text-sm text-white/58">Cached discovery and booking-entry surfaces stay close even when the signal drops.</p>
             </div>
-            <div className="rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-              <p className="surface-label text-[#d7ffab]">Activation links</p>
+            <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4">
+              <p className="surface-label text-[#e4f9b8]">Activation links</p>
               <p className="mt-3 text-2xl font-semibold" data-display="true">{mobileSummary?.deepLinks.length ?? 0}</p>
               <p className="mt-2 text-sm text-white/62">Deep links are ready for bookings, discovery, referrals, and your client home.</p>
             </div>
@@ -202,11 +202,11 @@ export function ClientEngagementPanel() {
                 Turn off alerts
               </button>
             ) : (
-              <button type="button" className="inline-flex h-11 items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#d7ffab] transition hover:border-[#7CFF00]/30 hover:bg-[#7CFF00]/14" onClick={() => void handleEnablePush()}>
+              <button type="button" className="inline-flex h-11 items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e4f9b8] transition hover:border-[#C4F24E]/30 hover:bg-[#C4F24E]/14" onClick={() => void handleEnablePush()}>
                 Enable booking alerts
               </button>
             )}
-            <Link href="/referrals" className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-black/25 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/78 transition hover:border-[#7CFF00]/18 hover:text-[#d7ffab]">
+            <Link href="/referrals" className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-black/25 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/78 transition hover:border-[#C4F24E]/18 hover:text-[#e4f9b8]">
               Open referrals
             </Link>
           </div>
@@ -215,7 +215,7 @@ export function ClientEngagementPanel() {
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Followed barbers</p>
-            <Users className="h-5 w-5 text-[#baff69]" />
+            <Users className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {summary.followedBarbers.length ? summary.followedBarbers.map((follow) => (
@@ -225,7 +225,7 @@ export function ClientEngagementPanel() {
                     <p className="font-medium">{follow.barberName}</p>
                     <p className="mt-2 text-sm text-white/55">{follow.username ? `@${follow.username}` : "Marketplace profile ready"}</p>
                   </div>
-                  <span className="status-pill text-[#d7ffab]">{follow.nextAvailableAt ? dateLabel(follow.nextAvailableAt) : "Availability soon"}</span>
+                  <span className="status-pill text-[#e4f9b8]">{follow.nextAvailableAt ? dateLabel(follow.nextAvailableAt) : "Availability soon"}</span>
                 </div>
               </div>
             )) : (
@@ -235,7 +235,7 @@ export function ClientEngagementPanel() {
           {primarySuggestion ? (
             <button
               type="button"
-              className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#d7ffab] transition hover:border-[#7CFF00]/30 hover:bg-[#7CFF00]/14"
+              className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e4f9b8] transition hover:border-[#C4F24E]/30 hover:bg-[#C4F24E]/14"
               onClick={() => void handleFollow(primarySuggestion.barberId)}
               disabled={followMutation.isPending}
             >
@@ -248,7 +248,7 @@ export function ClientEngagementPanel() {
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Recommended next chair</p>
-            <Repeat2 className="h-5 w-5 text-[#baff69]" />
+            <Repeat2 className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {summary.recommendedBarbers.length ? summary.recommendedBarbers.map((barber) => (
@@ -258,7 +258,7 @@ export function ClientEngagementPanel() {
                     <p className="font-medium">{barber.barberName}</p>
                     <p className="mt-2 text-sm text-white/55">{barber.username ? `@${barber.username}` : "Marketplace profile ready"}</p>
                   </div>
-                  <span className="status-pill text-[#d7ffab]">{barber.nextAvailableAt ? dateLabel(barber.nextAvailableAt) : "Open soon"}</span>
+                  <span className="status-pill text-[#e4f9b8]">{barber.nextAvailableAt ? dateLabel(barber.nextAvailableAt) : "Open soon"}</span>
                 </div>
                 <p className="mt-3 text-sm leading-7 text-white/60">{barber.reason}</p>
               </div>
@@ -271,14 +271,14 @@ export function ClientEngagementPanel() {
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Notifications and proof</p>
-            <BellRing className="h-5 w-5 text-[#baff69]" />
+            <BellRing className="h-5 w-5 text-[#d9f985]" />
           </div>
           <div className="mt-4 space-y-3">
             {summary.recentNotifications.length ? summary.recentNotifications.map((notification) => (
               <div key={notification.id} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-medium">{notification.title}</p>
-                  <span className="status-pill text-[#d7ffab]">{notification.channel.replaceAll("_", " ")}</span>
+                  <span className="status-pill text-[#e4f9b8]">{notification.channel.replaceAll("_", " ")}</span>
                 </div>
                 <p className="mt-2 text-sm leading-7 text-white/60">{notification.body}</p>
               </div>
@@ -291,7 +291,7 @@ export function ClientEngagementPanel() {
               <p className="surface-label">Referral code</p>
               <p className="mt-3 text-lg font-semibold">{summary.referralCode.code}</p>
               <p className="mt-2 text-white/58">Share this code to turn referrals into future points and marketplace growth.</p>
-              <Link href="/referrals" className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#d7ffab] transition hover:border-[#7CFF00]/30 hover:bg-[#7CFF00]/14">Open referrals</Link>
+              <Link href="/referrals" className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e4f9b8] transition hover:border-[#C4F24E]/30 hover:bg-[#C4F24E]/14">Open referrals</Link>
             </div>
           ) : null}
         </Card>

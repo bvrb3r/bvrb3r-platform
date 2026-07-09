@@ -30,7 +30,7 @@ const modeOptions = [
 function statusClass(value?: string | null) {
   const normalized = `${value ?? ""}`.toLowerCase();
   if (["healthy", "pass", "eligible", "completed", "succeeded"].some((token) => normalized.includes(token))) {
-    return "border-[#7CFF00]/20 bg-[#7CFF00]/10 text-[#d7ffab]";
+    return "border-[#C4F24E]/20 bg-[#C4F24E]/10 text-[#e4f9b8]";
   }
   if (["warning", "review", "available", "pending"].some((token) => normalized.includes(token))) {
     return "border-amber-300/20 bg-amber-300/10 text-amber-100";
@@ -327,7 +327,7 @@ export function DebugConsole({ initialMode }: { initialMode?: string }) {
         <section className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.92),rgba(5,5,5,0.96))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.34)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#d7ffab]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/18 bg-[#C4F24E]/8 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#e4f9b8]">
                 <ShieldCheck className="h-4 w-4" />
                 Production command center
               </div>
@@ -401,7 +401,7 @@ export function DebugConsole({ initialMode }: { initialMode?: string }) {
                   key={card.mode}
                   type="button"
                   onClick={() => setMode(card.mode)}
-                  className="rounded-[20px] border border-white/10 bg-black/20 p-3 text-left transition hover:border-[#7CFF00]/22"
+                  className="rounded-[20px] border border-white/10 bg-black/20 p-3 text-left transition hover:border-[#C4F24E]/22"
                 >
                   <p className="text-sm font-medium text-white">{card.label}</p>
                   <p className="mt-1 text-xs text-white/50">{card.detail}</p>

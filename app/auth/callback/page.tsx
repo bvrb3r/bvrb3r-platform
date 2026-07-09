@@ -46,7 +46,7 @@ function AuthCallbackError({ message, code }: { message: string; code?: string }
         </p>
         {code ? <p className="mt-3 text-xs uppercase tracking-[0.22em] text-white/42">{code}</p> : null}
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/login" className="inline-flex min-h-12 items-center rounded-full bg-[#7cff00] px-6 text-sm font-semibold text-black">
+          <Link href="/login" className="inline-flex min-h-12 items-center rounded-full bg-[#c4f24e] px-6 text-sm font-semibold text-black">
             Back to login
           </Link>
           <Link href="/signup" className="inline-flex min-h-12 items-center rounded-full border border-white/12 px-6 text-sm font-semibold text-white/78">

@@ -266,7 +266,7 @@ export function FintechWorkspace({
             </p>
           </div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#e4f9b8]">
               <Wallet className="h-4 w-4" />
               {payload?.summary.totalAccounts ?? 0} accounts in scope
             </div>
@@ -321,7 +321,7 @@ export function FintechWorkspace({
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Shop readiness</p>
-            <Landmark className="h-5 w-5 text-[#d7ffab]" />
+            <Landmark className="h-5 w-5 text-[#e4f9b8]" />
           </div>
           <div className="mt-4 space-y-4">
             {isInitialLoading ? (
@@ -340,7 +340,7 @@ export function FintechWorkspace({
                         {account.operationalStatus.replaceAll("_", " ")} | {account.onboardingStatus.replaceAll("_", " ")}
                       </p>
                     </div>
-                    <span className="status-pill text-[#d7ffab]">{account.legalReadinessStatus.replaceAll("_", " ")}</span>
+                    <span className="status-pill text-[#e4f9b8]">{account.legalReadinessStatus.replaceAll("_", " ")}</span>
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <Select value={form.onboardingStatus} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, onboardingStatus: event.target.value as AccountFormState["onboardingStatus"] } }))}>
@@ -437,7 +437,7 @@ export function FintechWorkspace({
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Barber readiness and compensation</p>
-            <ShieldCheck className="h-5 w-5 text-[#d7ffab]" />
+            <ShieldCheck className="h-5 w-5 text-[#e4f9b8]" />
           </div>
           <div className="mt-4 space-y-4">
             {isInitialLoading ? (
@@ -458,7 +458,7 @@ export function FintechWorkspace({
                         {account.shopLabel ?? "No shop assigned"} | {account.operationalStatus.replaceAll("_", " ")}
                       </p>
                     </div>
-                    <span className="status-pill text-[#d7ffab]">{account.taxReadinessStatus.replaceAll("_", " ")}</span>
+                    <span className="status-pill text-[#e4f9b8]">{account.taxReadinessStatus.replaceAll("_", " ")}</span>
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <Select value={form.onboardingStatus} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, onboardingStatus: event.target.value as AccountFormState["onboardingStatus"] } }))}>
@@ -540,7 +540,7 @@ export function FintechWorkspace({
       <Card className="rounded-[32px] p-6">
         <div className="flex items-center justify-between gap-3">
           <p className="surface-label">Blocked routing records</p>
-          <span className="status-pill text-[#d7ffab]">{payload?.blockedPayments.length ?? 0} flagged</span>
+          <span className="status-pill text-[#e4f9b8]">{payload?.blockedPayments.length ?? 0} flagged</span>
         </div>
         <div className="mt-4 space-y-3">
           {isInitialLoading ? (
@@ -555,7 +555,7 @@ export function FintechWorkspace({
                   <p className="text-lg font-semibold">{row.barberName ?? "Barber"}</p>
                   <p className="mt-1 text-sm text-white/55">{row.shopLabel ?? "No shop"} | {row.routingModel.replaceAll("_", " ")}</p>
                 </div>
-                <span className="status-pill text-[#d7ffab]">{row.moneyRoutingStatus.replaceAll("_", " ")}</span>
+                <span className="status-pill text-[#e4f9b8]">{row.moneyRoutingStatus.replaceAll("_", " ")}</span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-4">
                 <div className="rounded-[20px] border border-white/8 bg-black/18 p-3">
@@ -660,7 +660,7 @@ export function FintechWorkspace({
                     <p className="text-lg font-semibold">{row.barberName ?? "Barber"}</p>
                     <p className="mt-1 text-sm text-white/55">{row.shopLabel ?? "No shop"} | {row.routingModel.replaceAll("_", " ")}</p>
                   </div>
-                  <span className="status-pill text-[#d7ffab]">{currency(row.barberPayoutAmount + row.shopSplitAmount)}</span>
+                  <span className="status-pill text-[#e4f9b8]">{currency(row.barberPayoutAmount + row.shopSplitAmount)}</span>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-4">
                   <div className="rounded-[20px] border border-white/8 bg-black/18 p-3">
@@ -704,7 +704,7 @@ export function FintechWorkspace({
                       {row.executionType.replaceAll("_", " ")} | {row.routingModel.replaceAll("_", " ")} | {row.shopLabel ?? "No shop"}
                     </p>
                   </div>
-                  <span className="status-pill text-[#d7ffab]">{row.executionStatus.replaceAll("_", " ")}</span>
+                  <span className="status-pill text-[#e4f9b8]">{row.executionStatus.replaceAll("_", " ")}</span>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <div className="rounded-[20px] border border-white/8 bg-black/18 p-3">

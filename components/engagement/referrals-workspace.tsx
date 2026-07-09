@@ -136,14 +136,14 @@ export function ReferralsWorkspace() {
       <Card className="rounded-[32px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
-            <p className="surface-label text-[#d7ffab]">Referral growth loop</p>
+            <p className="surface-label text-[#e4f9b8]">Referral growth loop</p>
             <h3 className="mt-3 text-4xl font-semibold sm:text-5xl" data-display="true">Share one clean invite. Earn when the visit really closes.</h3>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-white/64">
               Referrals stay closed-loop and honest: shared, signed up, booked, completed, then credited. No fake signup rewards and no early unlocks.
             </p>
           </div>
-          <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4 text-sm text-white/68">
-            <p className="surface-label text-[#d7ffab]">Your offer</p>
+          <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4 text-sm text-white/68">
+            <p className="surface-label text-[#e4f9b8]">Your offer</p>
             <p className="mt-3 text-2xl font-semibold" data-display="true">{summary.referralCode?.code ?? "BVRB3R"}</p>
             <p className="mt-2 text-white/58">{shareOfferLabel}</p>
           </div>
@@ -200,8 +200,8 @@ export function ReferralsWorkspace() {
           <p className="mt-3 text-3xl font-semibold" data-display="true">{summary.totals.completed}</p>
           <p className="mt-2 text-sm text-white/58">Paid service finished and validated.</p>
         </Card>
-        <Card className="rounded-[28px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-5">
-          <p className="surface-label text-[#d7ffab]">Credited</p>
+        <Card className="rounded-[28px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-5">
+          <p className="surface-label text-[#e4f9b8]">Credited</p>
           <p className="mt-3 text-3xl font-semibold" data-display="true">{summary.totals.credited}</p>
           <p className="mt-2 text-sm text-white/64">{summary.totals.rewardPointsEarned} pts earned.</p>
         </Card>
@@ -213,7 +213,7 @@ export function ReferralsWorkspace() {
             <p className="surface-label">Recent referral progress</p>
             <p className="mt-3 text-xl font-semibold text-white" data-display="true">See where each invite actually stands.</p>
           </div>
-          <Gift className="h-5 w-5 text-[#baff69]" />
+          <Gift className="h-5 w-5 text-[#d9f985]" />
         </div>
 
         <div className="mt-5 space-y-3">
@@ -227,7 +227,7 @@ export function ReferralsWorkspace() {
                     <p className="font-medium text-white">{referral.referredClientEmail}</p>
                     <p className="mt-2 text-sm text-white/58">{getReferralDateLabel(referral)} • {referral.rewardPoints} pts at credit</p>
                   </div>
-                  <span className="status-pill text-[#d7ffab]">{getStatusLabel(referral.status)}</span>
+                  <span className="status-pill text-[#e4f9b8]">{getStatusLabel(referral.status)}</span>
                 </div>
                 <div className="mt-4 grid gap-2 sm:grid-cols-5">
                   {referralStages.map((stage, index) => {
@@ -239,9 +239,9 @@ export function ReferralsWorkspace() {
                         className={[
                           "rounded-[18px] border px-3 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.16em]",
                           isComplete
-                            ? "border-[#d7ffab]/18 bg-[#d7ffab]/10 text-[#eaffcb]"
+                            ? "border-[#e4f9b8]/18 bg-[#e4f9b8]/10 text-[#eaffcb]"
                             : "border-white/8 bg-black/18 text-white/42",
-                          isActive ? "shadow-[0_12px_24px_rgba(124,255,0,0.1)]" : ""
+                          isActive ? "shadow-[0_12px_24px_rgba(196, 242, 78,0.1)]" : ""
                         ].join(" ")}
                       >
                         {stage.label}
@@ -260,7 +260,7 @@ export function ReferralsWorkspace() {
 
         <div className="mt-5 rounded-[24px] border border-white/8 bg-black/18 p-4">
           <div className="flex items-center gap-2 text-sm text-white/78">
-            <Users className="h-4 w-4 text-[#baff69]" />
+            <Users className="h-4 w-4 text-[#d9f985]" />
             Real lifecycle only
           </div>
           <p className="mt-3 text-sm leading-7 text-white/60">

@@ -592,7 +592,7 @@ export function StripeCardOnFileForm({
         <p className="mt-3 text-sm text-white/50">{loadingMessage}</p>
       ) : null}
       {showReady ? (
-        <p className="mt-3 text-sm text-[#baff69]/70">Secure card form ready.</p>
+        <p className="mt-3 text-sm text-[#d9f985]/70">Secure card form ready.</p>
       ) : null}
       {failureMessage ? (
         <div className="mt-3 rounded-[14px] border border-red-400/20 bg-red-500/10 px-3 py-3 text-sm leading-6 text-red-100">

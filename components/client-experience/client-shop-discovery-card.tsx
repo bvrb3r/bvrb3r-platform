@@ -93,25 +93,25 @@ export function ClientShopDiscoveryCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt={`${location.name} preview`} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
-          <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(124,255,0,0.28),rgba(255,255,255,0.08),rgba(8,8,8,0.98))]" />
+          <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(196, 242, 78,0.28),rgba(255,255,255,0.08),rgba(8,8,8,0.98))]" />
         )}
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.06),rgba(0,0,0,0.7))]" />
         <span className="absolute left-3 top-3 inline-flex max-w-[72%] items-center gap-1.5 rounded-full border border-white/10 bg-black/45 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white/90">
-          <ShieldCheck className="h-3.5 w-3.5 text-[#d7ffab]" />
+          <ShieldCheck className="h-3.5 w-3.5 text-[#e4f9b8]" />
           <span className="truncate">{location.verifiedLabel ?? "Verified shop"}</span>
         </span>
         {canFavorite ? (
           <button
             type="button"
             aria-label={`Favorite ${location.name}`}
-            className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/48 text-white transition hover:border-[#d7ffab]/40 hover:text-[#d7ffab] disabled:opacity-60"
+            className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/48 text-white transition hover:border-[#e4f9b8]/40 hover:text-[#e4f9b8] disabled:opacity-60"
             disabled={favoriteMutation.isPending}
             onClick={() => void handleFavorite()}
           >
-            <Heart className={cn("h-4 w-4", saved ? "fill-[#d7ffab] text-[#d7ffab]" : "")} />
+            <Heart className={cn("h-4 w-4", saved ? "fill-[#e4f9b8] text-[#e4f9b8]" : "")} />
           </button>
         ) : null}
-        <div className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center overflow-hidden rounded-[16px] border border-white/10 bg-black/30 text-base font-semibold text-[#d7ffab] shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
+        <div className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center overflow-hidden rounded-[16px] border border-white/10 bg-black/30 text-base font-semibold text-[#e4f9b8] shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
           {location.profilePhotoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={location.profilePhotoUrl} alt={location.name} className="h-full w-full object-cover" />
@@ -122,29 +122,29 @@ export function ClientShopDiscoveryCard({
       </div>
 
       <div className="p-3.5">
-        <Link href={searchHref} className="line-clamp-1 text-lg font-semibold text-white transition hover:text-[#d7ffab]">
+        <Link href={searchHref} className="line-clamp-1 text-lg font-semibold text-white transition hover:text-[#e4f9b8]">
           {location.name}
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/58">
           <span className="inline-flex items-center gap-1">
-            <Star className="h-3.5 w-3.5 fill-current text-[#d7ffab]" />
+            <Star className="h-3.5 w-3.5 fill-current text-[#e4f9b8]" />
             {ratingLabel} <span className="text-white/40">{reviewLabel}</span>
           </span>
         </div>
 
         <div className="mt-3 grid gap-2 text-sm text-white/68">
           <span className="inline-flex min-w-0 items-center gap-1.5">
-            <MapPin className="h-4 w-4 shrink-0 text-[#baff69]" />
+            <MapPin className="h-4 w-4 shrink-0 text-[#d9f985]" />
             <span className="truncate">{getLocationLabel(location)}</span>
           </span>
           <span className="inline-flex min-w-0 items-center gap-1.5">
-            <UsersRound className="h-4 w-4 shrink-0 text-[#d7ffab]" />
+            <UsersRound className="h-4 w-4 shrink-0 text-[#e4f9b8]" />
             <span>{getBarberCountLabel(barberCount)}</span>
           </span>
         </div>
 
         <div className="mt-3 flex items-center gap-2 text-xs text-white/48">
-          <Store className="h-3.5 w-3.5 text-[#d7ffab]" />
+          <Store className="h-3.5 w-3.5 text-[#e4f9b8]" />
           <span className="truncate">{brandLine}</span>
         </div>
 
@@ -154,7 +154,7 @@ export function ClientShopDiscoveryCard({
           </ClientActionLink>
           <ClientActionLink href={searchHref} variant="outline" className="min-h-10 px-3 text-xs">
             View Shop
-            <ArrowRight className="h-3.5 w-3.5 text-[#baff69]" />
+            <ArrowRight className="h-3.5 w-3.5 text-[#d9f985]" />
           </ClientActionLink>
         </div>
       </div>

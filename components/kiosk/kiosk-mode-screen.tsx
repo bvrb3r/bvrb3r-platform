@@ -486,19 +486,19 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
   }
 
   return (
-    <div className="min-h-[100svh] bg-[radial-gradient(circle_at_top,rgba(124,255,0,0.14),transparent_42%),linear-gradient(180deg,#050505_0%,#0a0a0a_100%)] px-4 py-6 sm:px-6">
+    <div className="min-h-[100svh] bg-[radial-gradient(circle_at_top,rgba(196, 242, 78,0.14),transparent_42%),linear-gradient(180deg,#050505_0%,#0a0a0a_100%)] px-4 py-6 sm:px-6">
       <div className="mx-auto max-w-4xl">
         <Card className="overflow-hidden rounded-[38px] border border-white/8 bg-[linear-gradient(180deg,rgba(15,15,15,0.98),rgba(7,7,7,0.98))] p-6 sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-[11px] uppercase tracking-[0.26em] text-[#cfff93]">{scope === "barber" ? "Barber kiosk" : "Shop kiosk"}</p>
+              <p className="text-[11px] uppercase tracking-[0.26em] text-[#e0f6a0]">{scope === "barber" ? "Barber kiosk" : "Shop kiosk"}</p>
               <h1 className="mt-3 wrap-safe text-4xl font-semibold sm:text-6xl" data-display="true">{payload.shop.shopName}</h1>
               <p className="mt-4 max-w-2xl wrap-safe text-base leading-8 text-white/66">{payload.shop.subtitle}</p>
               <div className="mt-4 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.22em]">
-                <span className="status-pill text-[#d7ffab]">{payload.shop.locationLabel}</span>
+                <span className="status-pill text-[#e4f9b8]">{payload.shop.locationLabel}</span>
                 <span className="status-pill text-white/58">{queueLabel}</span>
                 {kioskDevice.state.activeShopId === payload.shop.shopId ? (
-                  <span className="status-pill text-[#d7ffab]">Locked on this device</span>
+                  <span className="status-pill text-[#e4f9b8]">Locked on this device</span>
                 ) : (
                   <span className="status-pill text-white/52">Preview mode</span>
                 )}
@@ -519,11 +519,11 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
             <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/76 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-label="Exit kiosk mode">
               <div className="w-full max-w-sm rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 text-white shadow-[0_24px_70px_rgba(0,0,0,0.58)]">
                 <div className="flex items-start gap-3">
-                  <span className="rounded-[12px] border border-[#A3FF12]/20 bg-[#A3FF12]/10 p-2 text-[#A3FF12]">
+                  <span className="rounded-[12px] border border-[#C4F24E]/20 bg-[#C4F24E]/10 p-2 text-[#C4F24E]">
                     <LockKeyhole className="h-5 w-5" />
                   </span>
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Staff unlock</p>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Staff unlock</p>
                     <h2 className="mt-1 text-2xl font-black tracking-[-0.04em]">Enter kiosk PIN</h2>
                     <p className="mt-2 text-sm leading-6 text-white/58">Exit requires the 4-digit kiosk PIN.</p>
                   </div>
@@ -549,13 +549,13 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
           ) : null}
 
           {success ? (
-            <div className="mt-8 rounded-[30px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-6 text-center">
-              <p className="surface-label text-[#d7ffab]">{success.kind === "booking" ? "Booking confirmed" : "Walk-in saved"}</p>
+            <div className="mt-8 rounded-[30px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-6 text-center">
+              <p className="surface-label text-[#e4f9b8]">{success.kind === "booking" ? "Booking confirmed" : "Walk-in saved"}</p>
               <h2 className="mt-3 wrap-safe text-3xl font-semibold text-white">{success.title}</h2>
               <p className="mt-4 wrap-safe text-base leading-8 text-white/70">{success.detail}</p>
               <p className="mt-2 wrap-safe text-sm text-white/54">{success.helper}</p>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[11px] uppercase tracking-[0.22em] text-white/50">
-                <TimerReset className="h-4 w-4 text-[#d7ffab]" />
+                <TimerReset className="h-4 w-4 text-[#e4f9b8]" />
                 Returning to welcome screen {countdown ? `in ${countdown}s` : "now"}
               </div>
               <div className="mt-6">
@@ -586,10 +586,10 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                             setBookingForm((current) => ({ ...current, kioskAction: "book_next_opening", preferredBarberId: "" }));
                             openStep("booking");
                           }}
-                          className="rounded-[32px] border border-[#cfff93]/28 bg-[linear-gradient(135deg,rgba(124,255,0,0.16),rgba(16,16,16,0.96))] p-6 text-left transition hover:-translate-y-0.5 hover:border-[#cfff93]/40"
+                          className="rounded-[32px] border border-[#e0f6a0]/28 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.16),rgba(16,16,16,0.96))] p-6 text-left transition hover:-translate-y-0.5 hover:border-[#e0f6a0]/40"
                           style={{ pointerEvents: "auto" }}
                         >
-                          <p className="surface-label text-[#d7ffab]">{scope === "barber" ? "Book next opening" : "Book next available"}</p>
+                          <p className="surface-label text-[#e4f9b8]">{scope === "barber" ? "Book next opening" : "Book next available"}</p>
                           <h2 className="mt-3 wrap-safe text-3xl font-semibold">Reserve the next eligible chair</h2>
                           <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">
                             {scope === "barber"
@@ -609,7 +609,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         <button
                           type="button"
                           onClick={() => openStep("pick_barber")}
-                          className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
+                          className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#C4F24E]/16 hover:bg-black/28"
                           style={{ pointerEvents: "auto" }}
                         >
                           <p className="surface-label">Pick a barber</p>
@@ -625,7 +625,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                           setBookingForm((current) => ({ ...current, kioskAction: "schedule_ahead", preferredBarberId: "" }));
                           openStep("booking");
                         }}
-                        className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
+                        className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#C4F24E]/16 hover:bg-black/28"
                         style={{ pointerEvents: "auto" }}
                       >
                         <p className="surface-label">Schedule {scope === "shop" ? "for later" : "ahead"}</p>
@@ -636,7 +636,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         <button
                           type="button"
                           onClick={() => openStep("walk_in")}
-                          className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
+                          className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#C4F24E]/16 hover:bg-black/28"
                           style={{ pointerEvents: "auto" }}
                         >
                           <p className="surface-label">Walk-in queue</p>
@@ -648,7 +648,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                   </div>
                 ) : (
                   <div className="mt-8 rounded-[30px] border border-white/8 bg-black/22 p-6">
-                    <p className="surface-label text-[#d7ffab]">Kiosk unavailable</p>
+                    <p className="surface-label text-[#e4f9b8]">Kiosk unavailable</p>
                     <h2 className="mt-3 wrap-safe text-3xl font-semibold">
                       {!hasServiceOptions
                         ? "No services are available for kiosk booking."
@@ -666,7 +666,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
               {step === "pick_barber" ? (
                 <div className="mt-8 space-y-4">
                   <div className="rounded-[26px] border border-white/8 bg-black/20 p-5">
-                    <p className="surface-label text-[#d7ffab]">Pick a barber</p>
+                    <p className="surface-label text-[#e4f9b8]">Pick a barber</p>
                     <h2 className="mt-3 wrap-safe text-3xl font-semibold">Choose a public chair</h2>
                     <p className="mt-3 text-sm leading-7 text-white/62">This list only shows public-safe barber identity and current wait posture. It does not expose contact, payout, or team settings.</p>
                   </div>
@@ -676,14 +676,14 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         <button
                           key={barber.id}
                           type="button"
-                          className="rounded-[26px] border border-white/8 bg-black/20 p-5 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16"
+                          className="rounded-[26px] border border-white/8 bg-black/20 p-5 text-left transition hover:-translate-y-0.5 hover:border-[#C4F24E]/16"
                           style={{ pointerEvents: "auto" }}
                           onClick={() => router.push(`/kiosk/barber/${barber.id}` as Route)}
                         >
                           <p className="surface-label text-white/48">{barber.liveStatusLabel}</p>
                           <h3 className="mt-3 wrap-safe text-2xl font-semibold text-white">{barber.name}</h3>
                           <p className="mt-3 text-sm leading-6 text-white/62">{barber.waitDisplayLabel ?? "Wait time unavailable"}</p>
-                          <span className="mt-4 inline-flex rounded-full border border-[#7CFF00]/16 bg-[#7CFF00]/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d7ffab]">
+                          <span className="mt-4 inline-flex rounded-full border border-[#C4F24E]/16 bg-[#C4F24E]/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#e4f9b8]">
                             Open barber kiosk
                           </span>
                         </button>
@@ -731,14 +731,14 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                                   fullName: result.displayName
                                 }));
                               }}
-                              className="flex w-full items-center justify-between rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-left transition hover:border-[#7CFF00]/22"
+                              className="flex w-full items-center justify-between rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-left transition hover:border-[#C4F24E]/22"
                               style={{ pointerEvents: "auto" }}
                             >
                               <span>
                                 <span className="block text-sm font-semibold text-white">{result.publicUsername ? `@${result.publicUsername}` : result.displayName}</span>
                                 <span className="block text-xs text-white/48">{[result.displayName, result.locationLabel, result.roleLabel].filter(Boolean).join(" - ")}</span>
                               </span>
-                              <span className="status-pill text-[#d7ffab]">This is me</span>
+                              <span className="status-pill text-[#e4f9b8]">This is me</span>
                             </button>
                           ))}
                         </div>
@@ -749,7 +749,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         </p>
                       ) : null}
                       {bookingForm.selectedProfileId ? (
-                        <div className="mt-3 rounded-[18px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3 text-sm leading-6 text-[#d7ffab]">
+                        <div className="mt-3 rounded-[18px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 px-4 py-3 text-sm leading-6 text-[#e4f9b8]">
                           <p className="font-semibold">Welcome back, {bookingForm.publicUsername}.</p>
                           <p className="text-white/68">We&apos;ll use your saved BVRB3R profile for this booking.</p>
                           <p className="mt-2 text-xs uppercase tracking-[0.18em] text-white/46">Contact on file</p>
@@ -800,7 +800,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         <label className="flex items-start gap-3 rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/62">
                           <input
                             type="checkbox"
-                            className="mt-1 h-4 w-4 accent-[#7CFF00]"
+                            className="mt-1 h-4 w-4 accent-[#C4F24E]"
                             checked={bookingForm.policyAccepted}
                             onChange={(event) => {
                               setInteractionError(null);
@@ -854,8 +854,8 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         />
                       </div>
                     ) : null}
-                    <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4 text-sm leading-6 text-white/70">
-                      <p className="surface-label text-[#d7ffab]">{waitStateLabel}</p>
+                    <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4 text-sm leading-6 text-white/70">
+                      <p className="surface-label text-[#e4f9b8]">{waitStateLabel}</p>
                       <p className="mt-2 text-2xl font-semibold text-white">{waitLabel}</p>
                       <p className="mt-2 wrap-safe text-white/56">{formatLastRefreshed(payload.queue.waitEstimateUpdatedAt)}. You will review and confirm before an appointment is created.</p>
                       <button
@@ -906,7 +906,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                     <label className="flex items-start gap-3 rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/62">
                       <input
                         type="checkbox"
-                        className="mt-1 h-4 w-4 accent-[#7CFF00]"
+                        className="mt-1 h-4 w-4 accent-[#C4F24E]"
                         checked={walkInForm.policyAccepted}
                         onChange={(event) => {
                           setInteractionError(null);
@@ -931,8 +931,8 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         ))}
                       </Select>
                     </div>
-                    <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4 text-sm leading-6 text-white/70">
-                      <div className="flex items-center gap-2 text-[#d7ffab]">
+                    <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4 text-sm leading-6 text-white/70">
+                      <div className="flex items-center gap-2 text-[#e4f9b8]">
                         <Phone className="h-4 w-4" />
                         Walk-in routing
                       </div>
@@ -954,7 +954,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
 
         <div className="mt-4 text-center text-xs uppercase tracking-[0.22em] text-white/34">
           <span className="inline-flex items-center gap-2">
-            <UserRound className="h-4 w-4 text-[#baff69]" />
+            <UserRound className="h-4 w-4 text-[#d9f985]" />
             Powered quietly by BVRB3R
           </span>
         </div>
