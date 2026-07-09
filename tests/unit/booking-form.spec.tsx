@@ -755,7 +755,7 @@ describe("booking form", () => {
 
     const timeButtons = await screen.findAllByRole("button", { name: /AM|PM/ });
     expect(timeButtons[0]).toHaveAttribute("aria-pressed", "true");
-    expect(timeButtons[0].className).toContain("bg-[#7CFF00]");
+    expect(timeButtons[0].className).toContain("bg-[#C4F24E]");
   });
 
   it("reloads availability when the booking date changes and enables review after a real slot is selected", async () => {

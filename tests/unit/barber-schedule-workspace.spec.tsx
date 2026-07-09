@@ -245,7 +245,7 @@ describe("BarberScheduleWorkspace", () => {
     expect(barberAddAppointment).toBeInTheDocument();
     expect(barberAddAppointment).toHaveClass("min-h-11");
     expect(barberAddAppointment).toHaveClass("w-full");
-    expect(barberAddAppointment).toHaveClass("bg-[#A3FF12]");
+    expect(barberAddAppointment).toHaveClass("bg-[#C4F24E]");
     expect(barberAddAppointment).toHaveClass("text-[#050505]");
     const barberKioskAction = screen.getByRole("button", { name: /Kiosk Mode/i });
     expect(barberKioskAction).toBeInTheDocument();
