@@ -253,14 +253,14 @@ export function ClientHomeScreen({
       <section data-testid="home-favorite-barbers">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="bvr-section-label">Barbers</p>
-            <h2 className="mt-2 text-2xl font-extrabold leading-tight text-[var(--text-primary)] sm:text-3xl" data-display="true">Favorite Barbers</h2>
+            <p className="bvr-section-label">Barbers &amp; Shops</p>
+            <h2 className="mt-2 text-2xl font-extrabold leading-tight text-[var(--text-primary)] sm:text-3xl" data-display="true">Favorite Barbers &amp; Shops</h2>
           </div>
           <Link href={`${CLIENT_PRIMARY_TAB_HREFS.search}?type=barbers` as Route} className="shrink-0 text-sm font-semibold text-white/64 transition hover:text-white">
             See all
           </Link>
         </div>
-        {savedFavoriteBarbers.length ? (
+        {savedFavoriteBarbers.length || savedFavoriteShops.length ? (
           <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {savedFavoriteBarbers.map((result) => {
               const barberDisplayName = getClientFacingBarberName({ username: result.username, barberName: result.barberName });
@@ -284,29 +284,6 @@ export function ClientHomeScreen({
                 />
               );
             })}
-          </div>
-        ) : (
-          <div className="mt-4 rounded-[var(--radius-lg,18px)] border border-dashed border-white/10 bg-white/[0.02] p-6 sm:p-7">
-            <h3 className="text-2xl font-semibold text-white" data-display="true">No favorite barbers yet.</h3>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Save barbers you trust. They&apos;ll show here for faster rebooking.
-            </p>
-          </div>
-        )}
-      </section>
-
-      {savedFavoriteShops.length ? (
-        <section data-testid="home-favorite-shops">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <p className="bvr-section-label">Shops</p>
-              <h2 className="mt-2 text-2xl font-extrabold leading-tight text-[var(--text-primary)] sm:text-3xl" data-display="true">Favorite Shops</h2>
-            </div>
-            <Link href={`${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` as Route} className="shrink-0 text-sm font-semibold text-white/64 transition hover:text-white">
-              See all
-            </Link>
-          </div>
-          <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {savedFavoriteShops.map((shop) => {
               const shopHref = (shop.viewHref ?? `/shop/${encodeURIComponent(shop.id)}`) as Route;
               return (
@@ -323,8 +300,15 @@ export function ClientHomeScreen({
               );
             })}
           </div>
-        </section>
-      ) : null}
+        ) : (
+          <div className="mt-4 rounded-[var(--radius-lg,18px)] border border-dashed border-white/10 bg-white/[0.02] p-6 sm:p-7">
+            <h3 className="text-2xl font-semibold text-white" data-display="true">No favorite barbers or shops yet.</h3>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
+              Save barbers and shops you trust. They&apos;ll show here for faster rebooking.
+            </p>
+          </div>
+        )}
+      </section>
 
       <ClientSectionBlock
         eyebrow="Upcoming"

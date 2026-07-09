@@ -241,15 +241,15 @@ describe("client home screen", () => {
     expect(screen.queryByRole("link", { name: "Culture" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Account" })).not.toBeInTheDocument();
     expect(screen.getByText("Upcoming Appointment")).toBeInTheDocument();
-    expect(screen.getByText("Favorite Barbers")).toBeInTheDocument();
+    expect(screen.getByText("Favorite Barbers & Shops")).toBeInTheDocument();
     expect(screen.queryByText("Favorite Shops")).not.toBeInTheDocument();
     expect(screen.queryByText("Recommended Barbers")).not.toBeInTheDocument();
     expect(screen.queryByText("Culture Preview")).not.toBeInTheDocument();
     expect(screen.queryByText("Recent Activity")).not.toBeInTheDocument();
-    expect(screen.getByText("Favorite Barbers").compareDocumentPosition(screen.getByText("Upcoming Appointment"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText("Favorite Barbers & Shops").compareDocumentPosition(screen.getByText("Upcoming Appointment"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.queryByRole("link", { name: "View barbers" })).not.toBeInTheDocument();
-    expect(screen.getByText("No favorite barbers yet.")).toBeInTheDocument();
-    expect(screen.getByText("Save barbers you trust. They'll show here for faster rebooking.")).toBeInTheDocument();
+    expect(screen.getByText("No favorite barbers or shops yet.")).toBeInTheDocument();
+    expect(screen.getByText("Save barbers and shops you trust. They'll show here for faster rebooking.")).toBeInTheDocument();
     expect(screen.queryByText("No favorite shops yet.")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Book" })).not.toBeInTheDocument();
     expect(screen.getByText("Booked")).toBeInTheDocument();
@@ -342,7 +342,7 @@ describe("client home screen", () => {
 
     expect(screen.getByText("No available barber near you right now.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Search Barbers" })).toBeInTheDocument();
-    expect(screen.getByText("No favorite barbers yet.")).toBeInTheDocument();
+    expect(screen.getByText("No favorite barbers or shops yet.")).toBeInTheDocument();
     expect(screen.queryByText("No favorite shops yet.")).not.toBeInTheDocument();
     expect(screen.queryByText("No barber recommendations yet.")).not.toBeInTheDocument();
   });
@@ -456,6 +456,6 @@ describe("client home screen", () => {
     expect(screen.getByText("Book your first cut, there.")).toBeInTheDocument();
     expect(screen.getByText("Unable to load client home")).toBeInTheDocument();
     expect(screen.getByText("No cut booked yet.")).toBeInTheDocument();
-    expect(screen.getByText("No favorite barbers yet.")).toBeInTheDocument();
+    expect(screen.getByText("No favorite barbers or shops yet.")).toBeInTheDocument();
   });
 });
