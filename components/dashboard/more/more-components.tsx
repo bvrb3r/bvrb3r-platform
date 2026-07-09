@@ -381,15 +381,11 @@ export function MoreSectionGroup({ group }: { group: MoreSectionGroup }) {
         <h2 className="text-xs font-black uppercase tracking-[0.2em] text-[#C4F24E]">{group.title}</h2>
         {group.subtitle ? <p className="mt-2 text-sm leading-6 text-white/54">{group.subtitle}</p> : null}
       </div>
-      <GlassCard className="overflow-hidden p-0">
-        <div className="divide-y divide-white/8">
-          {group.rows.map((row) => (
-            <div key={row.title} className="p-2">
-              <MoreSectionRowLink row={row} sectionTitle={group.title} roleScope={group.roleScope} />
-            </div>
-          ))}
-        </div>
-      </GlassCard>
+      <div className="space-y-3">
+        {group.rows.map((row) => (
+          <MoreSectionRowLink key={row.title} row={row} sectionTitle={group.title} roleScope={group.roleScope} />
+        ))}
+      </div>
     </section>
   );
 }

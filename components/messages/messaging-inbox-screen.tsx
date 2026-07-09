@@ -129,18 +129,6 @@ function formatCompactThreadTime(iso: string) {
   }).format(date);
 }
 
-function formatContextDate(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric"
-  }).format(date);
-}
-
 function isSameLocalDay(a: string, b: string) {
   const da = new Date(a);
   const db = new Date(b);
@@ -465,50 +453,12 @@ function getAppointmentLine(thread: MessagingThreadSummary | ActiveThread) {
   return `${thread.appointmentContext.serviceName} • ${thread.appointmentContext.statusLabel}`;
 }
 
-function getConversationContextLine(thread: ActiveThread) {
-  if (!thread) {
-    return "";
-  }
-
-  if (thread.appointmentContext) {
-    const date = formatContextDate(thread.appointmentContext.startsAt);
-    return [
-      thread.appointmentContext.serviceName,
-      date,
-      thread.appointmentContext.statusLabel
-    ].filter(Boolean).join(" • ");
-  }
-
-  if (thread.threadType === "support") {
-    return "BVRB3R Support";
-  }
-
-  return thread.locationContext?.locationLabel ?? "Direct conversation";
-}
-
 function getFreshAppointmentContext(thread: ActiveThread, relatedAppointmentContexts: AppointmentContextView[] = []) {
   if (relatedAppointmentContexts.length) {
     return relatedAppointmentContexts[0] ?? null;
   }
 
   return thread?.appointmentContext ?? null;
-}
-
-function getConversationContextLineWithContext(thread: ActiveThread, appointmentContext: AppointmentContextView | null) {
-  if (!thread) {
-    return "";
-  }
-
-  if (appointmentContext) {
-    const date = formatContextDate(appointmentContext.startsAt);
-    return [
-      appointmentContext.serviceName,
-      date,
-      appointmentContext.statusLabel
-    ].filter(Boolean).join(" • ");
-  }
-
-  return getConversationContextLine(thread);
 }
 
 function getConversationTypeLabel(thread: MessagingThreadSummary | ActiveThread) {
@@ -1367,7 +1317,7 @@ function ConversationPanel({
   return (
     <section
       className={[
-        "flex flex-col border border-white/8 bg-[#070707]/96 shadow-[0_20px_60px_rgba(0,0,0,0.38)]",
+        "flex flex-col border border-white/8 bg-white/[0.02] shadow-[0_20px_60px_rgba(0,0,0,0.38)]",
         mode === "modal"
           ? "h-[100dvh] min-h-0 w-full rounded-none sm:h-[min(92vh,48rem)] sm:max-w-2xl sm:rounded-lg"
           : "h-full min-h-0 overflow-hidden rounded-lg"
@@ -1450,13 +1400,6 @@ function ConversationPanel({
               </div>
             </div>
 
-            <div
-              className="rounded-lg border border-[#c4f24e]/18 bg-[#c4f24e]/8 px-3 py-2 text-xs font-semibold text-[#e4f9b8]"
-              data-testid="message-thread-context-line"
-            >
-              {getConversationContextLineWithContext(activeThread, freshAppointmentContext)}
-            </div>
-
             {requestBanner ? (
               <div className={[
                 "rounded-lg border px-3 py-2 text-xs font-semibold",
@@ -1486,18 +1429,6 @@ function ConversationPanel({
               </div>
             ) : null}
 
-            {relatedAppointmentContexts.length > 1 ? (
-              <div className="flex gap-2 overflow-x-auto pb-1" data-testid="related-appointment-contexts">
-                {relatedAppointmentContexts.map((context) => (
-                  <span
-                    key={context.appointmentId}
-                    className="shrink-0 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-[11px] font-bold text-white/68"
-                  >
-                    {context.serviceName} • {formatContextDate(context.startsAt)} • {context.statusLabel}
-                  </span>
-                ))}
-              </div>
-            ) : null}
           </div>
         ) : null}
       </div>
