@@ -135,8 +135,8 @@ describe("client culture screen", () => {
   it("renders only the minimal social pulse header above the feed", () => {
     render(<ClientCultureScreen feed={{ items: [culturePost("post-1")], cursor: null, hasMore: false }} paywallSummary={freeClientPaywallSummary} />);
 
-    expect(screen.getByText("Feed")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Culture pulse" })).toBeInTheDocument();
+    expect(screen.getByText("The Feed")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Culture." })).toBeInTheDocument();
     expect(screen.queryByTestId("client-plan-access-card")).not.toBeInTheDocument();
     expect(screen.getByText("Live feed")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Culture" })).not.toBeInTheDocument();

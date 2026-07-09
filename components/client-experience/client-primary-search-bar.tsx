@@ -30,7 +30,7 @@ export function ClientPrimarySearchBar({
   }
 
   return (
-    <div className={cn("rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(8,8,8,0.99))] p-4 shadow-[0_24px_50px_rgba(0,0,0,0.2)] sm:p-5", className)}>
+    <div className={cn("rounded-[30px] border border-[var(--border-soft,rgba(255,255,255,0.06))] bg-white/[0.02] p-3 sm:p-4", className)}>
       <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleSubmit}>
         <SearchBar
           value={value}

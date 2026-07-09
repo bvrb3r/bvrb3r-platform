@@ -789,7 +789,7 @@ export function CulturePostCard({
                 data-testid="culture-booking-cta"
               >
                 <Scissors className="h-4 w-4 shrink-0" />
-                {post.bookLabel ?? "Book This Barber"}
+                {post.bookLabel ?? "Book this look"}
               </Link>
             </div>
           ) : null}
@@ -946,7 +946,7 @@ export function CulturePostCard({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link href={post.bookingUrl as Route} onClick={recordBookClick} className={cultureBookingCtaClassName} data-testid="culture-booking-cta">
                     <Scissors className="h-4 w-4 shrink-0" />
-                    {post.bookLabel ?? "Book This Barber"}
+                    {post.bookLabel ?? "Book this look"}
                   </Link>
                 </div>
               ) : null}

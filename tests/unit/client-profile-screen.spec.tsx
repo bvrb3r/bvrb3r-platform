@@ -338,7 +338,7 @@ describe("client profile screen", () => {
       />
     );
 
-    expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
+    expect(screen.getAllByRole("heading", { name: "Account" })).toHaveLength(1);
     const identityCard = screen.getByTestId("client-more-identity-card");
     expect(identityCard).toBeInTheDocument();
     expect(within(identityCard).getByRole("heading", { name: "Jordan Ellis" })).toBeInTheDocument();
