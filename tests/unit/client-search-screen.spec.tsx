@@ -231,8 +231,7 @@ describe("client search screen", () => {
     render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" paywallSummary={freeClientPaywallSummary} />);
 
     expect(screen.getByText("Find the right barber.")).toBeInTheDocument();
-    expect(screen.getByTestId("client-plan-access-card")).toBeInTheDocument();
-    expect(screen.getByText("Free booking, search, discovery, account, and activity stay open. Pro and Elite tools unlock only from server entitlement proof.")).toBeInTheDocument();
+    expect(screen.queryByTestId("client-plan-access-card")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("Search barber or shop name")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Haircuts" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Available Now" })).toBeInTheDocument();

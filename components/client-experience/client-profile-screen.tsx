@@ -646,7 +646,7 @@ export function ClientProfileScreen({
   }
 
   return (
-    <div className="relative space-y-4 overflow-hidden" data-testid="client-profile-screen" data-more-modal-root="client">
+    <div className="relative bvr-stack-lg overflow-hidden" data-testid="client-profile-screen" data-more-modal-root="client">
       <MorePageHeader
         title="More"
         subtitle="Manage your account, booking activity, payments, rewards, and preferences."
@@ -1060,7 +1060,7 @@ export function ClientProfileScreen({
               label="BVR Points"
               value={`${pointsBalance?.unlockedPoints ?? 0} pts`}
               icon={<Gift className="h-4 w-4" />}
-              className="border-[#a8ff47]/16 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(8,8,8,0.98))]"
+              className="bvr-card-calm"
             />
             <DataStatCard label="Pending" value={`${pointsBalance?.pendingPoints ?? 0} pts`} />
             <DataStatCard label="Value" value={currency(pointsBalance?.inAppValue ?? 0)} />

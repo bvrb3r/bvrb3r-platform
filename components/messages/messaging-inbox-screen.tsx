@@ -10,7 +10,7 @@ import { ArrowLeft, MessageSquarePlus, MessageSquareText, RadioTower, Search, Se
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, FilterChip, SearchBar } from "@/design/components";
+import { Avatar, FilterChip, PageHeader, SearchBar } from "@/design/components";
 import { isBarberAccountRole } from "@/lib/auth/roles";
 import type { MessagingApiError } from "@/lib/messages/client";
 import {
@@ -960,7 +960,7 @@ function ThreadStoryRail({
                 initials={getAvatarInitials(contact.label, contact.role, contact.threadType)}
                 className={[
                   "mx-auto h-12 w-12 text-sm",
-                  contact.active ? "border-2 border-[#c4f24e]/80 shadow-[0_0_18px_rgba(196, 242, 78,0.18)]" : "border-white/12"
+                  contact.active ? "border-2 border-white/70" : "border-white/12"
                 ].join(" ")}
               />
               <span className="mt-1 block truncate text-[11px] font-semibold text-white/64 group-hover:text-white">
@@ -1024,8 +1024,8 @@ function ThinThreadRow({
       className={[
         "group grid min-h-[78px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[12px] border px-3 py-2 transition",
         active
-          ? "border-[#c4f24e]/35 bg-[#c4f24e]/10"
-          : "border-white/8 bg-white/[0.022] hover:border-[#c4f24e]/24 hover:bg-white/[0.04]"
+          ? "border-white/25 bg-white/[0.06]"
+          : "border-white/8 bg-white/[0.022] hover:border-white/16 hover:bg-white/[0.04]"
       ].join(" ")}
     >
       <Avatar
@@ -1039,7 +1039,7 @@ function ThinThreadRow({
           <p className="truncate text-sm font-bold text-white">{displayName}</p>
           {roleBadgeLabel ? <RolePill label={roleBadgeLabel} /> : null}
         </div>
-        {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-[#e4f9b8]/85">{usernameLine}</p> : null}
+        {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-white/70">{usernameLine}</p> : null}
         <p className="mt-0.5 truncate text-xs font-medium text-white/54">{contextDetail}</p>
         <p className="mt-0.5 truncate text-xs text-white/42">{preview}</p>
       </div>
@@ -1050,7 +1050,7 @@ function ThinThreadRow({
         {thread.hasUnread ? (
           <span className="h-2.5 w-2.5 rounded-full bg-[#c4f24e] shadow-[0_0_14px_rgba(196, 242, 78,0.75)]" aria-label="Unread message" />
         ) : thread.appointmentContext ? (
-          <span className="rounded-[6px] border border-[#c4f24e]/18 bg-[#c4f24e]/8 px-1.5 py-0.5 text-[10px] font-bold text-[#e4f9b8]">
+          <span className="rounded-[6px] border border-white/12 bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-bold text-white/70">
             {thread.appointmentContext.statusLabel}
           </span>
         ) : null}
@@ -1099,12 +1099,12 @@ function PaymentRequestCard({
 
   return (
     <div
-      className="w-full max-w-[22rem] rounded-lg border border-[#c4f24e]/24 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(8,8,8,0.96))] p-3 shadow-[0_14px_34px_rgba(0,0,0,0.32)]"
+      className="w-full max-w-[22rem] rounded-lg border border-white/10 bg-[linear-gradient(180deg,rgba(245,241,232,0.05),rgba(8,8,8,0.96))] p-3 shadow-[0_14px_34px_rgba(0,0,0,0.32)]"
       data-testid="pos-payment-request-card"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#e4f9b8]">Payment Request</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/56">Payment Request</p>
           <p className="mt-2 text-sm font-black text-white">
             {counterpartName} requested {formatMoneyFromCents(metadata.amountCents)}
           </p>
@@ -1335,7 +1335,7 @@ function ConversationPanel({
                     <h3 className="truncate text-base font-black text-white">{displayName}</h3>
                     {roleBadgeLabel ? <RolePill label={roleBadgeLabel} /> : null}
                   </div>
-                  {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-[#e4f9b8]/85">{usernameLine}</p> : null}
+                  {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-white/70">{usernameLine}</p> : null}
                   <p className="mt-0.5 truncate text-xs text-white/46">
                     {[conversationTypeLabel, publicContextLine].filter(Boolean).join(" - ")}
                   </p>
@@ -2100,37 +2100,37 @@ export function MessagingInboxScreen({
 
   return (
     <div
-      className="relative isolate overflow-hidden rounded-[18px] border border-white/8 bg-[radial-gradient(circle_at_top_right,rgba(196, 242, 78,0.10),transparent_28%),#050505] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.42)] sm:p-4"
+      className="relative isolate overflow-hidden rounded-[18px] border border-white/8 bg-[#050505] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.42)] sm:p-4"
       data-testid={`messaging-inbox-${surface}`}
     >
-      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(196, 242, 78,0.55),transparent)]" />
+      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(245,241,232,0.16),transparent)]" />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-bold uppercase text-[#c4f24e]">{copy.shellLabel}</p>
-          <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl" data-display="true">{title}</h2>
-          <p className="mt-1 max-w-xl truncate text-sm text-white/54">{subtitle}</p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
-          <Button
-            className="h-10 rounded-lg px-4 normal-case tracking-normal"
-            disabled={surface === "client" ? createThreadMutation.isPending : false}
-            onClick={handleNewMessage}
-          >
-            <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
-            {createThreadMutation.isPending ? "Opening..." : "New Message"}
-          </Button>
-          {cultureHref ? (
-            <Link
-              href={cultureHref as Route}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-xs font-black text-white/74 transition hover:border-[#c4f24e]/30 hover:text-[#e4f9b8]"
+      <PageHeader
+        label={copy.shellLabel}
+        title={title}
+        subtitle={subtitle}
+        action={
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
+            <Button
+              className="h-10 rounded-lg px-4 normal-case tracking-normal"
+              disabled={surface === "client" ? createThreadMutation.isPending : false}
+              onClick={handleNewMessage}
             >
-              <Sparkles className="h-4 w-4" aria-hidden="true" />
-              {cultureLabel}
-            </Link>
-          ) : null}
-        </div>
-      </div>
+              <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
+              {createThreadMutation.isPending ? "Opening..." : "New Message"}
+            </Button>
+            {cultureHref ? (
+              <Link
+                href={cultureHref as Route}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-xs font-black text-white/74 transition hover:border-white/20 hover:text-white"
+              >
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                {cultureLabel}
+              </Link>
+            ) : null}
+          </div>
+        }
+      />
 
       <div className="mt-3 space-y-2">
         {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
