@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppProviders } from "@/components/providers/app-providers";
 import { NO_FLASH_SCRIPT } from "@/components/providers/theme-provider";
 import { runtimeConfig } from "@/lib/config/runtime";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 // --- BVRB3R type system ---------------------------------------------------
 // Archivo   → display / section headings
@@ -89,6 +90,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body className="app-screen bg-black text-white antialiased">
         <AppProviders>{children}</AppProviders>
+        <SpeedInsights />
       </body>
     </html>
   );
