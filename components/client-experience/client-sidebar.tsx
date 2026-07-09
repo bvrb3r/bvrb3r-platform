@@ -9,14 +9,6 @@ export function ClientSidebar({ activeTab }: { activeTab?: ClientAppTab }) {
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-5 space-y-4">
-        <div className="bvr-glass-card rounded-[28px] p-5">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[#e4f9b8]">Client navigation</p>
-          <p className="mt-3 text-xl font-semibold text-white">Book, track, manage</p>
-          <p className="mt-3 text-sm leading-7 text-white/58">
-            Home starts booking, Search handles discovery, Culture opens the feed shell, Messages keeps conversations close, and More holds account, wallet, rewards, receipts, and preferences.
-          </p>
-        </div>
-
         <nav
           aria-label="Client primary navigation"
           className="bvr-glass-card rounded-[28px] p-3"
@@ -48,9 +40,6 @@ export function ClientSidebar({ activeTab }: { activeTab?: ClientAppTab }) {
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-white">{item.label}</p>
-                    <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-white/40">
-                      {item.subtitle}
-                    </p>
                   </div>
                 </Link>
               );

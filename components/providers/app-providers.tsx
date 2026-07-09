@@ -5,6 +5,7 @@ import { ReactNode, useState } from "react";
 import { PasswordRecoveryRedirectGuard } from "@/components/auth/password-reset-workspace";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
 import { RuntimeResilienceProvider } from "@/components/providers/runtime-resilience-provider";
+import { ThemeProvider } from "@/components/providers/theme-provider";
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
@@ -34,9 +35,11 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <PasswordRecoveryRedirectGuard />
-      <PwaProvider>
-        <RuntimeResilienceProvider>{children}</RuntimeResilienceProvider>
-      </PwaProvider>
+      <ThemeProvider>
+        <PwaProvider>
+          <RuntimeResilienceProvider>{children}</RuntimeResilienceProvider>
+        </PwaProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

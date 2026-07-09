@@ -62,7 +62,9 @@ describe("client navigation", () => {
       "Open messages",
       "Open profile"
     ]);
-    expect(screen.getByText("Search, book, and manage visits")).toBeInTheDocument();
+    expect(screen.getByText("BVRB3R")).toBeInTheDocument();
+    expect(screen.queryByText("Search, book, and manage visits")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Color theme" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open messages" })).toHaveAttribute("href", "/dashboard/client/messages");
     expect(screen.getByRole("link", { name: "Open profile" })).toHaveAttribute("href", "/dashboard/client/more");
     expect(screen.queryByRole("link", { name: "Open culture" })).not.toBeInTheDocument();
