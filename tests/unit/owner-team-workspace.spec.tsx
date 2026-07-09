@@ -429,7 +429,7 @@ describe("owner team workspace", () => {
     expect(ownerOpenSchedule).toHaveAttribute("href", "/dashboard/owner/schedule");
     expect(ownerOpenSchedule).toHaveClass("min-h-11");
     expect(ownerOpenSchedule).toHaveClass("w-full");
-    expect(ownerOpenSchedule).toHaveClass("bg-[#A3FF12]");
+    expect(ownerOpenSchedule).toHaveClass("bg-[#C4F24E]");
     expect(ownerOpenSchedule).toHaveClass("text-[#050505]");
     const ownerOpenCulture = screen.getByRole("link", { name: /Open Culture/i });
     expect(ownerOpenCulture).toHaveAttribute("href", "/dashboard/owner/culture");

@@ -315,7 +315,7 @@ describe("client culture screen", () => {
     expect(screen.queryByRole("link", { name: "View Shop" })).not.toBeInTheDocument();
     const serviceBookCta = screen.getByRole("link", { name: /Book Signature Cut/i });
     expect(serviceBookCta).toHaveAttribute("href", expect.stringContaining("/booking/new?source=culture"));
-    expect(serviceBookCta).toHaveClass("bg-[#A3FF12]", "text-[#050505]", "font-black", "min-h-12");
+    expect(serviceBookCta).toHaveClass("bg-[#C4F24E]", "text-[#050505]", "font-black", "min-h-12");
     expect(within(card).getByRole("button", { name: "Like post" })).not.toHaveTextContent(/like|saving/i);
     expect(within(card).getByRole("button", { name: "Comment on post" })).not.toHaveTextContent(/comment/i);
     expect(within(card).getByRole("button", { name: "Share post" })).not.toHaveTextContent(/share|saving/i);
@@ -445,7 +445,7 @@ describe("client culture screen", () => {
     bookLink.addEventListener("click", (event) => event.preventDefault());
 
     expect(bookLink).toHaveAttribute("href", bookingUrl);
-    expect(bookLink).toHaveClass("bg-[#A3FF12]", "text-[#050505]", "font-black", "min-h-12");
+    expect(bookLink).toHaveClass("bg-[#C4F24E]", "text-[#050505]", "font-black", "min-h-12");
     expect(screen.queryByRole("link", { name: "View Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "View Shop" })).not.toBeInTheDocument();
 
