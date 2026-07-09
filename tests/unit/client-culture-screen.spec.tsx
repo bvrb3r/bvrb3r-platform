@@ -154,6 +154,25 @@ describe("client culture screen", () => {
     expect(screen.queryByRole("button", { name: /Refresh/i })).not.toBeInTheDocument();
   });
 
+  it("renders the story rail without crashing when an author has no profile route", () => {
+    // Regression: next/link throws on href={null}. Legacy/authorless posts have
+    // profileUrl: null, which previously blanked the whole culture screen.
+    expect(() =>
+      render(
+        <ClientCultureScreen
+          feed={{ items: [culturePost("post-legacy", { profileUrl: null, authorAvatarUrl: null })], cursor: null, hasMore: false }}
+        />
+      )
+    ).not.toThrow();
+
+    const rail = screen.getByTestId("culture-story-rail");
+    expect(rail).toBeInTheDocument();
+    // an author with no profile route must render as a plain (non-anchor) avatar —
+    // the fix renders a <div> instead of a next/link <a> so href={null} never reaches it.
+    expect(rail.querySelector("a")).toBeNull();
+    expect(within(rail).getByText("Blaze")).toBeInTheDocument();
+  });
+
   it("renders a safe empty feed state distinct from a feed error", () => {
     const { rerender } = render(<ClientCultureScreen feed={{ items: [], cursor: null, hasMore: false }} />);
 
