@@ -12,7 +12,6 @@ import {
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
 import { ClientGetCutNowAction } from "@/components/client-experience/client-get-cut-now-action";
-import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { ClientShopDiscoveryCard } from "@/components/client-experience/client-shop-discovery-card";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
@@ -154,8 +153,7 @@ function humanAppointmentStatus(status?: string | null) {
 
 export function ClientHomeScreen({
   clientId,
-  displayName,
-  paywallSummary
+  displayName
 }: {
   clientId?: string;
   isSignedInClient: boolean;
@@ -255,7 +253,6 @@ export function ClientHomeScreen({
       </Card>
 
       {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
-      {paywallSummary ? <ClientPlanAccessCard summary={paywallSummary} compact /> : null}
 
       <ClientSectionBlock
         eyebrow="Barbers"

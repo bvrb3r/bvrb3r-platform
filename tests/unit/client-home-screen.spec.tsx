@@ -230,9 +230,8 @@ describe("client home screen", () => {
     render(<ClientHomeScreen isSignedInClient clientId="client-jordan" displayName="Jordan Ellis" paywallSummary={freeClientPaywallSummary} />);
 
     expect(screen.getByRole("button", { name: "Get a Cut Now" })).toBeInTheDocument();
-    expect(screen.getByTestId("client-plan-access-card")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Free client access" })).toBeInTheDocument();
-    expect(screen.getByText("Free booking, search, discovery, account, and activity stay open. Pro and Elite tools unlock only from server entitlement proof.")).toBeInTheDocument();
+    expect(screen.queryByTestId("client-plan-access-card")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Free client access" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Checkout/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Find a Barber" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Find a Barber Shop" })).not.toBeInTheDocument();

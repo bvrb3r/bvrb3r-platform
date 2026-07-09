@@ -27,14 +27,13 @@ export const CLIENT_PRIMARY_NAV_ITEMS: Array<{
   key: ClientAppTab;
   href: Route;
   label: string;
-  subtitle: string;
   icon: LucideIcon;
 }> = [
-  { key: "home", href: CLIENT_PRIMARY_TAB_HREFS.home, label: "Home", subtitle: "Book fast", icon: Home },
-  { key: "search", href: CLIENT_PRIMARY_TAB_HREFS.search, label: "Search", subtitle: "Discover", icon: Search },
-  { key: "culture", href: CLIENT_PRIMARY_TAB_HREFS.culture, label: "Culture", subtitle: "Feed shell", icon: Sparkles },
-  { key: "messages", href: CLIENT_PRIMARY_TAB_HREFS.messages, label: "Messages", subtitle: "Threads", icon: MessageSquareText },
-  { key: "more", href: CLIENT_PRIMARY_TAB_HREFS.more, label: "More", subtitle: "Account", icon: Ellipsis }
+  { key: "home", href: CLIENT_PRIMARY_TAB_HREFS.home, label: "Home", icon: Home },
+  { key: "search", href: CLIENT_PRIMARY_TAB_HREFS.search, label: "Search", icon: Search },
+  { key: "culture", href: CLIENT_PRIMARY_TAB_HREFS.culture, label: "Culture", icon: Sparkles },
+  { key: "messages", href: CLIENT_PRIMARY_TAB_HREFS.messages, label: "Messages", icon: MessageSquareText },
+  { key: "more", href: CLIENT_PRIMARY_TAB_HREFS.more, label: "More", icon: Ellipsis }
 ];
 
 export const GUEST_CLIENT_NAV_ITEMS: Array<{

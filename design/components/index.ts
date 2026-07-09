@@ -9,3 +9,4 @@ export * from "@/design/components/PageHeader";
 export * from "@/design/components/SearchBar";
 export * from "@/design/components/SidebarNav";
 export * from "@/design/components/StatusBadge";
+export * from "@/design/components/ThemeToggle";

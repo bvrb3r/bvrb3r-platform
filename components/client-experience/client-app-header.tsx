@@ -4,6 +4,7 @@ import {
   type ClientAppMode
 } from "@/components/client-experience/client-tab-config";
 import { DashboardHeaderActions } from "@/components/dashboard/dashboard-header-actions";
+import { ThemeToggle } from "@/design/components";
 
 export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
   const isGuest = mode === "guest";
@@ -16,12 +17,7 @@ export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
           <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-[#C4F24E]/20 bg-[linear-gradient(135deg,rgba(196, 242, 78,0.18),rgba(15,15,15,0.96))] text-sm font-semibold tracking-[0.22em] text-[#e4f9b8] shadow-[0_16px_34px_rgba(196, 242, 78,0.14)]">
             BV
           </div>
-          <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-[0.26em] text-[#e0f6a0]">BVRB3R</p>
-            <p className="mt-1 truncate text-sm font-medium text-white/78">
-              {isGuest ? "Guest marketplace" : "Search, book, and manage visits"}
-            </p>
-          </div>
+          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-white">BVRB3R</p>
         </Link>
         {isGuest ? (
           <div className="flex items-center gap-2">
@@ -33,11 +29,16 @@ export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
             </Link>
           </div>
         ) : (
-          <DashboardHeaderActions
-            role="client"
-            messagesHref={CLIENT_PRIMARY_TAB_HREFS.messages}
-            moreHref={CLIENT_PRIMARY_TAB_HREFS.more}
-          />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="hidden sm:block">
+              <ThemeToggle />
+            </div>
+            <DashboardHeaderActions
+              role="client"
+              messagesHref={CLIENT_PRIMARY_TAB_HREFS.messages}
+              moreHref={CLIENT_PRIMARY_TAB_HREFS.more}
+            />
+          </div>
         )}
       </div>
     </header>
