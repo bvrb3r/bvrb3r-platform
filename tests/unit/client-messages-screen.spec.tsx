@@ -265,7 +265,7 @@ describe("client messages screen", () => {
       />
     );
 
-    expect(screen.getByText("MESSAGES")).toBeInTheDocument();
+    expect(screen.getByText("Inbox")).toBeInTheDocument();
     expect(screen.getByText("Barbers, shops, bookings, and support.")).toBeInTheDocument();
     expect(screen.getByText("No conversations yet.")).toBeInTheDocument();
     expect(screen.getByText("Search a barber or shop to start a message.")).toBeInTheDocument();
@@ -279,6 +279,42 @@ describe("client messages screen", () => {
     expect(screen.queryByRole("button", { name: "Message Support" })).not.toBeInTheDocument();
     expect(screen.queryByText("New messages")).not.toBeInTheDocument();
     expect(screen.queryByText("Start from a booked appointment, shop line, or support.")).not.toBeInTheDocument();
+  });
+
+  it("restores the two-pane layout with an inline open-thread panel on desktop viewports", () => {
+    // jsdom has no matchMedia; simulate a wide (md+) viewport so the screen renders
+    // the two-pane layout instead of the single-pane modal flow.
+    const win = window as unknown as { matchMedia?: (query: string) => unknown };
+    const originalMatchMedia = win.matchMedia;
+    win.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false
+    })) as (query: string) => unknown;
+
+    try {
+      render(
+        <MessagingInboxScreen
+          surface="client"
+          basePath="/dashboard/client/messages"
+          title="Messages"
+          subtitle="Barbers, shops, bookings, and support."
+        />
+      );
+
+      // Two-pane proof: the conversation list AND the inline open-thread panel both
+      // render. The panel's empty state only appears in the desktop two-pane layout —
+      // never in the single-pane modal flow.
+      expect(screen.getByText("No conversations yet.")).toBeInTheDocument();
+      expect(screen.getByText("Pick a conversation")).toBeInTheDocument();
+    } finally {
+      win.matchMedia = originalMatchMedia;
+    }
   });
 
   it("opens an empty compose modal from the top New Message button without auto-selecting support", () => {
@@ -2323,7 +2359,7 @@ describe("client messages screen", () => {
     expect(screen.getByTestId("message-thread-context-line")).toHaveTextContent(/test cut.*May 19.*Cancelled/);
     expect(screen.getAllByText("Conversation opened...").length).toBeGreaterThan(1);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/client/profile-view/barber/phillipforsure?sourceThreadId=thread-appointment-1");
-    expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barber=phillipforsure&barberId=barber-43b3cda2");
+    expect(screen.getByRole("link", { name: "Rebook" })).toHaveAttribute("href", "/booking/new?barber=phillipforsure&barberId=barber-43b3cda2");
 
     const row = screen.getAllByText("Conversation opened...")[0]?.closest("a");
     expect(row?.className).toContain("min-h-[78px]");
@@ -2623,7 +2659,7 @@ describe("client messages screen", () => {
     expect(within(modal).getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
     expect(within(modal).getByRole("button", { name: "Send message" })).toBeInTheDocument();
     expect(within(modal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/client/profile-view/barber/phillipforsure?sourceThreadId=thread-appointment-1");
-    expect(within(modal).getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barber=phillipforsure&barberId=barber-43b3cda2");
+    expect(within(modal).getByRole("link", { name: "Rebook" })).toHaveAttribute("href", "/booking/new?barber=phillipforsure&barberId=barber-43b3cda2");
 
     fireEvent.click(within(modal).getByRole("button", { name: "Back" }));
 
@@ -2710,7 +2746,7 @@ describe("client messages screen", () => {
     const modal = screen.getByTestId("message-thread-modal");
     expect(within(modal).getAllByText("BVRB3R Support").length).toBeGreaterThan(0);
     expect(within(modal).getAllByText("B").length).toBeGreaterThan(0);
-    expect(within(modal).queryByRole("link", { name: "Book" })).not.toBeInTheDocument();
+    expect(within(modal).queryByRole("link", { name: "Rebook" })).not.toBeInTheDocument();
     expect(within(modal).getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
   });
 
@@ -3486,6 +3522,6 @@ describe("client messages screen", () => {
     expect(screen.getAllByText("How can we help?").length).toBeGreaterThan(1);
     expect(screen.getAllByText("Support").length).toBeGreaterThan(0);
     expect(screen.queryByRole("link", { name: "View Profile" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Book" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Rebook" })).not.toBeInTheDocument();
   });
 });

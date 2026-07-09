@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, MessageSquarePlus, MessageSquareText, RadioTower, Search, Send, Sparkles, X } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
@@ -139,6 +139,84 @@ function formatContextDate(iso: string) {
     month: "short",
     day: "numeric"
   }).format(date);
+}
+
+function isSameLocalDay(a: string, b: string) {
+  const da = new Date(a);
+  const db = new Date(b);
+  if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) {
+    return false;
+  }
+  return da.toDateString() === db.toDateString();
+}
+
+// Day divider label for the message stream: "Today" / "Yesterday" / "Mon, Jul 7".
+function formatMessageDayLabel(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return "Today";
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric"
+  }).format(date);
+}
+
+// Presence proxy from real thread activity (last message / update time). We have no
+// live online signal, so this reports the last real activity rather than inventing one.
+function formatLastActiveLabel(iso?: string | null) {
+  if (!iso) {
+    return null;
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const diffMs = new Date().getTime() - date.getTime();
+  if (diffMs < 60_000) {
+    return "Active just now";
+  }
+  const diffMinutes = Math.floor(diffMs / 60_000);
+  if (diffMinutes < 60) {
+    return `Active ${diffMinutes}m ago`;
+  }
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `Active ${diffHours}h ago`;
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) {
+    return `Active ${diffDays}d ago`;
+  }
+  return `Active ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(date)}`;
+}
+
+// True once the viewport is at least the md breakpoint. Defaults to false so SSR,
+// mobile, and the (matchMedia-less) test environment keep the single-pane modal
+// flow; desktop upgrades to the two-pane layout after mount.
+function useIsWideViewport() {
+  const [isWide, setIsWide] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const query = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsWide(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+  return isWide;
 }
 
 function readableError(error: unknown, fallback: string) {
@@ -1024,7 +1102,7 @@ function ThinThreadRow({
       className={[
         "group grid min-h-[78px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[12px] border px-3 py-2 transition",
         active
-          ? "border-white/25 bg-white/[0.06]"
+          ? "border-[#c4f24e]/35 bg-[#c4f24e]/10"
           : "border-white/8 bg-white/[0.022] hover:border-white/16 hover:bg-white/[0.04]"
       ].join(" ")}
     >
@@ -1227,6 +1305,8 @@ function ConversationPanel({
     : getTargetAwareComposerPlaceholder(activeThread, surface);
   const profileHref = getThreadProfileHref(activeThread, surface, activeThreadId ?? selectedThreadId ?? null);
   const bookingHref = activeThread?.counterpart?.bookingHref ?? "/booking/new";
+  const lastActiveLabel = messages.length ? formatLastActiveLabel(messages[messages.length - 1]?.createdAt) : null;
+  const bookingActionLabel = surface === "client" ? "Rebook" : "Book";
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
   const previousThreadIdRef = useRef<string | undefined>(undefined);
@@ -1305,7 +1385,7 @@ function ConversationPanel({
             Back
           </button>
         ) : selectedThreadId ? (
-          <Link href={basePath as Route} className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-white/56 transition hover:text-[#e4f9b8] xl:hidden">
+          <Link href={basePath as Route} className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-white/56 transition hover:text-[#e4f9b8] md:hidden">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Back
           </Link>
@@ -1339,6 +1419,7 @@ function ConversationPanel({
                   <p className="mt-0.5 truncate text-xs text-white/46">
                     {[conversationTypeLabel, publicContextLine].filter(Boolean).join(" - ")}
                   </p>
+                  {lastActiveLabel ? <p className="mt-0.5 truncate text-[11px] font-semibold text-white/40">{lastActiveLabel}</p> : null}
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -1363,7 +1444,7 @@ function ConversationPanel({
                     href={bookingHref as Route}
                     className="inline-flex h-8 items-center rounded-lg bg-[#c4f24e] px-3 text-xs font-black text-[#050505] transition hover:bg-[#e4f9b8]"
                   >
-                    Book
+                    {bookingActionLabel}
                   </Link>
                 ) : null}
               </div>
@@ -1429,10 +1510,19 @@ function ConversationPanel({
             data-testid="message-thread-scroll-container"
             onScroll={handleMessagesScroll}
           >
-            {messages.length ? messages.map((message) => {
+            {messages.length ? messages.map((message, index) => {
               const paymentRequestMetadata = getPosPaymentRequestMetadata(message.metadata);
+              const showDayDivider = index === 0 || !isSameLocalDay(messages[index - 1].createdAt, message.createdAt);
               return (
-              <div key={message.id} className={message.isOwn ? "flex justify-end" : "flex justify-start"}>
+              <Fragment key={message.id}>
+                {showDayDivider ? (
+                  <div className="flex justify-center py-1">
+                    <span className="rounded-full border border-white/8 bg-white/[0.04] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/44">
+                      {formatMessageDayLabel(message.createdAt)}
+                    </span>
+                  </div>
+                ) : null}
+              <div className={message.isOwn ? "flex justify-end" : "flex justify-start"}>
                 {paymentRequestMetadata ? (
                   <PaymentRequestCard
                     counterpartName={displayName}
@@ -1460,6 +1550,7 @@ function ConversationPanel({
                   </div>
                 )}
               </div>
+              </Fragment>
               );
             }) : (
               <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-white/54">
@@ -1714,7 +1805,10 @@ export function MessagingInboxScreen({
   const createThreadMutation = useCreateMessageThreadMutation();
   const markReadMutation = useMarkMessageThreadReadMutation();
   const broadcastMutation = useSendMessageBroadcastMutation();
-  const usesModalThreadView = true;
+  // Desktop (md+) restores the two-pane layout: conversation list + open thread inline.
+  // Mobile keeps the single-pane list that opens each thread full-screen (modal).
+  const isWideViewport = useIsWideViewport();
+  const usesModalThreadView = !isWideViewport;
   const [modalThreadId, setModalThreadId] = useState<string | null>(selectedThreadId ?? null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeActionError, setComposeActionError] = useState<string | null>(null);
@@ -2106,7 +2200,7 @@ export function MessagingInboxScreen({
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(245,241,232,0.16),transparent)]" />
 
       <PageHeader
-        label={copy.shellLabel}
+        label="Inbox"
         title={title}
         subtitle={subtitle}
         action={
@@ -2144,7 +2238,7 @@ export function MessagingInboxScreen({
       ) : null}
 
       {available ? (
-        <div className={usesModalThreadView ? "mt-4" : "mt-4 grid gap-4 xl:grid-cols-[0.88fr_1.12fr]"}>
+        <div className={usesModalThreadView ? "mt-4" : "mt-4 grid gap-4 md:grid-cols-[0.88fr_1.12fr]"}>
           <aside className={usesModalThreadView ? "mx-auto w-full max-w-3xl space-y-3" : "min-w-0 space-y-3"}>
             <div>
               <SearchBar
