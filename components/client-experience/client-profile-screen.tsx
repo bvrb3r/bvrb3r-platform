@@ -26,8 +26,10 @@ import {
   Store,
   Trash2,
   WalletCards,
+  Zap,
 } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
+import { ClientGetCutNowAction } from "@/components/client-experience/client-get-cut-now-action";
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
 import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
@@ -46,7 +48,7 @@ import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { Avatar, DataStatCard, StatusBadge } from "@/design/components";
-import { useClientBookingsQuery, useClientMembershipQuery } from "@/lib/booking/client";
+import { useClientBookingsQuery, useClientHomeQuery, useClientMembershipQuery } from "@/lib/booking/client";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
 import { useCreateReferralInviteMutation, useClientReferralSummary } from "@/lib/engagement/client";
 import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
@@ -64,6 +66,7 @@ type PickerInput = HTMLInputElement & {
 };
 
 const sectionIdMap = {
+  book: "profile-book",
   activity: "profile-activity",
   preferences: "profile-preferences",
   location: "profile-account",
@@ -223,6 +226,7 @@ export function ClientProfileScreen({
   const mediaQuery = useProfileMediaWorkspaceQuery(isSignedInClient);
   const mediaMutation = useMutateProfileMediaMutation();
   const bookingsQuery = useClientBookingsQuery(isSignedInClient);
+  const homeQuery = useClientHomeQuery();
   const membershipQuery = useClientMembershipQuery(isSignedInClient);
   const pointsBalanceQuery = usePointsBalanceQuery(isSignedInClient);
   const pointsHistoryQuery = usePointsHistoryQuery(isSignedInClient);
@@ -681,6 +685,28 @@ export function ClientProfileScreen({
         secondaryAction={{ label: "Public Profile", href: "/dashboard/client/public-profile" }}
         tiles={[]}
       />
+
+      <section id="profile-book" data-testid="account-book-section" className="bvr-section">
+        <p className="bvr-section-label">Book</p>
+        <div className="rounded-[28px] border border-[#c4f24e]/22 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.12),rgba(8,8,8,0.98))] p-5 shadow-[inset_0_1px_0_rgba(196,242,78,0.12),0_0_44px_rgba(196,242,78,0.06)]">
+          <div className="inline-flex items-center gap-2 text-sm font-semibold text-white/92">
+            <Zap className="h-4 w-4 text-[#c4f24e]" />
+            Get a cut now
+          </div>
+          <p className="mt-3 text-sm leading-7 text-white/68">
+            We&apos;ll find the next eligible chair, confirm the details, and hold it while you pay.
+          </p>
+          <div className="mt-4">
+            <ClientGetCutNowAction
+              hasResolvedLocation={homeQuery.data?.hasResolvedLocation ?? false}
+              nextAvailableChair={homeQuery.data?.nextAvailableChair ?? null}
+              defaultPaymentMethod={homeQuery.data?.defaultPaymentMethod ?? null}
+              size="lg"
+              triggerLabel="Find the next chair →"
+            />
+          </div>
+        </div>
+      </section>
 
       <MoreControlHub
         title="BVRB3R App Settings"
