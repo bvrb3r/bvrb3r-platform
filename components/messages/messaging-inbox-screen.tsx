@@ -1370,7 +1370,7 @@ function ConversationPanel({
         "flex flex-col border border-white/8 bg-[#070707]/96 shadow-[0_20px_60px_rgba(0,0,0,0.38)]",
         mode === "modal"
           ? "h-[100dvh] min-h-0 w-full rounded-none sm:h-[min(92vh,48rem)] sm:max-w-2xl sm:rounded-lg"
-          : "min-h-[34rem] rounded-lg"
+          : "h-full min-h-0 overflow-hidden rounded-lg"
       ].join(" ")}
       data-testid={mode === "modal" ? "message-thread-modal" : "message-thread-panel"}
     >
@@ -2238,8 +2238,8 @@ export function MessagingInboxScreen({
       ) : null}
 
       {available ? (
-        <div className={usesModalThreadView ? "mt-4" : "mt-4 grid gap-4 md:grid-cols-[0.88fr_1.12fr]"}>
-          <aside className={usesModalThreadView ? "mx-auto w-full max-w-3xl space-y-3" : "min-w-0 space-y-3"}>
+        <div className={usesModalThreadView ? "mt-4" : "mt-4 grid gap-4 md:h-[calc(100vh-8.5rem)] md:min-h-0 md:grid-cols-[0.88fr_1.12fr]"}>
+          <aside className={usesModalThreadView ? "mx-auto w-full max-w-3xl space-y-3" : "min-w-0 space-y-3 md:min-h-0 md:overflow-y-auto md:pr-1"}>
             <div>
               <SearchBar
                 aria-label="Search messages"
