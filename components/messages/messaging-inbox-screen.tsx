@@ -2125,7 +2125,7 @@ export function MessagingInboxScreen({
 
   return (
     <div
-      className="relative isolate overflow-hidden rounded-[18px] border border-white/8 bg-[#050505] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.42)] sm:p-4"
+      className="relative isolate rounded-[18px] bg-transparent p-0 sm:p-0"
       data-testid={`messaging-inbox-${surface}`}
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(245,241,232,0.16),transparent)]" />
@@ -2169,7 +2169,7 @@ export function MessagingInboxScreen({
       ) : null}
 
       {available ? (
-        <div className={usesModalThreadView ? "mt-4" : "mt-4 grid gap-4 md:h-[calc(100vh-8.5rem)] md:min-h-0 md:grid-cols-[0.88fr_1.12fr]"}>
+        <div className={usesModalThreadView ? "mt-4" : "mt-4 grid gap-4 md:h-[calc(100dvh-15rem)] md:max-h-[46rem] md:min-h-0 md:grid-cols-[0.88fr_1.12fr]"}>
           <aside className={usesModalThreadView ? "mx-auto w-full max-w-3xl space-y-3" : "min-w-0 space-y-3 md:min-h-0 md:overflow-y-auto md:pr-1"}>
             <div>
               <SearchBar
