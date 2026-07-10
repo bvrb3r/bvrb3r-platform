@@ -12,7 +12,7 @@ const commands = [
   {
     label: "targeted regression tests",
     command:
-      "npx vitest run tests/unit/internal-operator-access.spec.ts tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts",
+      "npx vitest run tests/unit/internal-operator-access.spec.ts tests/unit/shop-operator-access.spec.ts tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts",
     env: {
       NODE_ENV: "test",
       VITEST: "true"
@@ -53,7 +53,7 @@ const proof = {
   validationCommit: currentCommit(),
   validationSource: "package.json prebuild -> verify:deployment",
   validationCommand,
-  regressionSuiteName: "architect-and-internal-operator-targeted-regression",
+  regressionSuiteName: "architect-identity-and-shop-authority-targeted-regression",
   regressionTestCount: null,
   lintStatus: "pass",
   typecheckStatus: "pass",
