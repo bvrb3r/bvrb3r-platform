@@ -1,6 +1,6 @@
 -- BVRB3R V1 BLOCKER-1D
 -- Keep protected internal operator authority separate from public account identity.
--- Active full operators use client_user as their least-privilege public profile role.
+-- Every internal operator uses client_user as the least-privilege public profile role.
 
 create or replace function private.enforce_internal_operator_public_role()
 returns trigger
@@ -13,8 +13,6 @@ begin
     select 1
     from public.internal_operator_access ioa
     where ioa.profile_id = new.id
-      and ioa.status = 'active'
-      and ioa.access_level in ('architect_prime', 'operator')
   ) then
     new.role := 'client_user'::public.app_role;
   end if;
@@ -31,7 +29,8 @@ before insert or update of role on public.profiles
 for each row
 execute function private.enforce_internal_operator_public_role();
 
--- Backfill only approved protected operators. No email matching or role inference.
+-- Backfill only profiles already recorded in protected operator truth. No email
+-- matching, role inference, or mutation of unrelated profiles.
 update public.profiles p
 set
   role = 'client_user'::public.app_role,
@@ -40,8 +39,6 @@ where exists (
   select 1
   from public.internal_operator_access ioa
   where ioa.profile_id = p.id
-    and ioa.status = 'active'
-    and ioa.access_level in ('architect_prime', 'operator')
 );
 
 -- Every canonical client_user identity needs a single client row. This is
@@ -51,8 +48,6 @@ select p.id, 'new'
 from public.profiles p
 join public.internal_operator_access ioa on ioa.profile_id = p.id
 where p.role::text = 'client_user'
-  and ioa.status = 'active'
-  and ioa.access_level in ('architect_prime', 'operator')
   and not exists (
     select 1
     from public.clients c
@@ -75,8 +70,6 @@ begin
       select 1
       from public.internal_operator_access ioa
       where ioa.profile_id::text = new.target_id
-        and ioa.status = 'active'
-        and ioa.access_level in ('architect_prime', 'operator')
     )
   then
     raise exception using
@@ -100,20 +93,17 @@ create or replace view public.v1_internal_operator_identity_evidence
 with (security_invoker = true)
 as
 select
+  count(*) as internal_operator_count,
   count(*) filter (
     where ioa.status = 'active'
       and ioa.access_level in ('architect_prime', 'operator')
   ) as active_full_operator_count,
   count(*) filter (
-    where ioa.status = 'active'
-      and ioa.access_level in ('architect_prime', 'operator')
-      and p.role::text not in ('client_user', 'barber_user', 'shop_owner_user')
-  ) as active_operator_noncanonical_public_role_count,
+    where p.role::text not in ('client_user', 'barber_user', 'shop_owner_user')
+  ) as internal_operator_noncanonical_public_role_count,
   count(*) filter (
-    where ioa.status = 'active'
-      and ioa.access_level in ('architect_prime', 'operator')
-      and c.id is null
-  ) as active_operator_missing_client_record_count,
+    where c.id is null
+  ) as internal_operator_missing_client_record_count,
   (
     select count(*)
     from pg_trigger t
@@ -135,15 +125,13 @@ select
       on protected.profile_id::text = pac.target_id
     where pac.target_type = 'user'
       and pac.control_key = 'account_status'
-      and protected.status = 'active'
-      and protected.access_level in ('architect_prime', 'operator')
   ) as contradictory_operator_account_control_count
 from public.internal_operator_access ioa
 join public.profiles p on p.id = ioa.profile_id
 left join public.clients c on c.profile_id = p.id;
 
 comment on view public.v1_internal_operator_identity_evidence is
-  'V1 evidence that protected internal operators retain canonical public identity and cannot receive contradictory account-status controls.';
+  'V1 evidence that every protected internal operator retains canonical public identity and cannot receive contradictory account-status controls.';
 
 revoke all on table public.v1_internal_operator_identity_evidence from public, anon, authenticated;
 grant select on table public.v1_internal_operator_identity_evidence to service_role;
