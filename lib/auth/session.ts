@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { buildRuntimeUserFromProductionAuth, applySignupRoleIntentForAuthUser } from "@/lib/auth/production-identity";
 import { DEMO_SESSION_COOKIE, resolveDemoUser } from "@/lib/auth/demo-auth";
+import { applyInternalOperatorAccessOverlay } from "@/lib/auth/internal-operator";
 import { SIGNUP_ROLE_INTENT_COOKIE } from "@/lib/auth/signup-role-intent";
 import { isDemoMode, runtimeConfig } from "@/lib/config/runtime";
 import { applyPlatformAdminOverlay } from "@/lib/platform-admin/service";
@@ -18,6 +19,11 @@ const unauthenticatedUser: UserAccount = {
   accountStatus: "profile_only"
 };
 
+async function applySessionOverlays(user: UserAccount) {
+  const operatorResolvedUser = await applyInternalOperatorAccessOverlay(user);
+  return applyPlatformAdminOverlay(operatorResolvedUser);
+}
+
 export async function getCurrentUserFromServer() {
   const cookieStore = await cookies();
   const selectedDemoEmail = cookieStore.get(DEMO_SESSION_COOKIE)?.value;
@@ -26,7 +32,7 @@ export async function getCurrentUserFromServer() {
     return {
       mode: "demo" as const,
       authenticated: true,
-      user: await applyPlatformAdminOverlay(resolveDemoUser(selectedDemoEmail, runtimeConfig.demoEmail))
+      user: await applySessionOverlays(resolveDemoUser(selectedDemoEmail, runtimeConfig.demoEmail))
     };
   }
 
@@ -38,7 +44,7 @@ export async function getCurrentUserFromServer() {
     return {
       mode: "supabase" as const,
       authenticated: false,
-      user: await applyPlatformAdminOverlay(unauthenticatedUser)
+      user: await applySessionOverlays(unauthenticatedUser)
     };
   }
 
@@ -57,6 +63,6 @@ export async function getCurrentUserFromServer() {
   return {
     mode: "supabase" as const,
     authenticated: true,
-    user: await applyPlatformAdminOverlay(runtimeUser)
+    user: await applySessionOverlays(runtimeUser)
   };
 }
