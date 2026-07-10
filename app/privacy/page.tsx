@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
   title: "Privacy Policy | BVRB3R",
@@ -115,7 +116,7 @@ export default function PrivacyPage() {
   );
 }
 
-function PrivacySection({ title, children }: { title: string; children: React.ReactNode }) {
+function PrivacySection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-3">
       <h2 className="text-xl font-semibold text-white">{title}</h2>
