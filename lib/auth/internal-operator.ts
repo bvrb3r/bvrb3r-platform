@@ -19,13 +19,35 @@ export function hasFullArchitectAccess(record?: InternalOperatorAccessRecord | n
   );
 }
 
+function hasLegacyInternalIdentity(user: UserAccount) {
+  return user.role === "platform_admin"
+    || user.role === "architect"
+    || user.primaryOnboardingRole === "platform_admin";
+}
+
+function normalizeProtectedOperatorPublicIdentity(user: UserAccount, fullArchitectAccess: boolean): UserAccount {
+  if (!hasLegacyInternalIdentity(user)) {
+    return user;
+  }
+
+  return {
+    ...user,
+    role: "client_user",
+    primaryOnboardingRole: undefined,
+    title: fullArchitectAccess ? "BVRB3R Architect" : "Client"
+  };
+}
+
 export function applyInternalOperatorAccessRecord(
   user: UserAccount,
   record?: InternalOperatorAccessRecord | null
 ): UserAccount {
+  const fullArchitectAccess = user.accountStatus === "active" && hasFullArchitectAccess(record);
+  const normalizedUser = normalizeProtectedOperatorPublicIdentity(user, fullArchitectAccess);
+
   return {
-    ...user,
-    platformAdmin: user.accountStatus === "active" && hasFullArchitectAccess(record)
+    ...normalizedUser,
+    platformAdmin: fullArchitectAccess
   };
 }
 
@@ -36,10 +58,7 @@ function isLegacyDemoArchitect(user: UserAccount) {
 }
 
 function failClosed(user: UserAccount): UserAccount {
-  return {
-    ...user,
-    platformAdmin: false
-  };
+  return applyInternalOperatorAccessRecord(user, null);
 }
 
 export async function applyInternalOperatorAccessOverlay(user: UserAccount): Promise<UserAccount> {

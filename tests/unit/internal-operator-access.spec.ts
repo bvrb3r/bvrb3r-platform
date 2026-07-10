@@ -47,20 +47,46 @@ describe("internal operator access", () => {
       record("architect_prime")
     );
 
+    expect(resolved.role).toBe("client_user");
     expect(resolved.platformAdmin).toBe(true);
     expect(isPlatformAdminUser(resolved)).toBe(true);
   });
 
-  it("fails closed when the protected operator record is absent", () => {
+  it("canonicalizes a legacy Architect identity while preserving protected authority", () => {
     const resolved = applyInternalOperatorAccessRecord(
       createUser({
         role: "platform_admin",
-        primaryOnboardingRole: "platform_admin"
+        primaryOnboardingRole: "platform_admin",
+        title: "Platform Admin"
+      }),
+      record("architect_prime")
+    );
+
+    expect(resolved).toMatchObject({
+      role: "client_user",
+      title: "BVRB3R Architect",
+      platformAdmin: true
+    });
+    expect(resolved.primaryOnboardingRole).toBeUndefined();
+    expect(isPlatformAdminUser(resolved)).toBe(true);
+  });
+
+  it("fails closed and removes legacy public identity when the protected operator record is absent", () => {
+    const resolved = applyInternalOperatorAccessRecord(
+      createUser({
+        role: "platform_admin",
+        primaryOnboardingRole: "platform_admin",
+        title: "Platform Admin"
       }),
       null
     );
 
-    expect(resolved.platformAdmin).toBe(false);
+    expect(resolved).toMatchObject({
+      role: "client_user",
+      title: "Client",
+      platformAdmin: false
+    });
+    expect(resolved.primaryOnboardingRole).toBeUndefined();
     expect(isPlatformAdminUser(resolved)).toBe(false);
   });
 
