@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
   title: "Terms of Service | BVRB3R",
@@ -114,7 +115,7 @@ export default function TermsPage() {
   );
 }
 
-function LegalSection({ title, children }: { title: string; children: React.ReactNode }) {
+function LegalSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-3">
       <h2 className="text-xl font-semibold text-white">{title}</h2>
