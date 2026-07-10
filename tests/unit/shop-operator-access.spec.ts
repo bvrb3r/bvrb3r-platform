@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const migrationUrl = new URL(
-  "../../supabase/migrations/20260710214500_shop_operator_authority_foundation.sql",
-  import.meta.url
+const migrationPath = join(
+  process.cwd(),
+  "supabase/migrations/20260710214500_shop_operator_authority_foundation.sql"
 );
-const migrationSql = readFileSync(migrationUrl, "utf8");
+const migrationSql = readFileSync(migrationPath, "utf8");
 
 function functionDefinition(name: string) {
   const marker = `create or replace function private.${name}`;
