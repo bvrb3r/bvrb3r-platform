@@ -1,6 +1,6 @@
 import type { Route } from "next";
 import { demoUsers } from "@/lib/data/demo";
-import { runtimeConfig } from "@/lib/config/runtime";
+import { isDemoMode, runtimeConfig } from "@/lib/config/runtime";
 import { getCanonicalAccountRole, isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { Role, UserAccount } from "@/types/domain";
@@ -98,13 +98,22 @@ export function findDemoUserByRole(role?: Role) {
 }
 
 export function isPlatformAdminUser(
-  user?: Pick<UserAccount, "role" | "primaryOnboardingRole" | "accountStatus"> & { email?: string | null } | null
+  user?: Pick<UserAccount, "role" | "primaryOnboardingRole" | "accountStatus" | "platformAdmin"> & { email?: string | null } | null
 ) {
-  return Boolean(
-    user?.role === "platform_admin"
-    && user.primaryOnboardingRole === "platform_admin"
-    && user.accountStatus === "active"
-  );
+  if (!user || user.accountStatus !== "active") {
+    return false;
+  }
+
+  if (user.platformAdmin === true) {
+    return true;
+  }
+
+  if (user.platformAdmin === false || !isDemoMode()) {
+    return false;
+  }
+
+  return user.role === "platform_admin"
+    && user.primaryOnboardingRole === "platform_admin";
 }
 
 export function resolveDemoUser(selectedEmail?: string, fallbackEmail = DEFAULT_DEMO_EMAIL) {

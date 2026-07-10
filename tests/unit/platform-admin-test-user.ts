@@ -9,6 +9,7 @@ export function makePlatformAdminUser(overrides: Partial<UserAccount> = {}): Use
     name: "BVRB3R Architect",
     role: "platform_admin",
     primaryOnboardingRole: "platform_admin",
+    platformAdmin: true,
     accountStatus: "active",
     ...overrides
   };
