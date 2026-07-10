@@ -22,9 +22,10 @@ comment on table public.internal_operator_access is
 
 alter table public.internal_operator_access enable row level security;
 
--- Fail closed: no direct authenticated table policies are created.
--- Reads and writes occur through reviewed server/service-role paths or protected helpers.
-revoke all on table public.internal_operator_access from anon, authenticated;
+-- Fail closed: no direct browser table policies are created.
+-- Reviewed server/service-role paths own internal operator reads and writes.
+revoke all on table public.internal_operator_access from public, anon, authenticated;
+grant all on table public.internal_operator_access to service_role;
 
 create or replace function private.is_internal_operator(
   required_levels text[] default array['architect_prime', 'operator']::text[]
@@ -33,18 +34,21 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public, private, pg_temp
+set search_path = ''
 as $$
   select exists (
     select 1
     from public.internal_operator_access ioa
-    where ioa.profile_id = auth.uid()
+    where auth.uid() is not null
+      and ioa.profile_id = auth.uid()
       and ioa.status = 'active'
       and ioa.access_level = any(required_levels)
   );
 $$;
 
-revoke all on function private.is_internal_operator(text[]) from public;
+-- Functions are executable by PUBLIC by default. Grant only the signed-in role
+-- that needs this protected RLS helper; anon has no private-schema access.
+revoke all on function private.is_internal_operator(text[]) from public, anon, authenticated;
 grant execute on function private.is_internal_operator(text[]) to authenticated;
 
 -- Backfill only live authenticated profiles already carrying the legacy
@@ -71,6 +75,13 @@ set
   status = excluded.status,
   reason = excluded.reason,
   updated_at = now();
+
+-- A public account identity owns at most one client role record. The partial
+-- index preserves the existing nullable legacy row while locking live identity
+-- records to the canonical one-profile/one-client invariant.
+create unique index if not exists clients_profile_id_unique_idx
+  on public.clients (profile_id)
+  where profile_id is not null;
 
 -- Canonicalize the live legacy client identity and provision its role record
 -- idempotently. Orphaned seed profiles are not mutated in this increment.
@@ -116,4 +127,8 @@ left join auth.users u on u.id = p.id
 left join public.clients c on c.profile_id = p.id
 left join public.internal_operator_access ioa on ioa.profile_id = p.id;
 
-revoke all on public.v1_identity_role_evidence from anon, authenticated;
+comment on view public.v1_identity_role_evidence is
+  'Fail-closed V1 evidence for canonical public identity and protected internal operator access.';
+
+revoke all on table public.v1_identity_role_evidence from public, anon, authenticated;
+grant select on table public.v1_identity_role_evidence to service_role;
