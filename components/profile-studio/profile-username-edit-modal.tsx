@@ -170,7 +170,7 @@ export function ProfileUsernameEditModal({
           <button
             type="button"
             disabled={!canSave}
-            className="inline-flex min-h-12 flex-1 items-center justify-center rounded-[8px] bg-[#c4f24e] px-5 text-sm font-black text-[#050505] transition hover:bg-[#e4f9b8] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/36"
+            className="inline-flex min-h-12 flex-1 items-center justify-center rounded-[8px] bg-[#c4f24e] px-5 text-sm font-black text-[#050505] transition hover:bg-[#e4f9b8] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-[#050505]/36 bvr-on-green"
             onClick={() => void onSave(value.trim())}
           >
             {isSaved ? "Saved" : isSaving ? "Saving..." : "Save"}

@@ -1382,7 +1382,7 @@ export function OwnerTeamWorkspace() {
                           type="button"
                           disabled={!barber.inviteId || respondJoinRequestMutation.isPending}
                           onClick={() => barber.inviteId ? void handleJoinRequestResponse(barber.inviteId, "accepted", barber.name) : undefined}
-                          className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#C4F24E]/38 bg-[#C4F24E] px-4 text-sm font-black text-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/[0.04] disabled:text-white/34"
+                          className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#C4F24E]/38 bg-[#C4F24E] px-4 text-sm font-black text-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/[0.04] disabled:text-[#050505]/34 bvr-on-green"
                         >
                           Accept
                         </button>

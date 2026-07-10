@@ -933,7 +933,7 @@ export function OwnerSettingsWorkspace({
           footerPrimary={quickSetupModal === "hours" ? (
             <button
               type="button"
-              className="min-h-12 rounded-full border border-[#C4F24E]/45 bg-[#C4F24E] px-5 text-sm font-extrabold text-black hover:bg-[#b3e63a] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-white/34"
+              className="min-h-12 rounded-full border border-[#C4F24E]/45 bg-[#C4F24E] px-5 text-sm font-extrabold text-black hover:bg-[#b3e63a] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-[#050505]/34 bvr-on-green"
               disabled={ownerHoursSaving}
               onClick={() => void handleQuickShopHoursSave()}
             >

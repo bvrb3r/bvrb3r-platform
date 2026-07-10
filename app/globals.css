@@ -443,3 +443,13 @@ span {
     font-size: 16px;
   }
 }
+
+/* ---- PR13: Signal-Green filled controls always use black ink -------------
+   Any element that opts into the green fill via .bvr-on-green (or the shared
+   .bvr-primary-action) renders near-black text + icons, never white. */
+.bvr-on-green,
+.bvr-on-green * {
+  color: #050505 !important;
+  fill: #050505 !important;
+  stroke: #050505 !important;
+}

@@ -2142,7 +2142,7 @@ function ControlledRefundResolutionSection({
             </label>
             <Button
               type="button"
-              className="min-h-11 rounded-[8px] border border-[#C4F24E]/42 bg-[#C4F24E] px-5 text-sm font-black text-black hover:bg-[#e4f9b8] disabled:border-white/10 disabled:bg-white/10 disabled:text-white/34"
+              className="min-h-11 rounded-[8px] border border-[#C4F24E]/42 bg-[#C4F24E] px-5 text-sm font-black text-black hover:bg-[#e4f9b8] disabled:border-white/10 disabled:bg-white/10 disabled:text-[#050505]/34 bvr-on-green"
               disabled={batchDisabled}
               aria-label={`Refund all ${targets.length} active targets through canonical route`}
               onClick={() => void executeBatchRefund()}
@@ -2210,7 +2210,7 @@ function ControlledRefundResolutionSection({
                 </label>
                 <Button
                   type="button"
-                  className="min-h-11 rounded-[8px] border border-[#C4F24E]/42 bg-[#C4F24E] px-5 text-sm font-black text-black hover:bg-[#e4f9b8] disabled:border-white/10 disabled:bg-white/10 disabled:text-white/34"
+                  className="min-h-11 rounded-[8px] border border-[#C4F24E]/42 bg-[#C4F24E] px-5 text-sm font-black text-black hover:bg-[#e4f9b8] disabled:border-white/10 disabled:bg-white/10 disabled:text-[#050505]/34 bvr-on-green"
                   disabled={disabled}
                   aria-label={`Refund $5 through canonical route for payment ${target.paymentId}`}
                   onClick={() => void executeRefund(target)}
