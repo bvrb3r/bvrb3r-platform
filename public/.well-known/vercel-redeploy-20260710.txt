@@ -1,0 +1,4 @@
+BVRB3R production deployment retry marker.
+Reason: the prior main deployment failed before build execution with Vercel error sts_credentials_fetch_failed.
+Validated source commit: 67d438365928022c7fa178a35c43dce905458b01.
+Created: 2026-07-10.
