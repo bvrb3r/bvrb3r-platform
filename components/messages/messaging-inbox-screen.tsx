@@ -277,14 +277,6 @@ function getSurfaceCopy(surface: MessagingSurface) {
   };
 }
 
-function getThreadStatusLabel(threadType: string) {
-  if (threadType === "support") {
-    return "support";
-  }
-
-  return threadType.replaceAll("_", " ");
-}
-
 function isClientAccountRole(role?: string | null) {
   return role === "client" || role === "client_user";
 }
@@ -445,32 +437,12 @@ function getDisplayName(thread: MessagingThreadSummary | ActiveThread) {
   return thread?.counterpart?.fullName ?? "Conversation";
 }
 
-function getAppointmentLine(thread: MessagingThreadSummary | ActiveThread) {
-  if (!thread?.appointmentContext) {
-    return null;
-  }
-
-  return `${thread.appointmentContext.serviceName} • ${thread.appointmentContext.statusLabel}`;
-}
-
 function getFreshAppointmentContext(thread: ActiveThread, relatedAppointmentContexts: AppointmentContextView[] = []) {
   if (relatedAppointmentContexts.length) {
     return relatedAppointmentContexts[0] ?? null;
   }
 
   return thread?.appointmentContext ?? null;
-}
-
-function getConversationTypeLabel(thread: MessagingThreadSummary | ActiveThread) {
-  if (thread?.appointmentContext) {
-    return "Booking conversation";
-  }
-
-  if (thread?.threadType === "support") {
-    return "Support conversation";
-  }
-
-  return "Direct conversation";
 }
 
 function getTargetAwareComposerPlaceholder(thread: ActiveThread, surface: MessagingSurface) {
@@ -547,27 +519,6 @@ function isComposerDisabledByLifecycle(thread: ActiveThread) {
     || thread?.lifecycleStatus === "reported"
     || (thread?.lifecycleStatus === "request_pending" && Boolean(thread.request?.isRecipient))
     || (thread?.lifecycleStatus === "request_pending" && Boolean(thread.request?.isRequester && thread.request.firstMessageId));
-}
-
-function getPublicUsernameLine(thread: MessagingThreadSummary | ActiveThread) {
-  const username = thread?.counterpart?.publicUsername?.trim();
-  return username ? `@${username}` : null;
-}
-
-function getSecondaryUsernameLine(thread: MessagingThreadSummary | ActiveThread, displayName: string) {
-  const usernameLine = getPublicUsernameLine(thread);
-  return usernameLine && usernameLine !== displayName ? usernameLine : null;
-}
-
-function getPublicContextLine(thread: MessagingThreadSummary | ActiveThread) {
-  if (thread?.threadType === "support" || thread?.counterpart?.role === "platform_admin") {
-    return "Support";
-  }
-
-  return thread?.counterpart?.publicContextLine
-    ?? getAppointmentLine(thread)
-    ?? thread?.locationContext?.locationLabel
-    ?? null;
 }
 
 function getProfileTargetKind(role?: string | null, threadType?: string | null): "client" | "barber" | "shop" | null {
@@ -769,36 +720,6 @@ function orderAndDedupeThreads(threads: MessagingThreadSummary[], surface: Messa
   };
 }
 
-function buildQuickContacts(threads: MessagingThreadSummary[]) {
-  const contacts = new Map<string, {
-    id: string;
-    label: string;
-    active?: boolean;
-    role?: string | null;
-    threadId?: string;
-    threadType?: string;
-    avatarUrl?: string | null;
-  }>();
-
-  for (const thread of threads) {
-    const id = thread.counterpart?.profileId ?? thread.id;
-    const label = getDisplayName(thread);
-    if (!contacts.has(id)) {
-      contacts.set(id, {
-        id,
-        label,
-        active: Boolean(thread.lastMessage || thread.appointmentContext),
-        role: thread.counterpart?.role,
-        threadId: thread.id,
-        threadType: thread.threadType,
-        avatarUrl: thread.counterpart?.avatarUrl ?? null
-      });
-    }
-  }
-
-  return Array.from(contacts.values()).slice(0, 10);
-}
-
 function ThreadSkeleton() {
   return (
     <div className="flex min-h-20 items-center gap-3 rounded-[12px] border border-white/8 bg-white/[0.025] px-3 py-2">
@@ -963,67 +884,6 @@ function TopLayerModal({
   );
 }
 
-function ThreadStoryRail({
-  basePath,
-  contacts,
-  onOpenThread
-}: {
-  basePath: string;
-  contacts: ReturnType<typeof buildQuickContacts>;
-  onOpenThread?: (threadId: string) => void;
-}) {
-  if (!contacts.length) {
-    return null;
-  }
-
-  return (
-    <div className="-mx-1 overflow-x-auto px-1 pb-1">
-      <div className="flex min-w-max gap-3">
-        {contacts.map((contact) => {
-          const avatar = (
-            <>
-              <Avatar
-                src={getAvatarImageUrl(contact.avatarUrl, contact.role, contact.threadType)}
-                alt={contact.label}
-                initials={getAvatarInitials(contact.label, contact.role, contact.threadType)}
-                className={[
-                  "mx-auto h-12 w-12 text-sm",
-                  contact.active ? "border-2 border-white/70" : "border-white/12"
-                ].join(" ")}
-              />
-              <span className="mt-1 block truncate text-[11px] font-semibold text-white/64 group-hover:text-white">
-                {contact.label}
-              </span>
-            </>
-          );
-
-          if (contact.threadId) {
-            return (
-              <Link
-                key={contact.id}
-                href={`${basePath}/${contact.threadId}` as Route}
-                className="group w-16 shrink-0 text-center"
-                onClick={onOpenThread ? (event) => {
-                  event.preventDefault();
-                  onOpenThread(contact.threadId as string);
-                } : undefined}
-              >
-                {avatar}
-              </Link>
-            );
-          }
-
-          return (
-            <div key={contact.id} className="group w-16 shrink-0 text-center">
-              {avatar}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function ThinThreadRow({
   thread,
   basePath,
@@ -1036,9 +896,6 @@ function ThinThreadRow({
   onOpen?: (threadId: string) => void;
 }) {
   const displayName = getDisplayName(thread);
-  const roleBadgeLabel = getRoleBadgeLabel(thread.counterpart?.role, thread.threadType);
-  const usernameLine = getSecondaryUsernameLine(thread, displayName);
-  const contextDetail = getPublicContextLine(thread) ?? getThreadStatusLabel(thread.threadType);
   const preview = getThreadPreview(thread);
 
   return (
@@ -1050,10 +907,10 @@ function ThinThreadRow({
         onOpen(thread.id);
       } : undefined}
       className={[
-        "group grid min-h-[78px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[12px] border px-3 py-2 transition",
+        "group grid min-h-[68px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[12px] border px-3 py-2 transition",
         active
-          ? "border-[#c4f24e]/35 bg-[#c4f24e]/10"
-          : "border-white/8 bg-white/[0.022] hover:border-white/16 hover:bg-white/[0.04]"
+          ? "border-[#c4f24e]/40 bg-[#c4f24e]/8"
+          : "border-white/8 bg-white/[0.02] hover:border-white/16 hover:bg-white/[0.04]"
       ].join(" ")}
     >
       <Avatar
@@ -1063,13 +920,8 @@ function ThinThreadRow({
         className="h-11 w-11 text-sm"
       />
       <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate text-sm font-bold text-white">{displayName}</p>
-          {roleBadgeLabel ? <RolePill label={roleBadgeLabel} /> : null}
-        </div>
-        {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-white/70">{usernameLine}</p> : null}
-        <p className="mt-0.5 truncate text-xs font-medium text-white/54">{contextDetail}</p>
-        <p className="mt-0.5 truncate text-xs text-white/42">{preview}</p>
+        <p className="truncate text-sm font-bold text-white">{displayName}</p>
+        <p className="mt-1 truncate text-xs text-white/48">{preview}</p>
       </div>
       <div className="flex h-full flex-col items-end justify-between py-1">
         <span className="text-[11px] font-medium text-white/42">
@@ -1077,10 +929,6 @@ function ThinThreadRow({
         </span>
         {thread.hasUnread ? (
           <span className="h-2.5 w-2.5 rounded-full bg-[#c4f24e] shadow-[0_0_14px_rgba(196, 242, 78,0.75)]" aria-label="Unread message" />
-        ) : thread.appointmentContext ? (
-          <span className="rounded-[6px] border border-white/12 bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-bold text-white/70">
-            {thread.appointmentContext.statusLabel}
-          </span>
         ) : null}
       </div>
     </Link>
@@ -1125,14 +973,24 @@ function PaymentRequestCard({
               ? "Processing"
               : "Pending";
 
+  // A settled payment carries no action — collapse it to one quiet confirmation line
+  // instead of a full card (PR14 calm-thread rule).
+  if (status === "paid") {
+    return (
+      <p className="text-[11px] leading-5 text-white/40" data-testid="pos-payment-request-card">
+        Payment of {formatMoneyFromCents(metadata.amountCents)} collected through BVRB3R.
+      </p>
+    );
+  }
+
   return (
     <div
-      className="w-full max-w-[22rem] rounded-lg border border-white/10 bg-[linear-gradient(180deg,rgba(245,241,232,0.05),rgba(8,8,8,0.96))] p-3 shadow-[0_14px_34px_rgba(0,0,0,0.32)]"
+      className="w-full max-w-[22rem] bvr-card-calm p-3"
       data-testid="pos-payment-request-card"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/56">Payment Request</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/48">Payment Request</p>
           <p className="mt-2 text-sm font-black text-white">
             {counterpartName} requested {formatMoneyFromCents(metadata.amountCents)}
           </p>
@@ -1140,11 +998,9 @@ function PaymentRequestCard({
         </div>
         <span className={[
           "rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em]",
-          status === "paid"
-            ? "border-[#c4f24e]/28 bg-[#c4f24e]/12 text-[#e4f9b8]"
-            : status === "declined" || status === "failed" || status === "expired" || status === "canceled" || status === "canceled_duplicate" || status === "superseded"
-              ? "border-rose-300/24 bg-rose-500/10 text-rose-100"
-              : "border-amber-200/22 bg-amber-300/10 text-amber-100"
+          status === "declined" || status === "failed" || status === "expired" || status === "canceled" || status === "canceled_duplicate" || status === "superseded"
+            ? "border-rose-300/24 bg-rose-500/10 text-rose-100"
+            : "border-white/12 bg-white/[0.05] text-white/64"
         ].join(" ")}>
           {statusLabel}
         </span>
@@ -1154,7 +1010,7 @@ function PaymentRequestCard({
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <button
             type="button"
-            className="h-9 rounded-lg bg-[#c4f24e] px-3 text-xs font-black text-[#050505] transition hover:bg-[#e4f9b8] disabled:cursor-not-allowed disabled:opacity-60"
+            className="bvr-on-green h-9 rounded-lg bg-[#c4f24e] px-3 text-xs font-black text-[#050505] transition hover:bg-[#e4f9b8] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isProcessing}
             onClick={() => onApprove(metadata.paymentRequestId)}
           >
@@ -1171,9 +1027,7 @@ function PaymentRequestCard({
         </div>
       ) : (
         <p className="mt-3 text-xs leading-5 text-white/54">
-          {status === "paid"
-            ? "Payment approved and collected through BVRB3R."
-            : status === "approved"
+          {status === "approved"
               ? "Payment approved and waiting for final receipt."
             : status === "declined"
               ? "This request was declined. No payment was created."
@@ -1242,17 +1096,15 @@ function ConversationPanel({
     .map((participant) => participant.fullName)
     .join(", ") ?? "";
   const displayName = getDisplayName(activeThread) || participantSummary || "Conversation";
-  const roleBadgeLabel = getRoleBadgeLabel(activeThread?.counterpart?.role, activeThread?.threadType);
   const freshAppointmentContext = getFreshAppointmentContext(activeThread, relatedAppointmentContexts);
   const hasAppointment = Boolean(freshAppointmentContext);
-  const usernameLine = getSecondaryUsernameLine(activeThread, displayName);
-  const publicContextLine = getPublicContextLine(activeThread);
-  const conversationTypeLabel = getConversationTypeLabel(activeThread);
   const requestBanner = getRequestBanner(activeThread);
   const composerDisabledByLifecycle = isComposerDisabledByLifecycle(activeThread);
   const composerPlaceholder = composerDisabledByLifecycle
     ? requestBanner?.message ?? copy.composerPlaceholder
-    : getTargetAwareComposerPlaceholder(activeThread, surface);
+    : activeThread
+      ? `Message ${displayName}`
+      : getTargetAwareComposerPlaceholder(activeThread, surface);
   const profileHref = getThreadProfileHref(activeThread, surface, activeThreadId ?? selectedThreadId ?? null);
   const bookingHref = activeThread?.counterpart?.bookingHref ?? "/booking/new";
   const lastActiveLabel = messages.length ? formatLastActiveLabel(messages[messages.length - 1]?.createdAt) : null;
@@ -1361,15 +1213,13 @@ function ConversationPanel({
                   className="h-12 w-12 border-2 border-[#c4f24e]/65 text-sm"
                 />
                 <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <h3 className="truncate text-base font-black text-white">{displayName}</h3>
-                    {roleBadgeLabel ? <RolePill label={roleBadgeLabel} /> : null}
-                  </div>
-                  {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-white/70">{usernameLine}</p> : null}
-                  <p className="mt-0.5 truncate text-xs text-white/46">
-                    {[conversationTypeLabel, publicContextLine].filter(Boolean).join(" - ")}
-                  </p>
-                  {lastActiveLabel ? <p className="mt-0.5 truncate text-[11px] font-semibold text-white/40">{lastActiveLabel}</p> : null}
+                  <h3 className="truncate text-base font-black text-white">{displayName}</h3>
+                  {lastActiveLabel ? (
+                    <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] font-semibold text-white/40">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#c4f24e]" aria-hidden="true" />
+                      {lastActiveLabel}
+                    </p>
+                  ) : null}
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -1392,7 +1242,7 @@ function ConversationPanel({
                 {surface !== "shop" && activeThread.threadType !== "support" ? (
                   <Link
                     href={bookingHref as Route}
-                    className="inline-flex h-8 items-center rounded-lg bg-[#c4f24e] px-3 text-xs font-black text-[#050505] transition hover:bg-[#e4f9b8]"
+                    className="inline-flex h-8 items-center rounded-lg border border-white/12 bg-white/[0.04] px-3 text-xs font-bold text-white/72 transition hover:border-white/20 hover:text-white"
                   >
                     {bookingActionLabel}
                   </Link>
@@ -1447,14 +1297,14 @@ function ConversationPanel({
               return (
               <Fragment key={message.id}>
                 {showDayDivider ? (
-                  <div className="flex justify-center py-1">
-                    <span className="rounded-full border border-white/8 bg-white/[0.04] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/44">
+                  <div className="flex justify-center py-4">
+                    <span className="rounded-full bg-white/[0.04] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
                       {formatMessageDayLabel(message.createdAt)}
                     </span>
                   </div>
                 ) : null}
-              <div className={message.isOwn ? "flex justify-end" : "flex justify-start"}>
-                {paymentRequestMetadata ? (
+              {paymentRequestMetadata ? (
+                <div className="flex justify-start">
                   <PaymentRequestCard
                     counterpartName={displayName}
                     isProcessing={paymentRequestActionId === paymentRequestMetadata.paymentRequestId}
@@ -1463,24 +1313,33 @@ function ConversationPanel({
                     onDecline={onDeclinePaymentRequest}
                     surface={surface}
                   />
-                ) : (
-                  <div
-                  className={[
-                    "max-w-[82%] rounded-lg px-3 py-2 text-sm leading-6 shadow-[0_10px_28px_rgba(0,0,0,0.24)]",
-                    message.messageType === "system"
-                      ? "border border-white/8 bg-white/[0.025] text-white/56"
-                      : message.isOwn
-                        ? "bg-[#c4f24e] text-[#050505]"
-                        : "border border-white/8 bg-white/[0.06] text-white"
-                  ].join(" ")}
-                >
-                  <p className="font-medium">{normalizeMessageDisplayText(message.body)}</p>
-                  <p className={["mt-1 text-[10px] font-bold", message.isOwn ? "text-black/52" : "text-white/38"].join(" ")}>
-                    {message.messageType === "system" ? "System" : message.senderName ?? "Participant"} • {formatThreadTime(message.createdAt)}
+                </div>
+              ) : message.messageType === "system" ? (
+                <div className="flex justify-center py-0.5">
+                  <p className="max-w-[82%] text-center text-[11px] leading-5 text-white/40">
+                    {normalizeMessageDisplayText(message.body)}
+                    <span className="text-white/28"> · {formatThreadTime(message.createdAt)}</span>
                   </p>
+                </div>
+              ) : (
+                <div className={message.isOwn ? "flex justify-end" : "flex justify-start"}>
+                  <div className={["flex max-w-[82%] flex-col gap-1", message.isOwn ? "items-end" : "items-start"].join(" ")}>
+                    <div
+                      className={[
+                        "rounded-lg px-3 py-2 text-sm leading-6",
+                        message.isOwn
+                          ? "bvr-on-green bg-[#c4f24e] text-[#050505] shadow-[0_10px_28px_rgba(196,242,78,0.16)]"
+                          : "bvr-card-calm text-white"
+                      ].join(" ")}
+                    >
+                      <p className="font-medium">{normalizeMessageDisplayText(message.body)}</p>
+                    </div>
+                    <p className="px-1 text-[10px] font-bold text-white/38">
+                      {message.senderName ?? "Participant"} · {formatThreadTime(message.createdAt)}
+                    </p>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
               </Fragment>
               );
             }) : (
@@ -1502,13 +1361,13 @@ function ConversationPanel({
 
           <div className="shrink-0 border-t border-white/8 p-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
             <label className="sr-only" htmlFor={`${surface}-message-composer`}>Reply</label>
-            <div className="flex items-end gap-2 rounded-lg border border-white/10 bg-black/35 p-2">
+            <div className="flex items-end gap-2 rounded-full border border-white/10 bg-white/[0.03] p-2 focus-within:border-[#c4f24e]/30">
               <textarea
                 id={`${surface}-message-composer`}
                 value={composerBody}
                 onChange={(event) => onComposerChange(event.target.value)}
                 rows={1}
-                className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-white/34"
+                className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-white/34"
                 placeholder={composerPlaceholder}
                 disabled={composerDisabledByLifecycle}
               />
@@ -1517,7 +1376,7 @@ function ConversationPanel({
                 aria-label="Send message"
                 disabled={sendPending || composerDisabledByLifecycle || !composerBody.trim()}
                 onClick={onSend}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#c4f24e] text-[#050505] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+                className="bvr-on-green inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#c4f24e] text-[#050505] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
               >
                 <Send className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -1751,6 +1610,9 @@ export function MessagingInboxScreen({
   const [broadcastBody, setBroadcastBody] = useState("");
   const [threadSearch, setThreadSearch] = useState("");
   const [threadFilter, setThreadFilter] = useState<ThreadFilter>("all");
+  // Search + filters live behind one header toggle so the default list surface stays
+  // calm (header + conversations only, per PR14); opening reveals them, closing resets.
+  const [showListTools, setShowListTools] = useState(false);
   const [paymentRequestActionId, setPaymentRequestActionId] = useState<string | null>(null);
   const [optimisticallyReadThreadIds, setOptimisticallyReadThreadIds] = useState<Set<string>>(() => new Set());
   const startersRef = useRef<HTMLDivElement | null>(null);
@@ -1805,10 +1667,6 @@ export function MessagingInboxScreen({
       : [];
   const supportThread = useMemo(
     () => threads.find((thread) => thread.threadType === "support") ?? null,
-    [threads]
-  );
-  const quickContacts = useMemo(
-    () => buildQuickContacts(threads),
     [threads]
   );
   const activeThreadFilters = surface === "barber" ? barberThreadFilters : surface === "shop" ? shopThreadFilters : threadFilters;
@@ -2135,7 +1993,30 @@ export function MessagingInboxScreen({
         title={title}
         subtitle={subtitle}
         action={
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
+          <div className="flex items-center justify-end gap-2">
+            {available ? (
+              <button
+                type="button"
+                aria-label="Search and filter messages"
+                aria-pressed={showListTools}
+                className={[
+                  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition",
+                  showListTools
+                    ? "border-[#c4f24e]/40 bg-[#c4f24e]/8 text-[#e4f9b8]"
+                    : "border-white/10 bg-white/[0.035] text-white/70 hover:border-white/20 hover:text-white"
+                ].join(" ")}
+                onClick={() => setShowListTools((open) => {
+                  if (open) {
+                    setThreadSearch("");
+                    setThreadFilter("all");
+                  }
+                  return !open;
+                })}
+              >
+                <Search className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ) : null}
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
             <Button
               className="h-10 rounded-lg px-4 normal-case tracking-normal"
               disabled={surface === "client" ? createThreadMutation.isPending : false}
@@ -2153,6 +2034,7 @@ export function MessagingInboxScreen({
                 {cultureLabel}
               </Link>
             ) : null}
+            </div>
           </div>
         }
       />
@@ -2171,35 +2053,30 @@ export function MessagingInboxScreen({
       {available ? (
         <div className={usesModalThreadView ? "mt-4" : "mt-4 grid gap-4 md:h-[calc(100dvh-15rem)] md:max-h-[46rem] md:min-h-0 md:grid-cols-[0.88fr_1.12fr]"}>
           <aside className={usesModalThreadView ? "mx-auto w-full max-w-3xl space-y-3" : "min-w-0 space-y-3 md:min-h-0 md:overflow-y-auto md:pr-1"}>
-            <div>
-              <SearchBar
-                aria-label="Search messages"
-                placeholder="Search"
-                value={threadSearch}
-                onChange={(event) => setThreadSearch(event.target.value)}
-                className="h-11 rounded-lg border-white/10 bg-white/[0.035] text-sm [&_input]:min-h-10"
-              />
-            </div>
-
-            <ThreadStoryRail
-              basePath={basePath}
-              contacts={quickContacts}
-              onOpenThread={usesModalThreadView ? handleOpenThread : undefined}
-            />
-
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {activeThreadFilters.map((filter) => (
-                <FilterChip
-                  key={filter.key}
-                  type="button"
-                  active={threadFilter === filter.key}
-                  className="h-8 rounded-lg px-3 text-xs"
-                  onClick={() => setThreadFilter(filter.key)}
-                >
-                  {filter.key === "requests" && requestCount ? `${filter.label} ${requestCount}` : filter.label}
-                </FilterChip>
-              ))}
-            </div>
+            {showListTools ? (
+              <div className="space-y-2">
+                <SearchBar
+                  aria-label="Search messages"
+                  placeholder="Search messages"
+                  value={threadSearch}
+                  onChange={(event) => setThreadSearch(event.target.value)}
+                  className="h-11 rounded-lg border-white/10 bg-white/[0.035] text-sm [&_input]:min-h-10"
+                />
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {activeThreadFilters.map((filter) => (
+                    <FilterChip
+                      key={filter.key}
+                      type="button"
+                      active={threadFilter === filter.key}
+                      className="h-8 rounded-lg px-3 text-xs"
+                      onClick={() => setThreadFilter(filter.key)}
+                    >
+                      {filter.key === "requests" && requestCount ? `${filter.label} ${requestCount}` : filter.label}
+                    </FilterChip>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="space-y-2">
               {threadsQuery.isLoading && !threadsQuery.data ? (
