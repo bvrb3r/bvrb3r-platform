@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
+import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { buildReleaseReadinessSummary } from "@/lib/release/readiness";
+import { buildV1CertificationSummary } from "@/lib/release/v1-certification";
 
 export async function GET() {
   const user = await getSessionUser();
-  if (!(user.role === "owner" || user.role === "manager")) {
-    return NextResponse.json({ error: "Only owner and manager roles can read release readiness." }, { status: 403 });
+  if (!isPlatformAdminUser(user)) {
+    return NextResponse.json(
+      { error: "Only protected Architect access can read release certification." },
+      { status: 403 }
+    );
   }
 
-  return NextResponse.json({ readiness: buildReleaseReadinessSummary() });
+  return NextResponse.json({
+    certification: buildV1CertificationSummary(),
+    supportingReadiness: buildReleaseReadinessSummary()
+  });
 }
