@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isClientRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
-import { searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
+import { readPublicDiscovery } from "@/lib/marketplace/public-read-service";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
 
 const filterSchema = z.object({
@@ -48,8 +48,6 @@ async function getSessionClientId(): Promise<string | undefined> {
     const session = await getCurrentUserFromServer();
     return isClientRole(session.user.role) ? session.user.clientId : undefined;
   } catch {
-    // Public discovery is available to guests. Authentication failure must not
-    // convert the public marketplace into a private or failing route.
     return undefined;
   }
 }
@@ -75,15 +73,12 @@ export async function GET(request: NextRequest) {
   const clientId = await getSessionClientId();
 
   try {
-    const payload = await withTimeout(
-      searchBarbersAndShopsPayload({ ...filters, clientId }),
+    const results = await withTimeout(
+      readPublicDiscovery(filters),
       DISCOVERY_TIMEOUT_MS,
       "client_search_timeout"
     );
-    const results = payload.barbers;
 
-    // Analytics is noncritical. Discovery succeeds even when the impression
-    // provider is slow or unavailable.
     void withTimeout(
       getMarketplaceProvider().then((provider) =>
         provider.recordDiscoveryImpression({ filters, results, clientId })
@@ -108,11 +103,7 @@ export async function GET(request: NextRequest) {
         reference: "client_search_timeout",
         authenticatedClient: Boolean(clientId)
       });
-      return NextResponse.json({
-        results: [],
-        degraded: true,
-        code: "client_search_timeout"
-      });
+      return NextResponse.json({ results: [], degraded: true, code: "client_search_timeout" });
     }
 
     console.error("[marketplace/discover] discovery unavailable", {
@@ -121,10 +112,7 @@ export async function GET(request: NextRequest) {
       authenticatedClient: Boolean(clientId)
     });
     return NextResponse.json(
-      {
-        error: "Marketplace discovery is temporarily unavailable.",
-        code: "client_search_load_failed"
-      },
+      { error: "Marketplace discovery is temporarily unavailable.", code: "client_search_load_failed" },
       { status: 500 }
     );
   }
