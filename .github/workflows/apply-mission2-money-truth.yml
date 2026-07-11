@@ -1,0 +1,13 @@
+name: Mission 2 package archived
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archived:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Mission 2 source is committed directly; temporary patch transport is archived."

@@ -33,6 +33,8 @@ export type V1CertificationSummary = {
   gates: V1CertificationGate[];
 };
 
+export type V1CertificationGateOverrides = Partial<Record<string, V1CertificationGate>>;
+
 const STATUS_PRIORITY: Record<V1CertificationStatus, number> = {
   pass: 0,
   warning: 1,
@@ -94,8 +96,8 @@ function needsEvidenceGate(input: Omit<V1CertificationGate, "status" | "summary"
   };
 }
 
-export function buildV1CertificationSummary(): V1CertificationSummary {
-  const gates: V1CertificationGate[] = [
+function defaultV1CertificationGates(): V1CertificationGate[] {
+  return [
     needsEvidenceGate({
       id: "deployment-truth",
       label: "Deployment truth",
@@ -185,6 +187,12 @@ export function buildV1CertificationSummary(): V1CertificationSummary {
       requiredTests: ["v1-mandatory-regression-suite"]
     })
   ];
+}
 
-  return summarizeV1Certification(gates);
+export function buildV1CertificationSummary(
+  overrides: V1CertificationGateOverrides = {},
+  generatedAt = new Date().toISOString()
+): V1CertificationSummary {
+  const gates = defaultV1CertificationGates().map((gate) => overrides[gate.id] ?? gate);
+  return summarizeV1Certification(gates, generatedAt);
 }

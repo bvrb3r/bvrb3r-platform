@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-11T02:18:08.892Z",
+  "validationCommit": "4b33e3cb363205d9a48882fb304f141200f9d9fc",
+  "validationSource": "package.json prebuild -> verify:deployment -> bvrb3r_v1_money_readiness_snapshot RPC",
+  "snapshotSchemaVersion": null,
+  "snapshotGeneratedAt": null,
+  "status": "needs_review",
+  "certifiable": false,
+  "criticalFindings": [],
+  "reviewFindings": [],
+  "reasons": [
+    "Supabase service-role configuration is unavailable to the money certification capture.",
+    "The production money snapshot was unavailable or malformed.",
+    "The production money snapshot is not on the Mission 2 schema-v2 contract.",
+    "The production money snapshot did not return a recognized status."
+  ],
+  "snapshot": null
+}

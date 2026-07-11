@@ -33,6 +33,9 @@
     "typecheck": "node scripts/typecheck.mjs",
     "test": "vitest run",
     "verify:deployment": "node scripts/verify-deployment.mjs",
+    "verify:money": "node scripts/capture-money-readiness.mjs",
+    "verify:money:enforce": "node scripts/capture-money-readiness.mjs --enforce",
+    "verify:v1": "npm run verify:deployment && npm run verify:money:enforce",
     "seed": "tsx lib/data/seed.ts",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
@@ -65,6 +68,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
     "@tailwindcss/postcss": "^4.0.8",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/node": "^22.10.2",

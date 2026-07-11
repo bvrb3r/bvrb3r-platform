@@ -411,6 +411,12 @@ export function calculatePaymentRouting(input: PaymentRoutingCalculationInput): 
   const payoutRecipientType = resolvePayoutRecipientType(input.routingModel, input.paymentType);
   const appointmentCompleted = input.appointmentCompleted ?? false;
   const disputeHold = Boolean(input.disputeHold);
+  const completionRequired = input.paymentType === "booking"
+    || input.paymentType === "tip"
+    || input.paymentType === "add_on"
+    || input.paymentType === "pos_sale";
+  const paymentCaptured = input.paymentStatus === "captured"
+    || input.paymentStatus === "partially_refunded";
 
   let barberPayoutAmount = 0;
   let shopSplitAmount = 0;
@@ -463,13 +469,17 @@ export function calculatePaymentRouting(input: PaymentRoutingCalculationInput): 
 
   const blockedReason = moneyBlockedReason ?? readinessBlockedReason;
   const payoutReadinessStatus: FintechPayoutReadinessStatus =
-    moneyBlockedReason || readinessBlockedReason
+    input.paymentStatus === "refunded" || moneyBlockedReason
       ? "blocked"
-      : (payoutRecipientType === "split"
-        ? (input.barberReady && input.shopReady)
-        : (payoutRecipientType === "barber" ? input.barberReady : input.shopReady))
-        ? "ready"
-        : "needs_attention";
+      : !paymentCaptured || (completionRequired && !appointmentCompleted)
+        ? "not_ready"
+        : readinessBlockedReason
+          ? "blocked"
+          : (payoutRecipientType === "split"
+            ? (input.barberReady && input.shopReady)
+            : (payoutRecipientType === "barber" ? input.barberReady : input.shopReady))
+            ? "ready"
+            : "needs_attention";
 
   let moneyRoutingStatus: MoneyRoutingStatus;
   if (input.paymentStatus === "refunded") {

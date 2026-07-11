@@ -3004,21 +3004,14 @@ export async function syncPaymentRoutingRecord(
     || membershipBlockedReason
     || subscriptionBlockedReasons[0]
     || calculated.blockedReason;
-  const payoutReadinessStatus: FintechPayoutReadinessStatus = completionEligibilityForced
-    ? "eligible"
-    : capturedCancelledAppointment
-      ? "blocked"
-      : blockedReason
-      ? "blocked"
-      : calculated.payoutReadinessStatus;
-  const moneyRoutingStatus: MoneyRoutingStatus =
-    capturedCancelledAppointment
-      ? "manual_review"
-      : paymentStatusForRouting === "refunded"
-      ? "refunded"
-      : completionEligibilityForced
-        ? "pending"
-        : calculated.moneyRoutingStatus;
+  // Completion may make the money lifecycle eligible, but it must never bypass
+// recipient Connect, verification, legal, tax, refund, or dispute readiness.
+const payoutReadinessStatus: FintechPayoutReadinessStatus = capturedCancelledAppointment
+  ? "blocked"
+  : calculated.payoutReadinessStatus;
+const moneyRoutingStatus: MoneyRoutingStatus = capturedCancelledAppointment
+  ? "manual_review"
+  : calculated.moneyRoutingStatus;
   const constraintEvidence = await loadPaymentRoutingConstraintEvidence(supabase);
   const payoutReadinessDbStatus = readinessDbValueForStatus(constraintEvidence, payoutReadinessStatus);
   const moneyRoutingDbStatus = moneyRoutingDbValueForStatus(constraintEvidence, moneyRoutingStatus);
@@ -3071,7 +3064,7 @@ export async function syncPaymentRoutingRecord(
     currency: payment.currency.toLowerCase(),
     payout_readiness_status: payoutReadinessDbStatus,
     money_routing_status: capturedCancelledMoneyRoutingStatus,
-    blocked_reason: completionEligibilityForced ? null : blockedReason,
+    blocked_reason: blockedReason,
     eligible_at: nextEligibleAt,
     held_at: nextHeldAt,
     released_at: nextReleasedAt,
