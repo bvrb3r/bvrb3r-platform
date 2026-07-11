@@ -42,10 +42,11 @@ const requiredEvidence = [
   {
     path: "tests/unit/money-routing-lifecycle.spec.ts",
     tokens: [
-      "eligible",
-      "held",
-      "released",
-      "refunded"
+      "ready_for_payout",
+      "payoutReadinessStatus).toBe(\"ready\")",
+      "payoutReadinessStatus).toBe(\"blocked\")",
+      "moneyRoutingStatus).toBe(\"refunded\")",
+      "disputeHold: true"
     ]
   }
 ];
@@ -136,7 +137,7 @@ const proof = {
     "Unpaid appointment completion is denied without changing appointment status.",
     "Captured paid appointment transitions to completed once.",
     "Completion writes canonical status history.",
-    "Routing becomes eligible or held from evidence and is not automatically released.",
+    "Routing becomes ready, blocked, or held-equivalent from evidence and is not automatically released.",
     "Repeated completion repairs missing routing without duplicating lifecycle history."
   ],
   inventory: inventory.sort()
