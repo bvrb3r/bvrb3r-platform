@@ -1,12 +1,6 @@
 name: Apply Mission 2 money truth package
 
 on:
-  push:
-    branches:
-      - agent/mission2-money-truth-certification
-    paths:
-      - ".github/mission2-patch-gz/**"
-      - ".github/workflows/apply-mission2-money-truth.yml"
   pull_request:
     branches:
       - main
@@ -17,7 +11,7 @@ permissions:
 
 concurrency:
   group: apply-mission2-money-truth
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply-validate-commit:
@@ -27,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - uses: actions/setup-node@v4
         with:
