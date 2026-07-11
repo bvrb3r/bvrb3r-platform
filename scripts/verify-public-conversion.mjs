@@ -20,8 +20,7 @@ function currentCommit() {
 }
 
 function walk(path) {
-  const entries = readdirSync(path, { withFileTypes: true });
-  return entries.flatMap((entry) => {
+  return readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
     const absolute = join(path, entry.name);
     if (entry.isDirectory()) return walk(absolute);
     return /\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name) ? [absolute] : [];
@@ -29,7 +28,16 @@ function walk(path) {
 }
 
 function add(path, code, detail) {
-  findings.push({ path: relative(root, path), code, detail });
+  findings.push({ path: relative(root, path).replaceAll("\\", "/"), code, detail });
+}
+
+function getHandlerSource(source, handlerName) {
+  const pattern = new RegExp(`export\\s+(?:async\\s+)?function\\s+${handlerName}\\b|export\\s+const\\s+${handlerName}\\b`, "g");
+  const match = pattern.exec(source);
+  if (!match) return "";
+  const remainder = source.slice(match.index);
+  const nextExport = remainder.slice(match[0].length).search(/\nexport\s+(?:async\s+)?(?:function|const)\s+(?:GET|POST|PUT|PATCH|DELETE)\b/);
+  return nextExport < 0 ? remainder : remainder.slice(0, match[0].length + nextExport);
 }
 
 const mutationPatterns = [
@@ -50,18 +58,20 @@ for (const path of scanRoots.flatMap(walk)) {
   const source = readFileSync(path, "utf8");
   const rel = relative(root, path).replaceAll("\\", "/");
   const isRoute = /\/route\.(?:ts|js)$/.test(rel);
-  const hasGet = /export\s+(?:async\s+)?function\s+GET\b|export\s+const\s+GET\b/.test(source);
+  const getSource = getHandlerSource(source, "GET");
   const isPublicSurface = /(?:^|\/)(?:public|marketplace|barber|barbers|shop|shops|profile|profiles|guest|booking)(?:\/|$)/i.test(rel);
 
-  if (isRoute && hasGet && isPublicSurface) {
+  if (isRoute && getSource && isPublicSurface) {
     inventory.publicGetRoutes.push(rel);
     for (const [pattern, code] of mutationPatterns) {
-      if (pattern.test(source) && !/recordDiscoveryImpression/.test(source)) add(path, code, "Public GET routes must be read-only.");
+      if (pattern.test(getSource) && !/recordDiscoveryImpression|recordHaircutNowImpression/.test(getSource)) {
+        add(path, code, "Public GET routes must be read-only.");
+      }
     }
     for (const [pattern, code] of sensitiveLogPatterns) {
-      if (pattern.test(source)) add(path, code, "Public diagnostics must not expose request, identity, or database details.");
+      if (pattern.test(getSource)) add(path, code, "Public diagnostics must not expose request, identity, or database details.");
     }
-    if (/searchParams\.get\(\s*["'](?:clientId|profileId|userId)["']\s*\)/.test(source)) {
+    if (/searchParams\.get\(\s*["'](?:clientId|profileId|userId)["']\s*\)/.test(getSource)) {
       add(path, "caller_controlled_identity", "Public query parameters cannot select authenticated identity.");
     }
   }
