@@ -31,11 +31,12 @@ const requiredEvidence = [
   {
     path: "tests/unit/core-booking-loop-regression.spec.ts",
     tokens: [
+      "protects the paid freelance booking loop from public refs through calendar visibility",
       "paymentIntents",
       "status: \"confirmed\"",
       "appointment_status_history",
-      "Client Activity",
-      "Barber Calendar",
+      "clientSnapshot.appointments",
+      "barberSnapshot.appointments",
       "releases a cancelled appointment slot for a new booking at the same time"
     ]
   }
