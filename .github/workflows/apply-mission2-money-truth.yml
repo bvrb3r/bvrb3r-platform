@@ -40,10 +40,45 @@ jobs:
       - name: Reassemble and verify patch
         shell: bash
         run: |
-          set -euo pipefail
-          cat .github/mission2-patch-gz/part-* | base64 --decode | gzip -dc > /tmp/mission2.patch
-          echo "9cc5a36311c3214ced81a07bc6cac14e734780346299827b33a061d684316414  /tmp/mission2.patch" | sha256sum -c -
-          git apply --check /tmp/mission2.patch
+          set +e
+          cat .github/mission2-patch-gz/part-* > /tmp/mission2.patch.gz.b64
+          base64 --decode /tmp/mission2.patch.gz.b64 > /tmp/mission2.patch.gz 2> /tmp/base64-error.txt
+          decode_status=$?
+          gzip -t /tmp/mission2.patch.gz 2> /tmp/gzip-test-error.txt
+          gzip_test_status=$?
+          gzip -dc /tmp/mission2.patch.gz > /tmp/mission2.patch 2> /tmp/gzip-decode-error.txt
+          gzip_decode_status=$?
+          actual_sha="$(sha256sum /tmp/mission2.patch 2>/dev/null | awk '{print $1}')"
+          git apply --check --verbose /tmp/mission2.patch > /tmp/git-apply-check.txt 2>&1
+          apply_status=$?
+
+          {
+            echo "decode_status=$decode_status"
+            echo "gzip_test_status=$gzip_test_status"
+            echo "gzip_decode_status=$gzip_decode_status"
+            echo "expected_sha=9cc5a36311c3214ced81a07bc6cac14e734780346299827b33a061d684316414"
+            echo "actual_sha=$actual_sha"
+            echo "base64_bytes=$(wc -c < /tmp/mission2.patch.gz.b64)"
+            echo "gzip_bytes=$(wc -c < /tmp/mission2.patch.gz)"
+            echo "patch_bytes=$(wc -c < /tmp/mission2.patch)"
+            echo "--- base64 error ---"
+            cat /tmp/base64-error.txt
+            echo "--- gzip test error ---"
+            cat /tmp/gzip-test-error.txt
+            echo "--- gzip decode error ---"
+            cat /tmp/gzip-decode-error.txt
+            echo "--- git apply check ---"
+            cat /tmp/git-apply-check.txt
+          } > .github/mission2-validation-diagnostic.txt
+
+          if [ "$decode_status" -ne 0 ] || [ "$gzip_test_status" -ne 0 ] || [ "$gzip_decode_status" -ne 0 ] || [ "$actual_sha" != "9cc5a36311c3214ced81a07bc6cac14e734780346299827b33a061d684316414" ] || [ "$apply_status" -ne 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/mission2-validation-diagnostic.txt
+            git commit -m "diagnose Mission 2 patch application"
+            git push origin HEAD:agent/mission2-money-truth-certification
+            exit 1
+          fi
 
       - name: Apply patch
         run: git apply /tmp/mission2.patch
