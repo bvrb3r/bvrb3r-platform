@@ -17,9 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Package repository source
-        run: tar --exclude=.git -czf bvrb3r-platform-source.tgz .
+        run: tar --exclude=.git --exclude=bvrb3r-platform-source.tgz -czf /tmp/bvrb3r-platform-source.tgz .
       - uses: actions/upload-artifact@v4
         with:
           name: bvrb3r-platform-source
-          path: bvrb3r-platform-source.tgz
+          path: /tmp/bvrb3r-platform-source.tgz
           retention-days: 1
