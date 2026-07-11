@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const {
-  getBarberDetailsPayloadMock,
+  readPublicBarberProfileMock,
   getCurrentUserFromServerMock,
   readRuntimeMock,
   readTrustStateMock,
   recordHaircutNowImpressionMock,
   buildHaircutNowPayloadMock
 } = vi.hoisted(() => ({
-  getBarberDetailsPayloadMock: vi.fn(),
+  readPublicBarberProfileMock: vi.fn(),
   getCurrentUserFromServerMock: vi.fn(),
   readRuntimeMock: vi.fn(),
   readTrustStateMock: vi.fn(),
@@ -17,8 +17,8 @@ const {
   buildHaircutNowPayloadMock: vi.fn()
 }));
 
-vi.mock("@/lib/booking/platform-service", () => ({
-  getBarberDetailsPayload: getBarberDetailsPayloadMock
+vi.mock("@/lib/marketplace/public-read-service", () => ({
+  readPublicBarberProfile: readPublicBarberProfileMock
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -39,7 +39,7 @@ vi.mock("@/lib/trust/provider", () => ({
 
 describe("public conversion route boundaries", () => {
   beforeEach(() => {
-    getBarberDetailsPayloadMock.mockReset();
+    readPublicBarberProfileMock.mockReset();
     getCurrentUserFromServerMock.mockReset();
     readRuntimeMock.mockReset().mockResolvedValue({ barbers: [] });
     readTrustStateMock.mockReset().mockResolvedValue({});
@@ -47,8 +47,8 @@ describe("public conversion route boundaries", () => {
     buildHaircutNowPayloadMock.mockReset().mockReturnValue({ barberId: "barber-live" });
   });
 
-  it("loads a Barber profile without invoking any repair or session mutation path", async () => {
-    getBarberDetailsPayloadMock.mockResolvedValue({ barber: { id: "barber-live" } });
+  it("loads a Barber profile through the dedicated read-only query", async () => {
+    readPublicBarberProfileMock.mockResolvedValue({ barber: { id: "barber-live" } });
     const { GET } = await import("@/app/api/barbers/[id]/route");
 
     const response = await GET(new Request("https://bvrb3r.test/api/barbers/barber-live"), {
@@ -57,13 +57,13 @@ describe("public conversion route boundaries", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(getBarberDetailsPayloadMock).toHaveBeenCalledWith("barber-live");
+    expect(readPublicBarberProfileMock).toHaveBeenCalledWith("barber-live");
     expect(body.barber.id).toBe("barber-live");
     expect(getCurrentUserFromServerMock).not.toHaveBeenCalled();
   });
 
-  it("returns a stable 404 instead of attempting profile repair", async () => {
-    getBarberDetailsPayloadMock.mockResolvedValue(null);
+  it("returns a stable 404 without invoking a repair workflow", async () => {
+    readPublicBarberProfileMock.mockResolvedValue(null);
     const { GET } = await import("@/app/api/barbers/[id]/route");
 
     const response = await GET(new Request("https://bvrb3r.test/api/barbers/missing"), {
