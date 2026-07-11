@@ -20,6 +20,7 @@ const commands = [
   },
   { label: "public discovery and conversion source audit", command: "npm run verify:public-conversion" },
   { label: "client booking truth certification", command: "npm run verify:client-booking" },
+  { label: "barber service-completion truth certification", command: "npm run verify:barber-completion" },
   { label: "aggregate-only production money proof", command: "npm run verify:money" }
 ];
 
@@ -50,18 +51,19 @@ for (const item of commands) {
 const generatedAt = new Date().toISOString();
 const validationCommand = commands.map((item) => item.command).join(" && ");
 const proof = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   generatedAt,
   validationTimestamp: generatedAt,
   validationCommit: currentCommit(),
   validationSource: "package.json prebuild -> verify:deployment",
   validationCommand,
-  regressionSuiteName: "identity-client-booking-money-public-conversion-and-architect-mandatory-regression",
+  regressionSuiteName: "identity-client-booking-barber-completion-money-public-conversion-and-architect-mandatory-regression",
   regressionTestCount: null,
   lintStatus: "pass",
   typecheckStatus: "pass",
   targetedTestStatus: "pass",
   clientBookingProofPath: "/.well-known/bvrb3r-client-booking-proof.json",
+  barberCompletionProofPath: "/.well-known/bvrb3r-barber-completion-proof.json",
   moneyProofPath: "/.well-known/bvrb3r-money-readiness-proof.json",
   publicConversionProofPath: "/.well-known/bvrb3r-public-conversion-proof.json"
 };
