@@ -5,7 +5,7 @@ on:
     branches:
       - agent/mission2-money-truth-certification
     paths:
-      - ".github/mission2-patch/**"
+      - ".github/mission2-patch-gz/**"
       - ".github/workflows/apply-mission2-money-truth.yml"
   pull_request:
     branches:
@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/mission2-patch/part-* | base64 --decode > /tmp/mission2.patch
+          cat .github/mission2-patch-gz/part-* | base64 --decode | gzip -dc > /tmp/mission2.patch
           echo "9cc5a36311c3214ced81a07bc6cac14e734780346299827b33a061d684316414  /tmp/mission2.patch" | sha256sum -c -
           git apply --check /tmp/mission2.patch
 
