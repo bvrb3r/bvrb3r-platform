@@ -10,7 +10,7 @@ const commands = [
   { label: "lint", command: "npm run lint" },
   { label: "typecheck", command: "npm run typecheck" },
   {
-    label: "identity, booking, money, public conversion, and Architect regression tests",
+    label: "identity, booking, money, owner, public conversion, and Architect regression tests",
     command:
       "npx vitest run tests/unit/internal-operator-access.spec.ts tests/unit/shop-operator-access.spec.ts tests/unit/fintech-domain.spec.ts tests/unit/money-routing-lifecycle.spec.ts tests/unit/money-routing-service-contract.spec.ts tests/unit/core-booking-loop-regression.spec.ts tests/unit/money-readiness-proof.spec.ts tests/unit/marketplace-discover-route.spec.ts tests/unit/public-conversion-routes.spec.ts tests/unit/post-auth-return.spec.ts tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts",
     env: {
@@ -21,6 +21,7 @@ const commands = [
   { label: "public discovery and conversion source audit", command: "npm run verify:public-conversion" },
   { label: "client booking truth certification", command: "npm run verify:client-booking" },
   { label: "barber service-completion truth certification", command: "npm run verify:barber-completion" },
+  { label: "Shop Owner Tier 1 truth certification", command: "npm run verify:shop-owner-tier1" },
   { label: "aggregate-only production money proof", command: "npm run verify:money" }
 ];
 
@@ -51,19 +52,20 @@ for (const item of commands) {
 const generatedAt = new Date().toISOString();
 const validationCommand = commands.map((item) => item.command).join(" && ");
 const proof = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   generatedAt,
   validationTimestamp: generatedAt,
   validationCommit: currentCommit(),
   validationSource: "package.json prebuild -> verify:deployment",
   validationCommand,
-  regressionSuiteName: "identity-client-booking-barber-completion-money-public-conversion-and-architect-mandatory-regression",
+  regressionSuiteName: "identity-client-booking-barber-completion-shop-owner-money-public-conversion-and-architect-mandatory-regression",
   regressionTestCount: null,
   lintStatus: "pass",
   typecheckStatus: "pass",
   targetedTestStatus: "pass",
   clientBookingProofPath: "/.well-known/bvrb3r-client-booking-proof.json",
   barberCompletionProofPath: "/.well-known/bvrb3r-barber-completion-proof.json",
+  shopOwnerTier1ProofPath: "/.well-known/bvrb3r-shop-owner-tier1-proof.json",
   moneyProofPath: "/.well-known/bvrb3r-money-readiness-proof.json",
   publicConversionProofPath: "/.well-known/bvrb3r-public-conversion-proof.json"
 };
