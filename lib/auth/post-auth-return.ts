@@ -11,7 +11,10 @@ const RETURN_PATH_PREFIXES = [
   "/onboarding",
   "/post-auth",
   "/role-select",
-  "/verify-contact"
+  "/verify-contact",
+  "/booking",
+  "/barbers",
+  "/shops"
 ] as const;
 
 function matchesPrefix(path: string, prefix: string) {
@@ -51,6 +54,12 @@ export function isPostAuthReturnPathAllowedForUser(user: UserAccount, path: stri
 
   if (matchesPrefix(path, "/architect")) {
     return isPlatformAdminUser(user);
+  }
+
+  // Public conversion paths are safe for every authenticated role. The
+  // destination action remains server-authorized when the user continues.
+  if (matchesPrefix(path, "/booking") || matchesPrefix(path, "/barbers") || matchesPrefix(path, "/shops")) {
+    return true;
   }
 
   return true;
