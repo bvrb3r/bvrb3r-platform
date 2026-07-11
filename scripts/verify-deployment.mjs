@@ -12,7 +12,7 @@ const commands = [
   {
     label: "identity, booking, money, public conversion, and Architect regression tests",
     command:
-      "npx vitest run tests/unit/internal-operator-access.spec.ts tests/unit/shop-operator-access.spec.ts tests/unit/fintech-domain.spec.ts tests/unit/money-routing-lifecycle.spec.ts tests/unit/money-routing-service-contract.spec.ts tests/unit/core-booking-loop-regression.spec.ts tests/unit/money-readiness-proof.spec.ts tests/unit/marketplace-discover-route.spec.ts tests/unit/post-auth-return.spec.ts tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts",
+      "npx vitest run tests/unit/internal-operator-access.spec.ts tests/unit/shop-operator-access.spec.ts tests/unit/fintech-domain.spec.ts tests/unit/money-routing-lifecycle.spec.ts tests/unit/money-routing-service-contract.spec.ts tests/unit/core-booking-loop-regression.spec.ts tests/unit/money-readiness-proof.spec.ts tests/unit/marketplace-discover-route.spec.ts tests/unit/public-conversion-routes.spec.ts tests/unit/post-auth-return.spec.ts tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts",
     env: {
       NODE_ENV: "test",
       VITEST: "true"
