@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - release/v1-mission7-final-production-certification
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
