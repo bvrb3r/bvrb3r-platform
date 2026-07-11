@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FintechServiceError, processStripeConnectWebhook } from "@/lib/fintech/service";
+import { processLiveStripeCertificationProbe } from "@/lib/fintech/webhook-certification";
 
 export const runtime = "nodejs";
 
@@ -20,7 +21,8 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = await request.text();
-    const result = await processStripeConnectWebhook(payload, signature);
+    const certificationResult = await processLiveStripeCertificationProbe(payload, signature);
+    const result = certificationResult ?? await processStripeConnectWebhook(payload, signature);
     return NextResponse.json(result);
   } catch (error) {
     return toErrorResponse(error);
