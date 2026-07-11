@@ -16,14 +16,15 @@ const requirements = [
       "hasEligibleNextAvailable",
       "resetFormsToDefaults",
       "autoResetSeconds",
-      "Enter your kiosk PIN"
+      "Enter kiosk PIN"
     ]
   },
   {
     path: "lib/kiosk/service.ts",
     tokens: [
       "acceptsWalkIns",
-      "walk_in_queue",
+      "createKioskQueueEntry",
+      "isEligibleWalkInBarber",
       "estimatedWaitMinutes",
       "queuePosition"
     ]
@@ -31,9 +32,10 @@ const requirements = [
   {
     path: "tests/unit/kiosk-mode-screen.spec.tsx",
     tokens: [
-      "Pick a Barber",
-      "policy",
-      "reset"
+      "routes Pick a Barber into the selected barber kiosk without exposing private data",
+      "blocks Next Available when no eligible walk-in barber exists",
+      "requires policy acceptance for new kiosk booking capture",
+      "requires policy acceptance before creating a walk-in queue entry"
     ]
   },
   {
