@@ -73,8 +73,31 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Validate Mission 2
-        run: npm run verify:deployment
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Mandatory identity-booking-money regression
+        env:
+          NODE_ENV: test
+          VITEST: "true"
+        run: >-
+          npx vitest run
+          tests/unit/internal-operator-access.spec.ts
+          tests/unit/shop-operator-access.spec.ts
+          tests/unit/fintech-domain.spec.ts
+          tests/unit/money-routing-lifecycle.spec.ts
+          tests/unit/money-routing-service-contract.spec.ts
+          tests/unit/core-booking-loop-regression.spec.ts
+          tests/unit/money-readiness-proof.spec.ts
+          tests/unit/architect-mission-control-foundation.spec.ts
+          tests/unit/architect-mission-control.spec.tsx
+          tests/unit/architect-incident-detection.spec.ts
+
+      - name: Capture aggregate-only money proof
+        run: npm run verify:money
 
       - name: Commit Mission 2
         shell: bash
