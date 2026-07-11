@@ -3,11 +3,11 @@ import { NextRequest } from "next/server";
 
 const {
   getCurrentUserFromServerMock,
-  searchBarbersAndShopsPayloadMock,
+  readPublicDiscoveryMock,
   recordDiscoveryImpressionMock
 } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
-  searchBarbersAndShopsPayloadMock: vi.fn(),
+  readPublicDiscoveryMock: vi.fn(),
   recordDiscoveryImpressionMock: vi.fn()
 }));
 
@@ -15,8 +15,8 @@ vi.mock("@/lib/auth/session", () => ({
   getCurrentUserFromServer: getCurrentUserFromServerMock
 }));
 
-vi.mock("@/lib/booking/platform-service", () => ({
-  searchBarbersAndShopsPayload: searchBarbersAndShopsPayloadMock
+vi.mock("@/lib/marketplace/public-read-service", () => ({
+  readPublicDiscovery: readPublicDiscoveryMock
 }));
 
 vi.mock("@/lib/marketplace/provider", () => ({
@@ -42,40 +42,31 @@ const result = {
 describe("marketplace discover route", () => {
   beforeEach(() => {
     getCurrentUserFromServerMock.mockReset();
-    searchBarbersAndShopsPayloadMock.mockReset();
+    readPublicDiscoveryMock.mockReset();
     recordDiscoveryImpressionMock.mockReset();
     getCurrentUserFromServerMock.mockResolvedValue({
-      user: {
-        role: "client_user",
-        clientId: "client-1"
-      }
+      user: { role: "client_user", clientId: "client-1" }
     });
-    searchBarbersAndShopsPayloadMock.mockResolvedValue({
-      barbers: [result],
-      shops: []
-    });
+    readPublicDiscoveryMock.mockResolvedValue([result]);
   });
 
-  it("uses server-derived client identity for canonical marketplace results", async () => {
+  it("uses a read-only query and ignores caller-controlled client identity", async () => {
     const { GET } = await import("@/app/api/marketplace/discover/route");
-
     const response = await GET(new NextRequest(
       "https://bvrb3r.test/api/marketplace/discover?query=phil&category=haircuts&availability=today&locationId=loc-live&clientId=forged-client"
     ));
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(searchBarbersAndShopsPayloadMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(readPublicDiscoveryMock).toHaveBeenCalledWith(expect.objectContaining({
       query: "phil",
       category: "haircuts",
       availability: "today",
-      locationId: "loc-live",
-      clientId: "client-1"
+      locationId: "loc-live"
     }));
-    expect(searchBarbersAndShopsPayloadMock.mock.calls[0][0]).not.toHaveProperty("clientId", "forged-client");
+    expect(readPublicDiscoveryMock.mock.calls[0][0]).not.toHaveProperty("clientId");
     expect(body.degraded).toBe(false);
     expect(body.results).toHaveLength(1);
-    expect(body.results[0].galleryPreviewUrls).toEqual(["https://example.com/cut.jpg"]);
     await vi.waitFor(() => {
       expect(recordDiscoveryImpressionMock).toHaveBeenCalledWith(expect.objectContaining({
         clientId: "client-1",
@@ -87,15 +78,11 @@ describe("marketplace discover route", () => {
   it("allows guest discovery when no authenticated session exists", async () => {
     getCurrentUserFromServerMock.mockRejectedValue(new Error("No active session"));
     const { GET } = await import("@/app/api/marketplace/discover/route");
-
     const response = await GET(new NextRequest("https://bvrb3r.test/api/marketplace/discover?query=phillip"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(searchBarbersAndShopsPayloadMock).toHaveBeenCalledWith(expect.objectContaining({
-      query: "phillip",
-      clientId: undefined
-    }));
+    expect(readPublicDiscoveryMock).toHaveBeenCalledWith(expect.objectContaining({ query: "phillip" }));
     expect(body.results).toHaveLength(1);
   });
 
@@ -103,7 +90,6 @@ describe("marketplace discover route", () => {
     recordDiscoveryImpressionMock.mockRejectedValue(new Error("analytics unavailable"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { GET } = await import("@/app/api/marketplace/discover/route");
-
     const response = await GET(new NextRequest("https://bvrb3r.test/api/marketplace/discover?query=phillip"));
     const body = await response.json();
 
@@ -125,10 +111,9 @@ describe("marketplace discover route", () => {
   });
 
   it("returns a stable error without exposing database or request details", async () => {
-    searchBarbersAndShopsPayloadMock.mockRejectedValue(new Error("availability_rules location_id query failed"));
+    readPublicDiscoveryMock.mockRejectedValue(new Error("availability_rules location_id query failed"));
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { GET } = await import("@/app/api/marketplace/discover/route");
-
     const response = await GET(new NextRequest("https://bvrb3r.test/api/marketplace/discover?query=private-search"));
     const body = await response.json();
 
