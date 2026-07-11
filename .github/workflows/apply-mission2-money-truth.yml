@@ -1,115 +1,13 @@
-name: Apply Mission 2 money truth package
+name: Mission 2 package archived
 
 on:
-  pull_request:
-    branches:
-      - main
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: apply-mission2-money-truth
-  cancel-in-progress: true
+  contents: read
 
 jobs:
-  apply-validate-commit:
-    if: github.actor != 'github-actions[bot]'
+  archived:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Reassemble and verify patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat .github/mission2-patch-gz/part-* | base64 --decode | gzip -dc > /tmp/mission2.patch
-          echo "9cc5a36311c3214ced81a07bc6cac14e734780346299827b33a061d684316414  /tmp/mission2.patch" | sha256sum -c -
-          git apply --check --exclude=lib/fintech/service.ts /tmp/mission2.patch
-
-      - name: Apply package and current-service transformations
-        shell: bash
-        run: |
-          set -euo pipefail
-          git apply --exclude=lib/fintech/service.ts /tmp/mission2.patch
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("lib/fintech/service.ts")
-          source = path.read_text()
-          start_marker = "  const payoutReadinessStatus: FintechPayoutReadinessStatus = completionEligibilityForced"
-          end_marker = "  const constraintEvidence = await loadPaymentRoutingConstraintEvidence(supabase);"
-          start = source.find(start_marker)
-          end = source.find(end_marker, start)
-          if start < 0 or end < 0:
-              raise SystemExit("current payout/money status boundaries were not found")
-          replacement = '''  // Completion may make the money lifecycle eligible, but it must never bypass
-          // recipient Connect, verification, legal, tax, refund, or dispute readiness.
-          const payoutReadinessStatus: FintechPayoutReadinessStatus = capturedCancelledAppointment
-            ? "blocked"
-            : calculated.payoutReadinessStatus;
-          const moneyRoutingStatus: MoneyRoutingStatus = capturedCancelledAppointment
-            ? "manual_review"
-            : calculated.moneyRoutingStatus;
-          '''
-          source = source[:start] + replacement + source[end:]
-
-          blocker = "    blocked_reason: completionEligibilityForced ? null : blockedReason,"
-          if source.count(blocker) != 1:
-              raise SystemExit("current completion blocker override was not found exactly once")
-          source = source.replace(blocker, "    blocked_reason: blockedReason,")
-          path.write_text(source)
-          PY
-
-      - name: Install deterministic test dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm ci --legacy-peer-deps
-          npm install --save-dev @testing-library/dom@^10.4.0 --legacy-peer-deps
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Mandatory identity-booking-money regression
-        env:
-          NODE_ENV: test
-          VITEST: "true"
-        run: >-
-          npx vitest run
-          tests/unit/internal-operator-access.spec.ts
-          tests/unit/shop-operator-access.spec.ts
-          tests/unit/fintech-domain.spec.ts
-          tests/unit/money-routing-lifecycle.spec.ts
-          tests/unit/money-routing-service-contract.spec.ts
-          tests/unit/core-booking-loop-regression.spec.ts
-          tests/unit/money-readiness-proof.spec.ts
-          tests/unit/architect-mission-control-foundation.spec.ts
-          tests/unit/architect-mission-control.spec.tsx
-          tests/unit/architect-incident-detection.spec.ts
-
-      - name: Capture aggregate-only money proof
-        run: npm run verify:money
-
-      - name: Commit Mission 2
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -f .github/mission2-validation-diagnostic.txt .github/mission2-typecheck-diagnostic.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "V1 BLOCKER-2 — Money truth certification foundation"
-          git push origin HEAD:agent/mission2-money-truth-certification
+      - run: echo "Mission 2 source is committed directly; temporary patch transport is archived."
