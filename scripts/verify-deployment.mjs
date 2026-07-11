@@ -10,14 +10,15 @@ const commands = [
   { label: "lint", command: "npm run lint" },
   { label: "typecheck", command: "npm run typecheck" },
   {
-    label: "targeted regression tests",
+    label: "identity, booking, money, and Architect regression tests",
     command:
-      "npx vitest run tests/unit/internal-operator-access.spec.ts tests/unit/shop-operator-access.spec.ts tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts",
+      "npx vitest run tests/unit/internal-operator-access.spec.ts tests/unit/shop-operator-access.spec.ts tests/unit/fintech-domain.spec.ts tests/unit/money-routing-lifecycle.spec.ts tests/unit/money-routing-service-contract.spec.ts tests/unit/core-booking-loop-regression.spec.ts tests/unit/money-readiness-proof.spec.ts tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts",
     env: {
       NODE_ENV: "test",
       VITEST: "true"
     }
-  }
+  },
+  { label: "aggregate-only production money proof", command: "npm run verify:money" }
 ];
 
 function currentCommit() {
@@ -47,17 +48,18 @@ for (const item of commands) {
 const generatedAt = new Date().toISOString();
 const validationCommand = commands.map((item) => item.command).join(" && ");
 const proof = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt,
   validationTimestamp: generatedAt,
   validationCommit: currentCommit(),
   validationSource: "package.json prebuild -> verify:deployment",
   validationCommand,
-  regressionSuiteName: "architect-identity-and-shop-authority-targeted-regression",
+  regressionSuiteName: "identity-booking-money-and-architect-mandatory-regression",
   regressionTestCount: null,
   lintStatus: "pass",
   typecheckStatus: "pass",
-  targetedTestStatus: "pass"
+  targetedTestStatus: "pass",
+  moneyProofPath: "/.well-known/bvrb3r-money-readiness-proof.json"
 };
 
 mkdirSync(dirname(proofPath), { recursive: true });
