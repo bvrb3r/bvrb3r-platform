@@ -7,7 +7,7 @@ const root = dirname(fileURLToPath(new URL("../package.json", import.meta.url)))
 const proofPath = join(root, "public", ".well-known", "bvrb3r-public-conversion-proof.json");
 const scanRoots = ["app", "components", "lib"].map((path) => join(root, path)).filter(existsSync);
 const findings = [];
-const inventory = { publicGetRoutes: [], authEntryFiles: [], publicProfileFiles: [] };
+const inventory = { publicGetRoutes: [], authEntryFiles: [], publicProfileFiles: [], publicReadServices: [] };
 
 function currentCommit() {
   if (process.env.VERCEL_GIT_COMMIT_SHA) return process.env.VERCEL_GIT_COMMIT_SHA;
@@ -47,6 +47,10 @@ const mutationPatterns = [
   [/\.delete\s*\(/, "public_get_delete"],
   [/\b(?:repair|provision|synchronize|sync|persist|backfill)[A-Z_\w]*\s*\(/, "public_get_repair_or_sync"]
 ];
+const forbiddenPublicReadImports = [
+  ["@/lib/barber/profile-repair", "public_read_imports_profile_repair"],
+  ["@/lib/marketplace/service-sync", "public_read_imports_service_sync"]
+];
 const sensitiveLogPatterns = [
   [/request\.nextUrl\.search\b/, "raw_request_search_logged"],
   [/Object\.fromEntries\s*\(\s*request\.nextUrl\.searchParams/, "raw_query_params_logged"],
@@ -60,6 +64,7 @@ for (const path of scanRoots.flatMap(walk)) {
   const isRoute = /\/route\.(?:ts|js)$/.test(rel);
   const getSource = getHandlerSource(source, "GET");
   const isPublicSurface = /(?:^|\/)(?:public|marketplace|barber|barbers|shop|shops|profile|profiles|guest|booking)(?:\/|$)/i.test(rel);
+  const isPublicReadService = rel === "lib/marketplace/public-read-service.ts";
 
   if (isRoute && getSource && isPublicSurface) {
     inventory.publicGetRoutes.push(rel);
@@ -73,6 +78,16 @@ for (const path of scanRoots.flatMap(walk)) {
     }
     if (/searchParams\.get\(\s*["'](?:clientId|profileId|userId)["']\s*\)/.test(getSource)) {
       add(path, "caller_controlled_identity", "Public query parameters cannot select authenticated identity.");
+    }
+  }
+
+  if (isPublicReadService) {
+    inventory.publicReadServices.push(rel);
+    for (const [pattern, code] of mutationPatterns) {
+      if (pattern.test(source)) add(path, code, "Dedicated public read services cannot mutate, repair, sync, or backfill.");
+    }
+    for (const [moduleName, code] of forbiddenPublicReadImports) {
+      if (source.includes(moduleName)) add(path, code, "Public read services cannot depend on repair or synchronization modules.");
     }
   }
 
@@ -92,7 +107,7 @@ if (!existsSync(postAuthPath)) {
 
 const generatedAt = new Date().toISOString();
 const proof = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt,
   validationCommit: currentCommit(),
   status: findings.length === 0 ? "pass" : "failed",
@@ -102,7 +117,8 @@ const proof = {
   inventory: {
     publicGetRoutes: [...new Set(inventory.publicGetRoutes)].sort(),
     authEntryFiles: [...new Set(inventory.authEntryFiles)].sort(),
-    publicProfileFiles: [...new Set(inventory.publicProfileFiles)].sort()
+    publicProfileFiles: [...new Set(inventory.publicProfileFiles)].sort(),
+    publicReadServices: [...new Set(inventory.publicReadServices)].sort()
   }
 };
 

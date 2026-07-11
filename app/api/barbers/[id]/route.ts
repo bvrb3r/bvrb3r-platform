@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBarberDetailsPayload } from "@/lib/booking/platform-service";
+import { readPublicBarberProfile } from "@/lib/marketplace/public-read-service";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
@@ -10,7 +10,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   }
 
   try {
-    const payload = await getBarberDetailsPayload(identifier);
+    const payload = await readPublicBarberProfile(identifier);
     if (!payload) {
       return NextResponse.json(
         { error: "Barber profile not found.", code: "barber_profile_not_found" },
