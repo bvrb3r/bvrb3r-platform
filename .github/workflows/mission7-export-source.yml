@@ -1,0 +1,22 @@
+name: Mission 7 source export
+
+on:
+  push:
+    branches:
+      - release/v1-mission7-final-production-certification
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package repository source
+        run: tar --exclude=.git -czf bvrb3r-platform-source.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bvrb3r-platform-source
+          path: bvrb3r-platform-source.tgz
+          retention-days: 1
