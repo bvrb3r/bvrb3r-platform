@@ -6,13 +6,20 @@ import { buildHaircutNowPayload, getMarketplaceProvider } from "@/lib/marketplac
 import { getTrustProvider } from "@/lib/trust/provider";
 
 const requestSchema = z.object({
-  clientId: z.string().optional(),
-  locationId: z.string().optional()
+  locationId: z.string().trim().max(120).optional()
 });
+
+async function getSessionClientId() {
+  try {
+    const session = await getCurrentUserFromServer();
+    return isClientRole(session.user.role) ? session.user.clientId : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export async function GET(request: NextRequest) {
   const parsed = requestSchema.safeParse({
-    clientId: request.nextUrl.searchParams.get("clientId") ?? undefined,
     locationId: request.nextUrl.searchParams.get("locationId") ?? undefined
   });
 
@@ -20,23 +27,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid instant-book request." }, { status: 400 });
   }
 
-  const [marketplaceProvider, trustProvider] = await Promise.all([
-    getMarketplaceProvider(),
-    getTrustProvider()
-  ]);
-  const [runtime, trustState, session] = await Promise.all([
-    marketplaceProvider.readRuntime(),
-    trustProvider.readState(),
-    getCurrentUserFromServer()
-  ]);
-  const clientId = parsed.data.clientId ?? (isClientRole(session.user.role) ? session.user.clientId : undefined);
-  const match = buildHaircutNowPayload(runtime, clientId, parsed.data.locationId, trustState);
-
   try {
-    await marketplaceProvider.recordHaircutNowImpression({ match, clientId });
-  } catch {
-    // Keep instant matching responsive even if analytics persistence is unavailable.
-  }
+    const [marketplaceProvider, trustProvider, clientId] = await Promise.all([
+      getMarketplaceProvider(),
+      getTrustProvider(),
+      getSessionClientId()
+    ]);
+    const [runtime, trustState] = await Promise.all([
+      marketplaceProvider.readRuntime(),
+      trustProvider.readState()
+    ]);
+    const match = buildHaircutNowPayload(runtime, clientId, parsed.data.locationId, trustState);
 
-  return NextResponse.json({ match });
+    void marketplaceProvider.recordHaircutNowImpression({ match, clientId }).catch(() => undefined);
+
+    return NextResponse.json({ match });
+  } catch {
+    console.error("[marketplace/haircut-now] matching unavailable", {
+      reference: "haircut_now_load_failed"
+    });
+    return NextResponse.json(
+      { error: "Instant matching is temporarily unavailable.", code: "haircut_now_load_failed" },
+      { status: 500 }
+    );
+  }
 }
