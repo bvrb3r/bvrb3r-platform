@@ -70,27 +70,18 @@ jobs:
           path.write_text(source)
           PY
 
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+      - name: Install deterministic test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --legacy-peer-deps
+          npm install --save-dev @testing-library/dom@^10.4.0 --legacy-peer-deps
 
       - name: Lint
         run: npm run lint
 
-      - name: Typecheck with diagnostics
-        shell: bash
-        run: |
-          set +e
-          npm run typecheck > .github/mission2-typecheck-diagnostic.txt 2>&1
-          status=$?
-          cat .github/mission2-typecheck-diagnostic.txt
-          if [ "$status" -ne 0 ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add .github/mission2-typecheck-diagnostic.txt
-            git commit -m "diagnose Mission 2 typecheck"
-            git push origin HEAD:agent/mission2-money-truth-certification
-            exit "$status"
-          fi
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Mandatory identity-booking-money regression
         env:
