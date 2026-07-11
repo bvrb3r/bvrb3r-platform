@@ -35,6 +35,8 @@
     "verify:deployment": "node scripts/verify-deployment.mjs",
     "verify:money": "node scripts/capture-money-readiness.mjs",
     "verify:money:enforce": "node scripts/capture-money-readiness.mjs --enforce",
+    "verify:public-conversion": "node scripts/verify-public-conversion.mjs",
+    "verify:mission3": "npm run verify:public-conversion && npx vitest run tests/unit/marketplace-discover-route.spec.ts tests/unit/post-auth-return.spec.ts",
     "verify:v1": "npm run verify:deployment && npm run verify:money:enforce",
     "seed": "tsx lib/data/seed.ts",
     "supabase:start": "supabase start",
