@@ -76,8 +76,21 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Typecheck with diagnostics
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck > .github/mission2-typecheck-diagnostic.txt 2>&1
+          status=$?
+          cat .github/mission2-typecheck-diagnostic.txt
+          if [ "$status" -ne 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/mission2-typecheck-diagnostic.txt
+            git commit -m "diagnose Mission 2 typecheck"
+            git push origin HEAD:agent/mission2-money-truth-certification
+            exit "$status"
+          fi
 
       - name: Mandatory identity-booking-money regression
         env:
@@ -103,7 +116,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f .github/mission2-validation-diagnostic.txt
+          rm -f .github/mission2-validation-diagnostic.txt .github/mission2-typecheck-diagnostic.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
