@@ -1,4 +1,5 @@
 import { BarberSettingsScreen } from "@/components/barber-experience/barber-settings-screen";
+import { BarberStripeTerminalSettings } from "@/components/barber-experience/barber-stripe-terminal-settings";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import type { DashboardHeaderNotificationItem } from "@/components/dashboard/dashboard-header-actions";
 import { getAuthorizedUser } from "@/lib/auth/guards";
@@ -25,7 +26,7 @@ export default async function BarberMorePage({
           body: "Stripe is in test mode. Live payouts are not active yet.",
           action: {
             label: "View payout setup",
-            href: "/dashboard/barber/more#payouts"
+            href: "/dashboard/barber/more#stripe-tap-to-pay"
           }
         }
       ]
@@ -40,6 +41,7 @@ export default async function BarberMorePage({
       hidePageHeader
       headerNotificationItems={headerNotificationItems}
     >
+      <BarberStripeTerminalSettings />
       <BarberSettingsScreen
         user={user}
         initialSection={params.section}
