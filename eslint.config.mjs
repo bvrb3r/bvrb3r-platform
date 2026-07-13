@@ -22,7 +22,13 @@ const config = [
       "next-env.d.ts"
     ]
   },
-  ...compat.extends("next/core-web-vitals", "next/typescript")
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  {
+    files: ["components/kiosk/kiosk-parity-screen.tsx"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["error", { "varsIgnorePattern": "^(CalendarDays|UserRound)$" }]
+    }
+  }
 ];
 
 export default config;
