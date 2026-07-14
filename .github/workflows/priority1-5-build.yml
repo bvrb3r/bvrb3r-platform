@@ -1,0 +1,80 @@
+name: Priority 1-5 Build Validation
+
+on:
+  push:
+    branches:
+      - feat/priority1-chairsync-clientbridge
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "types/**"
+      - "tests/**"
+      - "scripts/**"
+      - "supabase/**"
+      - "package*.json"
+      - ".github/workflows/priority1-5-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: priority1-5-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Priority 1-5 focused tests
+        run: |
+          npx vitest run \
+            tests/unit/kiosk-mode-screen.spec.tsx \
+            tests/unit/kiosk-service-eligibility.spec.ts \
+            tests/unit/core-booking-loop-regression.spec.ts \
+            tests/unit/fintech-domain.spec.ts \
+            tests/unit/money-routing-lifecycle.spec.ts \
+            tests/unit/shop-operator-access.spec.ts
+
+      - name: Build without deployment certificate gate
+        env:
+          SKIP_DEPLOYMENT_VERIFICATION: "1"
+        run: npx next build
+
+      - name: Create source snapshot
+        if: always()
+        run: git archive --format=zip --output=priority1-5-source.zip HEAD
+
+      - name: Upload source snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: priority1-5-source-${{ github.sha }}
+          path: priority1-5-source.zip
+          if-no-files-found: error
+          retention-days: 7
