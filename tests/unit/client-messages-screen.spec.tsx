@@ -158,6 +158,18 @@ function buildThreadDetail(thread: ReturnType<typeof buildThread>, selfRole = "c
   };
 }
 
+function openListTools() {
+  const toggle = screen.getByRole("button", { name: "Search and filter messages" });
+  if (toggle.getAttribute("aria-pressed") !== "true") {
+    fireEvent.click(toggle);
+  }
+}
+
+function getMessageSearch() {
+  openListTools();
+  return screen.getByRole("textbox", { name: "Search messages" });
+}
+
 describe("client messages screen", () => {
   beforeEach(() => {
     useRouterMock.mockReset();
@@ -270,6 +282,7 @@ describe("client messages screen", () => {
     expect(screen.getByText("No conversations yet.")).toBeInTheDocument();
     expect(screen.getByText("Search a barber or shop to start a message.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
+    openListTools();
     ["All", "Barbers", "Shops", "Bookings", "Support"].forEach((label) => {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     });
@@ -681,7 +694,7 @@ describe("client messages screen", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+    fireEvent.change(getMessageSearch(), {
       target: { value: "@phillipforsure" }
     });
 
@@ -730,7 +743,7 @@ describe("client messages screen", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+    fireEvent.change(getMessageSearch(), {
       target: { value: "phillipforsure" }
     });
 
@@ -776,7 +789,7 @@ describe("client messages screen", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+    fireEvent.change(getMessageSearch(), {
       target: { value: "@thebvrb3rshopuniversitymall" }
     });
 
@@ -840,7 +853,7 @@ describe("client messages screen", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+    fireEvent.change(getMessageSearch(), {
       target: { value: "phillipforsure" }
     });
 
@@ -902,7 +915,7 @@ describe("client messages screen", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+    fireEvent.change(getMessageSearch(), {
       target: { value: "@phillipforsure" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
@@ -966,7 +979,7 @@ describe("client messages screen", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+    fireEvent.change(getMessageSearch(), {
       target: { value: "@thebvrb3rshopuniversitymall" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Message" }));
@@ -991,7 +1004,7 @@ describe("client messages screen", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+    fireEvent.change(getMessageSearch(), {
       target: { value: "@missinghandle" }
     });
 
@@ -1017,7 +1030,7 @@ describe("client messages screen", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+    fireEvent.change(getMessageSearch(), {
       target: { value: "@phillipforsure" }
     });
 
@@ -1862,7 +1875,7 @@ describe("client messages screen", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+    fireEvent.change(getMessageSearch(), {
       target: { value: "@thebvrb" }
     });
 
@@ -2058,7 +2071,7 @@ describe("client messages screen", () => {
     expect(screen.getByTestId("message-thread-row-thread-appointment-1")).toBeInTheDocument();
     expect(screen.getByTestId("message-thread-row-thread-support-1")).toBeInTheDocument();
     expect(screen.getAllByText("@phillipforsure").length).toBeGreaterThan(0);
-    expect(screen.getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
+    expect(screen.queryByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).not.toBeInTheDocument();
     expect(screen.getByText("Barber thread")).toBeInTheDocument();
     expect(screen.getByText("Latest support reply")).toBeInTheDocument();
     expect(screen.queryByText("Old support reply")).not.toBeInTheDocument();
@@ -2232,7 +2245,7 @@ describe("client messages screen", () => {
     expect(within(modal).queryByTestId("related-appointment-contexts")).not.toBeInTheDocument();
   });
 
-  it("renders barber profile photos in the inbox row, avatar rail, and modal header", () => {
+  it("renders barber profile photos in the compact inbox row and modal header", () => {
     const thread = buildThread({
       counterpart: {
         profileId: "profile-barber",
@@ -2287,7 +2300,7 @@ describe("client messages screen", () => {
     );
 
     const images = screen.getAllByRole("img", { name: "@phillipforsure" });
-    expect(images.length).toBeGreaterThanOrEqual(3);
+    expect(images.length).toBeGreaterThanOrEqual(2);
     for (const image of images) {
       expect(image).toHaveAttribute("src", "https://cdn.bvrb3r.test/phillip.jpg");
     }
@@ -2349,20 +2362,20 @@ describe("client messages screen", () => {
     expect(screen.getByTestId("messaging-inbox-client")).toBeInTheDocument();
     expect(screen.queryByTestId("message-thread-panel")).not.toBeInTheDocument();
     expect(screen.getByTestId("message-thread-modal")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Search messages" })).toBeInTheDocument();
+    expect(getMessageSearch()).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
     expect(screen.getAllByText("@phillipforsure").length).toBeGreaterThan(0);
     expect(screen.getAllByAltText("@phillipforsure").length).toBeGreaterThan(0);
     expect(screen.queryByText("Phillip mcgee")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Barber").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("8516 Island Breeze Ln - Temple Terrace, FL 33607").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Barber")).not.toBeInTheDocument();
+    expect(screen.queryByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).not.toBeInTheDocument();
     expect(screen.queryByTestId("message-thread-context-line")).not.toBeInTheDocument();
     expect(screen.getAllByText("Conversation opened...").length).toBeGreaterThan(1);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/client/profile-view/barber/phillipforsure?sourceThreadId=thread-appointment-1");
     expect(screen.getByRole("link", { name: "Rebook" })).toHaveAttribute("href", "/booking/new?barber=phillipforsure&barberId=barber-43b3cda2");
 
     const row = screen.getAllByText("Conversation opened...")[0]?.closest("a");
-    expect(row?.className).toContain("min-h-[78px]");
+    expect(row?.className).toContain("min-h-[68px]");
   });
 
   it("opens a selected thread at the latest message and keeps the composer visible", async () => {
@@ -3024,12 +3037,13 @@ describe("client messages screen", () => {
     expect(screen.queryByRole("button", { name: /General/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId("message-thread-panel")).not.toBeInTheDocument();
     expect(screen.getByTestId("message-thread-modal")).toBeInTheDocument();
+    openListTools();
     ["All", "Clients", "Shops", "Support", "Requests", "Bookings"].forEach((label) => {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     });
     expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
     expect(screen.queryByText("Jordan Ellis")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Client").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Client")).not.toBeInTheDocument();
     expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/barber/profile-view/client/jordanellis?sourceThreadId=thread-appointment-1");
     expect(screen.getAllByText("I am outside.").length).toBeGreaterThan(1);
@@ -3221,6 +3235,7 @@ describe("client messages screen", () => {
       />
     );
 
+    openListTools();
     fireEvent.click(screen.getByRole("button", { name: "Clients" }));
     expect(screen.getByTestId("message-thread-row-thread-client-booking")).toBeInTheDocument();
     expect(screen.getByTestId("message-thread-row-thread-client-direct")).toBeInTheDocument();
@@ -3310,12 +3325,13 @@ describe("client messages screen", () => {
     );
 
     expect(screen.getByTestId("messaging-inbox-shop")).toBeInTheDocument();
+    openListTools();
     ["All", "Clients", "Barbers", "Support", "Team", "Bookings"].forEach((label) => {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     });
     expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
     expect(screen.queryByText("Jordan Ellis")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Client").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Client")).not.toBeInTheDocument();
     expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/owner/profile-view/client/jordanellis?sourceThreadId=thread-client-1");
   });
@@ -3427,6 +3443,7 @@ describe("client messages screen", () => {
       />
     );
 
+    openListTools();
     fireEvent.click(screen.getByRole("button", { name: "Clients" }));
     expect(screen.getByTestId("message-thread-row-thread-owner-client")).toBeInTheDocument();
     expect(screen.queryByTestId("message-thread-row-thread-owner-barber")).not.toBeInTheDocument();
@@ -3520,7 +3537,7 @@ describe("client messages screen", () => {
     expect(screen.getAllByText("BVRB3R Support").length).toBeGreaterThan(0);
     expect(screen.getAllByText("B").length).toBeGreaterThan(0);
     expect(screen.getAllByText("How can we help?").length).toBeGreaterThan(1);
-    expect(screen.getAllByText("Support").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Support")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "View Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Rebook" })).not.toBeInTheDocument();
   });

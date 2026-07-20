@@ -1,4 +1,5 @@
 import { getShopDashboardPayload } from "@/lib/booking/platform-service";
+import { isShopOwnerRole } from "@/lib/auth/roles";
 import { readPlatformShopControlState } from "@/lib/platform-admin/service";
 import { getQueueWorkspacePayload } from "@/lib/queue/service";
 import type { LiveOperationsViewer } from "@/lib/operations/live-state";
@@ -17,8 +18,14 @@ function toViewer(user: UserAccount): LiveOperationsViewer {
   };
 }
 
-function isShopManagerRole(role: UserAccount["role"]): role is "owner" | "manager" | "front_desk" {
-  return role === "owner" || role === "manager" || role === "front_desk";
+export type ShopManagerRole = "owner" | "manager" | "front_desk";
+
+export function resolveShopManagerRole(role: UserAccount["role"]): ShopManagerRole | null {
+  if (isShopOwnerRole(role)) {
+    return "owner";
+  }
+
+  return role === "manager" || role === "front_desk" ? role : null;
 }
 
 function formatClock(iso: string | null | undefined) {
@@ -217,7 +224,8 @@ function buildOperationalSuggestions(input: {
 }
 
 export async function getShopManagerPayload(user: UserAccount): Promise<ShopManagerPayload> {
-  if (!isShopManagerRole(user.role)) {
+  const managerRole = resolveShopManagerRole(user.role);
+  if (!managerRole) {
     throw new Error("Only owner, manager, or front desk can use the shop manager.");
   }
 
@@ -250,7 +258,7 @@ export async function getShopManagerPayload(user: UserAccount): Promise<ShopMana
   }
 
   const operational = buildOperationalSuggestions({
-    role: user.role,
+    role: managerRole,
     dashboard,
     queuePayload
   });

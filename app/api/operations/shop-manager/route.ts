@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { isShopOwnerRole } from "@/lib/auth/roles";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { getShopManagerPayload } from "@/lib/operations/shop-manager";
 
 export async function GET() {
   try {
     const user = await getSessionUser();
-    if (!(user.role === "owner" || user.role === "manager" || user.role === "front_desk")) {
+    if (!(isShopOwnerRole(user.role) || user.role === "manager" || user.role === "front_desk")) {
       return NextResponse.json({ error: "Only owner, manager, or front desk can use the shop manager." }, { status: 403 });
     }
 

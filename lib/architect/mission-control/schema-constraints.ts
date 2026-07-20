@@ -28,6 +28,13 @@ const FALLBACK_ALLOWED_VALUES: PaymentRoutingConstraintEvidence["allowedValues"]
   reconciliation_status: ["open", "settled", "partially_reversed", "reversed", "manual_review"]
 };
 
+const DATABASE_COMPATIBLE_VALUES: Partial<Record<
+  keyof PaymentRoutingConstraintEvidence["allowedValues"],
+  string[]
+>> = {
+  payout_readiness_status: ["eligible"]
+};
+
 export const DEFAULT_PAYMENT_ROUTING_CONSTRAINTS: PaymentRoutingConstraintEvidence = {
   source: "fallback",
   table: "payment_routing_records",
@@ -59,7 +66,10 @@ function productionLegalValues(
   column: keyof PaymentRoutingConstraintEvidence["allowedValues"],
   values: string[]
 ) {
-  const legal = new Set(FALLBACK_ALLOWED_VALUES[column]);
+  const legal = new Set([
+    ...FALLBACK_ALLOWED_VALUES[column],
+    ...(DATABASE_COMPATIBLE_VALUES[column] ?? [])
+  ]);
   return unique(values.map((value) => value.toLowerCase()).filter((value) => legal.has(value)));
 }
 
@@ -105,7 +115,11 @@ export async function loadPaymentRoutingConstraintEvidence(
 
   const unsupportedValues = Object.entries(allowedValues)
     .flatMap(([column, values]) => {
-      const legal = new Set(FALLBACK_ALLOWED_VALUES[column as keyof PaymentRoutingConstraintEvidence["allowedValues"]]);
+      const typedColumn = column as keyof PaymentRoutingConstraintEvidence["allowedValues"];
+      const legal = new Set([
+        ...FALLBACK_ALLOWED_VALUES[typedColumn],
+        ...(DATABASE_COMPATIBLE_VALUES[typedColumn] ?? [])
+      ]);
       return values
         .map((value) => value.toLowerCase())
         .filter((value) => !legal.has(value))
@@ -155,6 +169,7 @@ export function readinessDbValueForBusinessMeaning(
 
   if (meaning === "eligible") {
     if (allowed.includes("ready")) return "ready";
+    if (allowed.includes("eligible")) return "eligible";
     return evidence.allowedValues.payout_readiness_status[0] ?? "ready";
   }
 

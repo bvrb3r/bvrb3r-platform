@@ -107,6 +107,9 @@ describe("runtime resilience provider", () => {
 
     expect(screen.queryByText(/Session needs attention/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: new RegExp(navLabel, "i") })).toBeInTheDocument();
-    expect(screen.getByTestId("shell-identity-role")).toBeInTheDocument();
+    expect(screen.getByTestId("shell-business-name")).toHaveTextContent("BVRB3R");
+    expect(screen.getByTestId("shell-identity-name")).toBeInTheDocument();
+    expect(screen.getByTestId("shell-identity-title")).toHaveTextContent("Unified dashboard");
+    expect(screen.queryByTestId("shell-identity-role")).not.toBeInTheDocument();
   });
 });

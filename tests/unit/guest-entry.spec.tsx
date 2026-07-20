@@ -32,7 +32,8 @@ describe("guest entry", () => {
       </ClientAppShell>
     );
 
-    expect(screen.getByText("Guest marketplace")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "BV BVRB3R" })).toHaveAttribute("href", "/discover?entry=guest");
+    expect(screen.getByRole("navigation", { name: "Guest mobile navigation" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/login");
     expect(screen.getByRole("link", { name: "Explore" })).toHaveAttribute("href", "/discover?entry=guest");
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?source=guest_discovery");

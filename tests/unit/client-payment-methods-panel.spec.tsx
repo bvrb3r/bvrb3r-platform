@@ -84,23 +84,31 @@ vi.mock("@stripe/react-stripe-js", async () => {
       onLoadError?: (event: { error?: { message?: string } }) => void;
     }) {
       const { onReady, onFocus, onBlur, onChange, onLoadError } = props;
+      const initialCallbacks = React.useRef({ onReady, onChange, onLoadError });
 
       React.useEffect(() => {
         stripeMockState.mountCount[field] += 1;
+        let cancelled = false;
+
+        Promise.resolve().then(() => {
+          if (cancelled) {
+            return;
+          }
+
+          const shouldFail = stripeMockState.loadError === field || (field === "cardNumber" && Boolean(stripeMockState.loadError));
+          if (shouldFail) {
+            initialCallbacks.current.onLoadError?.({ error: { message: stripeMockState.loadError ?? "Stripe iframe failed" } });
+          } else if (stripeMockState.autoReady) {
+            initialCallbacks.current.onReady?.(element);
+            initialCallbacks.current.onChange?.({ complete: stripeMockState.complete[field] });
+          }
+        });
+
         return () => {
+          cancelled = true;
           stripeMockState.unmountCount[field] += 1;
         };
       }, []);
-
-      React.useEffect(() => {
-        const shouldFail = stripeMockState.loadError === field || (field === "cardNumber" && Boolean(stripeMockState.loadError));
-        if (shouldFail) {
-          onLoadError?.({ error: { message: stripeMockState.loadError ?? "Stripe iframe failed" } });
-        } else if (stripeMockState.autoReady) {
-          onReady?.(element);
-          onChange?.({ complete: stripeMockState.complete[field] });
-        }
-      }, [onChange, onLoadError, onReady]);
 
       return React.createElement(
         "div",
@@ -393,6 +401,7 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
+    expect(await screen.findByText("Secure card form ready.")).toBeInTheDocument();
     fireEvent.change(await screen.findByTestId("postal-code-input"), {
       target: { value: "33612" }
     });
@@ -508,6 +517,7 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
+    expect(await screen.findByText("Secure card form ready.")).toBeInTheDocument();
     fireEvent.change(await screen.findByTestId("postal-code-input"), {
       target: { value: "33612" }
     });
@@ -526,7 +536,7 @@ describe("client payment methods panel", () => {
         nickname: expect.any(String)
       }));
     });
-    expect(await screen.findByText(/4242/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/4242/)).length).toBeGreaterThan(0);
   });
 
   it("shows a Stripe mount failure message when Elements cannot load", async () => {
@@ -550,7 +560,7 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(await screen.findByText("Secure card fields did not finish loading. Refresh and try again.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Secure card fields did not finish loading. Refresh and try again.")).length).toBeGreaterThan(0);
     consoleErrorSpy.mockRestore();
   });
 
@@ -566,7 +576,7 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(await screen.findByText("Secure card fields did not finish loading. Refresh and try again.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Secure card fields did not finish loading. Refresh and try again.")).length).toBeGreaterThan(0);
     expect(screen.queryByText("Secure card form ready.")).not.toBeInTheDocument();
     consoleErrorSpy.mockRestore();
   });
@@ -591,7 +601,7 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(await screen.findByText("Secure card form failed to load. Stripe publishable key is missing.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Secure card form failed to load. Stripe publishable key is missing.")).length).toBeGreaterThan(0);
     consoleErrorSpy.mockRestore();
   });
 
@@ -615,7 +625,7 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(await screen.findByText("Secure card form failed to load. SetupIntent was not created.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Secure card form failed to load. SetupIntent was not created.")).length).toBeGreaterThan(0);
     consoleErrorSpy.mockRestore();
   });
 
@@ -738,4 +748,3 @@ describe("client payment methods panel", () => {
     expect(screen.getByRole("button", { name: "Make default" })).toBeInTheDocument();
   });
 });
-

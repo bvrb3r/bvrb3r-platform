@@ -79,7 +79,7 @@ describe("kiosk parity screen", () => {
   it("keeps Next Available server-assigned instead of forcing Barber selection", () => {
     render(<KioskParityScreen shopId="loc-ybor" scope="shop" />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Book next available/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Next available chair/i }));
 
     expect(screen.getByText("Client details")).toBeInTheDocument();
     expect(screen.queryByText("Public chairs")).not.toBeInTheDocument();
@@ -89,9 +89,10 @@ describe("kiosk parity screen", () => {
   it("keeps Pick a Barber as a distinct shop flow", () => {
     render(<KioskParityScreen shopId="loc-ybor" scope="shop" />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Pick a Barber/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Pick Blaze King" }));
 
-    expect(screen.getByText("Public chairs")).toBeInTheDocument();
+    expect(screen.getByText("Client details")).toBeInTheDocument();
+    expect(screen.getByText("Booking with")).toBeInTheDocument();
     expect(screen.getByText("Blaze King")).toBeInTheDocument();
   });
 
@@ -111,9 +112,9 @@ describe("kiosk parity screen", () => {
     });
 
     render(<KioskParityScreen shopId="loc-ybor" scope="shop" />);
-    fireEvent.click(screen.getByRole("button", { name: /Book next available/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Next available chair/i }));
     fireEvent.change(screen.getByLabelText("BVRB3R Username"), { target: { value: "phillipmcgee" } });
-    fireEvent.click(screen.getByRole("button", { name: /This is me/i }));
+    fireEvent.click(screen.getByRole("button", { name: /@phillipmcgee/i }));
 
     expect(screen.getByText(/saved phone and email will be used privately/i)).toBeInTheDocument();
     expect(screen.queryByLabelText("Phone number")).not.toBeInTheDocument();
@@ -134,7 +135,7 @@ describe("kiosk parity screen", () => {
     });
 
     render(<KioskParityScreen shopId="loc-ybor" scope="shop" />);
-    fireEvent.click(screen.getByRole("button", { name: /Book next available/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Next available chair/i }));
     fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Jordan Ellis" } });
     fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "8135550101" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "jordan@example.com" } });
@@ -152,6 +153,8 @@ describe("kiosk parity screen", () => {
         kioskAction: "book_next_opening"
       }));
     });
-    expect(await screen.findByText("Payment remains due until Barber Checkout confirms it.")).toBeInTheDocument();
+    expect(await screen.findByText("Booking confirmed")).toBeInTheDocument();
+    expect(screen.getByText(/Card after service/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Payment successful/i)).not.toBeInTheDocument();
   });
 });
