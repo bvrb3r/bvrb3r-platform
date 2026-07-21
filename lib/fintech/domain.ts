@@ -123,10 +123,6 @@ function roundToTwo(amount: number) {
   return Math.round(amount * 100) / 100;
 }
 
-function roundToFour(value: number) {
-  return Math.round(value * 10000) / 10000;
-}
-
 export function roundCurrency(amount: number) {
   return roundToTwo(amount);
 }
@@ -323,18 +319,7 @@ export function normalizeCompensationAssignment(input: CompensationAssignmentInp
   }
 
   if (routingModel === "commission") {
-    const commissionRate = input.commissionRate ?? null;
-    if (commissionRate === null || commissionRate < 0 || commissionRate > 1) {
-      throw new Error("Commission routing requires a commission rate between 0 and 1.");
-    }
-
-    return {
-      routingModel,
-      commissionRate: roundToFour(commissionRate),
-      boothRentAmount: null,
-      boothRentFrequency: null,
-      payoutBlockReason
-    };
+    throw new Error("Commission is permanently disabled. Use booth-rent routing.");
   }
 
   const boothRentAmount = input.boothRentAmount ?? null;
@@ -407,6 +392,9 @@ function resolvePayoutRecipientType(
 }
 
 export function calculatePaymentRouting(input: PaymentRoutingCalculationInput): PaymentRoutingCalculation {
+  if (input.routingModel === "commission") {
+    throw new Error("Commission payment routing is permanently disabled.");
+  }
   const providerGrossAmount = roundToTwo(Math.max(input.grossAmount, 0));
   const refundedAmount = roundToTwo(Math.max(input.refundedAmount ?? 0, 0));
   const providerFeeAmount = roundToTwo(Math.max(input.providerFeeAmount ?? 0, 0));

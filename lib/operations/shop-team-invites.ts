@@ -7,9 +7,7 @@ type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 export type ShopTeamInviteStatus = "invited" | "requested" | "active" | "rejected" | "declined" | "ended";
 export type RelationshipRoutingModel = "freelance" | "booth_rent" | "commission";
 export type ShopRelationshipProposal = {
-  routingModel: "booth_rent" | "commission";
-  barberPercent?: number | null;
-  shopPercent?: number | null;
+  routingModel: "booth_rent";
   boothRentAmount?: number | null;
   boothRentFrequency?: "daily" | "weekly" | "monthly" | null;
 };
@@ -346,25 +344,7 @@ function getDefaultRelationshipTerms(barber: BarberRow) {
 
 function getProposedRelationshipTerms(barber: BarberRow, proposal?: ShopRelationshipProposal) {
   const defaults = getDefaultRelationshipTerms(barber);
-  const routingModel = proposal?.routingModel
-    ?? (defaults.routing_model === "freelance" ? "commission" : defaults.routing_model);
-
-  if (routingModel === "commission") {
-    const barberPercent = proposal?.barberPercent ?? defaults.barber_percent ?? 0.7;
-    const shopPercent = proposal?.shopPercent ?? Math.max(0, 1 - barberPercent);
-    if (barberPercent < 0 || shopPercent < 0 || Math.abs(barberPercent + shopPercent - 1) > 0.0001) {
-      throw new ShopTeamInviteServiceError("Commission agreement percentages must total 100%.", 400);
-    }
-    return {
-      routing_model: routingModel,
-      barber_percent: barberPercent,
-      shop_percent: shopPercent,
-      booth_rent_amount: null,
-      booth_rent_frequency: null,
-      commission_cap_amount: null,
-      commission_cap_frequency: null
-    };
-  }
+  const routingModel = proposal?.routingModel ?? "booth_rent";
 
   const boothRentAmount = proposal?.boothRentAmount ?? defaults.booth_rent_amount;
   const boothRentFrequency = proposal?.boothRentFrequency ?? defaults.booth_rent_frequency ?? "weekly";
@@ -952,7 +932,7 @@ export async function createOwnerTeamInvite(user: UserAccount, input: {
     throw new ShopTeamInviteServiceError("Unable to verify shop owner authority.", 500);
   }
   if (ownerAuthorityResult.data?.owner_profile_id !== user.id) {
-    throw new ShopTeamInviteServiceError("Only the shop owner can propose commission or booth-rent terms.", 403);
+    throw new ShopTeamInviteServiceError("Only the shop owner can propose booth-rent terms.", 403);
   }
 
   const barber = await resolveBarber(supabase, input.barberId);
