@@ -66,4 +66,15 @@ describe("PR22 updated master-truth migration", () => {
     }
     expect(sql).toContain("grant execute on function public.bvrb3r_pr22_master_truth_snapshot() to service_role");
   });
+
+  it("replaces named constraints safely after an earlier PR22 draft", () => {
+    expect(sql).toContain("drop constraint if exists barbers_default_money_relationship_ck");
+    expect(sql).toContain("drop constraint if exists kiosk_settings_rotation_policy_ck");
+    expect(sql).toContain("drop constraint if exists kiosk_settings_health_status_ck");
+  });
+
+  it("indexes every PR22 rotation foreign-key lookup", () => {
+    expect(sql).toContain("shop_walkin_rotation_location_idx");
+    expect(sql).toContain("on public.shop_walkin_rotation (location_id)");
+  });
 });

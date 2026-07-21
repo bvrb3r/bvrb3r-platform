@@ -12,7 +12,8 @@ create schema if not exists private;
 -- role or an implicit default.
 alter table public.barbers
   drop constraint if exists barbers_no_new_commission_ck,
-  drop constraint if exists barbers_compensation_model_check;
+  drop constraint if exists barbers_compensation_model_check,
+  drop constraint if exists barbers_default_money_relationship_ck;
 alter table public.barbers
   add column if not exists default_money_relationship text not null default 'freelance',
   alter column compensation_model set default 'freelance';
@@ -420,6 +421,14 @@ end;
 $kiosk_activation_compatibility$;
 
 alter table public.kiosk_settings
+  drop constraint if exists kiosk_settings_rotation_policy_ck,
+  drop constraint if exists kiosk_settings_balance_guardrail_ck,
+  drop constraint if exists kiosk_settings_payment_collection_policy_ck,
+  drop constraint if exists kiosk_settings_timeout_ck,
+  drop constraint if exists kiosk_settings_pairing_hash_ck,
+  drop constraint if exists kiosk_settings_health_status_ck;
+
+alter table public.kiosk_settings
   add constraint kiosk_settings_rotation_policy_ck
     check (rotation_policy in ('strict', 'balanced', 'fastest_available')),
   add constraint kiosk_settings_balance_guardrail_ck
@@ -496,6 +505,8 @@ create index if not exists shop_walkin_rotation_next_idx
   on public.shop_walkin_rotation (shop_id, location_id, status, position, last_assigned_at);
 create index if not exists shop_walkin_rotation_barber_idx
   on public.shop_walkin_rotation (barber_id, status, updated_at desc);
+create index if not exists shop_walkin_rotation_location_idx
+  on public.shop_walkin_rotation (location_id);
 create index if not exists shop_walkin_rotation_relationship_idx
   on public.shop_walkin_rotation (relationship_id);
 
