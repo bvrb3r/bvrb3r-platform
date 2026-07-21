@@ -731,7 +731,8 @@ describe("owner team workspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Invite" }));
     expect(screen.getByRole("dialog", { name: /Invite @jordanfade to your team/i })).toBeInTheDocument();
-    expect(screen.getByText("This sends a team invitation for the barber to approve.")).toBeInTheDocument();
+    expect(screen.getByText(/Choose the complete money agreement/i)).toBeInTheDocument();
+    expect(screen.getByText(/Tips remain 100% barber/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "No, cancel" }));
     expect(createOwnerTeamInviteMock).not.toHaveBeenCalled();
@@ -743,7 +744,12 @@ describe("owner team workspace", () => {
     await waitFor(() => {
       expect(createOwnerTeamInviteMock).toHaveBeenCalledWith({
         barberId: "barber-jordan",
-        shopId: "shop-ybor"
+        shopId: "shop-ybor",
+        proposal: {
+          routingModel: "commission",
+          barberPercent: 0.7,
+          shopPercent: 0.3
+        }
       });
     });
     expect(await screen.findByText("Invite sent to @jordanfade.")).toBeInTheDocument();
@@ -855,20 +861,12 @@ describe("owner team workspace", () => {
     expect(screen.getAllByRole("button", { name: /Already on team/i }).some((button) => button.hasAttribute("disabled"))).toBe(true);
   });
 
-  it("lets owners set operating model, public visibility, and release an active barber", async () => {
+  it("keeps accepted operating terms immutable while allowing public visibility and release", async () => {
     render(<OwnerTeamWorkspace />);
 
     fireEvent.click(screen.getByRole("button", { name: /Maya Cole/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Booth rent" }));
-
-    await waitFor(() => {
-      expect(updateOwnerRelationshipMock).toHaveBeenCalledWith(expect.objectContaining({
-        relationshipId: "membership-maya",
-        routingModel: "booth_rent",
-        boothRentAmount: 250,
-        boothRentFrequency: "weekly"
-      }));
-    });
+    expect(screen.queryByRole("button", { name: "Booth rent" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Accepted money terms are immutable/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Hide publicly" }));
     await waitFor(() => {

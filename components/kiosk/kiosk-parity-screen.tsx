@@ -219,7 +219,8 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
     form.selectedProfileId || (form.fullName.trim() && isPhone(form.phone) && isEmail(form.email) && form.policyAccepted)
   );
   const canSubmit = requiredDetailsReady && Boolean(form.serviceId) && (flow !== "schedule" || Boolean(form.scheduledAt));
-  const resetSeconds = Math.max(payload?.defaults.autoResetSeconds ?? 45, 20);
+  const inactivityResetSeconds = Math.min(90, Math.max(payload?.defaults.inactivityResetSeconds ?? 75, 60));
+  const confirmationResetSeconds = Math.min(8, Math.max(payload?.defaults.autoResetSeconds ?? 7, 5));
 
   const wipe = useCallback((nextStep: Step = "welcome") => {
     setForm({ ...EMPTY_FORM, serviceId: payload?.services[0]?.id ?? "" });
@@ -242,7 +243,7 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
     const resetIdle = () => {
       if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
       if (bookingMutation.isPending || step === "confirmation") return;
-      idleTimer.current = window.setTimeout(() => wipe("attract"), resetSeconds * 1000);
+      idleTimer.current = window.setTimeout(() => wipe("attract"), inactivityResetSeconds * 1000);
     };
     const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart"];
     events.forEach((event) => window.addEventListener(event, resetIdle, { passive: true }));
@@ -251,15 +252,15 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
       if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
       events.forEach((event) => window.removeEventListener(event, resetIdle));
     };
-  }, [bookingMutation.isPending, resetSeconds, step, wipe]);
+  }, [bookingMutation.isPending, inactivityResetSeconds, step, wipe]);
 
   useEffect(() => {
     if (step !== "confirmation") return;
-    confirmationTimer.current = window.setTimeout(() => wipe("welcome"), resetSeconds * 1000);
+    confirmationTimer.current = window.setTimeout(() => wipe("welcome"), confirmationResetSeconds * 1000);
     return () => {
       if (confirmationTimer.current !== null) window.clearTimeout(confirmationTimer.current);
     };
-  }, [resetSeconds, step, wipe]);
+  }, [confirmationResetSeconds, step, wipe]);
 
   async function submitBooking() {
     if (!canSubmit) {

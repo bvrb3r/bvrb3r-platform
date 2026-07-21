@@ -51,7 +51,8 @@ type ResolvedShopKioskTarget = {
   branding: KioskPayload["shop"];
 };
 
-const KIOSK_AUTO_RESET_SECONDS = 10;
+const KIOSK_SUCCESS_RESET_SECONDS = 7;
+const KIOSK_INACTIVITY_RESET_SECONDS = 75;
 
 export class KioskServiceError extends Error {
   status: number;
@@ -373,7 +374,8 @@ export async function getKioskPayload(shopId: string): Promise<KioskPayload> {
       waitEstimateUpdatedAt: new Date().toISOString()
     },
     defaults: {
-      autoResetSeconds: KIOSK_AUTO_RESET_SECONDS,
+      autoResetSeconds: KIOSK_SUCCESS_RESET_SECONDS,
+      inactivityResetSeconds: KIOSK_INACTIVITY_RESET_SECONDS,
       bookingMode: "next_available",
       appointmentSource: "shop_kiosk",
       allowChooseBarber: true,
@@ -432,7 +434,8 @@ export async function getBarberKioskPayload(barberId: string): Promise<KioskPayl
       waitEstimateUpdatedAt: new Date().toISOString()
     },
     defaults: {
-      autoResetSeconds: KIOSK_AUTO_RESET_SECONDS,
+      autoResetSeconds: KIOSK_SUCCESS_RESET_SECONDS,
+      inactivityResetSeconds: KIOSK_INACTIVITY_RESET_SECONDS,
       bookingMode: "next_available",
       appointmentSource: "barber_kiosk",
       allowChooseBarber: false,

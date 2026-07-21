@@ -14,17 +14,10 @@ const releaseSchema = z.object({
 
 const updateSchema = z.object({
   relationshipId: z.string().trim().min(1),
-  routingModel: z.enum(["freelance", "booth_rent", "commission"]).optional(),
-  boothRentAmount: z.number().nonnegative().nullable().optional(),
-  boothRentFrequency: z.enum(["daily", "weekly", "monthly"]).nullable().optional(),
-  barberPercent: z.number().min(0).max(1).nullable().optional(),
-  shopPercent: z.number().min(0).max(1).nullable().optional(),
-  commissionCapAmount: z.number().nonnegative().nullable().optional(),
-  commissionCapFrequency: z.enum(["weekly", "monthly"]).nullable().optional(),
   publicTeamVisible: z.boolean().optional(),
   publicTeamOrder: z.number().int().min(0).max(999).optional(),
   featuredOnShopProfile: z.boolean().optional()
-});
+}).strict();
 
 function toErrorResponse(error: unknown, fallback: string) {
   if (error instanceof ShopTeamInviteServiceError) {

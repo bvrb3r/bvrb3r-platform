@@ -217,6 +217,25 @@ type AppointmentRow = {
   shop_id: string | null;
   location_id: string;
   client_id: string;
+  shop_barber_relationship_id?: string | null;
+  compensation_rule_id?: string | null;
+  relationship_type_snapshot?: RoutingModel | null;
+  barber_percent_snapshot?: number | string | null;
+  shop_percent_snapshot?: number | string | null;
+};
+
+type CanonicalRelationshipRow = {
+  id: string;
+  relationship_type: "commission" | "booth_rent";
+  status: string;
+};
+
+type CompensationRuleRow = {
+  id: string;
+  model: "commission" | "booth_rent";
+  barber_percent: number | string | null;
+  shop_percent: number | string | null;
+  is_active: boolean;
 };
 
 type PosSaleRow = {
@@ -232,6 +251,7 @@ type PosSaleRow = {
   payment_id: string | null;
   note?: string | null;
   subtotal_cents?: number | string | null;
+  tip_cents?: number | string | null;
   amount_cents?: number | string | null;
   total_amount_cents?: number | string | null;
   platform_fee_cents?: number | string | null;
@@ -291,12 +311,18 @@ type PaymentRoutingRow = {
   appointment_id: string | null;
   pos_sale_id?: string | null;
   membership_id: string | null;
+  shop_barber_relationship_id?: string | null;
+  compensation_rule_id?: string | null;
   routing_model: RoutingModel;
   payout_recipient_type: "barber" | "shop" | "split";
   provider_gross_amount: number | string;
   refunded_amount: number | string;
   provider_fee_amount: number | string;
   provider_net_amount: number | string;
+  service_amount?: number | string;
+  tip_amount?: number | string;
+  barber_percent_snapshot?: number | string | null;
+  shop_percent_snapshot?: number | string | null;
   platform_fee_amount: number | string;
   barber_payout_amount: number | string;
   shop_split_amount: number | string;
@@ -857,7 +883,7 @@ export class FintechServiceError extends Error {
 
 const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider, provider_account_id, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_eventually_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled, last_checked_at, onboarding_started_at, onboarding_completed_at, processor_last_synced_at, processor_last_event_id, processor_last_event_type, dashboard_last_accessed_at, created_by, created_at, updated_at";
 const PAYMENT_SELECT = "id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, provider, provider_payment_intent_id, amount, currency, status, payment_status, payment_type, paid_at, created_at, updated_at";
-const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, pos_sale_id, membership_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
+const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, pos_sale_id, membership_id, shop_barber_relationship_id, compensation_rule_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, service_amount, tip_amount, barber_percent_snapshot, shop_percent_snapshot, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
 const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_id, membership_id, target_subject_type, execution_type, target_connected_account_id, target_provider_account_id, amount, currency, execution_status, blocked_reason, failure_reason, processor_transfer_id, processor_reversal_id, idempotency_key, source_execution_id, source_refund_id, payout_reference, payout_speed, instant_payout_fee_amount, net_transfer_amount, processor_payout_id, reconciliation_status, metadata, initiated_by, attempt_count, last_attempted_at, executed_at, failed_at, reversed_at, created_at, updated_at";
 const POS_SALE_SELECT = "id, barber_id, shop_id, client_id, customer_name, customer_phone, customer_email, source, status, payment_method, payment_status, subtotal_cents, discount_cents, tip_cents, platform_fee_cents, client_fee_cents, total_cents, amount_cents, total_amount_cents, payment_id, note, cash_recorded_at, completed_at, created_at, updated_at";
 const STAFF_MEMBERSHIP_SELECT = "id, profile_id, location_id, shop_id, relationship_status, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, ended_at, public_team_visible, public_team_order, featured_on_shop_profile, updated_at, fintech_updated_at";
@@ -2474,7 +2500,7 @@ async function loadPaymentAndContext(supabase: SupabaseClient, paymentId: string
   const appointment = payment.appointment_id
     ? await supabase
       .from("appointments")
-      .select("id, reference_code, status, completed_at, starts_at, service_id, membership_id, barber_id, shop_id, location_id, client_id")
+      .select("id, reference_code, status, completed_at, starts_at, service_id, membership_id, barber_id, shop_id, location_id, client_id, shop_barber_relationship_id, compensation_rule_id, relationship_type_snapshot, barber_percent_snapshot, shop_percent_snapshot")
       .eq("id", payment.appointment_id)
       .maybeSingle()
     : { data: null, error: null };
@@ -2862,16 +2888,72 @@ export async function syncPaymentRoutingRecord(
     membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
   }
 
-  const routingModel = membership?.routing_model
-    ? normalizeRoutingModel(membership.routing_model)
-    : !shopId
-      ? "freelance"
-      : normalizeRoutingModel(barber?.compensation_model, "commission");
-  const commissionRate = membership?.commission_rate === null || membership?.commission_rate === undefined
-    ? barber?.commission_rate === null || barber?.commission_rate === undefined
-      ? null
-      : numeric(barber.commission_rate)
-    : numeric(membership.commission_rate);
+  const canonicalLocationId = appointment?.location_id ?? shopLocation?.id ?? null;
+  let canonicalRelationship: CanonicalRelationshipRow | null = null;
+  let compensationRule: CompensationRuleRow | null = null;
+
+  if (appointment?.shop_barber_relationship_id) {
+    const relationshipResult = await supabase
+      .from("shop_barber_relationships")
+      .select("id, relationship_type, status")
+      .eq("id", appointment.shop_barber_relationship_id)
+      .maybeSingle();
+
+    if (relationshipResult.error) {
+      throw new FintechServiceError("Unable to load the appointment relationship snapshot.", 500);
+    }
+    canonicalRelationship = (relationshipResult.data as CanonicalRelationshipRow | null) ?? null;
+  } else if (canonicalLocationId && barberId) {
+    const relationshipResult = await supabase
+      .from("shop_barber_relationships")
+      .select("id, relationship_type, status")
+      .eq("location_id", canonicalLocationId)
+      .eq("barber_id", barberId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (relationshipResult.error) {
+      throw new FintechServiceError("Unable to resolve the active shop relationship.", 500);
+    }
+    canonicalRelationship = (relationshipResult.data as CanonicalRelationshipRow | null) ?? null;
+  }
+
+  const compensationRuleId = appointment?.compensation_rule_id ?? null;
+  if (compensationRuleId || canonicalRelationship?.id) {
+    let ruleQuery = supabase
+      .from("compensation_rules")
+      .select("id, model, barber_percent, shop_percent, is_active");
+    ruleQuery = compensationRuleId
+      ? ruleQuery.eq("id", compensationRuleId)
+      : ruleQuery.eq("relationship_id", canonicalRelationship!.id).eq("is_active", true);
+    const ruleResult = await ruleQuery.maybeSingle();
+
+    if (ruleResult.error) {
+      throw new FintechServiceError("Unable to load the compensation rule snapshot.", 500);
+    }
+    compensationRule = (ruleResult.data as CompensationRuleRow | null) ?? null;
+  }
+
+  const routingModel = appointment?.relationship_type_snapshot
+    ? normalizeRoutingModel(appointment.relationship_type_snapshot)
+    : canonicalRelationship?.relationship_type
+      ? normalizeRoutingModel(canonicalRelationship.relationship_type)
+      : membership?.routing_model
+        ? normalizeRoutingModel(membership.routing_model)
+        : "freelance";
+  const snapshotBarberPercent = appointment?.barber_percent_snapshot ?? compensationRule?.barber_percent ?? null;
+  const snapshotShopPercent = appointment?.shop_percent_snapshot ?? compensationRule?.shop_percent ?? null;
+  const commissionRate = snapshotBarberPercent !== null && snapshotBarberPercent !== undefined
+    ? numeric(snapshotBarberPercent) / 100
+    : membership?.commission_rate === null || membership?.commission_rate === undefined
+      ? barber?.commission_rate === null || barber?.commission_rate === undefined
+        ? null
+        : numeric(barber.commission_rate)
+      : numeric(membership.commission_rate);
+
+  if (routingModel === "commission" && (!canonicalRelationship || !compensationRule)) {
+    throw new FintechServiceError("Commission routing requires the appointment's relationship and compensation rule snapshots.", 409);
+  }
 
   const posSalePaidSuccessful = Boolean(payment.payment_type === "pos_sale" && posSale?.status === "paid" && isCompletionPaymentSuccessful(payment));
   const bypassPayoutSetupForFreelanceCompletion = Boolean((options?.forceCompletionEligibility || posSalePaidSuccessful) && !shopId);
@@ -2969,6 +3051,13 @@ export async function syncPaymentRoutingRecord(
     : null;
 
   const paymentStatusForRouting = normalizePaymentStatusForRouting(payment);
+  const effectivePaymentGross = roundCurrency(Math.max(numeric(payment.amount) - refundedAmount, 0));
+  const tipAmount = payment.payment_type === "tip"
+    ? effectivePaymentGross
+    : posSale
+      ? Math.min(roundCurrency(numeric(posSale.tip_cents) / 100), effectivePaymentGross)
+      : 0;
+  const serviceAmount = roundCurrency(Math.max(effectivePaymentGross - tipAmount, 0));
   const calculated = calculatePaymentRouting({
     paymentType: payment.payment_type,
     paymentStatus: paymentStatusForRouting,
@@ -2976,6 +3065,8 @@ export async function syncPaymentRoutingRecord(
     refundedAmount,
     providerFeeAmount,
     platformFeeAmount: options?.platformFeeAmount ?? undefined,
+    serviceAmount,
+    tipAmount,
     routingModel,
     commissionRate,
     barberReady: barberAccountState?.row.payout_readiness_status === "ready",
@@ -3052,12 +3143,18 @@ const moneyRoutingStatus: MoneyRoutingStatus = capturedCancelledAppointment
     appointment_id: payment.appointment_id,
     pos_sale_id: payment.pos_sale_id ?? null,
     membership_id: membership?.id ?? appointment?.membership_id ?? null,
+    shop_barber_relationship_id: canonicalRelationship?.id ?? appointment?.shop_barber_relationship_id ?? null,
+    compensation_rule_id: compensationRule?.id ?? appointment?.compensation_rule_id ?? null,
     routing_model: routingModel,
     payout_recipient_type: calculated.payoutRecipientType,
     provider_gross_amount: calculated.providerGrossAmount,
     refunded_amount: calculated.refundedAmount,
     provider_fee_amount: calculated.providerFeeAmount,
     provider_net_amount: calculated.providerNetAmount,
+    service_amount: calculated.serviceAmount,
+    tip_amount: calculated.tipAmount,
+    barber_percent_snapshot: routingModel === "commission" ? numeric(snapshotBarberPercent) : null,
+    shop_percent_snapshot: routingModel === "commission" ? numeric(snapshotShopPercent) : null,
     platform_fee_amount: distributablePlatformFeeAmount,
     barber_payout_amount: distributableBarberPayoutAmount,
     shop_split_amount: distributableShopSplitAmount,

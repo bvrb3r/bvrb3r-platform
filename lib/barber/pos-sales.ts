@@ -842,17 +842,18 @@ function logCashCreateFailed(input: {
 }
 
 function calculateSplit(input: {
-  grossCents: number;
+  serviceCents: number;
+  tipCents: number;
   relationshipType: BarberPosSaleQuote["relationshipType"];
   commissionRate?: number | string | null;
 }) {
-  const platformFeeCents = Math.round(input.grossCents * PLATFORM_FEE_RATE);
-  const netAfterPlatformCents = Math.max(input.grossCents - platformFeeCents, 0);
+  const platformFeeCents = Math.round(input.serviceCents * PLATFORM_FEE_RATE);
+  const netServiceAfterPlatformCents = Math.max(input.serviceCents - platformFeeCents, 0);
 
   if (input.relationshipType !== "commission") {
     return {
       platformFeeCents,
-      barberPayoutCents: netAfterPlatformCents,
+      barberPayoutCents: netServiceAfterPlatformCents + input.tipCents,
       shopSplitCents: 0
     };
   }
@@ -860,11 +861,11 @@ function calculateSplit(input: {
   const rateNumber = Number(input.commissionRate ?? 0);
   const barberRate = rateNumber > 1 ? rateNumber / 100 : rateNumber;
   const safeBarberRate = barberRate > 0 && barberRate <= 1 ? barberRate : 0.6;
-  const barberPayoutCents = Math.round(netAfterPlatformCents * safeBarberRate);
+  const barberServicePayoutCents = Math.round(netServiceAfterPlatformCents * safeBarberRate);
   return {
     platformFeeCents,
-    barberPayoutCents,
-    shopSplitCents: Math.max(netAfterPlatformCents - barberPayoutCents, 0)
+    barberPayoutCents: barberServicePayoutCents + input.tipCents,
+    shopSplitCents: Math.max(netServiceAfterPlatformCents - barberServicePayoutCents, 0)
   };
 }
 
@@ -883,7 +884,8 @@ export function quoteBarberPosSale(input: BarberPosSaleQuoteInput, relationship?
   const totalCents = Math.max(subtotalCents - discountCents + tipCents + clientFeeCents, 0);
   const relationshipType = normalizeRelationshipType(String(relationship?.relationshipType ?? "freelance"));
   const split = calculateSplit({
-    grossCents: totalCents,
+    serviceCents: Math.max(subtotalCents - discountCents, 0),
+    tipCents,
     relationshipType,
     commissionRate: relationship?.commissionRate
   });

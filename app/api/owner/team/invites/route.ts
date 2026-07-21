@@ -11,7 +11,21 @@ import {
 const createInviteSchema = z.object({
   barberId: z.string().trim().min(1),
   shopId: z.string().trim().min(1).optional(),
-  message: z.string().trim().max(500).optional()
+  message: z.string().trim().max(500).optional(),
+  proposal: z.union([
+    z.object({
+      routingModel: z.literal("commission"),
+      barberPercent: z.number().min(0).max(1),
+      shopPercent: z.number().min(0).max(1)
+    }).refine((terms) => Math.abs(terms.barberPercent + terms.shopPercent - 1) < 0.0001, {
+      message: "Commission percentages must total 100%."
+    }),
+    z.object({
+      routingModel: z.literal("booth_rent"),
+      boothRentAmount: z.number().positive(),
+      boothRentFrequency: z.enum(["daily", "weekly", "monthly"])
+    })
+  ]).optional()
 });
 
 const ownerResponseSchema = z.object({
