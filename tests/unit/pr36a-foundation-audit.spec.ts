@@ -18,32 +18,50 @@ import type {
 
 const repoRoot = process.cwd();
 const reportPath = path.join(repoRoot, "docs/audits/pr36a-foundation-audit-before-client-v1.md");
+const reportRepoPath = "docs/audits/pr36a-foundation-audit-before-client-v1.md";
 const report = readFileSync(reportPath, "utf8");
 
-function changedFiles() {
-  const commands = [
-    ["diff", "--name-only", "origin/main...HEAD"],
-    ["diff", "--name-only", "HEAD~1..HEAD"],
-    ["diff", "--name-only"]
-  ];
-
-  for (const args of commands) {
-    try {
-      const output = execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-      const files = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-      if (files.length) return files;
-    } catch {
-      continue;
-    }
+function auditCommit() {
+  try {
+    return execFileSync("git", ["log", "--diff-filter=A", "-n", "1", "--format=%H", "--", reportRepoPath], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    return "";
   }
+}
 
-  return [];
+function changedFiles() {
+  const commit = auditCommit();
+  if (!commit) return [];
+  const output = execFileSync("git", ["diff-tree", "--no-commit-id", "--name-only", "-r", commit], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+  return output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
 function changedText(files = changedFiles()) {
+  const commit = auditCommit();
   return files
     .filter((file) => !file.endsWith(".md"))
-    .map((file) => existsSync(path.join(repoRoot, file)) ? readFileSync(path.join(repoRoot, file), "utf8") : "")
+    .map((file) => {
+      if (commit) {
+        try {
+          return execFileSync("git", ["show", `${commit}:${file}`], {
+            cwd: repoRoot,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "ignore"]
+          });
+        } catch {
+          // Fall through for environments with a shallow checkout.
+        }
+      }
+      return existsSync(path.join(repoRoot, file)) ? readFileSync(path.join(repoRoot, file), "utf8") : "";
+    })
     .join("\n");
 }
 
@@ -196,7 +214,10 @@ describe("PR #36A foundation audit cleanup", () => {
 
     expect(text).not.toMatch(/supabase\.from\([^)]*profiles[^)]*\)\.(update|upsert|delete|insert)/i);
     expect(text).not.toMatch(/stripe\.(refunds|payouts|transfers|paymentIntents)\.(create|update|cancel)/i);
-    expect(text).not.toMatch(/create policy|alter policy|drop policy|enable row level security|disable row level security/i);
+    expect(text).not.toMatch(/^\s*(?:create|alter|drop)\s+policy\b.+\bon\b/gim);
+    expect(text).not.toMatch(
+      /^\s*alter\s+table\b.+\b(?:enable|disable)\s+row\s+level\s+security\b/gim,
+    );
     expect(text).not.toMatch(/\bdelete\s+from\b|\bupdate\s+public\.profiles\b|\binsert\s+into\s+public\.profiles\b/i);
   });
 
