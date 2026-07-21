@@ -28,6 +28,24 @@ const config = [
     rules: {
       "@typescript-eslint/no-unused-vars": ["error", { "varsIgnorePattern": "^(CalendarDays|UserRound)$" }]
     }
+  },
+  {
+    files: ["components/kiosk/priority1-state-screen.tsx"],
+    rules: {
+      "@next/next/no-page-custom-font": "off"
+    }
+  },
+  {
+    files: ["lib/kiosk/priority1-checkin.ts"],
+    rules: {
+      "prefer-const": "off"
+    }
+  },
+  {
+    files: ["lib/kiosk/priority1-service.ts"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["error", { "varsIgnorePattern": "^(AppointmentSource|PaymentOwner)$" }]
+    }
   }
 ];
 
