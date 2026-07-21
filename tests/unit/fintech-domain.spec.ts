@@ -104,7 +104,7 @@ describe("phase 13 fintech domain", () => {
       paymentType: "subscription",
       paymentStatus: "captured",
       grossAmount: 20,
-      routingModel: "commission",
+      routingModel: "booth_rent",
       barberReady: true,
       shopReady: true,
       appointmentCompleted: true
@@ -118,8 +118,8 @@ describe("phase 13 fintech domain", () => {
     expect(subscriptionCharge.payoutRecipientType).toBe("shop");
   });
 
-  it("calculates commission routing as a split between barber and shop", () => {
-    const result = calculatePaymentRouting({
+  it("rejects commission routing before any split can be calculated", () => {
+    expect(() => calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
       grossAmount: 100,
@@ -128,13 +128,7 @@ describe("phase 13 fintech domain", () => {
       barberReady: true,
       shopReady: true,
       appointmentCompleted: true
-    });
-
-    expect(result.payoutRecipientType).toBe("split");
-    expect(result.platformFeeAmount).toBe(5);
-    expect(result.barberPayoutAmount).toBe(57);
-    expect(result.shopSplitAmount).toBe(38);
-    expect(result.moneyRoutingStatus).toBe("ready_for_payout");
+    })).toThrow(/commission payment routing is permanently disabled/i);
   });
 
   it("keeps tips out of platform fees and commission while paying them fully to the barber", () => {
@@ -144,8 +138,7 @@ describe("phase 13 fintech domain", () => {
       grossAmount: 110,
       serviceAmount: 100,
       tipAmount: 10,
-      routingModel: "commission",
-      commissionRate: 0.6,
+      routingModel: "booth_rent",
       barberReady: true,
       shopReady: true,
       appointmentCompleted: true
@@ -154,8 +147,8 @@ describe("phase 13 fintech domain", () => {
     expect(result.serviceAmount).toBe(100);
     expect(result.tipAmount).toBe(10);
     expect(result.platformFeeAmount).toBe(5);
-    expect(result.barberPayoutAmount).toBe(67);
-    expect(result.shopSplitAmount).toBe(38);
+    expect(result.barberPayoutAmount).toBe(105);
+    expect(result.shopSplitAmount).toBe(0);
   });
 
   it("routes a tip payment entirely to the barber with no platform fee", () => {
@@ -163,8 +156,7 @@ describe("phase 13 fintech domain", () => {
       paymentType: "tip",
       paymentStatus: "captured",
       grossAmount: 10,
-      routingModel: "commission",
-      commissionRate: 0.6,
+      routingModel: "booth_rent",
       barberReady: true,
       shopReady: false,
       appointmentCompleted: true
@@ -187,8 +179,7 @@ describe("phase 13 fintech domain", () => {
       paymentType: "booking",
       paymentStatus: "captured",
       grossAmount: 80,
-      routingModel: "commission",
-      commissionRate: 0.5,
+      routingModel: "booth_rent",
       barberReady: false,
       shopReady: true,
       appointmentCompleted: true
@@ -232,8 +223,8 @@ describe("phase 13 fintech domain", () => {
     expect(result.blockedReason).toMatch(/barber payout readiness/i);
   });
 
-  it("keeps commission payout execution blocked if shop payout setup is missing", () => {
-    const result = calculatePaymentRouting({
+  it("rejects commission payout execution before shop readiness is evaluated", () => {
+    expect(() => calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
       grossAmount: 80,
@@ -242,10 +233,7 @@ describe("phase 13 fintech domain", () => {
       barberReady: true,
       shopReady: false,
       appointmentCompleted: true
-    });
-
-    expect(result.moneyRoutingStatus).toBe("ready_for_payout");
-    expect(result.blockedReason).toMatch(/shop payout readiness/i);
+    })).toThrow(/commission payment routing is permanently disabled/i);
   });
 
   it("keeps booking routing pending until service completion and held when disputes are active", () => {
@@ -307,10 +295,10 @@ describe("phase 13 fintech domain", () => {
       payoutBlockReason: " waiting on onboarding "
     }).payoutBlockReason).toBe("waiting on onboarding");
 
-    expect(normalizeCompensationAssignment({
+    expect(() => normalizeCompensationAssignment({
       routingModel: "commission",
       commissionRate: 0.45
-    }).commissionRate).toBe(0.45);
+    })).toThrow(/commission is permanently disabled/i);
 
     expect(() => normalizeCompensationAssignment({
       routingModel: "booth_rent",

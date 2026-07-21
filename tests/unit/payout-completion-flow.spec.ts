@@ -1001,8 +1001,8 @@ describe("payout completion flow", () => {
     expect(result.payoutRecipientType).toBe("barber");
   });
 
-  it("splits commission after the platform fee", () => {
-    const result = calculatePaymentRouting({
+  it("rejects commission before payout completion can create a split", () => {
+    expect(() => calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
       grossAmount: 100,
@@ -1011,12 +1011,7 @@ describe("payout completion flow", () => {
       barberReady: true,
       shopReady: true,
       appointmentCompleted: true
-    });
-
-    expect(Math.round(result.platformFeeAmount * 100)).toBe(500);
-    expect(Math.round(result.barberPayoutAmount * 100)).toBe(6650);
-    expect(Math.round(result.shopSplitAmount * 100)).toBe(2850);
-    expect(result.payoutRecipientType).toBe("split");
+    })).toThrow(/commission payment routing is permanently disabled/i);
   });
 
   it("rejects completing another barber's appointment", async () => {

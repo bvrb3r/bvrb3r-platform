@@ -732,7 +732,7 @@ describe("owner team workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Invite" }));
     expect(screen.getByRole("dialog", { name: /Invite @jordanfade to your team/i })).toBeInTheDocument();
     expect(screen.getByText(/Choose the complete money agreement/i)).toBeInTheDocument();
-    expect(screen.getByText(/Tips remain 100% barber/i)).toBeInTheDocument();
+    expect(screen.getByText("Full Booth Rent")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "No, cancel" }));
     expect(createOwnerTeamInviteMock).not.toHaveBeenCalled();
@@ -746,9 +746,9 @@ describe("owner team workspace", () => {
         barberId: "barber-jordan",
         shopId: "shop-ybor",
         proposal: {
-          routingModel: "commission",
-          barberPercent: 0.7,
-          shopPercent: 0.3
+          routingModel: "booth_rent",
+          boothRentAmount: 250,
+          boothRentFrequency: "weekly"
         }
       });
     });

@@ -416,8 +416,7 @@ export function OwnerTeamWorkspace() {
   const [addBarbersOpen, setAddBarbersOpen] = useState(false);
   const [inviteSearch, setInviteSearch] = useState("");
   const [pendingInviteBarber, setPendingInviteBarber] = useState<ShopTeamInviteDirectoryBarber | null>(null);
-  const [inviteRelationshipModel, setInviteRelationshipModel] = useState<"commission" | "booth_rent">("commission");
-  const [inviteBarberPercent, setInviteBarberPercent] = useState("70");
+  const inviteRelationshipModel = "booth_rent" as const;
   const [inviteBoothRentAmount, setInviteBoothRentAmount] = useState("250");
   const [inviteBoothRentFrequency, setInviteBoothRentFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
@@ -599,8 +598,6 @@ export function OwnerTeamWorkspace() {
   }
 
   function openInviteConfirmation(barber: ShopTeamInviteDirectoryBarber) {
-    setInviteRelationshipModel(barber.compensationModel === "booth_rent" ? "booth_rent" : "commission");
-    setInviteBarberPercent("70");
     setInviteBoothRentAmount("250");
     setInviteBoothRentFrequency("weekly");
     setPendingInviteBarber(barber);
@@ -608,12 +605,7 @@ export function OwnerTeamWorkspace() {
 
   async function handleCreateInvite(barber: ShopTeamInviteDirectoryBarber) {
     setInviteFeedback(null);
-    const barberPercent = Number(inviteBarberPercent);
     const boothRentAmount = Number(inviteBoothRentAmount);
-    if (inviteRelationshipModel === "commission" && (!Number.isFinite(barberPercent) || barberPercent < 0 || barberPercent > 100)) {
-      setInviteFeedback({ tone: "error", message: "Barber commission percentage must be between 0 and 100." });
-      return;
-    }
     if (inviteRelationshipModel === "booth_rent" && (!Number.isFinite(boothRentAmount) || boothRentAmount <= 0)) {
       setInviteFeedback({ tone: "error", message: "Booth rent must be a positive amount." });
       return;
@@ -622,17 +614,11 @@ export function OwnerTeamWorkspace() {
       const response = await createInviteMutation.mutateAsync({
         barberId: barber.barberId,
         shopId: inviteDirectoryQuery.data?.shop.id,
-        proposal: inviteRelationshipModel === "commission"
-          ? {
-              routingModel: "commission",
-              barberPercent: barberPercent / 100,
-              shopPercent: (100 - barberPercent) / 100
-            }
-          : {
-              routingModel: "booth_rent",
-              boothRentAmount,
-              boothRentFrequency: inviteBoothRentFrequency
-            }
+        proposal: {
+          routingModel: "booth_rent",
+          boothRentAmount,
+          boothRentFrequency: inviteBoothRentFrequency
+        }
       });
       const usernameLabel = barber.username ? `@${barber.username}` : response.invite.barberName;
       setInviteFeedback({
@@ -1479,41 +1465,10 @@ export function OwnerTeamWorkspace() {
             <div className="mt-5 space-y-4 rounded-[20px] border border-white/10 bg-black/24 p-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-white/46">Relationship model</p>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {(["commission", "booth_rent"] as const).map((model) => (
-                    <button
-                      key={model}
-                      type="button"
-                      onClick={() => setInviteRelationshipModel(model)}
-                      className={cn(
-                        "min-h-11 rounded-[14px] border px-3 text-sm font-black transition",
-                        inviteRelationshipModel === model
-                          ? "border-[#C4F24E] bg-[#C4F24E] text-black"
-                          : "border-white/10 bg-white/[0.035] text-white/68 hover:border-[#C4F24E]/30"
-                      )}
-                    >
-                      {formatRoutingLabel(model)}
-                    </button>
-                  ))}
+                <div className="mt-3 rounded-[14px] border border-[#C4F24E] bg-[#C4F24E] px-3 py-3 text-sm font-black text-black">
+                  Full Booth Rent
                 </div>
               </div>
-              {inviteRelationshipModel === "commission" ? (
-                <label className="block text-sm font-bold text-white/72">
-                  Barber share of post-fee service money (%)
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={inviteBarberPercent}
-                    onChange={(event) => setInviteBarberPercent(event.target.value)}
-                    className="mt-2 min-h-12 w-full rounded-[14px] border border-white/10 bg-black/30 px-4 text-white outline-none focus:border-[#C4F24E]/55"
-                  />
-                  <span className="mt-2 block text-xs font-medium text-white/46">
-                    Shop share: {Math.max(0, 100 - (Number(inviteBarberPercent) || 0)).toFixed(2)}%. Tips remain 100% barber.
-                  </span>
-                </label>
-              ) : (
                 <div className="grid gap-3 sm:grid-cols-[1fr_0.8fr]">
                   <label className="block text-sm font-bold text-white/72">
                     Fixed rent amount
@@ -1539,7 +1494,6 @@ export function OwnerTeamWorkspace() {
                     </select>
                   </label>
                 </div>
-              )}
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <button
