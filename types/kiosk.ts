@@ -35,7 +35,10 @@ export interface KioskPayload {
     waitEstimateUpdatedAt?: string;
   };
   defaults: {
+    /** Success-screen dwell before client data is cleared. */
     autoResetSeconds: number;
+    /** No-touch reset window for an in-progress kiosk session. */
+    inactivityResetSeconds?: number;
     bookingMode: "next_available";
     appointmentSource?: "shop_kiosk" | "barber_kiosk";
     allowChooseBarber?: boolean;

@@ -6,12 +6,16 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    env: {
+      TZ: "America/New_York"
+    },
     globals: true,
     setupFiles: "./vitest.setup.ts"
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, ".")
+      "@": path.resolve(__dirname, "."),
+      "server-only": path.resolve(__dirname, "tests/stubs/server-only.ts")
     }
   }
 });

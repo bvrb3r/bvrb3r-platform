@@ -374,9 +374,18 @@ describe("shop team invite service", () => {
     const staffLocationInserts: unknown[] = [];
     const inviteUpdates: unknown[] = [];
     const profilesTableCalls: string[] = [];
+    const rpcMock = vi.fn(async () => ({
+      data: {
+        staff_location_id: "membership-shop",
+        relationship_id: "relationship-shop",
+        compensation_rule_id: "rule-shop",
+        relationship_type: "booth_rent"
+      },
+      error: null
+    }));
     const pendingInvite = {
       id: "invite-shop",
-      shop_id: "shop-university",
+      shop_id: "44444444-4444-4444-8444-444444444444",
       barber_id: "barber-real",
       barber_profile_id: "profile-barber",
       invited_by_profile_id: "profile-owner",
@@ -470,6 +479,7 @@ describe("shop team invite service", () => {
     };
 
     createSupabaseAdminClientMock.mockReturnValue({
+      rpc: rpcMock,
       from: vi.fn((table: string) => {
         if (table === "barbers") {
           return makeBarberQuery();
@@ -484,10 +494,10 @@ describe("shop team invite service", () => {
           return makeScriptedQuery({
             data: [
               {
-                id: "loc-independent",
-                reference_code: "independent-barber-profile-barber",
-                name: "Phil's chair",
-                neighborhood: "Tampa",
+                id: "44444444-4444-4444-8444-444444444444",
+                reference_code: "shop-university",
+                name: "The BVRB3R Shop",
+                neighborhood: "University Mall",
                 city: "Tampa",
                 state: "FL"
               }
@@ -548,34 +558,14 @@ describe("shop team invite service", () => {
       }
     });
 
-    expect(staffLocationUpdates).toEqual([
-      expect.objectContaining({
-        relationship_status: "ended",
-        ended_by_profile_id: "profile-barber",
-        ended_by_role: "barber"
-      })
-    ]);
-    expect(staffLocationInserts).toEqual([
-      expect.objectContaining({
-        profile_id: "profile-barber",
-        shop_id: "shop-university",
-        location_id: null,
-        relationship_status: "active",
-        invited_by_profile_id: "profile-owner",
-        approved_by_owner_at: expect.any(String),
-        approved_by_barber_at: expect.any(String),
-        routing_model: "booth_rent",
-        booth_rent_amount: 250,
-        booth_rent_frequency: "weekly"
-      })
-    ]);
-    expect(inviteUpdates).toEqual([
-      expect.objectContaining({
-        status: "active",
-        approved_by_barber_at: expect.any(String),
-        approved_by_owner_at: expect.any(String)
-      })
-    ]);
+    expect(rpcMock).toHaveBeenCalledWith("activate_shop_barber_relationship_internal", {
+      p_invite_id: "invite-shop",
+      p_actor_profile_id: "profile-barber",
+      p_actor_role: "barber"
+    });
+    expect(staffLocationUpdates).toEqual([]);
+    expect(staffLocationInserts).toEqual([]);
+    expect(inviteUpdates).toEqual([]);
     expect(profilesTableCalls).toEqual(["profiles"]);
   });
 

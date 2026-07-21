@@ -78,12 +78,13 @@ describe("post-auth routing", () => {
     });
   });
 
-  it("routes the platform admin straight to /architect", async () => {
+  it("routes a protected internal operator straight to /architect", async () => {
     const destination = await resolvePostAuthDestination(buildUser({
       role: "platform_admin",
       email: "ops-admin@bvrb3r.app",
       accountStatus: "active",
-      primaryOnboardingRole: "platform_admin"
+      primaryOnboardingRole: "platform_admin",
+      platformAdmin: true
     }));
 
     expect(destination).toBe("/architect");

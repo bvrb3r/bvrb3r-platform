@@ -219,7 +219,8 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
     form.selectedProfileId || (form.fullName.trim() && isPhone(form.phone) && isEmail(form.email) && form.policyAccepted)
   );
   const canSubmit = requiredDetailsReady && Boolean(form.serviceId) && (flow !== "schedule" || Boolean(form.scheduledAt));
-  const resetSeconds = Math.max(payload?.defaults.autoResetSeconds ?? 45, 20);
+  const inactivityResetSeconds = Math.min(90, Math.max(payload?.defaults.inactivityResetSeconds ?? 75, 60));
+  const confirmationResetSeconds = Math.min(8, Math.max(payload?.defaults.autoResetSeconds ?? 7, 5));
 
   const wipe = useCallback((nextStep: Step = "welcome") => {
     setForm({ ...EMPTY_FORM, serviceId: payload?.services[0]?.id ?? "" });
@@ -242,7 +243,7 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
     const resetIdle = () => {
       if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
       if (bookingMutation.isPending || step === "confirmation") return;
-      idleTimer.current = window.setTimeout(() => wipe("attract"), resetSeconds * 1000);
+      idleTimer.current = window.setTimeout(() => wipe("attract"), inactivityResetSeconds * 1000);
     };
     const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart"];
     events.forEach((event) => window.addEventListener(event, resetIdle, { passive: true }));
@@ -251,15 +252,15 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
       if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
       events.forEach((event) => window.removeEventListener(event, resetIdle));
     };
-  }, [bookingMutation.isPending, resetSeconds, step, wipe]);
+  }, [bookingMutation.isPending, inactivityResetSeconds, step, wipe]);
 
   useEffect(() => {
     if (step !== "confirmation") return;
-    confirmationTimer.current = window.setTimeout(() => wipe("welcome"), resetSeconds * 1000);
+    confirmationTimer.current = window.setTimeout(() => wipe("welcome"), confirmationResetSeconds * 1000);
     return () => {
       if (confirmationTimer.current !== null) window.clearTimeout(confirmationTimer.current);
     };
-  }, [resetSeconds, step, wipe]);
+  }, [confirmationResetSeconds, step, wipe]);
 
   async function submitBooking() {
     if (!canSubmit) {
@@ -394,7 +395,7 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
                 <p className="mt-4 text-sm text-white/55">Shortest wait right now: <strong className="text-[#d8f98a]">{eligibleBarbers[0]?.name ?? "Live assignment"}</strong></p>
                 <span className="mt-6 inline-flex rounded-full bg-[#c4f24e] px-5 py-3 font-mono text-[10px] font-black uppercase text-[#050505]">Go →</span>
               </button>
-              {publicBarbers.slice(0, 3).map((barber) => <button key={barber.id} type="button" onClick={() => { setFlow("pick"); setForm((current) => ({ ...current, preferredBarberId: barber.id })); setStep("details"); }} className="min-h-[230px] rounded-[26px] border border-white/10 bg-white/[0.025] p-7 text-left hover:border-white/20"><span className="grid h-11 w-11 place-items-center rounded-full bg-[#c4f24e]/10 font-bold text-[#c4f24e]">{initials(barber.name)}</span><h3 className="mt-5 font-serif text-2xl">{barber.name}</h3><p className="mt-4 inline-flex rounded-full border border-white/10 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.14em] text-white/45">{barber.waitDisplayLabel}</p></button>)}
+              {publicBarbers.slice(0, 3).map((barber) => <button key={barber.id} type="button" aria-label={`Pick ${barber.name}`} onClick={() => { setFlow("pick"); setForm((current) => ({ ...current, preferredBarberId: barber.id })); setStep("details"); }} className="min-h-[230px] rounded-[26px] border border-white/10 bg-white/[0.025] p-7 text-left hover:border-white/20"><span className="grid h-11 w-11 place-items-center rounded-full bg-[#c4f24e]/10 font-bold text-[#c4f24e]">{initials(barber.name)}</span><h3 className="mt-5 font-serif text-2xl">{barber.name}</h3><p className="mt-4 inline-flex rounded-full border border-white/10 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.14em] text-white/45">{barber.waitDisplayLabel}</p></button>)}
             </div>
           )}
           <p className="absolute bottom-4 font-mono text-[8px] uppercase tracking-[0.32em] text-white/22">Powered quietly by BVRB3R</p>

@@ -14,7 +14,10 @@ describe("client app header", () => {
   it("does not show a fake notification count for fresh client accounts", () => {
     render(<ClientAppHeader />);
 
-    expect(screen.getByRole("link", { name: "Open culture" })).toHaveAttribute("href", "/dashboard/client/culture");
+    expect(screen.getByRole("button", { name: "Open notifications" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open messages" })).toHaveAttribute("href", "/dashboard/client/messages");
+    expect(screen.getByRole("link", { name: "Open profile" })).toHaveAttribute("href", "/dashboard/client/more");
+    expect(screen.queryByRole("link", { name: "Open culture" })).not.toBeInTheDocument();
     expect(screen.queryByText("3")).not.toBeInTheDocument();
   });
 });

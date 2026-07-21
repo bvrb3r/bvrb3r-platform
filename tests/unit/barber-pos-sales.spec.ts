@@ -399,6 +399,21 @@ describe("barber POS sales", () => {
     });
   });
 
+  it("keeps a POS tip out of platform fees and commission", () => {
+    const quote = quoteBarberPosSale({ amountCents: 10000, tipCents: 1000 }, {
+      relationshipType: "commission",
+      commissionRate: 0.6
+    });
+
+    expect(quote).toMatchObject({
+      totalCents: 11000,
+      tipCents: 1000,
+      platformFeeCents: 500,
+      barberPayoutCents: 6700,
+      shopSplitCents: 3800
+    });
+  });
+
   it("lets a barber_user quote by public barber reference", async () => {
     createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock({
       profiles: [{

@@ -64,6 +64,10 @@ export type PaymentRoutingCalculationInput = {
   paymentType: InternalPaymentType;
   paymentStatus: InternalPaymentStatus;
   grossAmount: number;
+  /** Service money included in grossAmount. Tips must never be included here. */
+  serviceAmount?: number;
+  /** Gratuity included in grossAmount. It always belongs to the barber. */
+  tipAmount?: number;
   refundedAmount?: number;
   providerFeeAmount?: number;
   platformFeeAmount?: number;
@@ -85,6 +89,8 @@ export type PaymentRoutingCalculation = {
   refundedAmount: number;
   providerFeeAmount: number;
   providerNetAmount: number;
+  serviceAmount: number;
+  tipAmount: number;
   platformFeeAmount: number;
   barberPayoutAmount: number;
   shopSplitAmount: number;
@@ -125,7 +131,7 @@ export function roundCurrency(amount: number) {
   return roundToTwo(amount);
 }
 
-export function normalizeRoutingModel(value?: string | null, fallback: RoutingModel = "commission"): RoutingModel {
+export function normalizeRoutingModel(value?: string | null, fallback: RoutingModel = "freelance"): RoutingModel {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) {
     return fallback;
@@ -405,9 +411,25 @@ export function calculatePaymentRouting(input: PaymentRoutingCalculationInput): 
   const refundedAmount = roundToTwo(Math.max(input.refundedAmount ?? 0, 0));
   const providerFeeAmount = roundToTwo(Math.max(input.providerFeeAmount ?? 0, 0));
   const effectiveGrossAmount = roundToTwo(Math.max(providerGrossAmount - refundedAmount, 0));
-  const platformFeeAmount = roundToTwo(Math.max(input.platformFeeAmount ?? (effectiveGrossAmount * PLATFORM_FEE_RATE), 0));
+  const requestedTipAmount = input.paymentType === "tip"
+    ? effectiveGrossAmount
+    : roundToTwo(Math.max(input.tipAmount ?? 0, 0));
+  const tipAmount = Math.min(requestedTipAmount, effectiveGrossAmount);
+  const serviceAmount = input.serviceAmount === undefined
+    ? roundToTwo(Math.max(effectiveGrossAmount - tipAmount, 0))
+    : roundToTwo(Math.max(input.serviceAmount, 0));
+
+  if (Math.abs(roundToTwo(serviceAmount + tipAmount) - effectiveGrossAmount) > 0.01) {
+    throw new Error("Service and tip amounts must reconcile to the effective payment gross.");
+  }
+
+  const platformFeeBase = input.paymentType === "tip" ? 0 : serviceAmount;
+  const platformFeeAmount = roundToTwo(Math.max(input.platformFeeAmount ?? (platformFeeBase * PLATFORM_FEE_RATE), 0));
+  if (platformFeeAmount > serviceAmount && input.paymentType !== "booth_rent" && input.paymentType !== "subscription") {
+    throw new Error("The platform fee cannot exceed service money.");
+  }
   const providerNetAmount = roundToTwo(Math.max(effectiveGrossAmount - providerFeeAmount, 0));
-  const distributableAmount = roundToTwo(Math.max(effectiveGrossAmount - platformFeeAmount, 0));
+  const distributableServiceAmount = roundToTwo(Math.max(serviceAmount - platformFeeAmount, 0));
   const payoutRecipientType = resolvePayoutRecipientType(input.routingModel, input.paymentType);
   const appointmentCompleted = input.appointmentCompleted ?? false;
   const disputeHold = Boolean(input.disputeHold);
@@ -422,17 +444,18 @@ export function calculatePaymentRouting(input: PaymentRoutingCalculationInput): 
   let shopSplitAmount = 0;
 
   if (payoutRecipientType === "shop") {
-    shopSplitAmount = distributableAmount;
+    shopSplitAmount = roundToTwo(distributableServiceAmount + tipAmount);
   } else if (payoutRecipientType === "split") {
     const commissionRate = input.commissionRate ?? null;
     if (commissionRate === null || commissionRate < 0 || commissionRate > 1) {
       throw new Error("Commission split routing requires a commission rate between 0 and 1.");
     }
 
-    barberPayoutAmount = roundToTwo(distributableAmount * commissionRate);
-    shopSplitAmount = roundToTwo(Math.max(distributableAmount - barberPayoutAmount, 0));
+    const barberServiceAmount = roundToTwo(distributableServiceAmount * commissionRate);
+    barberPayoutAmount = roundToTwo(barberServiceAmount + tipAmount);
+    shopSplitAmount = roundToTwo(Math.max(distributableServiceAmount - barberServiceAmount, 0));
   } else {
-    barberPayoutAmount = distributableAmount;
+    barberPayoutAmount = roundToTwo(distributableServiceAmount + tipAmount);
   }
 
   let moneyBlockedReason: string | null = null;
@@ -498,6 +521,8 @@ export function calculatePaymentRouting(input: PaymentRoutingCalculationInput): 
     refundedAmount,
     providerFeeAmount,
     providerNetAmount,
+    serviceAmount,
+    tipAmount,
     platformFeeAmount,
     barberPayoutAmount,
     shopSplitAmount,

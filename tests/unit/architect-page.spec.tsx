@@ -31,15 +31,15 @@ describe("architect page", () => {
     getPlatformAdminUserMock.mockReset();
   });
 
-  it("renders a distinct Mission Control home for platform admins", async () => {
+  it("renders an honest degraded Mission Control home when evidence is unavailable", async () => {
     getPlatformAdminUserMock.mockResolvedValue(makePlatformAdminUser());
 
     render(await ArchitectPage());
 
     expect(getPlatformAdminUserMock).toHaveBeenCalled();
-    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("BVRB3R Mission Control");
-    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("Architect Operating System");
-    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("Evidence-backed system truth. Missing proof stays Needs Review.");
+    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("Mission Control — Degraded");
+    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("Production evidence could not be collected");
+    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("the cockpit never reports Pass from absent proof");
     expect(screen.getAllByText("Needs Review").length).toBeGreaterThan(0);
     expect(screen.queryByTestId("architect-mission-control")).not.toBeInTheDocument();
   });

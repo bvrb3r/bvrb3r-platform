@@ -6,6 +6,13 @@ type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
 export type ShopTeamInviteStatus = "invited" | "requested" | "active" | "rejected" | "declined" | "ended";
 export type RelationshipRoutingModel = "freelance" | "booth_rent" | "commission";
+export type ShopRelationshipProposal = {
+  routingModel: "booth_rent" | "commission";
+  barberPercent?: number | null;
+  shopPercent?: number | null;
+  boothRentAmount?: number | null;
+  boothRentFrequency?: "daily" | "weekly" | "monthly" | null;
+};
 
 type LocationRow = {
   id: string;
@@ -337,18 +344,41 @@ function getDefaultRelationshipTerms(barber: BarberRow) {
   };
 }
 
-function getInviteRelationshipTerms(barber: BarberRow, invite: InviteRow) {
+function getProposedRelationshipTerms(barber: BarberRow, proposal?: ShopRelationshipProposal) {
   const defaults = getDefaultRelationshipTerms(barber);
-  const routingModel = invite.routing_model ?? defaults.routing_model;
+  const routingModel = proposal?.routingModel
+    ?? (defaults.routing_model === "freelance" ? "commission" : defaults.routing_model);
 
+  if (routingModel === "commission") {
+    const barberPercent = proposal?.barberPercent ?? defaults.barber_percent ?? 0.7;
+    const shopPercent = proposal?.shopPercent ?? Math.max(0, 1 - barberPercent);
+    if (barberPercent < 0 || shopPercent < 0 || Math.abs(barberPercent + shopPercent - 1) > 0.0001) {
+      throw new ShopTeamInviteServiceError("Commission agreement percentages must total 100%.", 400);
+    }
+    return {
+      routing_model: routingModel,
+      barber_percent: barberPercent,
+      shop_percent: shopPercent,
+      booth_rent_amount: null,
+      booth_rent_frequency: null,
+      commission_cap_amount: null,
+      commission_cap_frequency: null
+    };
+  }
+
+  const boothRentAmount = proposal?.boothRentAmount ?? defaults.booth_rent_amount;
+  const boothRentFrequency = proposal?.boothRentFrequency ?? defaults.booth_rent_frequency ?? "weekly";
+  if (!boothRentAmount || boothRentAmount <= 0) {
+    throw new ShopTeamInviteServiceError("Booth rent requires a positive fixed amount.", 400);
+  }
   return {
     routing_model: routingModel,
-    booth_rent_amount: routingModel === "booth_rent" ? numericOrNull(invite.booth_rent_amount) ?? defaults.booth_rent_amount : null,
-    booth_rent_frequency: routingModel === "booth_rent" ? invite.booth_rent_frequency ?? defaults.booth_rent_frequency : null,
-    barber_percent: routingModel === "commission" ? numericOrNull(invite.barber_percent) ?? defaults.barber_percent : null,
-    shop_percent: routingModel === "commission" ? numericOrNull(invite.shop_percent) ?? defaults.shop_percent : null,
-    commission_cap_amount: numericOrNull(invite.commission_cap_amount) ?? defaults.commission_cap_amount,
-    commission_cap_frequency: invite.commission_cap_frequency ?? defaults.commission_cap_frequency
+    barber_percent: null,
+    shop_percent: null,
+    booth_rent_amount: boothRentAmount,
+    booth_rent_frequency: boothRentFrequency,
+    commission_cap_amount: null,
+    commission_cap_frequency: null
   };
 }
 
@@ -681,89 +711,39 @@ async function assertNoActiveMembership(supabase: SupabaseClient, profileId: str
   }
 }
 
-async function endIndependentActiveMembershipsBeforeShopJoin(supabase: SupabaseClient, profileId: string, now: string) {
-  const result = await supabase
-    .from("staff_locations")
-    .select(membershipSelectColumns)
-    .eq("profile_id", profileId)
-    .eq("relationship_status", "active")
-    .is("ended_at", null);
+async function activatePendingRelationshipAgreement(
+  supabase: SupabaseClient,
+  inviteId: string,
+  actorProfileId: string,
+  actorRole: "owner" | "barber"
+) {
+  const activationResult = await supabase.rpc("activate_shop_barber_relationship_internal", {
+    p_invite_id: inviteId,
+    p_actor_profile_id: actorProfileId,
+    p_actor_role: actorRole
+  });
 
-  if (result.error) {
-    throw new ShopTeamInviteServiceError("Unable to prepare the barber shop relationship.", 500);
+  if (activationResult.error) {
+    const message = activationResult.error.message || "Unable to activate the shop agreement.";
+    const status = activationResult.error.code === "42501"
+      ? 403
+      : activationResult.error.code === "23505" || activationResult.error.code === "23514"
+        ? 409
+        : 500;
+    throw new ShopTeamInviteServiceError(message, status);
   }
 
-  const rows = (result.data ?? []) as StaffLocationRow[];
-  if (!rows.length) {
-    return;
+  const updatedInviteResult = await supabase
+    .from("shop_team_invites")
+    .select(inviteSelectColumns)
+    .eq("id", inviteId)
+    .single();
+
+  if (updatedInviteResult.error || !updatedInviteResult.data) {
+    throw new ShopTeamInviteServiceError("The agreement activated, but its updated invitation could not be loaded.", 500);
   }
 
-  const realShopMemberships = await filterRealShopMemberships(supabase, rows);
-  const realShopMembershipIds = new Set(realShopMemberships.map((row) => row.id));
-  const independentMembershipIds = rows
-    .filter((row) => !realShopMembershipIds.has(row.id))
-    .map((row) => row.id);
-
-  if (!independentMembershipIds.length) {
-    return;
-  }
-
-  const updateResult = await supabase
-    .from("staff_locations")
-    .update({
-      relationship_status: "ended",
-      ended_at: now,
-      ended_by_profile_id: profileId,
-      ended_by_role: "barber",
-      ended_reason: "Ended automatically when the barber accepted a real shop relationship.",
-      updated_at: now
-    })
-    .in("id", independentMembershipIds);
-
-  if (updateResult.error) {
-    throw new ShopTeamInviteServiceError("Unable to replace the independent chair with the shop relationship.", 500);
-  }
-}
-
-function buildMembershipPayload(input: {
-  barber: BarberRow;
-  invite?: InviteRow;
-  shopId: string;
-  locationBridgeId?: string | null;
-  now: string;
-  invitedByProfileId?: string | null;
-  requestedByProfileId?: string | null;
-  approvedByOwnerAt?: string | null;
-  approvedByBarberAt?: string | null;
-}) {
-  const terms = input.invite
-    ? getInviteRelationshipTerms(input.barber, input.invite)
-    : getDefaultRelationshipTerms(input.barber);
-
-  return {
-    profile_id: input.barber.profile_id,
-    shop_id: input.shopId,
-    location_id: input.locationBridgeId ?? null,
-    relationship_status: "active",
-    requested_by_profile_id: input.requestedByProfileId ?? null,
-    invited_by_profile_id: input.invitedByProfileId ?? null,
-    approved_by_owner_at: input.approvedByOwnerAt ?? input.now,
-    approved_by_barber_at: input.approvedByBarberAt ?? input.now,
-    routing_model: terms.routing_model,
-    commission_rate: terms.barber_percent,
-    booth_rent_amount: terms.booth_rent_amount,
-    booth_rent_frequency: terms.booth_rent_frequency,
-    barber_percent: terms.barber_percent,
-    shop_percent: terms.shop_percent,
-    commission_cap_amount: terms.commission_cap_amount,
-    commission_cap_frequency: terms.commission_cap_frequency,
-    ended_at: null,
-    ended_by_profile_id: null,
-    ended_by_role: null,
-    ended_reason: null,
-    updated_at: input.now,
-    fintech_updated_at: input.now
-  };
+  return updatedInviteResult.data as InviteRow;
 }
 
 export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: string): Promise<ShopTeamInviteDirectoryPayload> {
@@ -805,8 +785,8 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
     profileIds.length
       ? supabase.from("staff_locations").select(membershipSelectColumns).eq("relationship_status", "active").is("ended_at", null).in("profile_id", profileIds)
       : Promise.resolve({ data: [], error: null }),
-    barberIds.length
-      ? supabase.from("shop_team_invites").select(inviteSelectColumns).eq("shop_id", shop.id).in("barber_id", barberIds)
+    barberIds.length && shop.locationBridgeId
+      ? supabase.from("shop_team_invites").select(inviteSelectColumns).eq("shop_id", shop.locationBridgeId).in("barber_id", barberIds)
       : Promise.resolve({ data: [], error: null }),
     barberIds.length
       ? supabase.from("shop_team_invites").select(inviteSelectColumns).in("status", activeInviteStatuses).in("barber_id", barberIds)
@@ -945,7 +925,12 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
   };
 }
 
-export async function createOwnerTeamInvite(user: UserAccount, input: { barberId: string; shopId?: string; message?: string | null }): Promise<ShopTeamInviteView> {
+export async function createOwnerTeamInvite(user: UserAccount, input: {
+  barberId: string;
+  shopId?: string;
+  message?: string | null;
+  proposal?: ShopRelationshipProposal;
+}): Promise<ShopTeamInviteView> {
   const supabase = getSupabaseOrThrow();
   const shops = await readOwnerShopScopes(user, supabase);
   const requestedShop = input.shopId
@@ -953,6 +938,21 @@ export async function createOwnerTeamInvite(user: UserAccount, input: { barberId
     : shops[0];
   if (!requestedShop) {
     throw new ShopTeamInviteServiceError("This shop is outside the owner invite scope.", 403);
+  }
+  if (!requestedShop.locationBridgeId) {
+    throw new ShopTeamInviteServiceError("Link the shop location before sending a money agreement.", 409);
+  }
+
+  const ownerAuthorityResult = await supabase
+    .from("shops")
+    .select("owner_profile_id")
+    .eq("id", requestedShop.id)
+    .maybeSingle();
+  if (ownerAuthorityResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to verify shop owner authority.", 500);
+  }
+  if (ownerAuthorityResult.data?.owner_profile_id !== user.id) {
+    throw new ShopTeamInviteServiceError("Only the shop owner can propose commission or booth-rent terms.", 403);
   }
 
   const barber = await resolveBarber(supabase, input.barberId);
@@ -969,7 +969,7 @@ export async function createOwnerTeamInvite(user: UserAccount, input: { barberId
   const existing = await supabase
     .from("shop_team_invites")
     .select(inviteSelectColumns)
-    .eq("shop_id", requestedShop.id)
+    .eq("shop_id", requestedShop.locationBridgeId)
     .eq("barber_id", barber.id)
     .in("status", pendingInviteStatuses)
     .maybeSingle();
@@ -981,16 +981,18 @@ export async function createOwnerTeamInvite(user: UserAccount, input: { barberId
   const row = existing.data as InviteRow | null;
   let invite = row;
   if (!invite) {
+    const now = new Date().toISOString();
     const insertResult = await supabase
       .from("shop_team_invites")
       .insert({
-        shop_id: requestedShop.id,
+        shop_id: requestedShop.locationBridgeId,
         barber_id: barber.id,
         barber_profile_id: barber.profile_id,
         invited_by_profile_id: user.id,
         requested_by_profile_id: null,
         status: "invited",
-        ...getDefaultRelationshipTerms(barber),
+        approved_by_owner_at: now,
+        ...getProposedRelationshipTerms(barber, input.proposal),
         message: input.message?.trim() || null
       })
       .select(inviteSelectColumns)
@@ -1020,7 +1022,7 @@ export async function createOwnerTeamInvite(user: UserAccount, input: { barberId
   const profile = profileResult.data as ProfileRow | null;
   return mapInvite(
     invite,
-    new Map([[requestedShop.id, requestedShop]]),
+    new Map([[invite.shop_id, requestedShop]]),
     profile ? new Map([[barber.profile_id, profile]]) : new Map(),
     barber
   );
@@ -1097,15 +1099,18 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
   }
 
   const locationsByReference = new Map(((locationsResult.data ?? []) as LocationRow[]).map((location) => [location.reference_code ?? location.id, location]));
+  const inviteLocationIds = shops
+    .map((shop) => locationsByReference.get(shop.id)?.id)
+    .filter((value): value is string => Boolean(value));
   const [membershipsResult, invitesResult, teamResult] = await Promise.all([
     shopIds.length
       ? supabase.from("staff_locations").select(membershipSelectColumns).eq("profile_id", barber.profile_id)
       : Promise.resolve({ data: [], error: null }),
-    shopIds.length
-      ? supabase.from("shop_team_invites").select(inviteSelectColumns).eq("barber_id", barber.id).in("shop_id", shopIds)
+    inviteLocationIds.length
+      ? supabase.from("shop_team_invites").select(inviteSelectColumns).eq("barber_id", barber.id).in("shop_id", inviteLocationIds)
       : Promise.resolve({ data: [], error: null }),
-    shopIds.length
-      ? supabase.from("shop_team_invites").select("shop_id").in("shop_id", shopIds).in("status", activeInviteStatuses)
+    inviteLocationIds.length
+      ? supabase.from("shop_team_invites").select("shop_id").in("shop_id", inviteLocationIds).in("status", activeInviteStatuses)
       : Promise.resolve({ data: [], error: null })
   ]);
 
@@ -1132,7 +1137,7 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
   return {
     shops: shops.flatMap((shop): BarberJoinableShopView[] => {
       const location = locationsByReference.get(shop.id);
-      const invite = invitesByShopId.get(shop.id);
+      const invite = invitesByShopId.get(location?.id ?? shop.id);
       const inviteStatus = invite ? normalizeInviteStatus(invite) : null;
       const alreadyAssigned = assignedShopIds.has(shop.id) || Boolean(location && assignedShopIds.has(location.id));
       const activeMembershipShopId = activeMembership?.shop_id ?? activeMembership?.location_id ?? null;
@@ -1141,7 +1146,7 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
         approvalStatus: shop.app_approval_status,
         alreadyAssigned: alreadyAssigned || activeElsewhere,
         inviteStatus: alreadyAssigned ? "active" : inviteStatus,
-        hasTeam: teamShopIds.has(shop.id)
+        hasTeam: teamShopIds.has(location?.id ?? shop.id)
       });
       const labels = activeElsewhere
         ? [...readinessLabels, "Leave current shop first"]
@@ -1200,6 +1205,9 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
   }
 
   const shopScope = mapShopScope(shop, (locationResult.data as LocationRow | null) ?? null);
+  if (!shopScope.locationBridgeId) {
+    throw new ShopTeamInviteServiceError("This shop must link its location before receiving money agreements.", 409);
+  }
 
   await assertNoActiveMembership(
     supabase,
@@ -1210,7 +1218,7 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
   const existing = await supabase
     .from("shop_team_invites")
     .select(inviteSelectColumns)
-    .eq("shop_id", shop.id)
+    .eq("shop_id", shopScope.locationBridgeId)
     .eq("barber_id", barber.id)
     .in("status", pendingInviteStatuses)
     .maybeSingle();
@@ -1221,16 +1229,18 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
 
   let invite = existing.data as InviteRow | null;
   if (!invite) {
+    const now = new Date().toISOString();
     const insertResult = await supabase
       .from("shop_team_invites")
       .insert({
-        shop_id: shop.id,
+        shop_id: shopScope.locationBridgeId,
         barber_id: barber.id,
         barber_profile_id: barber.profile_id,
         invited_by_profile_id: null,
         requested_by_profile_id: user.id,
         status: "requested",
-        ...getDefaultRelationshipTerms(barber),
+        approved_by_barber_at: now,
+        ...getProposedRelationshipTerms(barber),
         message: input.message?.trim() || "Barber requested to join this shop."
       })
       .select(inviteSelectColumns)
@@ -1259,7 +1269,7 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
 
   return mapInvite(
     invite,
-    new Map([[shop.id, shopScope]]),
+    new Map([[invite.shop_id, shopScope]]),
     profileResult.data ? new Map([[barber.profile_id, profileResult.data as ProfileRow]]) : new Map(),
     barber
   );
@@ -1336,49 +1346,26 @@ export async function respondToBarberTeamInvite(user: UserAccount, input: { invi
   }
 
   const now = new Date().toISOString();
+  let updatedInvite: InviteRow;
   if (input.status === "accepted") {
-    await assertNoActiveMembership(
-      supabase,
-      barber.profile_id,
-      "You are currently connected to a shop. Leave this shop before accepting another team invitation."
-    );
-    await endIndependentActiveMembershipsBeforeShopJoin(supabase, barber.profile_id, now);
+    updatedInvite = await activatePendingRelationshipAgreement(supabase, invite.id, user.id, "barber");
+  } else {
+    const updateResult = await supabase
+      .from("shop_team_invites")
+      .update({
+        status: "declined",
+        responded_at: now,
+        declined_at: now,
+        updated_at: now
+      })
+      .eq("id", invite.id)
+      .select(inviteSelectColumns)
+      .single();
 
-    const membershipResult = await supabase
-      .from("staff_locations")
-      .insert(buildMembershipPayload({
-        barber,
-        invite,
-        shopId: invite.shop_id,
-        locationBridgeId: (await readShopScopesByIds(supabase, [invite.shop_id])).get(invite.shop_id)?.locationBridgeId ?? null,
-        now,
-        invitedByProfileId: invite.invited_by_profile_id,
-        requestedByProfileId: invite.requested_by_profile_id ?? null,
-        approvedByOwnerAt: now,
-        approvedByBarberAt: now
-      }));
-
-    if (membershipResult.error) {
-      throw new ShopTeamInviteServiceError("Unable to assign the barber to this shop.", 500);
+    if (updateResult.error || !updateResult.data) {
+      throw new ShopTeamInviteServiceError("Unable to update the shop invitation.", 500);
     }
-  }
-
-  const updateResult = await supabase
-    .from("shop_team_invites")
-    .update({
-      status: input.status === "accepted" ? "active" : "declined",
-      responded_at: now,
-      approved_by_barber_at: input.status === "accepted" ? now : null,
-      approved_by_owner_at: input.status === "accepted" ? now : null,
-      declined_at: input.status === "declined" ? now : null,
-      updated_at: now
-    })
-    .eq("id", invite.id)
-    .select(inviteSelectColumns)
-    .single();
-
-  if (updateResult.error || !updateResult.data) {
-    throw new ShopTeamInviteServiceError("Unable to update the shop invitation.", 500);
+    updatedInvite = updateResult.data as InviteRow;
   }
 
   const [shopsById, profileResult] = await Promise.all([
@@ -1392,7 +1379,7 @@ export async function respondToBarberTeamInvite(user: UserAccount, input: { invi
 
   return {
     invite: mapInvite(
-      updateResult.data as InviteRow,
+      updatedInvite,
       shopsById,
       profileResult.data ? new Map([[barber.profile_id, profileResult.data as ProfileRow]]) : new Map(),
       barber
@@ -1403,8 +1390,7 @@ export async function respondToBarberTeamInvite(user: UserAccount, input: { invi
 export async function respondToOwnerJoinRequest(user: UserAccount, input: { inviteId: string; status: "accepted" | "rejected" }): Promise<{ invite: ShopTeamInviteView }> {
   const supabase = getSupabaseOrThrow();
   const shops = await readOwnerShopScopes(user, supabase);
-  const shopIds = new Set(shops.map((shop) => shop.id));
-  const shopsById = new Map(shops.map((shop) => [shop.id, shop]));
+  const shopIds = new Set(shops.flatMap((shop) => [shop.id, shop.locationBridgeId]).filter((value): value is string => Boolean(value)));
 
   const inviteResult = await supabase
     .from("shop_team_invites")
@@ -1431,49 +1417,26 @@ export async function respondToOwnerJoinRequest(user: UserAccount, input: { invi
   }
 
   const now = new Date().toISOString();
+  let updatedInvite: InviteRow;
   if (input.status === "accepted") {
-    await assertNoActiveMembership(
-      supabase,
-      barber.profile_id,
-      "This barber is already connected to a shop. They must leave or be released before joining another team."
-    );
-    await endIndependentActiveMembershipsBeforeShopJoin(supabase, barber.profile_id, now);
+    updatedInvite = await activatePendingRelationshipAgreement(supabase, invite.id, user.id, "owner");
+  } else {
+    const updateResult = await supabase
+      .from("shop_team_invites")
+      .update({
+        status: "rejected",
+        responded_at: now,
+        rejected_at: now,
+        updated_at: now
+      })
+      .eq("id", invite.id)
+      .select(inviteSelectColumns)
+      .single();
 
-    const membershipResult = await supabase
-      .from("staff_locations")
-      .insert(buildMembershipPayload({
-        barber,
-        invite,
-        shopId: invite.shop_id,
-        locationBridgeId: shopsById.get(invite.shop_id)?.locationBridgeId ?? null,
-        now,
-        invitedByProfileId: invite.invited_by_profile_id,
-        requestedByProfileId: invite.requested_by_profile_id ?? null,
-        approvedByOwnerAt: now,
-        approvedByBarberAt: invite.approved_by_barber_at ?? now
-      }));
-
-    if (membershipResult.error) {
-      throw new ShopTeamInviteServiceError("Unable to activate the barber shop relationship.", 500);
+    if (updateResult.error || !updateResult.data) {
+      throw new ShopTeamInviteServiceError("Unable to update the shop join request.", 500);
     }
-  }
-
-  const updateResult = await supabase
-    .from("shop_team_invites")
-    .update({
-      status: input.status === "accepted" ? "active" : "rejected",
-      responded_at: now,
-      approved_by_owner_at: input.status === "accepted" ? now : null,
-      approved_by_barber_at: input.status === "accepted" ? invite.approved_by_barber_at ?? now : null,
-      rejected_at: input.status === "rejected" ? now : null,
-      updated_at: now
-    })
-    .eq("id", invite.id)
-    .select(inviteSelectColumns)
-    .single();
-
-  if (updateResult.error || !updateResult.data) {
-    throw new ShopTeamInviteServiceError("Unable to update the shop join request.", 500);
+    updatedInvite = updateResult.data as InviteRow;
   }
 
   const [hydratedShopsById, profileResult] = await Promise.all([
@@ -1487,7 +1450,7 @@ export async function respondToOwnerJoinRequest(user: UserAccount, input: { invi
 
   return {
     invite: mapInvite(
-      updateResult.data as InviteRow,
+      updatedInvite,
       hydratedShopsById,
       profileResult.data ? new Map([[barber.profile_id, profileResult.data as ProfileRow]]) : new Map(),
       barber
@@ -1497,7 +1460,6 @@ export async function respondToOwnerJoinRequest(user: UserAccount, input: { invi
 
 export async function endBarberShopRelationship(user: UserAccount, input: { relationshipId?: string; reason?: string | null; actor: "barber" | "owner" }): Promise<{ relationshipId: string; effectiveRoutingModel: "freelance" }> {
   const supabase = getSupabaseOrThrow();
-  const now = new Date().toISOString();
   let membership: StaffLocationRow | null = null;
 
   if (input.actor === "barber") {
@@ -1531,35 +1493,21 @@ export async function endBarberShopRelationship(user: UserAccount, input: { rela
     throw new ShopTeamInviteServiceError("No active shop relationship found.", 404);
   }
 
-  const updateResult = await supabase
-    .from("staff_locations")
-    .update({
-      relationship_status: "ended",
-      ended_at: now,
-      ended_by_profile_id: user.id,
-      ended_by_role: input.actor,
-      ended_reason: input.reason?.trim() || (input.actor === "barber" ? "Barber left the shop." : "Owner released the barber."),
-      updated_at: now
-    })
-    .eq("id", membership.id);
+  const endResult = await supabase.rpc("end_shop_barber_relationship_internal", {
+    p_staff_location_id: membership.id,
+    p_actor_profile_id: user.id,
+    p_actor_role: input.actor,
+    p_reason: input.reason?.trim() || null
+  });
 
-  if (updateResult.error) {
-    throw new ShopTeamInviteServiceError("Unable to end the shop relationship.", 500);
+  if (endResult.error) {
+    const status = endResult.error.code === "42501"
+      ? 403
+      : endResult.error.code === "23514"
+        ? 409
+        : 500;
+    throw new ShopTeamInviteServiceError(endResult.error.message || "Unable to end the shop relationship.", status);
   }
-
-  await supabase
-    .from("shop_team_invites")
-    .update({
-      status: "ended",
-      ended_at: now,
-      ended_by_profile_id: user.id,
-      ended_by_role: input.actor,
-      ended_reason: input.reason?.trim() || null,
-      updated_at: now
-    })
-    .eq("shop_id", membership.shop_id ?? membership.location_id)
-    .eq("barber_profile_id", membership.profile_id)
-    .in("status", activeInviteStatuses);
 
   return {
     relationshipId: membership.id,
@@ -1569,13 +1517,6 @@ export async function endBarberShopRelationship(user: UserAccount, input: { rela
 
 export async function updateOwnerTeamRelationship(user: UserAccount, input: {
   relationshipId: string;
-  routingModel?: RelationshipRoutingModel;
-  boothRentAmount?: number | null;
-  boothRentFrequency?: "daily" | "weekly" | "monthly" | null;
-  barberPercent?: number | null;
-  shopPercent?: number | null;
-  commissionCapAmount?: number | null;
-  commissionCapFrequency?: "weekly" | "monthly" | null;
   publicTeamVisible?: boolean;
   publicTeamOrder?: number;
   featuredOnShopProfile?: boolean;
@@ -1601,13 +1542,6 @@ export async function updateOwnerTeamRelationship(user: UserAccount, input: {
 
   const now = new Date().toISOString();
   const patch = {
-    ...(input.routingModel ? { routing_model: input.routingModel } : {}),
-    ...(input.boothRentAmount !== undefined ? { booth_rent_amount: input.boothRentAmount } : {}),
-    ...(input.boothRentFrequency !== undefined ? { booth_rent_frequency: input.boothRentFrequency } : {}),
-    ...(input.barberPercent !== undefined ? { barber_percent: input.barberPercent } : {}),
-    ...(input.shopPercent !== undefined ? { shop_percent: input.shopPercent } : {}),
-    ...(input.commissionCapAmount !== undefined ? { commission_cap_amount: input.commissionCapAmount } : {}),
-    ...(input.commissionCapFrequency !== undefined ? { commission_cap_frequency: input.commissionCapFrequency } : {}),
     ...(input.publicTeamVisible !== undefined ? { public_team_visible: input.publicTeamVisible } : {}),
     ...(input.publicTeamOrder !== undefined ? { public_team_order: input.publicTeamOrder } : {}),
     ...(input.featuredOnShopProfile !== undefined ? { featured_on_shop_profile: input.featuredOnShopProfile } : {}),
@@ -1631,7 +1565,7 @@ export async function updateOwnerTeamRelationship(user: UserAccount, input: {
       ...patch,
       updated_at: now
     })
-    .eq("shop_id", membership.shop_id ?? membership.location_id)
+    .eq("shop_id", membership.location_id)
     .eq("barber_profile_id", membership.profile_id)
     .in("status", activeInviteStatuses);
 

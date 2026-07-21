@@ -9,7 +9,8 @@ import {
   determinePayoutReadiness,
   evaluateLegalAgreementState,
   inferStripeProcessorStatuses,
-  normalizeCompensationAssignment
+  normalizeCompensationAssignment,
+  normalizeRoutingModel
 } from "@/lib/fintech/domain";
 
 describe("phase 13 fintech domain", () => {
@@ -134,6 +135,51 @@ describe("phase 13 fintech domain", () => {
     expect(result.barberPayoutAmount).toBe(57);
     expect(result.shopSplitAmount).toBe(38);
     expect(result.moneyRoutingStatus).toBe("ready_for_payout");
+  });
+
+  it("keeps tips out of platform fees and commission while paying them fully to the barber", () => {
+    const result = calculatePaymentRouting({
+      paymentType: "pos_sale",
+      paymentStatus: "captured",
+      grossAmount: 110,
+      serviceAmount: 100,
+      tipAmount: 10,
+      routingModel: "commission",
+      commissionRate: 0.6,
+      barberReady: true,
+      shopReady: true,
+      appointmentCompleted: true
+    });
+
+    expect(result.serviceAmount).toBe(100);
+    expect(result.tipAmount).toBe(10);
+    expect(result.platformFeeAmount).toBe(5);
+    expect(result.barberPayoutAmount).toBe(67);
+    expect(result.shopSplitAmount).toBe(38);
+  });
+
+  it("routes a tip payment entirely to the barber with no platform fee", () => {
+    const result = calculatePaymentRouting({
+      paymentType: "tip",
+      paymentStatus: "captured",
+      grossAmount: 10,
+      routingModel: "commission",
+      commissionRate: 0.6,
+      barberReady: true,
+      shopReady: false,
+      appointmentCompleted: true
+    });
+
+    expect(result.serviceAmount).toBe(0);
+    expect(result.tipAmount).toBe(10);
+    expect(result.platformFeeAmount).toBe(0);
+    expect(result.barberPayoutAmount).toBe(10);
+    expect(result.shopSplitAmount).toBe(0);
+    expect(result.payoutRecipientType).toBe("barber");
+  });
+
+  it("defaults an absent relationship to freelance", () => {
+    expect(normalizeRoutingModel(null)).toBe("freelance");
   });
 
   it("keeps money eligible after completion while payout execution waits on readiness", () => {

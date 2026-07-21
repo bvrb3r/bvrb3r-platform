@@ -90,7 +90,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body className="app-screen bg-black text-white antialiased">
         <AppProviders>{children}</AppProviders>
-        <SpeedInsights />
+        {process.env.VERCEL === "1" ? <SpeedInsights /> : null}
       </body>
     </html>
   );

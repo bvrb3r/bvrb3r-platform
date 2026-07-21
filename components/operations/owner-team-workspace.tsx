@@ -74,13 +74,6 @@ type TeamBarberView = {
 };
 
 type RelationshipUpdatePayload = {
-  routingModel?: "freelance" | "booth_rent" | "commission";
-  boothRentAmount?: number | null;
-  boothRentFrequency?: "daily" | "weekly" | "monthly" | null;
-  barberPercent?: number | null;
-  shopPercent?: number | null;
-  commissionCapAmount?: number | null;
-  commissionCapFrequency?: "weekly" | "monthly" | null;
   publicTeamVisible?: boolean;
   publicTeamOrder?: number;
   featuredOnShopProfile?: boolean;
@@ -423,6 +416,10 @@ export function OwnerTeamWorkspace() {
   const [addBarbersOpen, setAddBarbersOpen] = useState(false);
   const [inviteSearch, setInviteSearch] = useState("");
   const [pendingInviteBarber, setPendingInviteBarber] = useState<ShopTeamInviteDirectoryBarber | null>(null);
+  const [inviteRelationshipModel, setInviteRelationshipModel] = useState<"commission" | "booth_rent">("commission");
+  const [inviteBarberPercent, setInviteBarberPercent] = useState("70");
+  const [inviteBoothRentAmount, setInviteBoothRentAmount] = useState("250");
+  const [inviteBoothRentFrequency, setInviteBoothRentFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
   const [inviteFeedback, setInviteFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [relationshipFeedback, setRelationshipFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
@@ -600,12 +597,42 @@ export function OwnerTeamWorkspace() {
   function jumpOwnerCalendarToToday() {
     setSelectedDateKey(todayDateKey);
   }
+
+  function openInviteConfirmation(barber: ShopTeamInviteDirectoryBarber) {
+    setInviteRelationshipModel(barber.compensationModel === "booth_rent" ? "booth_rent" : "commission");
+    setInviteBarberPercent("70");
+    setInviteBoothRentAmount("250");
+    setInviteBoothRentFrequency("weekly");
+    setPendingInviteBarber(barber);
+  }
+
   async function handleCreateInvite(barber: ShopTeamInviteDirectoryBarber) {
     setInviteFeedback(null);
+    const barberPercent = Number(inviteBarberPercent);
+    const boothRentAmount = Number(inviteBoothRentAmount);
+    if (inviteRelationshipModel === "commission" && (!Number.isFinite(barberPercent) || barberPercent < 0 || barberPercent > 100)) {
+      setInviteFeedback({ tone: "error", message: "Barber commission percentage must be between 0 and 100." });
+      return;
+    }
+    if (inviteRelationshipModel === "booth_rent" && (!Number.isFinite(boothRentAmount) || boothRentAmount <= 0)) {
+      setInviteFeedback({ tone: "error", message: "Booth rent must be a positive amount." });
+      return;
+    }
     try {
       const response = await createInviteMutation.mutateAsync({
         barberId: barber.barberId,
-        shopId: inviteDirectoryQuery.data?.shop.id
+        shopId: inviteDirectoryQuery.data?.shop.id,
+        proposal: inviteRelationshipModel === "commission"
+          ? {
+              routingModel: "commission",
+              barberPercent: barberPercent / 100,
+              shopPercent: (100 - barberPercent) / 100
+            }
+          : {
+              routingModel: "booth_rent",
+              boothRentAmount,
+              boothRentFrequency: inviteBoothRentFrequency
+            }
       });
       const usernameLabel = barber.username ? `@${barber.username}` : response.invite.barberName;
       setInviteFeedback({
@@ -1051,34 +1078,12 @@ export function OwnerTeamWorkspace() {
                       <div className="mt-3 grid gap-3 rounded-[20px] border border-[#C4F24E]/14 bg-[#C4F24E]/6 p-4 md:grid-cols-[1fr_1fr]">
                         <div>
                           <p className="text-xs font-black uppercase tracking-[0.16em] text-[#C4F24E]">Operating model</p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {(["freelance", "booth_rent", "commission"] as const).map((model) => (
-                              <button
-                                key={`${barber.id}-${model}`}
-                                type="button"
-                                disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
-                                onClick={() => void handleRelationshipUpdate(
-                                  barber,
-                                  model === "commission"
-                                    ? { routingModel: model, barberPercent: 0.7, shopPercent: 0.3 }
-                                    : model === "booth_rent"
-                                      ? { routingModel: model, boothRentAmount: 250, boothRentFrequency: "weekly", barberPercent: null, shopPercent: null }
-                                      : { routingModel: model, boothRentAmount: null, boothRentFrequency: null, barberPercent: null, shopPercent: null },
-                                  `${barber.name}'s operating model was set to ${formatRoutingLabel(model)}.`
-                                )}
-                                className={cn(
-                                  "inline-flex min-h-10 items-center rounded-full border px-4 text-xs font-black transition",
-                                  barber.roleLabel.toLowerCase() === formatRoutingLabel(model).toLowerCase()
-                                    ? "border-[#C4F24E]/38 bg-[#C4F24E] text-black"
-                                    : "border-white/10 bg-black/20 text-white/68 hover:border-[#C4F24E]/28 hover:text-[#C4F24E]",
-                                  (!barber.relationshipId || updateRelationshipMutation.isPending) && "cursor-not-allowed opacity-55"
-                                )}
-                              >
-                                {formatRoutingLabel(model)}
-                              </button>
-                            ))}
+                          <div className="mt-3 inline-flex min-h-10 items-center rounded-full border border-[#C4F24E]/38 bg-[#C4F24E] px-4 text-xs font-black text-black">
+                            {barber.roleLabel}
                           </div>
-                          <p className="mt-3 text-xs leading-5 text-white/48">Commission defaults to 70/30. Booth rent terms can be refined in Money after the relationship is saved.</p>
+                          <p className="mt-3 text-xs leading-5 text-white/48">
+                            Accepted money terms are immutable. End this agreement and send a new bilateral proposal to change the model or split.
+                          </p>
                         </div>
                         <div>
                           <p className="text-xs font-black uppercase tracking-[0.16em] text-[#C4F24E]">Public shop profile</p>
@@ -1333,7 +1338,7 @@ export function OwnerTeamWorkspace() {
                     <button
                       type="button"
                       disabled={inviteDisabled}
-                      onClick={() => setPendingInviteBarber(barber)}
+                      onClick={() => openInviteConfirmation(barber)}
                       className={cn(
                         "inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C4F24E]/70",
                         inviteDisabled
@@ -1459,7 +1464,7 @@ export function OwnerTeamWorkspace() {
                   Invite {pendingInviteBarber.username ? `@${pendingInviteBarber.username}` : pendingInviteBarber.name} to your team?
                 </h2>
                 <p className="mt-3 text-sm leading-6 text-white/58">
-                  This sends a team invitation for the barber to approve.
+                  Choose the complete money agreement. The barber must accept these exact terms before the relationship activates.
                 </p>
               </div>
               <button
@@ -1470,6 +1475,71 @@ export function OwnerTeamWorkspace() {
               >
                 <X className="h-5 w-5" />
               </button>
+            </div>
+            <div className="mt-5 space-y-4 rounded-[20px] border border-white/10 bg-black/24 p-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-white/46">Relationship model</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {(["commission", "booth_rent"] as const).map((model) => (
+                    <button
+                      key={model}
+                      type="button"
+                      onClick={() => setInviteRelationshipModel(model)}
+                      className={cn(
+                        "min-h-11 rounded-[14px] border px-3 text-sm font-black transition",
+                        inviteRelationshipModel === model
+                          ? "border-[#C4F24E] bg-[#C4F24E] text-black"
+                          : "border-white/10 bg-white/[0.035] text-white/68 hover:border-[#C4F24E]/30"
+                      )}
+                    >
+                      {formatRoutingLabel(model)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {inviteRelationshipModel === "commission" ? (
+                <label className="block text-sm font-bold text-white/72">
+                  Barber share of post-fee service money (%)
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={inviteBarberPercent}
+                    onChange={(event) => setInviteBarberPercent(event.target.value)}
+                    className="mt-2 min-h-12 w-full rounded-[14px] border border-white/10 bg-black/30 px-4 text-white outline-none focus:border-[#C4F24E]/55"
+                  />
+                  <span className="mt-2 block text-xs font-medium text-white/46">
+                    Shop share: {Math.max(0, 100 - (Number(inviteBarberPercent) || 0)).toFixed(2)}%. Tips remain 100% barber.
+                  </span>
+                </label>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-[1fr_0.8fr]">
+                  <label className="block text-sm font-bold text-white/72">
+                    Fixed rent amount
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={inviteBoothRentAmount}
+                      onChange={(event) => setInviteBoothRentAmount(event.target.value)}
+                      className="mt-2 min-h-12 w-full rounded-[14px] border border-white/10 bg-black/30 px-4 text-white outline-none focus:border-[#C4F24E]/55"
+                    />
+                  </label>
+                  <label className="block text-sm font-bold text-white/72">
+                    Billing period
+                    <select
+                      value={inviteBoothRentFrequency}
+                      onChange={(event) => setInviteBoothRentFrequency(event.target.value as "daily" | "weekly" | "monthly")}
+                      className="mt-2 min-h-12 w-full rounded-[14px] border border-white/10 bg-black/30 px-4 text-white outline-none focus:border-[#C4F24E]/55"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </label>
+                </div>
+              )}
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <button

@@ -880,7 +880,20 @@ export function useCreateOwnerTeamInviteMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: { barberId: string; shopId?: string; message?: string }) =>
+    mutationFn: (payload: {
+      barberId: string;
+      shopId?: string;
+      message?: string;
+      proposal?: {
+        routingModel: "commission";
+        barberPercent: number;
+        shopPercent: number;
+      } | {
+        routingModel: "booth_rent";
+        boothRentAmount: number;
+        boothRentFrequency: "daily" | "weekly" | "monthly";
+      };
+    }) =>
       requestJson<CreateShopTeamInviteResponse>("/api/owner/team/invites", {
         method: "POST",
         body: JSON.stringify(payload)
@@ -920,13 +933,6 @@ export function useUpdateOwnerTeamRelationshipMutation() {
   return useMutation({
     mutationFn: (payload: {
       relationshipId: string;
-      routingModel?: "freelance" | "booth_rent" | "commission";
-      boothRentAmount?: number | null;
-      boothRentFrequency?: "daily" | "weekly" | "monthly" | null;
-      barberPercent?: number | null;
-      shopPercent?: number | null;
-      commissionCapAmount?: number | null;
-      commissionCapFrequency?: "weekly" | "monthly" | null;
       publicTeamVisible?: boolean;
       publicTeamOrder?: number;
       featuredOnShopProfile?: boolean;
@@ -1135,8 +1141,6 @@ export function useBarberLifecycleMutation() {
     }
   });
 }
-
-
 
 
 

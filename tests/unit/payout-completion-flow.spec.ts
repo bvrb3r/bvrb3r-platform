@@ -329,7 +329,7 @@ describe("payout completion flow", () => {
     });
   });
 
-  it("creates eligible routing for a paid standalone POS sale without an appointment", async () => {
+  it("keeps a paid standalone POS payout blocked without connected-account readiness", async () => {
     const tables = createTables({
       pos_sales: [{
         id: POS_SALE_ID,
@@ -374,19 +374,24 @@ describe("payout completion flow", () => {
 
     const routing = await syncPaymentRoutingRecord(supabase as never, POS_PAYMENT_ID);
 
+    if (!routing) {
+      throw new Error("Expected a standalone POS routing record.");
+    }
+
     expect(routing).toMatchObject({
       payment_id: POS_PAYMENT_ID,
       appointment_id: null,
       pos_sale_id: POS_SALE_ID,
       routing_model: "freelance",
-      payout_readiness_status: "ready",
-      money_routing_status: "pending",
+      payout_readiness_status: "blocked",
+      money_routing_status: "ready_for_payout",
       platform_fee_amount: 1.75,
       barber_payout_amount: 33.25,
       shop_split_amount: 0,
       eligible_at: expect.any(String),
       released_at: null
     });
+    expect(routing.blocked_reason).toMatch(/verification.*approved/i);
     expect(Object.keys(tables.payment_routing_records[0])).not.toEqual(expect.arrayContaining([
       "relationship_type",
       "gross_amount_cents",

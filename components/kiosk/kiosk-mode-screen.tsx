@@ -130,6 +130,10 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
   const [exitPromptOpen, setExitPromptOpen] = useState(false);
   const [exitPin, setExitPin] = useState("");
   const [exitError, setExitError] = useState<string | null>(null);
+  const [idleWarning, setIdleWarning] = useState(false);
+  const idleWarningTimerRef = useRef<number | null>(null);
+  const idleResetTimerRef = useRef<number | null>(null);
+  const resetToWelcomeRef = useRef<() => void>(() => undefined);
   const bookingFormRef = useRef<BookingFormState>({
     fullName: "",
     phone: "",
@@ -155,7 +159,8 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
 
   const payload = kioskQuery.data;
   const formError = bookingMutation.error || waitlistMutation.error;
-  const autoResetSeconds = payload?.defaults.autoResetSeconds ?? 10;
+  const autoResetSeconds = Math.min(8, Math.max(payload?.defaults.autoResetSeconds ?? 7, 5));
+  const inactivityResetSeconds = Math.min(90, Math.max(payload?.defaults.inactivityResetSeconds ?? 75, 60));
   const isSubmitting = bookingMutation.isPending || waitlistMutation.isPending;
   const hasServiceOptions = Boolean(payload?.services.length);
   const eligibleWalkInBarbers = useMemo(
@@ -315,6 +320,41 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     resetFormsToDefaults();
     router.replace((scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`) as Route);
   }
+
+  resetToWelcomeRef.current = resetToWelcome;
+
+  useEffect(() => {
+    const clearIdleTimers = () => {
+      if (idleWarningTimerRef.current !== null) {
+        window.clearTimeout(idleWarningTimerRef.current);
+      }
+      if (idleResetTimerRef.current !== null) {
+        window.clearTimeout(idleResetTimerRef.current);
+      }
+    };
+    const armIdleTimers = () => {
+      clearIdleTimers();
+      setIdleWarning(false);
+      if (success || isSubmitting || exitPromptOpen || step === "welcome") {
+        return;
+      }
+      idleWarningTimerRef.current = window.setTimeout(() => {
+        setIdleWarning(true);
+        idleResetTimerRef.current = window.setTimeout(() => {
+          setIdleWarning(false);
+          resetToWelcomeRef.current();
+        }, 15_000);
+      }, Math.max(inactivityResetSeconds - 15, 45) * 1_000);
+    };
+
+    const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart"];
+    events.forEach((event) => window.addEventListener(event, armIdleTimers, { passive: true }));
+    armIdleTimers();
+    return () => {
+      clearIdleTimers();
+      events.forEach((event) => window.removeEventListener(event, armIdleTimers));
+    };
+  }, [exitPromptOpen, inactivityResetSeconds, isSubmitting, step, success]);
 
   function openStep(nextStep: Exclude<KioskStep, "welcome">) {
     setInteractionError(null);
@@ -514,6 +554,17 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
               <LockKeyhole className="h-4 w-4" />
             </button>
           </div>
+
+          {idleWarning ? (
+            <div className="fixed inset-0 z-[9998] flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-label="Kiosk inactivity warning">
+              <div className="w-full max-w-sm rounded-[24px] border border-[#C4F24E]/24 bg-[linear-gradient(180deg,rgba(18,18,18,0.99),rgba(4,4,4,0.99))] p-6 text-center text-white shadow-[0_24px_70px_rgba(0,0,0,0.58)]">
+                <TimerReset className="mx-auto h-7 w-7 text-[#C4F24E]" />
+                <h2 className="mt-4 text-2xl font-semibold">Still there?</h2>
+                <p className="mt-3 text-sm leading-6 text-white/62">For privacy, this kiosk will clear the current client details and return home in 15 seconds.</p>
+                <Button className="mt-5 w-full" onClick={() => setIdleWarning(false)}>Yes, keep going</Button>
+              </div>
+            </div>
+          ) : null}
 
           {exitPromptOpen ? (
             <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/76 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-label="Exit kiosk mode">
