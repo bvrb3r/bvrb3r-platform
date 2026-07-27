@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertKioskLaunchReady } from "@/lib/kiosk/launch-gate";
+import { createKioskFixtureBooking, isKioskFixtureTarget } from "@/lib/kiosk/local-fixture";
 import { clientKeyFromRequest, consumeRateLimit } from "@/lib/kiosk/rate-limit";
 import { createKioskBooking, KioskServiceError } from "@/lib/kiosk/service";
 import { KioskSessionError, assertKioskDeviceSession, readKioskSessionToken } from "@/lib/kiosk/session-service";
@@ -53,18 +54,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ sho
     }
 
     const { shopId } = await params;
-    await assertKioskLaunchReady("shop", shopId);
-    await assertKioskDeviceSession({ scope: "shop", targetReference: shopId, token: readKioskSessionToken(request) });
+    // The seeded local fixture skips the owner-configured launch gate and the
+    // device session because it has no Supabase row behind it. Validation still
+    // runs, so local QA exercises the same request contract.
+    const isFixture = isKioskFixtureTarget("shop", shopId);
+    if (!isFixture) {
+      await assertKioskLaunchReady("shop", shopId);
+      await assertKioskDeviceSession({ scope: "shop", targetReference: shopId, token: readKioskSessionToken(request) });
+    }
+
     const parsed = kioskBookingSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid kiosk booking payload." }, { status: 400 });
     }
 
-    const result = await createKioskBooking({
-      shopId,
-      ...parsed.data,
-      email: parsed.data.email || undefined
-    });
+    const input = { ...parsed.data, email: parsed.data.email || undefined };
+    const result = isFixture
+      ? createKioskFixtureBooking("shop", shopId, input)
+      : await createKioskBooking({ shopId, ...input });
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

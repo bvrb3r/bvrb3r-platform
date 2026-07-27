@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { searchKioskClientProfiles, KioskClientCaptureError } from "@/lib/kiosk/client-capture";
+import { isKioskFixtureEnabled, searchKioskFixtureClients } from "@/lib/kiosk/local-fixture";
 import { clientKeyFromRequest, consumeRateLimit } from "@/lib/kiosk/rate-limit";
 import { KioskSessionError, assertAnyActiveKioskDeviceSession, readKioskSessionToken } from "@/lib/kiosk/session-service";
 
@@ -10,9 +11,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Too many kiosk searches. Try again shortly." }, { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } });
     }
 
+    const query = new URL(request.url).searchParams.get("q") ?? "";
+
+    // The seeded local fixture has no device session and no Supabase profiles,
+    // so returning-client lookup is served from memory when it is enabled.
+    if (isKioskFixtureEnabled()) {
+      return NextResponse.json({ results: searchKioskFixtureClients(query) });
+    }
+
     await assertAnyActiveKioskDeviceSession(readKioskSessionToken(request));
 
-    const query = new URL(request.url).searchParams.get("q") ?? "";
     const results = await searchKioskClientProfiles(query);
     return NextResponse.json({ results });
   } catch (error) {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertKioskLaunchReady } from "@/lib/kiosk/launch-gate";
+import { getKioskFixturePayload, isKioskFixtureTarget } from "@/lib/kiosk/local-fixture";
 import { getKioskPayload, KioskServiceError } from "@/lib/kiosk/service";
 
 function toErrorResponse(error: unknown, fallback: string) {
@@ -13,6 +14,10 @@ function toErrorResponse(error: unknown, fallback: string) {
 export async function GET(_: Request, { params }: { params: Promise<{ shopId: string }> }) {
   try {
     const { shopId } = await params;
+    if (isKioskFixtureTarget("shop", shopId)) {
+      return NextResponse.json(getKioskFixturePayload("shop", shopId));
+    }
+
     await assertKioskLaunchReady("shop", shopId);
     const payload = await getKioskPayload(shopId);
     return NextResponse.json(payload);

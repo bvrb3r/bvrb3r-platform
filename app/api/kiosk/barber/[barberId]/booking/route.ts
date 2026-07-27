@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertKioskLaunchReady } from "@/lib/kiosk/launch-gate";
+import { createKioskFixtureBooking, isKioskFixtureTarget } from "@/lib/kiosk/local-fixture";
 import { clientKeyFromRequest, consumeRateLimit } from "@/lib/kiosk/rate-limit";
 import { createBarberKioskBooking, KioskServiceError } from "@/lib/kiosk/service";
 import { KioskSessionError, assertKioskDeviceSession, readKioskSessionToken } from "@/lib/kiosk/session-service";
@@ -52,18 +53,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ bar
     }
 
     const { barberId } = await params;
-    await assertKioskLaunchReady("barber", barberId);
-    await assertKioskDeviceSession({ scope: "barber", targetReference: barberId, token: readKioskSessionToken(request) });
+    // See the shop booking route: the seeded fixture has no Supabase row, so it
+    // bypasses the launch gate and device session but keeps payload validation.
+    const isFixture = isKioskFixtureTarget("barber", barberId);
+    if (!isFixture) {
+      await assertKioskLaunchReady("barber", barberId);
+      await assertKioskDeviceSession({ scope: "barber", targetReference: barberId, token: readKioskSessionToken(request) });
+    }
+
     const parsed = barberKioskBookingSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid barber kiosk booking payload." }, { status: 400 });
     }
 
-    const result = await createBarberKioskBooking({
-      barberId,
-      ...parsed.data,
-      email: parsed.data.email || undefined
-    });
+    const input = { ...parsed.data, email: parsed.data.email || undefined };
+    const result = isFixture
+      ? createKioskFixtureBooking("barber", barberId, input)
+      : await createBarberKioskBooking({ barberId, ...input });
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

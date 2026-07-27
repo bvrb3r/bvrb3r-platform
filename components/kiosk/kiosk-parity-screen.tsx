@@ -5,16 +5,15 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
-  CalendarDays,
   Check,
   ChevronRight,
   CreditCard,
   LockKeyhole,
   Scissors,
   ShieldCheck,
-  UserRound,
   WalletCards
 } from "lucide-react";
+import { KioskExitDialog } from "@/components/kiosk/kiosk-exit-dialog";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,10 +23,18 @@ import {
   useKioskPayloadQuery,
   useVerifyKioskPinMutation
 } from "@/lib/kiosk/client";
+import {
+  DEFAULT_KIOSK_LOCALE,
+  KIOSK_COPY,
+  KIOSK_LOCALES,
+  KIOSK_LOCALE_NAME,
+  KIOSK_LOCALE_SWITCH_LABEL,
+  type KioskCopy,
+  type KioskLocale
+} from "@/lib/kiosk/locale";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { KioskBookingResult } from "@/types/kiosk";
 
-type Locale = "en" | "es" | "ht";
 type Flow = "next" | "pick" | "schedule";
 type Step = "welcome" | "barber" | "details" | "service" | "schedule" | "payment" | "confirmation" | "attract";
 type PaymentIntention = "card_after_service" | "cash_after_service";
@@ -43,99 +50,6 @@ type FormState = {
   scheduledAt: string;
   policyAccepted: boolean;
 };
-
-const COPY = {
-  en: {
-    live: "Live",
-    next: "Take the next chair",
-    pick: "Pick a Barber",
-    future: "Pick a future time",
-    choose: "Choose your Barber",
-    details: "Tell us where to send your updates",
-    service: "Pick your service",
-    schedule: "Choose your time",
-    payment: "How will you pay after the service?",
-    card: "Card after the cut",
-    cash: "Cash after the cut",
-    confirm: "Reserve my spot",
-    consent: "I accept the kiosk booking policy and current Terms and Privacy Policy.",
-    reserved: "Booking confirmed",
-    success: "Appointment booked",
-    tap: "Tap anywhere to begin",
-    privacy: "Resets between clients — your information never stays on screen.",
-    back: "Back",
-    loading: "Loading kiosk…",
-    offline: "You’re offline",
-    offlineMessage: "Reconnect to continue, or retry once your connection is back.",
-    retry: "Retry",
-    empty: "No kiosk options available",
-    emptyMessage: "This kiosk is temporarily empty. Please check with staff or try again soon.",
-    denied: "Access denied",
-    deniedMessage: "This kiosk isn’t currently authorized for booking.",
-    recovery: "We’re resetting the kiosk",
-    recoveryMessage: "Your last booking is finished. You can start again in a moment."
-  },
-  es: {
-    live: "En vivo",
-    next: "Tomar la próxima silla",
-    pick: "Elegir un barbero",
-    future: "Elegir una hora futura",
-    choose: "Elige tu barbero",
-    details: "Dinos dónde enviar tus actualizaciones",
-    service: "Elige tu servicio",
-    schedule: "Elige tu hora",
-    payment: "¿Cómo pagarás después del servicio?",
-    card: "Tarjeta después del corte",
-    cash: "Efectivo después del corte",
-    confirm: "Reservar mi lugar",
-    consent: "Acepto la política de reserva, los Términos y la Política de Privacidad.",
-    reserved: "Reserva confirmada",
-    success: "Cita reservada",
-    tap: "Toca para comenzar",
-    privacy: "Se reinicia entre clientes — tu información no queda en pantalla.",
-    back: "Atrás",
-    loading: "Cargando kiosco…",
-    offline: "Estás sin conexión",
-    offlineMessage: "Vuelve a conectar para continuar o intenta de nuevo cuando tu conexión vuelva.",
-    retry: "Reintentar",
-    empty: "No hay opciones de kiosco disponibles",
-    emptyMessage: "Este kiosco está vacío por el momento. Consulta con el personal o inténtalo más tarde.",
-    denied: "Acceso denegado",
-    deniedMessage: "Este kiosco no está autorizado para reservar en este momento.",
-    recovery: "Estamos reiniciando el kiosco",
-    recoveryMessage: "Tu última reserva ya terminó. Puedes empezar de nuevo en un momento."
-  },
-  ht: {
-    live: "An dirèk",
-    next: "Pran pwochen chèz la",
-    pick: "Chwazi yon babè",
-    future: "Chwazi yon lè pita",
-    choose: "Chwazi babè ou",
-    details: "Di nou kote pou nou voye mizajou yo",
-    service: "Chwazi sèvis ou",
-    schedule: "Chwazi lè ou",
-    payment: "Kijan w ap peye apre sèvis la?",
-    card: "Kat apre koupe a",
-    cash: "Lajan kach apre koupe a",
-    confirm: "Rezève plas mwen",
-    consent: "Mwen aksepte règleman rezèvasyon, Kondisyon yo ak Règleman Konfidansyalite a.",
-    reserved: "Rezèvasyon konfime",
-    success: "Randevou rezève",
-    tap: "Tape nenpòt kote pou kòmanse",
-    privacy: "Li efase ant kliyan — enfòmasyon ou pa rete sou ekran an.",
-    back: "Retounen",
-    loading: "Kiosk la chaje…",
-    offline: "Ou pa konekte",
-    offlineMessage: "Rekonekte pou kontinye, oswa eseye ankò lè koneksyon ou retounen.",
-    retry: "Eseye ankò",
-    empty: "Pa gen opsyon kiosk ki disponib",
-    emptyMessage: "Kiosk sa a vid pou kounye a. Tcheke ak ekip la oswa eseye ankò pita.",
-    denied: "Aksè refize",
-    deniedMessage: "Kiosk sa a pa otorize pou rezève kounye a.",
-    recovery: "Nou retabli kiosk la",
-    recoveryMessage: "Dènye rezèvasyon ou fini. Ou ka kòmanse ankò nan yon ti moman."
-  }
-} as const;
 
 const EMPTY_FORM: FormState = {
   fullName: "",
@@ -211,36 +125,114 @@ function Choice({ title, body, icon, onClick, active = false, disabled = false }
   );
 }
 
-function KioskStateCard({ title, description, actionLabel, onAction, secondaryActionLabel, onSecondaryAction }: { title: string; description: string; actionLabel?: string; onAction?: () => void; secondaryActionLabel?: string; onSecondaryAction?: () => void }) {
+/**
+ * The language picker is deliberately its own component: a client who cannot
+ * read English has to be able to switch from the very first screen they see,
+ * which includes the fallback screens where no shop payload exists yet.
+ */
+function LocaleSwitch({ copy, locale, onSelect }: { copy: KioskCopy; locale: KioskLocale; onSelect: (next: KioskLocale) => void }) {
   return (
-    <div className="mx-auto max-w-xl rounded-[30px] border border-white/10 bg-white/[0.03] p-8 text-center shadow-[0_16px_60px_rgba(0,0,0,0.25)]" role="status" aria-live="polite">
-      <h2 className="font-serif text-3xl text-[#f5f1e8]">{title}</h2>
-      <p className="mt-4 text-sm leading-7 text-white/60">{description}</p>
-      <div className="mt-7 flex flex-wrap justify-center gap-3">
-        {actionLabel && onAction ? (
-          <button type="button" onClick={onAction} className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#c4f24e] px-6 font-mono text-[11px] font-black uppercase tracking-[0.14em] text-[#050505] motion-reduce:transition-none">
-            {actionLabel}
-          </button>
-        ) : null}
-        {secondaryActionLabel && onSecondaryAction ? (
-          <button type="button" onClick={onSecondaryAction} className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/15 px-6 font-mono text-[11px] font-black uppercase tracking-[0.14em] text-[#f5f1e8] motion-reduce:transition-none">
-            {secondaryActionLabel}
-          </button>
-        ) : null}
-      </div>
+    <div className="flex overflow-hidden rounded-full border border-white/10" role="group" aria-label={copy.languageGroup}>
+      {KIOSK_LOCALES.map((item) => (
+        <button
+          key={item}
+          type="button"
+          lang={item}
+          aria-label={KIOSK_LOCALE_NAME[item]}
+          aria-pressed={locale === item}
+          onClick={() => onSelect(item)}
+          className={`min-h-12 px-4 py-3 font-mono text-[9px] uppercase tracking-[0.16em] transition motion-reduce:transition-none ${locale === item ? "bg-[#c4f24e]/10 text-[#d8f98a]" : "text-white/40 hover:text-white/70"}`}
+        >
+          {KIOSK_LOCALE_SWITCH_LABEL[item]}
+        </button>
+      ))}
     </div>
   );
 }
 
-export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; scope?: "shop" | "barber" }) {
+/**
+ * Shared chrome for every screen that renders before (or instead of) the
+ * booking flow: loading, recovery, offline, denied, and empty. Each one keeps
+ * the language picker and the staff exit reachable so the kiosk is never a
+ * dead end in any language.
+ */
+function KioskStateShell({
+  copy,
+  locale,
+  onSelectLocale,
+  title,
+  description,
+  actionLabel,
+  onAction,
+  onExit,
+  children
+}: {
+  copy: KioskCopy;
+  locale: KioskLocale;
+  onSelectLocale: (next: KioskLocale) => void;
+  title: string;
+  description: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  onExit: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <main className="flex min-h-[100svh] flex-col bg-[#050606] text-[#f5f1e8]">
+      <header className="flex flex-wrap items-center justify-between gap-3 px-5 py-6 sm:px-8">
+        <strong className="text-[13px] tracking-[0.32em]">BVRB3R</strong>
+        <div className="flex items-center gap-3">
+          <LocaleSwitch copy={copy} locale={locale} onSelect={onSelectLocale} />
+          <button
+            type="button"
+            onClick={onExit}
+            className="inline-flex min-h-12 items-center gap-2 rounded-full border border-white/10 px-4 py-3 font-mono text-[9px] uppercase tracking-[0.18em] text-white/55 transition hover:border-white/25 motion-reduce:transition-none"
+          >
+            <LockKeyhole className="h-3.5 w-3.5 text-[#c9a87c]" />
+            {copy.exit}
+          </button>
+        </div>
+      </header>
+      <div className="grid flex-1 place-items-center p-6">
+        <div className="mx-auto w-full max-w-xl rounded-[30px] border border-white/10 bg-white/[0.03] p-8 text-center shadow-[0_16px_60px_rgba(0,0,0,0.25)]" role="status" aria-live="polite">
+          <h2 className="font-serif text-3xl">{title}</h2>
+          <p className="mt-4 text-sm leading-7 text-white/60">{description}</p>
+          {actionLabel && onAction ? (
+            <div className="mt-7 flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                onClick={onAction}
+                className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#c4f24e] px-6 font-mono text-[11px] font-black uppercase tracking-[0.14em] text-[#050505] transition hover:brightness-105 motion-reduce:transition-none"
+              >
+                {actionLabel}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {children}
+    </main>
+  );
+}
+
+export function KioskParityScreen({
+  shopId,
+  scope = "shop",
+  initialLocale = DEFAULT_KIOSK_LOCALE
+}: {
+  shopId: string;
+  scope?: "shop" | "barber";
+  initialLocale?: KioskLocale;
+}) {
   const router = useRouter();
   const kioskQuery = useKioskPayloadQuery(shopId, scope);
   const bookingMutation = useKioskBookingMutation(shopId, scope);
   const verifyPinMutation = useVerifyKioskPinMutation();
   const kioskDevice = useKioskDeviceState();
-  const [locale, setLocale] = useState<Locale>("en");
+  const [locale, setLocale] = useState<KioskLocale>(initialLocale);
   const [largeText, setLargeText] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
     if (typeof window === "undefined") return false;
     if (typeof window.matchMedia !== "function") return false;
@@ -258,7 +250,7 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
   const idleTimer = useRef<number | null>(null);
   const confirmationTimer = useRef<number | null>(null);
   const payload = kioskQuery.data;
-  const t = COPY[locale];
+  const t = KIOSK_COPY[locale];
   const clientSearch = useKioskClientSearchQuery(form.publicUsername);
   const searchResults = clientSearch.data?.results ?? [];
 
@@ -279,16 +271,37 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
   const inactivityResetSeconds = Math.min(90, Math.max(payload?.defaults.inactivityResetSeconds ?? 75, 60));
   const confirmationResetSeconds = Math.min(8, Math.max(payload?.defaults.autoResetSeconds ?? 7, 5));
 
+  const openExit = useCallback(() => {
+    setPin("");
+    setPinError(null);
+    setExitOpen(true);
+  }, []);
+
+  const closeExit = useCallback(() => {
+    setExitOpen(false);
+    setPin("");
+    setPinError(null);
+  }, []);
+
+  /**
+   * Retry surfaces a real recovery screen instead of silently re-firing the
+   * query, so a client tapping the button always gets visible feedback.
+   */
+  const retry = useCallback(() => {
+    setIsRecovering(true);
+    void Promise.resolve(kioskQuery.refetch?.()).finally(() => setIsRecovering(false));
+  }, [kioskQuery]);
+
   const wipe = useCallback((nextStep: Step = "welcome") => {
     setForm({ ...EMPTY_FORM, serviceId: payload?.services[0]?.id ?? "" });
     setPaymentIntention("card_after_service");
     setResult(null);
     setError(null);
-    setLocale("en");
+    setLocale(initialLocale);
     setLargeText(false);
     setFlow("next");
     setStep(nextStep);
-  }, [payload?.services]);
+  }, [initialLocale, payload?.services]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -378,26 +391,45 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
     }
   }
 
+  const exitDialog = exitOpen ? (
+    <KioskExitDialog
+      copy={t}
+      pin={pin}
+      onPinChange={setPin}
+      pinError={pinError}
+      isPending={verifyPinMutation.isPending}
+      onCancel={closeExit}
+      onSubmit={() => void exitKiosk()}
+    />
+  ) : null;
+
+  const shellProps = {
+    copy: t,
+    locale,
+    onSelectLocale: setLocale,
+    onExit: openExit
+  };
+
   if (kioskQuery.isLoading && !payload) {
-    return <main className="grid min-h-[100svh] place-items-center bg-[#050606] p-6 text-[#f5f1e8]"><KioskStateCard title={t.loading} description={t.recoveryMessage} secondaryActionLabel="Exit kiosk" onSecondaryAction={() => { setPin(""); setPinError(null); setExitOpen(true); }} /></main>;
+    return <KioskStateShell {...shellProps} title={t.loading} description={t.loadingMessage}>{exitDialog}</KioskStateShell>;
+  }
+
+  if (isRecovering) {
+    return <KioskStateShell {...shellProps} title={t.recovery} description={t.recoveryMessage}>{exitDialog}</KioskStateShell>;
   }
 
   if (isOffline) {
-    return <main className="grid min-h-[100svh] place-items-center bg-[#050606] p-6 text-[#f5f1e8]"><KioskStateCard title={t.offline} description={t.offlineMessage} actionLabel={t.retry} onAction={() => void kioskQuery.refetch()} secondaryActionLabel="Exit kiosk" onSecondaryAction={() => { setPin(""); setPinError(null); setExitOpen(true); }} />{exitOpen ? <div className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-6" role="dialog" aria-modal="true" aria-labelledby="kiosk-exit-title" aria-describedby="kiosk-exit-description"><div className="w-full max-w-md rounded-[26px] border border-white/10 bg-[#0b0c0d] p-6"><h2 id="kiosk-exit-title" className="font-serif text-3xl">Staff exit</h2><p id="kiosk-exit-description" className="mt-2 text-sm text-white/45">Enter the kiosk PIN to leave public mode.</p><div className="mt-5"><Input aria-label="Kiosk PIN" value={pin} onChange={(event) => setPin(event.target.value)} placeholder="PIN" inputMode="numeric" /></div>{pinError ? <div className="mt-4"><FeedbackBanner tone="error" message={pinError} /></div> : null}<div className="mt-6 flex justify-end gap-3"><PillButton secondary onClick={() => setExitOpen(false)}>Cancel</PillButton><PillButton disabled={!pin || verifyPinMutation.isPending} onClick={() => void exitKiosk()}>{verifyPinMutation.isPending ? "Checking…" : "Exit kiosk"}</PillButton></div></div></div> : null}</main>;
+    return <KioskStateShell {...shellProps} title={t.offline} description={t.offlineMessage} actionLabel={t.retry} onAction={retry}>{exitDialog}</KioskStateShell>;
   }
 
   if (kioskQuery.error && !payload) {
     const denialDescription = getReadableActionError(kioskQuery.error);
     const description = denialDescription && !/access denied/i.test(denialDescription) ? denialDescription : t.deniedMessage;
-    return <main className="grid min-h-[100svh] place-items-center bg-[#050606] p-6 text-[#f5f1e8]"><KioskStateCard title={t.denied} description={description} actionLabel={t.retry} onAction={() => void kioskQuery.refetch()} secondaryActionLabel="Exit kiosk" onSecondaryAction={() => { setPin(""); setPinError(null); setExitOpen(true); }} />{exitOpen ? <div className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-6" role="dialog" aria-modal="true" aria-labelledby="kiosk-exit-title" aria-describedby="kiosk-exit-description"><div className="w-full max-w-md rounded-[26px] border border-white/10 bg-[#0b0c0d] p-6"><h2 id="kiosk-exit-title" className="font-serif text-3xl">Staff exit</h2><p id="kiosk-exit-description" className="mt-2 text-sm text-white/45">Enter the kiosk PIN to leave public mode.</p><div className="mt-5"><Input aria-label="Kiosk PIN" value={pin} onChange={(event) => setPin(event.target.value)} placeholder="PIN" inputMode="numeric" /></div>{pinError ? <div className="mt-4"><FeedbackBanner tone="error" message={pinError} /></div> : null}<div className="mt-6 flex justify-end gap-3"><PillButton secondary onClick={() => setExitOpen(false)}>Cancel</PillButton><PillButton disabled={!pin || verifyPinMutation.isPending} onClick={() => void exitKiosk()}>{verifyPinMutation.isPending ? "Checking…" : "Exit kiosk"}</PillButton></div></div></div> : null}</main>;
+    return <KioskStateShell {...shellProps} title={t.denied} description={description} actionLabel={t.retry} onAction={retry}>{exitDialog}</KioskStateShell>;
   }
 
-  if (!payload) {
-    return <main className="grid min-h-[100svh] place-items-center bg-[#050606] p-6 text-[#f5f1e8]"><KioskStateCard title={t.empty} description={t.emptyMessage} actionLabel={t.retry} onAction={() => void kioskQuery.refetch()} secondaryActionLabel="Exit kiosk" onSecondaryAction={() => { setPin(""); setPinError(null); setExitOpen(true); }} />{exitOpen ? <div className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-6" role="dialog" aria-modal="true" aria-labelledby="kiosk-exit-title" aria-describedby="kiosk-exit-description"><div className="w-full max-w-md rounded-[26px] border border-white/10 bg-[#0b0c0d] p-6"><h2 id="kiosk-exit-title" className="font-serif text-3xl">Staff exit</h2><p id="kiosk-exit-description" className="mt-2 text-sm text-white/45">Enter the kiosk PIN to leave public mode.</p><div className="mt-5"><Input aria-label="Kiosk PIN" value={pin} onChange={(event) => setPin(event.target.value)} placeholder="PIN" inputMode="numeric" /></div>{pinError ? <div className="mt-4"><FeedbackBanner tone="error" message={pinError} /></div> : null}<div className="mt-6 flex justify-end gap-3"><PillButton secondary onClick={() => setExitOpen(false)}>Cancel</PillButton><PillButton disabled={!pin || verifyPinMutation.isPending} onClick={() => void exitKiosk()}>{verifyPinMutation.isPending ? "Checking…" : "Exit kiosk"}</PillButton></div></div></div> : null}</main>;
-  }
-
-  if (payload.services.length === 0 && payload.barbers.length === 0) {
-    return <main className="grid min-h-[100svh] place-items-center bg-[#050606] p-6 text-[#f5f1e8]"><KioskStateCard title={t.empty} description={t.emptyMessage} actionLabel={t.retry} onAction={() => void kioskQuery.refetch()} /></main>;
+  if (!payload || (payload.services.length === 0 && payload.barbers.length === 0)) {
+    return <KioskStateShell {...shellProps} title={t.empty} description={t.emptyMessage} actionLabel={t.retry} onAction={retry}>{exitDialog}</KioskStateShell>;
   }
 
   if (step === "attract") {
@@ -405,7 +437,7 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
       <button type="button" onClick={() => wipe("welcome")} className="relative grid min-h-[100svh] w-full place-items-center overflow-hidden bg-[#050606] p-6 text-[#f5f1e8]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(196,242,78,0.06),transparent_28%),radial-gradient(circle_at_100%_100%,rgba(201,168,124,0.04),transparent_32%)]" />
         <div className="relative text-center">
-          <p className="font-mono text-[10px] uppercase tracking-[0.34em] text-[#c9a87c]">BVRB3R · {scope === "barber" ? "Barber kiosk" : "Shop kiosk"}</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.34em] text-[#c9a87c]">BVRB3R · {scope === "barber" ? t.barberKiosk : t.shopKiosk}</p>
           <h1 className="mt-6 font-serif text-6xl sm:text-8xl">Come for the cut<span className="text-[#c4f24e]">.</span></h1>
           <span className="mt-9 inline-flex rounded-full bg-[#c4f24e] px-8 py-4 font-mono text-xs font-black uppercase tracking-[0.14em] text-[#050505]">{t.tap}</span>
           <p className="mt-6 text-sm text-white/45">{t.privacy}</p>
@@ -428,27 +460,28 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
     else if (step === "payment") setStep(flow === "schedule" ? "schedule" : "service");
   }
 
-  const Header = () => (
-    <header className="relative z-20 flex items-center justify-between gap-4 px-5 py-6 sm:px-8 lg:px-10">
+  // Rendered as a value rather than a nested component so React keeps the DOM
+  // node identity across re-renders — otherwise every locale change would
+  // remount the header and drop keyboard focus off the button just pressed.
+  const header = (
+    <header className="relative z-20 flex flex-wrap items-center justify-between gap-4 px-5 py-6 sm:px-8 lg:px-10">
       <div className="flex items-center gap-4">
         <strong className="text-[13px] tracking-[0.32em] text-[#f5f1e8]">BVRB3R</strong>
-        <span className="rounded-full border border-[#c9a87c]/35 px-4 py-2 font-mono text-[9px] uppercase tracking-[0.24em] text-[#c9a87c]">{scope === "barber" ? "Barber kiosk" : "Shop kiosk"}</span>
+        <span className="rounded-full border border-[#c9a87c]/35 px-4 py-2 font-mono text-[9px] uppercase tracking-[0.24em] text-[#c9a87c]">{scope === "barber" ? t.barberKiosk : t.shopKiosk}</span>
       </div>
       <div className="flex items-center gap-3">
-        <span className="hidden items-center gap-2 font-mono text-[9px] uppercase tracking-[0.22em] text-white/50 sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-[#c4f24e] shadow-[0_0_12px_#c4f24e]" />{scope === "barber" ? t.live : "Live floor"}</span>
-        <div className="flex overflow-hidden rounded-full border border-white/10">
-          {(["en", "es", "ht"] as const).map((item) => <button key={item} type="button" aria-label={item === "en" ? "English" : item === "es" ? "Español" : "Kreyòl"} aria-pressed={locale === item} onClick={() => setLocale(item)} className={`px-4 py-3 font-mono text-[9px] uppercase tracking-[0.16em] ${locale === item ? "bg-[#c4f24e]/10 text-[#d8f98a]" : "text-white/40"}`}>{item === "ht" ? "KRE" : item.toUpperCase()}</button>)}
-        </div>
-        <button type="button" aria-label="Toggle large text" aria-pressed={largeText} onClick={() => setLargeText((value) => !value)} className="rounded-full border border-white/10 px-4 py-3 font-serif text-lg text-white/70">Aa</button>
-        <button type="button" aria-label="Exit kiosk" onClick={() => { setPin(""); setPinError(null); setExitOpen(true); }} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-3 font-mono text-[9px] uppercase tracking-[0.18em] text-white/55"><LockKeyhole className="h-3.5 w-3.5 text-[#c9a87c]" /><span className="hidden sm:inline">Exit</span></button>
+        <span className="hidden items-center gap-2 font-mono text-[9px] uppercase tracking-[0.22em] text-white/50 sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-[#c4f24e] shadow-[0_0_12px_#c4f24e]" />{scope === "barber" ? t.live : t.liveFloor}</span>
+        <LocaleSwitch copy={t} locale={locale} onSelect={setLocale} />
+        <button type="button" aria-label={t.largeText} aria-pressed={largeText} onClick={() => setLargeText((value) => !value)} className="min-h-12 rounded-full border border-white/10 px-4 py-3 font-serif text-lg text-white/70">Aa</button>
+        <button type="button" aria-label={t.exit} onClick={openExit} className="inline-flex min-h-12 items-center gap-2 rounded-full border border-white/10 px-4 py-3 font-mono text-[9px] uppercase tracking-[0.18em] text-white/55"><LockKeyhole className="h-3.5 w-3.5 text-[#c9a87c]" /><span className="hidden sm:inline">Exit</span></button>
       </div>
     </header>
   );
 
   return (
-    <main className={`relative min-h-[100svh] overflow-hidden bg-[#050606] text-[#f5f1e8] ${largeText ? "text-[114%]" : ""} ${prefersReducedMotion ? "motion-reduce:transition-none" : ""}`}>
+    <main className={`relative min-h-[100svh] overflow-x-hidden bg-[#050606] text-[#f5f1e8] ${largeText ? "text-[114%]" : ""} ${prefersReducedMotion ? "motion-reduce:transition-none" : ""}`}>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(196,242,78,0.055),transparent_24%),radial-gradient(circle_at_100%_100%,rgba(201,168,124,0.035),transparent_30%)]" />
-      <Header />
+      {header}
 
       {error ? <div className="relative z-20 mx-auto max-w-4xl px-6 pt-4"><FeedbackBanner tone="error" message={error} /></div> : null}
 
@@ -465,13 +498,13 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
 
           {scope === "barber" ? (
             <div className="mt-12 grid w-full max-w-[860px] gap-5 md:grid-cols-2">
-              <button type="button" disabled={!eligibleBarbers.length || !payload.services.length} onClick={() => { setFlow("next"); setForm((current) => ({ ...current, preferredBarberId: publicBarbers[0]?.id ?? "" })); setStep("details"); }} className="min-h-[250px] rounded-[28px] border border-[#c4f24e]/40 bg-[#c4f24e]/[0.055] p-9 text-left transition hover:bg-[#c4f24e]/[0.075] disabled:opacity-35">
+              <button type="button" disabled={!eligibleBarbers.length || !payload.services.length} onClick={() => { setFlow("next"); setForm((current) => ({ ...current, preferredBarberId: publicBarbers[0]?.id ?? "" })); setStep("details"); }} className="min-h-[250px] rounded-[28px] border border-[#c4f24e]/40 bg-[#c4f24e]/[0.055] p-9 text-left transition hover:bg-[#c4f24e]/[0.075] disabled:opacity-35 motion-reduce:transition-none">
                 <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-[#c4f24e]">Walk-in — next opening</p>
                 <h2 className="mt-5 font-serif text-4xl">{t.next}</h2>
                 <p className="mt-4 text-sm leading-6 text-white/55">Join the line right now. Estimated wait: <strong className="text-[#d8f98a]">{queueWait}</strong>.</p>
                 <span className="mt-7 inline-flex rounded-full bg-[#c4f24e] px-6 py-4 font-mono text-[10px] font-black uppercase tracking-[0.14em] text-[#050505]">Start →</span>
               </button>
-              <button type="button" disabled={!publicBarbers.length || !payload.services.length} onClick={() => { setFlow("schedule"); setForm((current) => ({ ...current, preferredBarberId: publicBarbers[0]?.id ?? "" })); setStep("details"); }} className="min-h-[250px] rounded-[28px] border border-white/10 bg-white/[0.025] p-9 text-left transition hover:border-white/20 disabled:opacity-35">
+              <button type="button" disabled={!publicBarbers.length || !payload.services.length} onClick={() => { setFlow("schedule"); setForm((current) => ({ ...current, preferredBarberId: publicBarbers[0]?.id ?? "" })); setStep("details"); }} className="min-h-[250px] rounded-[28px] border border-white/10 bg-white/[0.025] p-9 text-left transition hover:border-white/20 disabled:opacity-35 motion-reduce:transition-none">
                 <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-[#c9a87c]">Schedule ahead</p>
                 <h2 className="mt-5 font-serif text-4xl">{t.future}</h2>
                 <p className="mt-4 text-sm leading-6 text-white/55">Choose a service and lock a slot for later — nothing is booked until you confirm.</p>
@@ -479,7 +512,7 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
               </button>
             </div>
           ) : (
-            <div className="mt-12 grid w-full max-w-[1100px] gap-4 md:grid-cols-4">
+            <div className="mt-12 grid w-full max-w-[1100px] gap-4 sm:grid-cols-2 md:grid-cols-4">
               <button type="button" disabled={!eligibleBarbers.length || !payload.services.length} onClick={() => { setFlow("next"); setForm((current) => ({ ...current, preferredBarberId: "" })); setStep("details"); }} className="min-h-[230px] rounded-[26px] border border-[#c4f24e]/40 bg-[#c4f24e]/[0.055] p-7 text-left disabled:opacity-35">
                 <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#c4f24e]">Fastest</p>
                 <h2 className="mt-4 font-serif text-3xl">Next available chair</h2>
@@ -495,7 +528,7 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
 
       {step !== "welcome" ? (
         <section className="relative z-10 mx-auto max-w-5xl px-6 pb-20 pt-8 sm:px-8">
-          {step !== "confirmation" ? <button type="button" onClick={goBack} className="mb-8 inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-white/45"><ArrowLeft className="h-4 w-4" />{t.back}</button> : null}
+          {step !== "confirmation" ? <button type="button" onClick={goBack} className="mb-8 inline-flex min-h-12 items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-white/45"><ArrowLeft className="h-4 w-4" />{t.back}</button> : null}
 
           {step === "barber" ? <div><p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#c9a87c]">Shop team</p><h2 className="mt-3 font-serif text-5xl">{t.choose}<span className="text-[#c4f24e]">.</span></h2><div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{publicBarbers.map((barber) => <button key={barber.id} type="button" onClick={() => { setForm((current) => ({ ...current, preferredBarberId: barber.id })); setStep("details"); }} className="rounded-[24px] border border-white/10 bg-white/[0.025] p-6 text-left hover:border-white/20"><span className="grid h-14 w-14 place-items-center rounded-full bg-[#c4f24e]/10 text-[#c4f24e]">{initials(barber.name)}</span><h3 className="mt-4 font-serif text-3xl">{barber.name}</h3><p className="mt-2 text-sm text-white/45">{barber.liveStatusLabel}</p></button>)}</div></div> : null}
 
@@ -511,7 +544,7 @@ export function KioskParityScreen({ shopId, scope = "shop" }: { shopId: string; 
         </section>
       ) : null}
 
-      {exitOpen ? <div className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-6" role="dialog" aria-modal="true" aria-labelledby="kiosk-exit-title" aria-describedby="kiosk-exit-description"><div className="w-full max-w-md rounded-[26px] border border-white/10 bg-[#0b0c0d] p-6"><h2 id="kiosk-exit-title" className="font-serif text-3xl">Staff exit</h2><p id="kiosk-exit-description" className="mt-2 text-sm text-white/45">Enter the kiosk PIN to leave public mode.</p><div className="mt-5"><Input aria-label="Kiosk PIN" value={pin} onChange={(event) => setPin(event.target.value)} placeholder="PIN" inputMode="numeric" /></div>{pinError ? <div className="mt-4"><FeedbackBanner tone="error" message={pinError} /></div> : null}<div className="mt-6 flex justify-end gap-3"><PillButton secondary onClick={() => setExitOpen(false)}>Cancel</PillButton><PillButton disabled={!pin || verifyPinMutation.isPending} onClick={() => void exitKiosk()}>{verifyPinMutation.isPending ? "Checking…" : "Exit kiosk"}</PillButton></div></div></div> : null}
+      {exitDialog}
     </main>
   );
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { isKioskFixtureTarget, verifyKioskFixturePin } from "@/lib/kiosk/local-fixture";
 import { KIOSK_SESSION_COOKIE, completeKioskDeviceSession, readKioskSessionToken } from "@/lib/kiosk/session-service";
 import { verifyKioskPin, KioskSettingsError } from "@/lib/kiosk/settings-service";
 
@@ -22,6 +23,15 @@ export async function POST(request: Request) {
     const parsed = verifyKioskPinSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid kiosk PIN payload.", code: "invalid_payload" }, { status: 400 });
+    }
+
+    // The seeded local fixture carries its own PIN so the staff exit is
+    // reachable without a kiosk_settings row.
+    if (isKioskFixtureTarget(parsed.data.scope, parsed.data.targetReference)) {
+      if (!verifyKioskFixturePin(parsed.data.pin)) {
+        return NextResponse.json({ error: "That kiosk PIN is incorrect.", code: "kiosk_pin_invalid" }, { status: 401 });
+      }
+      return NextResponse.json({ ok: true });
     }
 
     const result = await verifyKioskPin(parsed.data);
