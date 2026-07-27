@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -156,5 +157,30 @@ describe("kiosk parity screen", () => {
     expect(await screen.findByText("Booking confirmed")).toBeInTheDocument();
     expect(screen.getByText(/Card after service/i)).toBeInTheDocument();
     expect(screen.queryByText(/Payment successful/i)).not.toBeInTheDocument();
+  });
+
+  it("renders a denial state and an accessible exit dialog", () => {
+    useKioskPayloadQueryMock.mockReturnValue({ data: null, isLoading: false, error: new Error("Access denied"), refetch: vi.fn() });
+
+    render(<KioskParityScreen shopId="loc-ybor" scope="shop" />);
+
+    expect(screen.getByText(/Access denied/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Retry/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Exit kiosk/i }));
+
+    expect(screen.getByRole("dialog", { name: /Staff exit/i })).toBeInTheDocument();
+  });
+
+  it("shows an offline state when the browser loses connectivity", () => {
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: false });
+    useKioskPayloadQueryMock.mockReturnValue({ data: payload, isLoading: false, error: null, refetch: vi.fn() });
+
+    render(<KioskParityScreen shopId="loc-ybor" scope="shop" />);
+    act(() => {
+      window.dispatchEvent(new Event("offline"));
+    });
+
+    expect(screen.getByText(/You’re offline/i)).toBeInTheDocument();
   });
 });
