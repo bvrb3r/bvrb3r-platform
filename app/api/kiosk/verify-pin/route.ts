@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { KIOSK_SESSION_COOKIE, completeKioskDeviceSession, readKioskSessionToken } from "@/lib/kiosk/session-service";
 import { verifyKioskPin, KioskSettingsError } from "@/lib/kiosk/settings-service";
 
 const verifyKioskPinSchema = z.object({
@@ -24,7 +25,13 @@ export async function POST(request: Request) {
     }
 
     const result = await verifyKioskPin(parsed.data);
-    return NextResponse.json(result);
+
+    // A successful exit PIN ends the device session so the kiosk cannot keep
+    // mutating after staff leave the device.
+    await completeKioskDeviceSession(readKioskSessionToken(request)).catch(() => undefined);
+    const response = NextResponse.json(result);
+    response.cookies.set(KIOSK_SESSION_COOKIE, "", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 0 });
+    return response;
   } catch (error) {
     return toErrorResponse(error);
   }

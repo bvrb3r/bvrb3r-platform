@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertKioskLaunchReady } from "@/lib/kiosk/launch-gate";
+import { clientKeyFromRequest, consumeRateLimit } from "@/lib/kiosk/rate-limit";
 import { createKioskBooking, KioskServiceError } from "@/lib/kiosk/service";
+import { KioskSessionError, assertKioskDeviceSession, readKioskSessionToken } from "@/lib/kiosk/session-service";
 
 const kioskBookingSchema = z.object({
   fullName: z.string().trim().optional(),
@@ -36,14 +38,23 @@ function toErrorResponse(error: unknown, fallback: string) {
   if (error instanceof KioskServiceError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
+  if (error instanceof KioskSessionError) {
+    return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+  }
 
   return NextResponse.json({ error: error instanceof Error ? error.message : fallback }, { status: 500 });
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ shopId: string }> }) {
   try {
+    const rate = consumeRateLimit({ bucket: "kiosk-booking", key: clientKeyFromRequest(request), limit: 10, windowMs: 60_000 });
+    if (!rate.allowed) {
+      return NextResponse.json({ error: "Too many kiosk requests. Try again shortly." }, { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } });
+    }
+
     const { shopId } = await params;
     await assertKioskLaunchReady("shop", shopId);
+    await assertKioskDeviceSession({ scope: "shop", targetReference: shopId, token: readKioskSessionToken(request) });
     const parsed = kioskBookingSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid kiosk booking payload." }, { status: 400 });

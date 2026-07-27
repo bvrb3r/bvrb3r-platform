@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { GlassCard } from "@/design/components";
+import { useKioskDeviceState } from "@/lib/kiosk/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
 async function requestKioskJson<T>(url: string, payload: Record<string, unknown>) {
@@ -43,27 +44,25 @@ export function KioskLaunchAction({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const kioskDevice = useKioskDeviceState();
 
   async function handleLaunch() {
     setError(null);
     setIsPending(true);
     try {
-      const params = new URLSearchParams({ scope, targetReference });
-      const response = await fetch(`/api/kiosk/settings?${params.toString()}`);
-      const body = (await response.json().catch(() => ({}))) as { pinSet?: boolean; enabled?: boolean; error?: string; code?: string };
-      if (!response.ok) {
-        const launchError = new Error(body.error ?? `Request failed with status ${response.status}`) as Error & { status?: number; code?: string };
-        launchError.status = response.status;
-        launchError.code = body.code;
-        throw launchError;
-      }
-      if (!body.pinSet || body.enabled === false) {
+      // Starting the device session is the real launch gate: it verifies the
+      // kiosk is enabled with a PIN and that this account may run it, and it
+      // sets the session cookie kiosk mutations require.
+      await requestKioskJson("/api/kiosk/session", { scope, targetReference });
+      kioskDevice.activate(targetReference);
+      window.location.assign(href);
+    } catch (launchError) {
+      const typed = launchError as { message?: string; status?: number; code?: string };
+      if (typed.code === "kiosk_not_ready" || typed.code === "pin_not_set") {
         window.location.assign(settingsHref);
         return;
       }
-      window.location.assign(href);
-    } catch (launchError) {
-      setError(getReadableActionError(launchError as { message?: string; status?: number; code?: string }));
+      setError(getReadableActionError(typed));
     } finally {
       setIsPending(false);
     }

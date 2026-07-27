@@ -443,7 +443,7 @@ describe("owner team workspace", () => {
     expect(kioskModeAction).toHaveClass("w-full");
     fireEvent.click(kioskModeAction);
     await waitFor(() => {
-      expect(locationAssignMock).toHaveBeenCalledWith("/kiosk/shop-ybor");
+      expect(locationAssignMock).toHaveBeenCalledWith("/kiosk/shop/shop-ybor");
     });
     expect(screen.queryByRole("dialog", { name: "Enter kiosk PIN" })).not.toBeInTheDocument();
     expect(screen.getByTestId("shop-command-calendar").compareDocumentPosition(screen.getByTestId("barbers-summary"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);

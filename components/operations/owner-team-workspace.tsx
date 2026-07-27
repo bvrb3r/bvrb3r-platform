@@ -742,7 +742,7 @@ export function OwnerTeamWorkspace() {
               </Link>
               {ownerKioskShopId ? (
                 <KioskLaunchAction
-                  href={`/kiosk/${encodeURIComponent(ownerKioskShopId)}` as Route}
+                  href={`/kiosk/shop/${encodeURIComponent(ownerKioskShopId)}` as Route}
                   scope="shop"
                   targetReference={ownerKioskShopId}
                   settingsHref="/dashboard/owner/more?section=kiosk"

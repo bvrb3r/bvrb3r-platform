@@ -13,7 +13,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   const kioskShopId = parseKioskDeviceCookieValue(cookieStore.get(KIOSK_DEVICE_COOKIE)?.value);
 
   if (kioskShopId && !isPlatformAdminUser(user) && (user.role === "owner" || user.role === "manager" || user.role === "front_desk")) {
-    redirect(`/kiosk/${kioskShopId}`);
+    redirect(`/kiosk/shop/${kioskShopId}`);
   }
 
   return (

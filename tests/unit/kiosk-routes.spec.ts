@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetRateLimits } from "@/lib/kiosk/rate-limit";
 import { KioskServiceError } from "@/lib/kiosk/service";
+import { KioskSessionError } from "@/lib/kiosk/session-service";
 import { KioskSettingsError } from "@/lib/kiosk/settings-service";
 
 const {
@@ -9,15 +11,25 @@ const {
   createKioskBookingMock,
   createBarberKioskBookingMock,
   createKioskWaitlistMock,
-  getKioskSettingsStatusMock
+  getKioskSettingsStatusMock,
+  assertKioskDeviceSessionMock
 } = vi.hoisted(() => ({
   getKioskPayloadMock: vi.fn(),
   getBarberKioskPayloadMock: vi.fn(),
   createKioskBookingMock: vi.fn(),
   createBarberKioskBookingMock: vi.fn(),
   createKioskWaitlistMock: vi.fn(),
-  getKioskSettingsStatusMock: vi.fn()
+  getKioskSettingsStatusMock: vi.fn(),
+  assertKioskDeviceSessionMock: vi.fn()
 }));
+
+vi.mock("@/lib/kiosk/session-service", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/kiosk/session-service")>("@/lib/kiosk/session-service");
+  return {
+    ...actual,
+    assertKioskDeviceSession: assertKioskDeviceSessionMock
+  };
+});
 
 vi.mock("@/lib/kiosk/service", async () => {
   const actual = await vi.importActual<typeof import("@/lib/kiosk/service")>("@/lib/kiosk/service");
@@ -57,6 +69,9 @@ describe("kiosk routes", () => {
     // Default: kiosk is configured (owner has set a PIN and enabled it), so
     // the launch gate passes unless a test overrides it.
     getKioskSettingsStatusMock.mockResolvedValue({ scope: "shop", targetReference: "any", enabled: true, pinSet: true });
+    assertKioskDeviceSessionMock.mockReset();
+    assertKioskDeviceSessionMock.mockResolvedValue(undefined);
+    resetRateLimits();
   });
 
   it("returns the branded kiosk payload", async () => {
@@ -286,6 +301,20 @@ describe("kiosk routes", () => {
     expect(getBarberKioskPayloadMock).not.toHaveBeenCalled();
     expect(createBarberKioskBookingMock).not.toHaveBeenCalled();
     expect(getKioskSettingsStatusMock).toHaveBeenCalledWith({ scope: "barber", targetReference: "barber-blaze" });
+  });
+
+  it("refuses kiosk mutations without an active device session", async () => {
+    assertKioskDeviceSessionMock.mockRejectedValue(new KioskSessionError("This kiosk device has no active session. Relaunch Kiosk Mode from a staff account.", 401, "session_missing"));
+
+    const bookingResponse = await postKioskBooking(new NextRequest("https://bvrb3r.demo/api/kiosk/loc-ybor/booking", {
+      method: "POST",
+      body: JSON.stringify({ fullName: "Jordan Ellis", phone: "8135550101", email: "jordan@example.com", publicUsername: "jordanellis", serviceId: "srv-cut" })
+    }), { params: Promise.resolve({ shopId: "loc-ybor" }) });
+    const body = await bookingResponse.json();
+
+    expect(bookingResponse.status).toBe(401);
+    expect(body.code).toBe("session_missing");
+    expect(createKioskBookingMock).not.toHaveBeenCalled();
   });
 
   it("returns 503 when the kiosk settings lookup itself fails", async () => {

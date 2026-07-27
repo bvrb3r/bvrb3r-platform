@@ -249,7 +249,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
           walkInFormRef.current = nextWalkInForm;
           setBookingForm(nextBookingForm);
           setWalkInForm(nextWalkInForm);
-          router.replace((scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`) as Route);
+          router.replace((scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/shop/${shopId}`) as Route);
           return null;
         }
 
@@ -318,7 +318,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     setSuccess(null);
     setStep("welcome");
     resetFormsToDefaults();
-    router.replace((scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`) as Route);
+    router.replace((scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/shop/${shopId}`) as Route);
   }
 
   resetToWelcomeRef.current = resetToWelcome;
@@ -360,7 +360,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     setInteractionError(null);
     setSuccess(null);
     setStep(nextStep);
-    const basePath = scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`;
+    const basePath = scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/shop/${shopId}`;
     const modeValue = nextStep === "walk_in" ? "walk-in" : nextStep === "pick_barber" ? "pick-barber" : "booking";
     router.push(`${basePath}?mode=${modeValue}` as Route);
   }
@@ -376,7 +376,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     try {
       await verifyPinMutation.mutateAsync({ scope, targetReference: shopId, pin: exitPin });
       kioskDevice.deactivate();
-      const basePath = scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`;
+      const basePath = scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/shop/${shopId}`;
       router.push(`/login?redirect=${encodeURIComponent(basePath)}&unlock=true` as Route);
     } catch (error) {
       setExitError(getReadableActionError(error as { message?: string; status?: number; code?: string }));

@@ -37,6 +37,9 @@ export function KioskControlPanel({
   const router = useRouter();
   const kioskDevice = useKioskDeviceState();
   const [selectedShopId, setSelectedShopId] = useState(shops[0]?.id ?? "");
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [isDeactivating, setIsDeactivating] = useState(false);
   const resolvedShopId = selectedShopId || kioskDevice.state.activeShopId || shops[0]?.id || "";
   const kioskQuery = useKioskPayloadQuery(resolvedShopId);
   const payload = kioskQuery.data;
@@ -145,30 +148,78 @@ export function KioskControlPanel({
       <div className="mt-4 flex flex-wrap gap-2">
         <Button
           className="min-w-[11rem]"
-          disabled={!resolvedShopId}
+          disabled={!resolvedShopId || isLaunching}
           onClick={() => {
             if (!resolvedShopId) {
               return;
             }
 
-            kioskDevice.activate(resolvedShopId);
-            router.push(`/kiosk/${resolvedShopId}`);
+            setLaunchError(null);
+            setIsLaunching(true);
+            void (async () => {
+              try {
+                // The device session is the server-side launch credential —
+                // kiosk bookings and queue joins are refused without it.
+                const response = await fetch("/api/kiosk/session", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ scope: "shop", targetReference: resolvedShopId })
+                });
+                const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+                if (!response.ok) {
+                  const sessionError = new Error(body.error ?? `Request failed with status ${response.status}`) as Error & { status?: number; code?: string };
+                  sessionError.status = response.status;
+                  sessionError.code = body.code;
+                  throw sessionError;
+                }
+                kioskDevice.activate(resolvedShopId);
+                router.push(`/kiosk/shop/${resolvedShopId}`);
+              } catch (error) {
+                setLaunchError(getReadableActionError(error as { message?: string; status?: number; code?: string }));
+              } finally {
+                setIsLaunching(false);
+              }
+            })();
           }}
         >
-          Launch kiosk
+          {isLaunching ? "Starting kiosk…" : "Launch kiosk"}
         </Button>
         <Link
-          href={resolvedShopId ? `/kiosk/${resolvedShopId}` : "#"}
+          href={resolvedShopId ? `/kiosk/shop/${resolvedShopId}` : "#"}
           className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#c4f24e]/20 hover:text-[#e4f9b8] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
         >
           Preview
         </Link>
         {kioskDevice.isActive ? (
-          <Button variant="ghost" className="min-w-[11rem]" onClick={() => kioskDevice.deactivate()}>
-            Deactivate here
+          <Button
+            variant="ghost"
+            className="min-w-[11rem]"
+            disabled={isDeactivating}
+            onClick={() => {
+              setLaunchError(null);
+              setIsDeactivating(true);
+              void (async () => {
+                try {
+                  // Ends the server session too — clearing local state alone
+                  // would leave this device able to keep booking.
+                  await fetch("/api/kiosk/session", { method: "DELETE" });
+                } finally {
+                  kioskDevice.deactivate();
+                  setIsDeactivating(false);
+                }
+              })();
+            }}
+          >
+            {isDeactivating ? "Ending session…" : "Deactivate here"}
           </Button>
         ) : null}
       </div>
+
+      {launchError ? (
+        <div className="mt-3">
+          <FeedbackBanner tone="error" message={launchError} />
+        </div>
+      ) : null}
 
       <div className="mt-4 rounded-[24px] border border-white/8 bg-black/18 p-4 text-sm text-white/62">
         <div className="flex items-center gap-2 text-[#e4f9b8]">
