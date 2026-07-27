@@ -9,6 +9,7 @@ import { createKioskQueueEntry, getQueueWorkspacePayloadForShops, QueueServiceEr
 import { readShopProfileMedia } from "@/lib/profile/service";
 import { formatPublicShopLocation } from "@/lib/shops/public-identity";
 import { resolveOrCreateKioskClient } from "@/lib/kiosk/client-capture";
+import { resolveKioskPublicHandle } from "@/lib/kiosk/identity";
 import { calculateKioskWaitTime } from "@/lib/kiosk/wait-time";
 import type { QueueBarberOptionView, QueueWorkspacePayload } from "@/lib/queue/service";
 import type {
@@ -209,6 +210,9 @@ function mapBarbers(payload: QueueWorkspacePayload): KioskBarberOption[] {
   return payload.barbers.map((barber) => ({
     id: barber.id,
     name: barber.name,
+    // Strict: a handle or nothing. The screen labels a handleless chair with a
+    // non-identifying "Chair N" rather than falling back to the real name.
+    publicUsername: resolveKioskPublicHandle(barber.publicUsername),
     liveStatusLabel: barber.liveStatusLabel,
     nextAvailableAt: barber.nextAvailableAt,
     acceptsWalkIns: barber.acceptsWalkIns,
@@ -361,10 +365,15 @@ export async function getKioskPayload(shopId: string): Promise<KioskPayload> {
 
   return {
     shop: branding,
+    // Prices and barber ownership travel with the service so the kiosk can
+    // show each chair its own menu — the shop kiosk's "From $X" chip and the
+    // priced service rail both read from here rather than guessing.
     services: queuePayload.services.map((service) => ({
       id: service.id,
       name: service.name,
-      category: service.category
+      category: service.category,
+      priceCents: service.priceCents,
+      barberId: service.barberReference
     })),
     barbers: mapBarbers(queuePayload),
     queue: {
@@ -392,13 +401,27 @@ export async function getBarberKioskPayload(barberId: string): Promise<KioskPayl
 
   const barberReference = profile.profile.barberId || profile.barber.id || barberId;
   const barberName = profile.barber.name || barberReference;
+  // Public handle drives every pre-booking surface; `barberName` is held back
+  // for the confirmation reveal card and must never stand in for a missing
+  // handle — see `resolveKioskPublicHandle`.
+  const barberHandle = resolveKioskPublicHandle(
+    (profile.profile as { publicUsername?: string | null }).publicUsername,
+    (profile.profile as { username?: string | null }).username,
+    (profile.barber as { username?: string | null }).username
+  );
   const services = profile.services
     .filter((item) => item.service.id && item.service.name)
-    .map((item) => ({
-      id: item.service.id,
-      name: item.service.name,
-      category: item.service.category || "Service"
-    }));
+    .map((item) => {
+      const price = Number(item.service.price);
+      return {
+        id: item.service.id,
+        name: item.service.name,
+        category: item.service.category || "Service",
+        priceCents: Number.isFinite(price) && price > 0 ? Math.round(price * 100) : null,
+        durationMinutes: typeof item.service.durationMin === "number" ? item.service.durationMin : null,
+        barberId: barberReference
+      };
+    });
 
   const selectedServiceId = services[0]?.id;
   const availability = selectedServiceId
@@ -408,7 +431,9 @@ export async function getBarberKioskPayload(barberId: string): Promise<KioskPayl
   return {
     shop: {
       shopId: barberReference,
-      shopName: barberName,
+      // Empty, never the real name: a barber with no public handle gets a
+      // non-identifying label from the screen instead.
+      shopName: barberHandle ?? "",
       subtitle: "Book your cut with this barber",
       locationLabel: profile.profile.serviceAreaLabel ?? profile.shop?.name ?? "Barber kiosk",
       profilePhotoUrl: profile.profile.profilePhotoUrl ?? undefined,
@@ -418,6 +443,7 @@ export async function getBarberKioskPayload(barberId: string): Promise<KioskPayl
     barbers: [{
       id: barberReference,
       name: barberName,
+      publicUsername: barberHandle,
       liveStatusLabel: availability?.slots.length ? "Bookable" : "Availability soon",
       nextAvailableAt: availability?.slots[0]?.startsAt ?? null,
       acceptsWalkIns: true,

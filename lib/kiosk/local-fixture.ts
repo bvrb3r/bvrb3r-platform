@@ -45,17 +45,56 @@ export function isKioskFixtureTarget(scope: KioskFixtureScope, targetReference: 
     : targetReference === KIOSK_FIXTURE_SHOP_ID;
 }
 
-const FIXTURE_SERVICES = [
-  { id: "kiosk-fixture-srv-signature", name: "Signature Cut", category: "Cut" },
-  { id: "kiosk-fixture-srv-fade", name: "Skin Fade", category: "Cut" },
-  { id: "kiosk-fixture-srv-beard", name: "Beard Sculpt", category: "Grooming" },
-  { id: "kiosk-fixture-srv-lineup", name: "Line Up", category: "Grooming" }
-] as const;
-
+/**
+ * Every barber prices their own chair — the shop kiosk shows each one their
+ * own menu, and the "From $X" chip is the cheapest service on that menu. The
+ * three fixture barbers deliberately disagree on price so the per-barber rail
+ * is visibly per-barber and not a shop-wide list wearing a disguise.
+ */
 const FIXTURE_BARBERS = [
-  { id: KIOSK_FIXTURE_BARBER_ID, name: "Blaze King", waitMinutes: 10, acceptsWalkIns: true },
-  { id: "kiosk-local-fixture-barber-2", name: "Rae Solomon", waitMinutes: 25, acceptsWalkIns: true },
-  { id: "kiosk-local-fixture-barber-3", name: "Deon Vasquez", waitMinutes: 45, acceptsWalkIns: false }
+  {
+    id: KIOSK_FIXTURE_BARBER_ID,
+    name: "Blaze King",
+    handle: "blazeking",
+    initials: "BK",
+    waitMinutes: 10,
+    ahead: 1,
+    acceptsWalkIns: true,
+    services: [
+      { id: "kiosk-fixture-srv-signature", name: "Signature Cut", category: "Cut", priceCents: 4000, durationMinutes: 45 },
+      { id: "kiosk-fixture-srv-cut-beard", name: "Cut & Beard", category: "Grooming", priceCents: 5500, durationMinutes: 60 },
+      { id: "kiosk-fixture-srv-lineup", name: "Line Up", category: "Grooming", priceCents: 2000, durationMinutes: 20 },
+      { id: "kiosk-fixture-srv-kids", name: "Kids Cut", category: "Cut", priceCents: 2500, durationMinutes: 30 }
+    ]
+  },
+  {
+    id: "kiosk-local-fixture-barber-2",
+    name: "Rae Solomon",
+    handle: "raesolomon",
+    initials: "RS",
+    waitMinutes: 0,
+    ahead: 0,
+    acceptsWalkIns: true,
+    services: [
+      { id: "kiosk-fixture-srv-precision", name: "Precision Cut", category: "Cut", priceCents: 4500, durationMinutes: 50 },
+      { id: "kiosk-fixture-srv-braids", name: "Braids", category: "Styling", priceCents: 8000, durationMinutes: 120 },
+      { id: "kiosk-fixture-srv-shave", name: "Hot Towel Shave", category: "Grooming", priceCents: 3000, durationMinutes: 25 },
+      { id: "kiosk-fixture-srv-design", name: "Design / Part", category: "Styling", priceCents: 1500, durationMinutes: 15 }
+    ]
+  },
+  {
+    id: "kiosk-local-fixture-barber-3",
+    name: "Deon Vasquez",
+    handle: "deonvasquez",
+    initials: "DV",
+    waitMinutes: 45,
+    ahead: 4,
+    acceptsWalkIns: false,
+    services: [
+      { id: "kiosk-fixture-srv-classic", name: "Classic Cut", category: "Cut", priceCents: 2000, durationMinutes: 35 },
+      { id: "kiosk-fixture-srv-trim", name: "Beard Trim", category: "Grooming", priceCents: 1800, durationMinutes: 20 }
+    ]
+  }
 ] as const;
 
 const FIXTURE_CLIENTS: KioskClientSearchResult[] = [
@@ -89,12 +128,25 @@ function nextAvailableAt(minutes: number) {
 export function getKioskFixturePayload(scope: KioskFixtureScope, targetReference: string): KioskPayload {
   const barbers = FIXTURE_BARBERS.filter((barber) => (scope === "barber" ? barber.id === targetReference : true));
   const primary = barbers[0] ?? FIXTURE_BARBERS[0];
+  const services = barbers.flatMap((barber) =>
+    barber.services.map((service) => ({
+      id: service.id,
+      name: service.name,
+      category: service.category,
+      priceCents: service.priceCents,
+      durationMinutes: service.durationMinutes,
+      barberId: barber.id
+    }))
+  );
 
   return {
     shop: scope === "barber"
       ? {
           shopId: targetReference,
-          shopName: primary.name,
+          // Handle, not the real name: the barber front door is public and the
+          // reveal card on the confirmation screen is the only place a name
+          // belongs.
+          shopName: primary.handle,
           subtitle: "Book your cut with this barber",
           locationLabel: "Ybor City, Tampa (local fixture)",
           mode: "barber"
@@ -106,19 +158,21 @@ export function getKioskFixturePayload(scope: KioskFixtureScope, targetReference
           locationLabel: "Ybor City, Tampa (local fixture)",
           mode: "shop"
         },
-    services: FIXTURE_SERVICES.map((service) => ({ ...service })),
+    services,
     barbers: barbers.map((barber) => ({
       id: barber.id,
       name: barber.name,
+      publicUsername: barber.handle,
       liveStatusLabel: barber.acceptsWalkIns ? "Available" : "Schedule ahead only",
       nextAvailableAt: nextAvailableAt(barber.waitMinutes),
       acceptsWalkIns: barber.acceptsWalkIns,
       waitDisplayLabel: waitLabel(barber.waitMinutes),
       estimatedWaitMinutes: barber.waitMinutes,
-      estimatedStartTime: nextAvailableAt(barber.waitMinutes)
+      estimatedStartTime: nextAvailableAt(barber.waitMinutes),
+      queueAhead: barber.ahead
     })),
     queue: {
-      activeCount: scope === "barber" ? 1 : 3,
+      activeCount: scope === "barber" ? barbers[0]?.ahead ?? 0 : 3,
       averageWaitMinutes: primary.waitMinutes,
       kioskEntriesToday: 4,
       waitEstimateUpdatedAt: new Date().toISOString()
@@ -165,8 +219,8 @@ export function createKioskFixtureBooking(
     confirmationCode: `LOCAL${String(fixtureBookingCounter).padStart(3, "0")}`,
     barberId: barber?.id ?? KIOSK_FIXTURE_BARBER_ID,
     barberName: barber?.name ?? "Blaze King",
-    serviceId: service?.id ?? FIXTURE_SERVICES[0].id,
-    serviceName: service?.name ?? FIXTURE_SERVICES[0].name,
+    serviceId: service?.id ?? FIXTURE_BARBERS[0].services[0].id,
+    serviceName: service?.name ?? FIXTURE_BARBERS[0].services[0].name,
     startsAt: input.kioskAction === "schedule_ahead" && input.scheduledAt
       ? new Date(input.scheduledAt).toISOString()
       : nextAvailableAt(waitMinutes),

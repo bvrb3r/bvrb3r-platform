@@ -184,6 +184,125 @@ describe("kiosk routes", () => {
     expect(body.confirmationCode).toBe("BVR123");
   });
 
+  /**
+   * The public username is opt-in. A walk-in who declines to pick a handle
+   * still books; guest-to-account conversion is PR 23's job, not a gate a
+   * client has to pass to sit in a chair.
+   */
+  describe("optional public username", () => {
+    const booking = {
+      appointmentId: "appt-guest",
+      confirmationCode: "BVR777",
+      barberId: "barber-blaze",
+      barberName: "Blaze King",
+      serviceId: "srv-cut",
+      serviceName: "Signature Cut",
+      startsAt: "2026-03-27T14:00:00.000Z",
+      shopLabel: "BVRB3R Ybor / Ybor City / Tampa"
+    };
+
+    it("books a shop-kiosk guest with no username at all", async () => {
+      createKioskBookingMock.mockResolvedValue(booking);
+
+      const response = await postKioskBooking(new NextRequest("https://bvrb3r.demo/api/kiosk/loc-ybor/booking", {
+        method: "POST",
+        body: JSON.stringify({
+          fullName: "Jordan Ellis",
+          phone: "8135550101",
+          email: "jordan@example.com",
+          serviceId: "srv-cut"
+        })
+      }), { params: Promise.resolve({ shopId: "loc-ybor" }) });
+
+      expect(response.status).toBe(201);
+      expect(createKioskBookingMock).toHaveBeenCalledWith(expect.objectContaining({ serviceId: "srv-cut" }));
+      expect(createKioskBookingMock.mock.calls[0][0].publicUsername).toBeUndefined();
+    });
+
+    it("books a shop-kiosk guest who sends a blank username string", async () => {
+      createKioskBookingMock.mockResolvedValue(booking);
+
+      const response = await postKioskBooking(new NextRequest("https://bvrb3r.demo/api/kiosk/loc-ybor/booking", {
+        method: "POST",
+        body: JSON.stringify({
+          fullName: "Jordan Ellis",
+          phone: "8135550101",
+          email: "jordan@example.com",
+          publicUsername: "   ",
+          serviceId: "srv-cut"
+        })
+      }), { params: Promise.resolve({ shopId: "loc-ybor" }) });
+
+      expect(response.status).toBe(201);
+    });
+
+    it("books a barber-kiosk guest with no username", async () => {
+      createBarberKioskBookingMock.mockResolvedValue({ ...booking, appointmentId: "appt-barber-guest" });
+
+      const response = await postBarberKioskBooking(new NextRequest("https://bvrb3r.demo/api/kiosk/barber/barber-blaze/booking", {
+        method: "POST",
+        body: JSON.stringify({
+          fullName: "Jordan Ellis",
+          phone: "8135550101",
+          email: "jordan@example.com",
+          serviceId: "srv-cut"
+        })
+      }), { params: Promise.resolve({ barberId: "barber-blaze" }) });
+
+      expect(response.status).toBe(201);
+      expect(createBarberKioskBookingMock.mock.calls[0][0].publicUsername).toBeUndefined();
+    });
+
+    it("books a recognised profile with no name, phone, email or username", async () => {
+      createKioskBookingMock.mockResolvedValue(booking);
+
+      const response = await postKioskBooking(new NextRequest("https://bvrb3r.demo/api/kiosk/loc-ybor/booking", {
+        method: "POST",
+        body: JSON.stringify({ selectedProfileId: "profile-client", serviceId: "srv-cut" })
+      }), { params: Promise.resolve({ shopId: "loc-ybor" }) });
+
+      expect(response.status).toBe(201);
+      expect(createKioskBookingMock.mock.calls[0][0].selectedProfileId).toBe("profile-client");
+    });
+
+    it("books a recognised barber-kiosk profile the same way", async () => {
+      createBarberKioskBookingMock.mockResolvedValue(booking);
+
+      const response = await postBarberKioskBooking(new NextRequest("https://bvrb3r.demo/api/kiosk/barber/barber-blaze/booking", {
+        method: "POST",
+        body: JSON.stringify({ selectedProfileId: "profile-client", serviceId: "srv-cut" })
+      }), { params: Promise.resolve({ barberId: "barber-blaze" }) });
+
+      expect(response.status).toBe(201);
+    });
+
+    it("still requires name, phone and email from a guest", async () => {
+      for (const payload of [
+        { phone: "8135550101", email: "jordan@example.com", serviceId: "srv-cut" },
+        { fullName: "Jordan Ellis", email: "jordan@example.com", serviceId: "srv-cut" },
+        { fullName: "Jordan Ellis", phone: "8135550101", serviceId: "srv-cut" },
+        { fullName: "J", phone: "8135550101", email: "jordan@example.com", serviceId: "srv-cut" },
+        { fullName: "Jordan Ellis", phone: "813", email: "jordan@example.com", serviceId: "srv-cut" }
+      ]) {
+        const response = await postKioskBooking(new NextRequest("https://bvrb3r.demo/api/kiosk/loc-ybor/booking", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        }), { params: Promise.resolve({ shopId: "loc-ybor" }) });
+
+        expect(response.status, `payload should be rejected: ${JSON.stringify(payload)}`).toBe(400);
+      }
+    });
+
+    it("still requires a service", async () => {
+      const response = await postKioskBooking(new NextRequest("https://bvrb3r.demo/api/kiosk/loc-ybor/booking", {
+        method: "POST",
+        body: JSON.stringify({ fullName: "Jordan Ellis", phone: "8135550101", email: "jordan@example.com" })
+      }), { params: Promise.resolve({ shopId: "loc-ybor" }) });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
   it("returns a barber kiosk payload", async () => {
     getBarberKioskPayloadMock.mockResolvedValue({
       shop: {

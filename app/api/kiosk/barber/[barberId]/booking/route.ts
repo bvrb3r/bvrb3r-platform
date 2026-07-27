@@ -20,9 +20,10 @@ const barberKioskBookingSchema = z.object({
     return;
   }
 
-  if (!payload.publicUsername?.trim()) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["publicUsername"], message: "Username is required." });
-  }
+  // No username check on purpose. A kiosk walk-in books as a guest with name,
+  // phone and email; claiming a public handle is opt-in, and guest-to-account
+  // conversion belongs to PR 23. `claimUsername` already no-ops on a blank
+  // value, so the booking completes with no public identity attached.
   if (!payload.fullName?.trim() || payload.fullName.trim().length < 2) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["fullName"], message: "Full name is required." });
   }

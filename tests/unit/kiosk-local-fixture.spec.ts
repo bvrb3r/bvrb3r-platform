@@ -72,6 +72,34 @@ describe("kiosk local fixture payloads", () => {
     expect(payload.defaults.allowChooseBarber).toBe(true);
   });
 
+  it("gives every barber their own priced menu so the shop kiosk can show per-chair prices", () => {
+    const payload = getKioskFixturePayload("shop", KIOSK_FIXTURE_SHOP_ID);
+
+    for (const barber of payload.barbers) {
+      const owned = payload.services.filter((service) => service.barberId === barber.id);
+      expect(owned.length, `${barber.name} has no services`).toBeGreaterThan(0);
+      for (const service of owned) {
+        expect(service.priceCents, `${service.name} has no price`).toBeGreaterThan(0);
+        expect(service.durationMinutes).toBeGreaterThan(0);
+      }
+    }
+
+    // The chairs genuinely disagree on price, so a per-barber rail is visible.
+    const cheapestPerBarber = payload.barbers.map((barber) =>
+      Math.min(...payload.services.filter((service) => service.barberId === barber.id).map((service) => service.priceCents ?? 0))
+    );
+    expect(new Set(cheapestPerBarber).size).toBeGreaterThan(1);
+  });
+
+  it("keeps the barber front door on the public handle, not the real name", () => {
+    const payload = getKioskFixturePayload("barber", KIOSK_FIXTURE_BARBER_ID);
+
+    expect(payload.shop.shopName).toBe(payload.barbers[0]?.publicUsername);
+    expect(payload.shop.shopName).not.toBe(payload.barbers[0]?.name);
+    // The real name is still available for the confirmation reveal card.
+    expect(payload.barbers[0]?.name).toBeTruthy();
+  });
+
   it("seeds a barber kiosk scoped to the single barber", () => {
     const payload = getKioskFixturePayload("barber", KIOSK_FIXTURE_BARBER_ID);
 

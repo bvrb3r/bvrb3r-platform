@@ -27,6 +27,7 @@ const FOCUSABLE_SELECTOR = [
  */
 export function KioskExitDialog({
   copy,
+  title,
   pin,
   onPinChange,
   pinError,
@@ -35,6 +36,8 @@ export function KioskExitDialog({
   onSubmit
 }: {
   copy: KioskCopy;
+  /** Scope-specific: "Owner PIN to exit" or "Barber PIN to exit". */
+  title: string;
   pin: string;
   onPinChange: (value: string) => void;
   pinError: string | null;
@@ -89,17 +92,20 @@ export function KioskExitDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-4 sm:p-6"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-4 backdrop-blur-md sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="kiosk-exit-title"
       aria-describedby="kiosk-exit-description"
       onKeyDown={handleKeyDown}
+      data-kiosk-surface="dialog"
       ref={dialogRef}
     >
       <div className="w-full max-w-md rounded-[26px] border border-white/10 bg-[#0b0c0d] p-6">
-        <h2 id="kiosk-exit-title" className="font-serif text-3xl">{copy.staffExit}</h2>
-        <p id="kiosk-exit-description" className="mt-2 text-sm text-white/45">{copy.staffExitHint}</p>
+        <h2 id="kiosk-exit-title" className="font-serif text-[clamp(28px,3.4vw,36px)]">{title}</h2>
+        {/* 0.6 alpha, not 0.45: on the #0b0c0d panel anything below ~0.48 drops
+            under the 4.5:1 body-text ratio a public kiosk has to hold. */}
+        <p id="kiosk-exit-description" className="mt-2 text-sm text-white/60">{copy.staffExitHint}</p>
         <div className="mt-5">
           <Input
             ref={pinInputRef}
@@ -109,6 +115,7 @@ export function KioskExitDialog({
             placeholder={copy.pinPlaceholder}
             inputMode="numeric"
             autoComplete="off"
+            type="password"
           />
         </div>
         {pinError ? <div className="mt-4"><FeedbackBanner tone="error" message={pinError} /></div> : null}
@@ -116,15 +123,15 @@ export function KioskExitDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/15 px-6 font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[#f5f1e8] transition hover:border-white/30 motion-reduce:transition-none"
+            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full border border-white/16 px-6 font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[#f5f1e8] transition hover:border-white/30 motion-reduce:transition-none"
           >
-            {copy.cancel}
+            {copy.stay}
           </button>
           <button
             type="button"
             disabled={!pin || isPending}
             onClick={onSubmit}
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#c4f24e] px-6 font-mono text-[11px] font-black uppercase tracking-[0.12em] text-[#050505] transition hover:brightness-105 disabled:opacity-40 motion-reduce:transition-none"
+            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full bg-[#c4f24e] px-6 font-mono text-[11px] font-black uppercase tracking-[0.12em] text-[#060708] transition hover:brightness-105 disabled:opacity-40 motion-reduce:transition-none"
           >
             {isPending ? copy.checking : copy.exit}
           </button>
