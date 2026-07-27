@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { KioskServiceError } from "@/lib/kiosk/service";
+import { KioskSettingsError } from "@/lib/kiosk/settings-service";
 
 const {
   getKioskPayloadMock,
@@ -53,6 +54,9 @@ describe("kiosk routes", () => {
     createBarberKioskBookingMock.mockReset();
     createKioskWaitlistMock.mockReset();
     getKioskSettingsStatusMock.mockReset();
+    // Default: kiosk is configured (owner has set a PIN and enabled it), so
+    // the launch gate passes unless a test overrides it.
+    getKioskSettingsStatusMock.mockResolvedValue({ scope: "shop", targetReference: "any", enabled: true, pinSet: true });
   });
 
   it("returns the branded kiosk payload", async () => {
@@ -233,5 +237,65 @@ describe("kiosk routes", () => {
 
     expect(response.status).toBe(409);
     expect(body.error).toMatch(/queue lane/i);
+  });
+
+  it("refuses to serve a shop kiosk whose owner has not set a PIN", async () => {
+    getKioskSettingsStatusMock.mockResolvedValue({ scope: "shop", targetReference: "loc-ybor", enabled: true, pinSet: false });
+
+    const response = await getKiosk(new NextRequest("https://bvrb3r.demo/api/kiosk/loc-ybor"), {
+      params: Promise.resolve({ shopId: "loc-ybor" })
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toMatch(/kiosk pin/i);
+    expect(getKioskPayloadMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses shop kiosk bookings and waitlist joins when the kiosk is disabled", async () => {
+    getKioskSettingsStatusMock.mockResolvedValue({ scope: "shop", targetReference: "loc-ybor", enabled: false, pinSet: true });
+
+    const bookingResponse = await postKioskBooking(new NextRequest("https://bvrb3r.demo/api/kiosk/loc-ybor/booking", {
+      method: "POST",
+      body: JSON.stringify({ fullName: "Jordan Ellis", phone: "8135550101", email: "jordan@example.com", publicUsername: "jordanellis", serviceId: "srv-cut" })
+    }), { params: Promise.resolve({ shopId: "loc-ybor" }) });
+    const waitlistResponse = await postKioskWaitlist(new NextRequest("https://bvrb3r.demo/api/kiosk/loc-ybor/waitlist", {
+      method: "POST",
+      body: JSON.stringify({ fullName: "Jordan Ellis", phone: "8135550101" })
+    }), { params: Promise.resolve({ shopId: "loc-ybor" }) });
+
+    expect(bookingResponse.status).toBe(403);
+    expect(waitlistResponse.status).toBe(403);
+    expect(createKioskBookingMock).not.toHaveBeenCalled();
+    expect(createKioskWaitlistMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses the barber kiosk payload and bookings until the barber sets a PIN", async () => {
+    getKioskSettingsStatusMock.mockResolvedValue({ scope: "barber", targetReference: "barber-blaze", enabled: true, pinSet: false });
+
+    const payloadResponse = await getBarberKiosk(new NextRequest("https://bvrb3r.demo/api/kiosk/barber/barber-blaze"), {
+      params: Promise.resolve({ barberId: "barber-blaze" })
+    });
+    const bookingResponse = await postBarberKioskBooking(new NextRequest("https://bvrb3r.demo/api/kiosk/barber/barber-blaze/booking", {
+      method: "POST",
+      body: JSON.stringify({ fullName: "Jordan Ellis", phone: "8135550101", email: "jordan@example.com", publicUsername: "jordanellis", serviceId: "srv-cut" })
+    }), { params: Promise.resolve({ barberId: "barber-blaze" }) });
+
+    expect(payloadResponse.status).toBe(403);
+    expect(bookingResponse.status).toBe(403);
+    expect(getBarberKioskPayloadMock).not.toHaveBeenCalled();
+    expect(createBarberKioskBookingMock).not.toHaveBeenCalled();
+    expect(getKioskSettingsStatusMock).toHaveBeenCalledWith({ scope: "barber", targetReference: "barber-blaze" });
+  });
+
+  it("returns 503 when the kiosk settings lookup itself fails", async () => {
+    getKioskSettingsStatusMock.mockRejectedValue(new KioskSettingsError("Unable to load kiosk settings.", 500, "settings_lookup_failed"));
+
+    const response = await getKiosk(new NextRequest("https://bvrb3r.demo/api/kiosk/loc-ybor"), {
+      params: Promise.resolve({ shopId: "loc-ybor" })
+    });
+
+    expect(response.status).toBe(503);
+    expect(getKioskPayloadMock).not.toHaveBeenCalled();
   });
 });

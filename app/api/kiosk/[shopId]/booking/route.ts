@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { assertKioskLaunchReady } from "@/lib/kiosk/launch-gate";
 import { createKioskBooking, KioskServiceError } from "@/lib/kiosk/service";
 
 const kioskBookingSchema = z.object({
@@ -42,6 +43,7 @@ function toErrorResponse(error: unknown, fallback: string) {
 export async function POST(request: Request, { params }: { params: Promise<{ shopId: string }> }) {
   try {
     const { shopId } = await params;
+    await assertKioskLaunchReady("shop", shopId);
     const parsed = kioskBookingSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid kiosk booking payload." }, { status: 400 });
