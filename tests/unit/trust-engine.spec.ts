@@ -93,7 +93,7 @@ describe("trust engine", () => {
     const result = submitBarberVerification(
       state,
       {
-        role: "commission_barber",
+        role: "barber_user",
         barberId: "barber-wave",
         userEmail: "wave@bvrb3r.demo"
       },

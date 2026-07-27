@@ -4,7 +4,7 @@ import { ShopOwnerPlanAccessCard, ShopOwnerUpgradePrompt } from "@/components/ow
 import { buildFreeEntitlementTruth, type ServerEntitlementTruth } from "@/lib/entitlements/domain";
 import { buildShopOwnerPaywallSummary } from "@/lib/entitlements/shop-owner-paywall";
 
-const forbiddenUserCopy = /shop_owner_user|client_user|barber_user|guest_user|owner_user|shop_admin|entitlement_status|stripe_customer_id|stripe_subscription_id|account_entitlements|provider_payment_method_id|payment_intent|localStorage|webhook_unverified|server_default|payout_readiness_status|payment_routing_records|relationship_type|booth_rent_barber|commission_barber|freelance_barber/i;
+const forbiddenUserCopy = /shop_owner_user|client_user|barber_user|guest_user|owner_user|shop_admin|entitlement_status|stripe_customer_id|stripe_subscription_id|account_entitlements|provider_payment_method_id|payment_intent|localStorage|webhook_unverified|server_default|payout_readiness_status|payment_routing_records|relationship_type|booth_rent_barber|commission_barber|freelance_barber/i;  // doctrine-allow
 
 function activeOwnerEntitlement(overrides: Partial<ServerEntitlementTruth> = {}): ServerEntitlementTruth {
   return {

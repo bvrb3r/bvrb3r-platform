@@ -109,7 +109,7 @@ describe("owner team workspace", () => {
           {
             id: "barber-maya",
             name: "Maya Cole",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             activeAppointmentCount: 1,
             liveAppointmentCount: 0,
             bookedCount: 2,
@@ -139,7 +139,7 @@ describe("owner team workspace", () => {
           {
             id: "barber-maya",
             name: "Maya Cole",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             activeAppointmentCount: 1,
             liveAppointmentCount: 0,
             bookedCount: 2,
@@ -243,8 +243,8 @@ describe("owner team workspace", () => {
             barberName: "Maya Cole",
             shopId: "shop-ybor",
             shopLabel: "BVRB3R Ybor",
-            routingModel: "commission",
-            commissionRate: 0.6,
+            routingModel: "autobooth_rent",
+            autoBoothPercent: 0.6,
             boothRentAmount: null,
             boothRentFrequency: null,
             payoutBlockReason: null
@@ -258,7 +258,7 @@ describe("owner team workspace", () => {
             shopId: "shop-ybor",
             shopLabel: "BVRB3R Ybor",
             routingModel: "booth_rent",
-            commissionRate: null,
+            autoBoothPercent: null,
             boothRentAmount: 250,
             boothRentFrequency: "weekly",
             payoutBlockReason: "Submit payout verification"
@@ -315,7 +315,7 @@ describe("owner team workspace", () => {
             email: "jordan@example.com",
             username: "jordanfade",
             serviceAreaLabel: "Ybor City",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             appApprovalStatus: "approved",
             shopApprovalStatus: "approved",
             visibilityState: "public",
@@ -333,7 +333,7 @@ describe("owner team workspace", () => {
             email: "tied@example.com",
             username: "tiedbarber",
             serviceAreaLabel: "Tampa",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             appApprovalStatus: "approved",
             shopApprovalStatus: "approved",
             visibilityState: "public",
@@ -467,7 +467,7 @@ describe("owner team workspace", () => {
     expect(screen.queryByTestId("team-relationship-queue")).not.toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
     expect(barbersSummary.getByText("Ren Hale")).toBeInTheDocument();
-    expect(barbersSummary.getByText("Service: Commission")).toBeInTheDocument();
+    expect(barbersSummary.getByText("Service: AutoBooth Rent")).toBeInTheDocument();
     expect(barbersSummary.getByText("Service: Booth rent")).toBeInTheDocument();
     expect(barbersSummary.getAllByText("Appointments").length).toBeGreaterThan(0);
     expect(barbersSummary.getAllByText("Day Utilization").length).toBeGreaterThan(0);
@@ -586,7 +586,7 @@ describe("owner team workspace", () => {
           {
             id: "barber-phillip",
             name: "Phillip Forsure",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             activeAppointmentCount: 0,
             liveAppointmentCount: 0,
             bookedCount: 0,
@@ -602,7 +602,7 @@ describe("owner team workspace", () => {
           {
             id: "barber-phillip",
             name: "Phillip Forsure",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             activeAppointmentCount: 0,
             liveAppointmentCount: 0,
             bookedCount: 0,
@@ -695,7 +695,7 @@ describe("owner team workspace", () => {
             email: "jordan@example.com",
             username: "jordanfade",
             serviceAreaLabel: "Ybor City",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             appApprovalStatus: "approved",
             shopApprovalStatus: "approved",
             visibilityState: "public",
@@ -745,10 +745,13 @@ describe("owner team workspace", () => {
       expect(createOwnerTeamInviteMock).toHaveBeenCalledWith({
         barberId: "barber-jordan",
         shopId: "shop-ybor",
+        // The directory barber is on AutoBooth Rent, so the form defaults to it
+        // and sends real rent terms plus the owner-approved portion.
         proposal: {
-          routingModel: "commission",
-          barberPercent: 0.7,
-          shopPercent: 0.3
+          routingModel: "autobooth_rent",
+          boothRentAmount: 250,
+          boothRentFrequency: "weekly",
+          autoBoothPercent: 0.25
         }
       });
     });
@@ -774,7 +777,7 @@ describe("owner team workspace", () => {
             email: "jordan@example.com",
             username: "jordanfade",
             serviceAreaLabel: "Ybor City",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             appApprovalStatus: "approved",
             shopApprovalStatus: "approved",
             visibilityState: "public",
@@ -820,7 +823,7 @@ describe("owner team workspace", () => {
             email: "jordan@example.com",
             username: "jordanfade",
             serviceAreaLabel: "Ybor City",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             appApprovalStatus: "approved",
             shopApprovalStatus: "approved",
             visibilityState: "public",
@@ -923,7 +926,7 @@ describe("owner team workspace", () => {
             email: "jordan@example.com",
             username: "jordanfade",
             serviceAreaLabel: "Ybor City",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             appApprovalStatus: "approved",
             shopApprovalStatus: "approved",
             visibilityState: "public",

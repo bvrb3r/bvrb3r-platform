@@ -34,7 +34,7 @@ describe("trust privacy routes", () => {
   });
 
   it("sanitizes verification upload responses", async () => {
-    requireTrustActorMock.mockResolvedValue({ role: "commission_barber", barberId: "barber-fade", userEmail: "fade@bvrb3r.demo" });
+    requireTrustActorMock.mockResolvedValue({ role: "barber_user", barberId: "barber-fade", userEmail: "fade@bvrb3r.demo" });
     getMarketplaceActivationProviderMock.mockResolvedValue({
       createVerificationUpload: vi.fn().mockResolvedValue({
         upload: {
@@ -48,7 +48,7 @@ describe("trust privacy routes", () => {
           storagePath: "verification/barber-fade/fade-driver-license.pdf",
           secureReference: "secure://verification/barber-fade/upload-1",
           uploadStatus: "uploaded",
-          uploadedByRole: "commission_barber",
+          uploadedByRole: "barber_user",
           uploadedAt: "2026-03-31T12:00:00.000Z"
         }
       })
@@ -73,7 +73,7 @@ describe("trust privacy routes", () => {
   });
 
   it("sanitizes barber verification submissions", async () => {
-    requireTrustActorMock.mockResolvedValue({ role: "commission_barber", barberId: "barber-fade", userEmail: "fade@bvrb3r.demo" });
+    requireTrustActorMock.mockResolvedValue({ role: "barber_user", barberId: "barber-fade", userEmail: "fade@bvrb3r.demo" });
     getTrustProviderMock.mockResolvedValue({
       submitBarberVerification: vi.fn().mockResolvedValue({
         verification: {

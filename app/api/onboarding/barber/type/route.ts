@@ -5,7 +5,7 @@ import { normalizeBarberSubtype } from "@/lib/auth/roles";
 import { initializeSelectedUserLane, resolvePostAuthDestination } from "@/lib/onboarding/service";
 
 const schema = z.object({
-  barberSubtype: z.enum(["freelance", "commission", "booth_rent", "blueprint"]).transform(normalizeBarberSubtype)
+  barberSubtype: z.enum(["freelance", "booth_rent", "autobooth_rent", "blueprint"]).transform(normalizeBarberSubtype)
 });
 
 export async function POST(request: NextRequest) {

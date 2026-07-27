@@ -43,10 +43,13 @@ describe("barber account role normalization", () => {
   it("keeps business relationship subtype separate from account role", () => {
     expect(normalizeBarberSubtype("blueprint")).toBe("booth_rent");
     expect(normalizeBarberSubtype("booth_rent")).toBe("booth_rent");
-    expect(normalizeBarberSubtype("commission")).toBe("commission");
+    expect(normalizeBarberSubtype("autobooth_rent")).toBe("autobooth_rent");
     expect(normalizeBarberSubtype("freelance")).toBe("freelance");
     expect(subtypeFromLegacyBarberRole("booth_rent_barber")).toBe("booth_rent");
-    expect(subtypeFromLegacyBarberRole("commission_barber")).toBe("commission");
+    // Retired revenue-share values normalize to freelance, never to a rent
+    // model: promoting one would invent a debt the barber never agreed to.
+    expect(normalizeBarberSubtype("commission")).toBe("freelance");
+    expect(subtypeFromLegacyBarberRole("commission_barber")).toBe("freelance");
   });
 
   it("allows canonical barber users through legacy barber gates while data migrates", () => {
@@ -110,7 +113,7 @@ describe("role normalization migration plan", () => {
       status: "eligible",
       targetRole: "barber_user",
       relationshipMetadataPreserved: true,
-      proposedBarberSubtype: "commission"
+      proposedBarberSubtype: "freelance"
     });
 
     expect(decideRoleNormalization({

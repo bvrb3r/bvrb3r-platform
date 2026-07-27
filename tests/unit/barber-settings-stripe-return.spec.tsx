@@ -500,8 +500,8 @@ describe("BarberSettingsScreen Stripe return sync", () => {
           boothRentFrequency: "weekly",
           barberPercent: null,
           shopPercent: null,
-          commissionCapAmount: null,
-          commissionCapFrequency: null
+          autoBoothCapAmount: null,
+          autoBoothCapFrequency: null
         }]
       },
       isLoading: false,
@@ -562,8 +562,8 @@ describe("BarberSettingsScreen Stripe return sync", () => {
           boothRentFrequency: "weekly",
           barberPercent: null,
           shopPercent: null,
-          commissionCapAmount: null,
-          commissionCapFrequency: null
+          autoBoothCapAmount: null,
+          autoBoothCapFrequency: null
         }]
       },
       isLoading: false,
@@ -1372,7 +1372,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(boothRentReceipt).getByText("$5.00")).toBeInTheDocument();
     expect(within(boothRentReceipt).getByText("$95.00")).toBeInTheDocument();
     expect(within(boothRentReceipt).getByText("$0.00")).toBeInTheDocument();
-    expect(within(boothRentReceipt).queryByText(/Commission split/i)).not.toBeInTheDocument();
+    expect(within(boothRentReceipt).queryByText(/applied to rent/i)).not.toBeInTheDocument();
     fireEvent.click(within(boothRentReceipt).getByLabelText("Close receipt"));
 
     fireEvent.click(within(screen.getByTestId("transaction-row-pos:cash-1")).getByRole("button", { name: "Receipt" }));

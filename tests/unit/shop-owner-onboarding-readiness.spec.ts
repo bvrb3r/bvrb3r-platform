@@ -14,6 +14,7 @@ import {
   usesOnlyApprovedShopOwnerMoreSubtitles,
   type ShopOwnerOnboardingDraft
 } from "@/lib/onboarding/shop-owner-path";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 const completeDraft: ShopOwnerOnboardingDraft = {
   authenticated: true,
@@ -53,7 +54,7 @@ const completeDraft: ShopOwnerOnboardingDraft = {
 describe("shop owner onboarding readiness path", () => {
   it("allows only the canonical Shop Owner public account role", () => {
     expect(isAllowedShopOwnerOnboardingRole("shop_owner_user")).toBe(true);
-    ["guest_user", "architect_user", "owner", "shop_owner", "pro_owner", "elite_owner", "booth_rent_barber", "commission_barber"].forEach((role) => {
+    ["guest_user", "architect_user", "owner", "shop_owner", "pro_owner", "elite_owner", "booth_rent_barber", RETIRED_REVENUE_SHARE_ACCOUNT_ROLE].forEach((role) => {
       expect(isAllowedShopOwnerOnboardingRole(role)).toBe(false);
       const result = buildShopOwnerOnboardingReadiness({ ...completeDraft, role });
       expect(result.roleScope === "unknown" || result.roleScope === "platform_internal").toBe(true);
@@ -92,15 +93,15 @@ describe("shop owner onboarding readiness path", () => {
   });
 
   it("does not fake owner money or payout readiness from payment model selection", () => {
-    const commission = buildShopOwnerOnboardingReadiness({
+    const autoBooth = buildShopOwnerOnboardingReadiness({
       ...completeDraft,
-      paymentModel: "commission_bvrb3r_pay",
+      paymentModel: "autobooth_bvrb3r_pay",
       providerTruthConnected: false,
       shopMoneySetupStatus: "needs_review"
     });
 
-    expect(commission.readiness.payout.status).toBe("needs_review");
-    expect(commission.readiness.payout.proofConnected).toBe(false);
+    expect(autoBooth.readiness.payout.status).toBe("needs_review");
+    expect(autoBooth.readiness.payout.proofConnected).toBe(false);
 
     const boothRent = buildShopOwnerOnboardingReadiness({
       ...completeDraft,

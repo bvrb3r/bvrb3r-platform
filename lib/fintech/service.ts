@@ -94,7 +94,7 @@ type BarberRow = {
   reference_code: string | null;
   profile_id: string;
   compensation_model: string;
-  commission_rate: number | string | null;
+  autobooth_percent: number | string | null;
   booth_rent_amount: number | string | null;
   booth_rent_frequency: BoothRentFrequency | null;
 };
@@ -123,7 +123,7 @@ type StaffMembershipRow = {
   shop_id?: string | null;
   relationship_status?: string | null;
   routing_model: string | null;
-  commission_rate: number | string | null;
+  autobooth_percent: number | string | null;
   booth_rent_amount: number | string | null;
   booth_rent_frequency: BoothRentFrequency | null;
   payout_block_reason: string | null;
@@ -220,21 +220,20 @@ type AppointmentRow = {
   shop_barber_relationship_id?: string | null;
   compensation_rule_id?: string | null;
   relationship_type_snapshot?: RoutingModel | null;
-  barber_percent_snapshot?: number | string | null;
-  shop_percent_snapshot?: number | string | null;
+  autobooth_percent_snapshot?: number | string | null;
 };
 
 type CanonicalRelationshipRow = {
   id: string;
-  relationship_type: "commission" | "booth_rent";
+  relationship_type: "booth_rent" | "autobooth_rent";
   status: string;
 };
 
 type CompensationRuleRow = {
   id: string;
-  model: "commission" | "booth_rent";
-  barber_percent: number | string | null;
-  shop_percent: number | string | null;
+  model: "booth_rent" | "autobooth_rent";
+  /** Owner-approved portion (0..1) applied toward outstanding booth rent. */
+  autobooth_percent: number | string | null;
   is_active: boolean;
 };
 
@@ -321,8 +320,7 @@ type PaymentRoutingRow = {
   provider_net_amount: number | string;
   service_amount?: number | string;
   tip_amount?: number | string;
-  barber_percent_snapshot?: number | string | null;
-  shop_percent_snapshot?: number | string | null;
+  autobooth_percent_snapshot?: number | string | null;
   platform_fee_amount: number | string;
   barber_payout_amount: number | string;
   shop_split_amount: number | string;
@@ -470,7 +468,7 @@ export type MembershipCompensationView = {
   shopId: string;
   shopLabel: string;
   routingModel: RoutingModel;
-  commissionRate: number | null;
+  autoBoothPercent: number | null;
   boothRentAmount: number | null;
   boothRentFrequency: BoothRentFrequency | null;
   payoutBlockReason: string | null;
@@ -883,11 +881,11 @@ export class FintechServiceError extends Error {
 
 const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider, provider_account_id, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_eventually_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled, last_checked_at, onboarding_started_at, onboarding_completed_at, processor_last_synced_at, processor_last_event_id, processor_last_event_type, dashboard_last_accessed_at, created_by, created_at, updated_at";
 const PAYMENT_SELECT = "id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, provider, provider_payment_intent_id, amount, currency, status, payment_status, payment_type, paid_at, created_at, updated_at";
-const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, pos_sale_id, membership_id, shop_barber_relationship_id, compensation_rule_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, service_amount, tip_amount, barber_percent_snapshot, shop_percent_snapshot, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
+const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, pos_sale_id, membership_id, shop_barber_relationship_id, compensation_rule_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, service_amount, tip_amount, autobooth_percent_snapshot, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
 const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_id, membership_id, target_subject_type, execution_type, target_connected_account_id, target_provider_account_id, amount, currency, execution_status, blocked_reason, failure_reason, processor_transfer_id, processor_reversal_id, idempotency_key, source_execution_id, source_refund_id, payout_reference, payout_speed, instant_payout_fee_amount, net_transfer_amount, processor_payout_id, reconciliation_status, metadata, initiated_by, attempt_count, last_attempted_at, executed_at, failed_at, reversed_at, created_at, updated_at";
 const POS_SALE_SELECT = "id, barber_id, shop_id, client_id, customer_name, customer_phone, customer_email, source, status, payment_method, payment_status, subtotal_cents, discount_cents, tip_cents, platform_fee_cents, client_fee_cents, total_cents, amount_cents, total_amount_cents, payment_id, note, cash_recorded_at, completed_at, created_at, updated_at";
-const STAFF_MEMBERSHIP_SELECT = "id, profile_id, location_id, shop_id, relationship_status, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, ended_at, public_team_visible, public_team_order, featured_on_shop_profile, updated_at, fintech_updated_at";
-const STAFF_MEMBERSHIP_LEGACY_SELECT = "id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at";
+const STAFF_MEMBERSHIP_SELECT = "id, profile_id, location_id, shop_id, relationship_status, routing_model, autobooth_percent, booth_rent_amount, booth_rent_frequency, payout_block_reason, ended_at, public_team_visible, public_team_order, featured_on_shop_profile, updated_at, fintech_updated_at";
+const STAFF_MEMBERSHIP_LEGACY_SELECT = "id, profile_id, location_id, routing_model, autobooth_percent, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at";
 const POS_PAYMENT_REQUEST_SELECT = "id, pos_sale_id, barber_id, client_id, amount_cents, status, requested_at, approved_at, declined_at, expires_at, payment_id, message_thread_id, created_at, updated_at";
 
 function numeric(value: number | string | null | undefined) {
@@ -1262,7 +1260,7 @@ async function resolveActor(user: UserAccount, supabase: SupabaseClient): Promis
   if (isBarberAccountRole(user.role)) {
     const barberResult = await supabase
       .from("barbers")
-      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+      .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency")
       .eq("profile_id", profileResult.data.id)
       .maybeSingle();
 
@@ -1601,8 +1599,11 @@ function mapMembershipCompensationView(input: {
     barberName: input.barberName,
     shopId: context?.id ?? getMembershipShopScopeId(input.membership),
     shopLabel: context?.label ?? getMembershipShopScopeId(input.membership),
-    routingModel: normalizeRoutingModel(input.membership.routing_model, input.barber.compensation_model === "booth_rent" ? "booth_rent" : "commission"),
-    commissionRate: input.membership.commission_rate === null ? null : numeric(input.membership.commission_rate),
+    routingModel: normalizeRoutingModel(
+      input.membership.routing_model,
+      normalizeRoutingModel(input.barber.compensation_model, "freelance")
+    ),
+    autoBoothPercent: input.membership.autobooth_percent === null ? null : numeric(input.membership.autobooth_percent),
     boothRentAmount: input.membership.booth_rent_amount === null ? null : numeric(input.membership.booth_rent_amount),
     boothRentFrequency: input.membership.booth_rent_frequency,
     payoutBlockReason: input.membership.payout_block_reason,
@@ -1620,7 +1621,7 @@ async function loadBarbersByProfileIds(profileIds: string[], supabase: SupabaseC
 
   const result = await supabase
     .from("barbers")
-    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+    .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency")
     .in("profile_id", profileIds);
 
   if (result.error) {
@@ -1637,7 +1638,7 @@ async function loadBarbersByIds(barberIds: string[], supabase: SupabaseClient) {
 
   const result = await supabase
     .from("barbers")
-    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+    .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency")
     .in("id", barberIds);
 
   if (result.error) {
@@ -2500,7 +2501,7 @@ async function loadPaymentAndContext(supabase: SupabaseClient, paymentId: string
   const appointment = payment.appointment_id
     ? await supabase
       .from("appointments")
-      .select("id, reference_code, status, completed_at, starts_at, service_id, membership_id, barber_id, shop_id, location_id, client_id, shop_barber_relationship_id, compensation_rule_id, relationship_type_snapshot, barber_percent_snapshot, shop_percent_snapshot")
+      .select("id, reference_code, status, completed_at, starts_at, service_id, membership_id, barber_id, shop_id, location_id, client_id, shop_barber_relationship_id, compensation_rule_id, relationship_type_snapshot, autobooth_percent_snapshot")
       .eq("id", payment.appointment_id)
       .maybeSingle()
     : { data: null, error: null };
@@ -2833,7 +2834,7 @@ export async function syncPaymentRoutingRecord(
   const barberResult = barberId
     ? await supabase
       .from("barbers")
-      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+      .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency")
       .eq("id", barberId)
       .maybeSingle()
     : { data: null, error: null };
@@ -2862,7 +2863,7 @@ export async function syncPaymentRoutingRecord(
   if (appointment?.membership_id) {
     const membershipResult = await supabase
       .from("staff_locations")
-      .select("id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
+      .select("id, profile_id, location_id, routing_model, autobooth_percent, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
       .eq("id", appointment.membership_id)
       .maybeSingle();
 
@@ -2876,7 +2877,7 @@ export async function syncPaymentRoutingRecord(
   if (!membership && barber?.profile_id && shopId) {
     const membershipResult = await supabase
       .from("staff_locations")
-      .select("id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
+      .select("id, profile_id, location_id, routing_model, autobooth_percent, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
       .eq("profile_id", barber.profile_id)
       .eq("location_id", shopId)
       .maybeSingle();
@@ -2922,7 +2923,7 @@ export async function syncPaymentRoutingRecord(
   if (compensationRuleId || canonicalRelationship?.id) {
     let ruleQuery = supabase
       .from("compensation_rules")
-      .select("id, model, barber_percent, shop_percent, is_active");
+      .select("id, model, autobooth_percent, is_active");
     ruleQuery = compensationRuleId
       ? ruleQuery.eq("id", compensationRuleId)
       : ruleQuery.eq("relationship_id", canonicalRelationship!.id).eq("is_active", true);
@@ -2941,18 +2942,19 @@ export async function syncPaymentRoutingRecord(
       : membership?.routing_model
         ? normalizeRoutingModel(membership.routing_model)
         : "freelance";
-  const snapshotBarberPercent = appointment?.barber_percent_snapshot ?? compensationRule?.barber_percent ?? null;
-  const snapshotShopPercent = appointment?.shop_percent_snapshot ?? compensationRule?.shop_percent ?? null;
-  const commissionRate = snapshotBarberPercent !== null && snapshotBarberPercent !== undefined
-    ? numeric(snapshotBarberPercent) / 100
-    : membership?.commission_rate === null || membership?.commission_rate === undefined
-      ? barber?.commission_rate === null || barber?.commission_rate === undefined
+  const snapshotAutoBoothPercent = appointment?.autobooth_percent_snapshot
+    ?? compensationRule?.autobooth_percent
+    ?? null;
+  const autoBoothPercent = snapshotAutoBoothPercent !== null && snapshotAutoBoothPercent !== undefined
+    ? numeric(snapshotAutoBoothPercent)
+    : membership?.autobooth_percent === null || membership?.autobooth_percent === undefined
+      ? barber?.autobooth_percent === null || barber?.autobooth_percent === undefined
         ? null
-        : numeric(barber.commission_rate)
-      : numeric(membership.commission_rate);
+        : numeric(barber.autobooth_percent)
+      : numeric(membership.autobooth_percent);
 
-  if (routingModel === "commission" && (!canonicalRelationship || !compensationRule)) {
-    throw new FintechServiceError("Commission routing requires the appointment's relationship and compensation rule snapshots.", 409);
+  if (routingModel === "autobooth_rent" && (!canonicalRelationship || !compensationRule)) {
+    throw new FintechServiceError("AutoBooth Rent requires the appointment's relationship and compensation rule snapshots.", 409);
   }
 
   const posSalePaidSuccessful = Boolean(payment.payment_type === "pos_sale" && posSale?.status === "paid" && isCompletionPaymentSuccessful(payment));
@@ -3068,7 +3070,7 @@ export async function syncPaymentRoutingRecord(
     serviceAmount,
     tipAmount,
     routingModel,
-    commissionRate,
+    autoBoothPercent,
     barberReady: barberAccountState?.row.payout_readiness_status === "ready",
     shopReady: shopAccountState?.row.payout_readiness_status === "ready",
     barberVerificationAllowed: barberPayoutGate?.allowed,
@@ -3153,8 +3155,7 @@ const moneyRoutingStatus: MoneyRoutingStatus = capturedCancelledAppointment
     provider_net_amount: calculated.providerNetAmount,
     service_amount: calculated.serviceAmount,
     tip_amount: calculated.tipAmount,
-    barber_percent_snapshot: routingModel === "commission" ? numeric(snapshotBarberPercent) : null,
-    shop_percent_snapshot: routingModel === "commission" ? numeric(snapshotShopPercent) : null,
+    autobooth_percent_snapshot: routingModel === "autobooth_rent" ? autoBoothPercent : null,
     platform_fee_amount: distributablePlatformFeeAmount,
     barber_payout_amount: distributableBarberPayoutAmount,
     shop_split_amount: distributableShopSplitAmount,
@@ -3958,7 +3959,7 @@ function mapPayoutExecutionView(
     targetDisplayName,
     barberName,
     shopLabel,
-    routingModel: routing?.routing_model ?? "commission",
+    routingModel: routing?.routing_model ?? "freelance",
     executionType: execution.execution_type,
     executionStatus: execution.execution_status,
     reconciliationStatus: execution.reconciliation_status,
@@ -7556,7 +7557,7 @@ export async function updateMembershipCompensation(
     .from("staff_locations")
     .update({
       routing_model: normalized.routingModel,
-      commission_rate: normalized.commissionRate,
+      autobooth_percent: normalized.autoBoothPercent,
       booth_rent_amount: normalized.boothRentAmount,
       booth_rent_frequency: normalized.boothRentFrequency,
       payout_block_reason: normalized.payoutBlockReason,
@@ -7572,7 +7573,7 @@ export async function updateMembershipCompensation(
   const [barberResult, profileResult] = await Promise.all([
     supabase
       .from("barbers")
-      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+      .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency")
       .eq("profile_id", membership.profile_id)
       .maybeSingle(),
     supabase
@@ -7598,7 +7599,7 @@ export async function updateMembershipCompensation(
       membership: {
         ...updatedMembership,
         routing_model: normalized.routingModel,
-        commission_rate: normalized.commissionRate,
+        autobooth_percent: normalized.autoBoothPercent,
         booth_rent_amount: normalized.boothRentAmount,
         booth_rent_frequency: normalized.boothRentFrequency,
         payout_block_reason: normalized.payoutBlockReason

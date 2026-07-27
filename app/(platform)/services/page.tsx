@@ -6,27 +6,25 @@ import { getAuthorizedUser } from "@/lib/auth/guards";
 import { isBarberAccountRole, isShopOwnerRole } from "@/lib/auth/roles";
 import type { Role } from "@/types/domain";
 
-function getTitle(role: Role, barberSubtype?: string) {
+function getTitle(role: Role) {
   if (isShopOwnerRole(role)) {
     return "Service catalog and ownership controls";
   }
 
   if (isBarberAccountRole(role)) {
-    return barberSubtype === "commission" ? "Shop-defined services at your chair" : "Own and refine your service menu";
+    return "Own and refine your service menu";
   }
 
   return "Services";
 }
 
-function getSubtitle(role: Role, barberSubtype?: string) {
+function getSubtitle(role: Role) {
   if (isShopOwnerRole(role)) {
-    return "Control the commission service catalog, protect pricing authority, and review popularity signals that now feed marketplace discovery.";
+    return "Control the shop service catalog, protect pricing authority, and review popularity signals that now feed marketplace discovery.";
   }
 
   if (isBarberAccountRole(role)) {
-    return barberSubtype === "commission"
-      ? "See the shop-defined services you perform, understand how they rank, and stay clear on the owner-controlled pricing boundary."
-      : "Create and manage your own barber-owned services while keeping pricing, style tags, and public profile presentation aligned.";
+    return "Create and manage your own barber-owned services while keeping pricing, style tags, and public profile presentation aligned.";
   }
 
   return "Manage services.";
@@ -59,10 +57,10 @@ export default async function ServicesPage({
     <DashboardShell
       user={user}
       activeHref="/services"
-      title={getTitle(marketplaceRole, user.barberSubtype)}
-      subtitle={getSubtitle(marketplaceRole, user.barberSubtype)}
+      title={getTitle(marketplaceRole)}
+      subtitle={getSubtitle(marketplaceRole)}
     >
-      <ServiceCatalogWorkspace role={marketplaceRole} barberSubtype={user.barberSubtype} barberId={user.barberId} />
+      <ServiceCatalogWorkspace role={marketplaceRole} barberId={user.barberId} />
     </DashboardShell>
   );
 }

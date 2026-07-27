@@ -28,7 +28,7 @@ Use this checklist for real iPhone, Android, installed PWA, and wrapped-native s
 ## Session and role checks
 
 - [ ] Client login persists across relaunch and lands on `/dashboard/client`.
-- [ ] Commission barber login persists across relaunch and lands on `/dashboard/barber`.
+- [ ] Freelance barber login persists across relaunch and lands on `/dashboard/barber`.
 - [ ] Booth-rent barber login persists across relaunch and lands on `/dashboard/barber`.
 - [ ] Front desk login persists across relaunch and lands on `/dashboard/front-desk`.
 - [ ] Manager login persists across relaunch and lands on `/dashboard/manager`.

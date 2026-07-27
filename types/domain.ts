@@ -1,4 +1,12 @@
-﻿export type Role =
+﻿import type { RetiredRevenueShareAccountRole } from "@/lib/doctrine/legacy-data-aliases";
+
+/**
+ * Account roles. Identity is never a money relationship: the supported
+ * shop-barber financial models live on the relationship, not the profile.
+ * `booth_rent_barber` and the retired revenue-share role are legacy members of
+ * the historical `public.app_role` enum, kept so pre-doctrine rows still read.
+ */
+export type Role =
   | "platform_admin"
   | "architect"
   | "shop_owner_user"
@@ -8,14 +16,19 @@
   | "barber_user"
   | "barber"
   | "freelance_barber"
-  | "commission_barber"
   | "booth_rent_barber"
+  | RetiredRevenueShareAccountRole
   | "client_user"
   | "client";
 
-export type CompensationModel = "freelance" | "commission" | "booth_rent";
+/**
+ * Full Booth Rent (`booth_rent`) and AutoBooth Rent (`autobooth_rent`) are the
+ * only supported shop-barber financial models. `freelance` means the barber has
+ * no shop relationship, so no rent exists. See `lib/fintech/booth-rent-doctrine.ts`.
+ */
+export type CompensationModel = "freelance" | "booth_rent" | "autobooth_rent";
 export type IdentityLane = "client" | "barber" | "shop_owner" | "platform_admin";
-export type BarberSubtype = "freelance" | "booth_rent" | "commission";
+export type BarberSubtype = "freelance" | "booth_rent" | "autobooth_rent";
 export type ApprovalStatus = "not_required" | "pending" | "under_review" | "approved" | "rejected";
 export type IdentityOnboardingState =
   | "awaiting_contact_verification"
@@ -192,7 +205,7 @@ export interface Barber {
   id: string;
   userId: string;
   name: string;
-  role: Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">;
+  role: Extract<Role, "barber_user" | "barber" | "freelance_barber" | "booth_rent_barber" | RetiredRevenueShareAccountRole>;
   barberSubtype?: BarberSubtype;
   appApprovalStatus?: ApprovalStatus;
   shopApprovalStatus?: ApprovalStatus;
@@ -201,7 +214,11 @@ export interface Barber {
   rating: number;
   reviewCount: number;
   compensationModel: CompensationModel;
-  commissionRate?: number;
+  /**
+   * Owner-approved portion (0..1) of eligible transaction proceeds that
+   * AutoBooth Rent applies toward outstanding booth rent. Never a pay rate.
+   */
+  autoBoothPercent?: number;
   boothRentAmount?: number;
   boothRentFrequency?: "weekly" | "monthly";
   todayEarnings: number;

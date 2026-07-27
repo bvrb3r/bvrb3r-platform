@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "mission": 5,
+  "missionName": "Shop Owner and kiosk certification",
+  "generatedAt": "2026-07-27T03:56:19.966Z",
+  "validationCommit": "c9530face9df01581a5fc3d3436c178296ca0375",
+  "status": "pass",
+  "certifiable": true,
+  "findingCount": 0,
+  "findings": [],
+  "certifiedInvariants": {
+    "ownerAuthorityCertified": true,
+    "nextAvailableUsesEligibleBarbers": true,
+    "pickBarberFlowExists": true,
+    "queueTruthIsCanonical": true,
+    "policyConsentRequired": true,
+    "waitTimeIsEstimatedAndFresh": true,
+    "kioskPrivateMoneyHidden": true,
+    "kioskAutoResetClearsClientState": true,
+    "kioskExitIsPinProtected": true,
+    "kioskRegressionsPresent": true
+  },
+  "requiredRuntimeSmoke": [
+    "Shop Owner can open the kiosk for an authorized shop.",
+    "Next Available skips offline, paused, away, or non-walk-in barbers.",
+    "Pick a Barber does not change rotation order.",
+    "A queue or appointment record is created through canonical server logic.",
+    "No owner money, barber earnings, email, or phone data is exposed on the public kiosk.",
+    "The kiosk resets after success and after inactivity.",
+    "Unauthorized exit requires the configured PIN."
+  ],
+  "inventory": [
+    "components/kiosk/kiosk-mode-screen.tsx",
+    "lib/kiosk/service.ts",
+    "scripts/verify-shop-owner-tier1.mjs",
+    "tests/unit/kiosk-mode-screen.spec.tsx",
+    "tests/unit/kiosk-service-eligibility.spec.ts"
+  ]
+}

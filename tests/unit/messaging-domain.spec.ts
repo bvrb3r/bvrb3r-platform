@@ -80,7 +80,7 @@ describe("phase 8 messaging domain", () => {
     const second = createClientBarberThreadInSnapshot({
       snapshot: first.snapshot,
       actorProfileId: "profile-barber",
-      actorRole: "commission_barber",
+      actorRole: "barber_user",
       appointment: {
         appointmentId: "appt-1",
         clientProfileId: "profile-client",

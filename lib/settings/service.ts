@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { normalizeAccountRole } from "@/lib/auth/roles";
 import type { Role, UserAccount } from "@/types/domain";
+import { isRetiredRevenueShareAccountRole } from "@/lib/doctrine/legacy-data-aliases";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type SettingValue = string | boolean | number | string[] | null | undefined;
@@ -452,7 +453,7 @@ function isClientSettingsRole(role: Role) {
 }
 
 function isBarberSettingsRole(role: Role) {
-  return role === "barber" || role === "barber_user" || role === "freelance_barber" || role === "commission_barber" || role === "booth_rent_barber";
+  return role === "barber" || role === "barber_user" || role === "freelance_barber" || isRetiredRevenueShareAccountRole(role) || role === "booth_rent_barber";
 }
 
 function savedSectionsFor(role: Role, edges: EngagementEdgeRecord[]): SettingsDisplaySection[] {

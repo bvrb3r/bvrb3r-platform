@@ -385,32 +385,78 @@ describe("barber POS sales", () => {
     });
   });
 
-  it("splits commission POS card service payouts after the platform fee", () => {
+  it("applies the AutoBooth portion of POS card service money after the platform fee", () => {
     const quote = quoteBarberPosSale({ amountCents: 10000 }, {
-      relationshipType: "commission",
-      commissionRate: 0.7
+      relationshipType: "autobooth_rent",
+      autoBoothPercent: 0.7,
+      outstandingRentCents: 100_000
     });
 
     expect(quote).toMatchObject({
       platformFeeCents: 500,
-      barberPayoutCents: 6650,
-      shopSplitCents: 2850,
-      relationshipType: "commission"
+      // 70% of the 9500 distributable retires rent; the barber keeps 2850.
+      shopSplitCents: 6650,
+      barberPayoutCents: 2850,
+      relationshipType: "autobooth_rent"
     });
   });
 
-  it("keeps a POS tip out of platform fees and commission", () => {
+  it("keeps a POS tip out of platform fees and out of AutoBooth rent application", () => {
     const quote = quoteBarberPosSale({ amountCents: 10000, tipCents: 1000 }, {
-      relationshipType: "commission",
-      commissionRate: 0.6
+      relationshipType: "autobooth_rent",
+      autoBoothPercent: 0.6,
+      outstandingRentCents: 100_000
     });
 
     expect(quote).toMatchObject({
       totalCents: 11000,
       tipCents: 1000,
       platformFeeCents: 500,
-      barberPayoutCents: 6700,
-      shopSplitCents: 3800
+      shopSplitCents: 5700,
+      // 3800 remainder plus the full 1000 tip.
+      barberPayoutCents: 4800
+    });
+  });
+
+  it("never applies more POS proceeds to rent than the barber still owes", () => {
+    const quote = quoteBarberPosSale({ amountCents: 10000 }, {
+      relationshipType: "autobooth_rent",
+      autoBoothPercent: 0.7,
+      outstandingRentCents: 2_000
+    });
+
+    expect(quote).toMatchObject({
+      platformFeeCents: 500,
+      shopSplitCents: 2_000,
+      barberPayoutCents: 7_500
+    });
+  });
+
+  it("applies nothing when the owner has approved no AutoBooth portion", () => {
+    const quote = quoteBarberPosSale({ amountCents: 10000 }, {
+      relationshipType: "autobooth_rent",
+      autoBoothPercent: null,
+      outstandingRentCents: 100_000
+    });
+
+    expect(quote).toMatchObject({
+      platformFeeCents: 500,
+      shopSplitCents: 0,
+      barberPayoutCents: 9500
+    });
+  });
+
+  it("keeps all POS service money with a Full Booth Rent barber", () => {
+    const quote = quoteBarberPosSale({ amountCents: 10000 }, {
+      relationshipType: "booth_rent",
+      outstandingRentCents: 100_000
+    });
+
+    expect(quote).toMatchObject({
+      platformFeeCents: 500,
+      shopSplitCents: 0,
+      barberPayoutCents: 9500,
+      relationshipType: "booth_rent"
     });
   });
 
@@ -426,7 +472,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }]
     }));
 
@@ -452,7 +498,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-legacy",
         reference_code: "barber-legacy",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }]
     }));
 
@@ -478,7 +524,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         barber_subtype: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }]
     }));
 
@@ -526,7 +572,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [],
       pos_sales: [],
@@ -564,7 +610,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "booth_rent",
-        commission_rate: null
+        autobooth_percent: null
       }],
       locations: [],
       clients: [],
@@ -604,7 +650,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "booth_rent",
-        commission_rate: null
+        autobooth_percent: null
       }],
       locations: [{ id: "67ad0d9b-4f60-44e6-a213-86f665324574", reference_code: "loc-ybor" }],
       clients: [],
@@ -647,7 +693,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [],
       pos_sales: [],
@@ -696,7 +742,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: []
     };
@@ -736,7 +782,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -802,7 +848,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -833,7 +879,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -872,7 +918,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -945,7 +991,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -996,7 +1042,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -1053,7 +1099,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -1125,7 +1171,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -1200,7 +1246,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -1261,7 +1307,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -1328,7 +1374,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -1430,7 +1476,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -1511,7 +1557,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -1643,7 +1689,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -1692,7 +1738,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       clients: [{
         id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
@@ -1744,7 +1790,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "booth_rent",
-        commission_rate: null
+        autobooth_percent: null
       }],
       locations: [{ id: "67ad0d9b-4f60-44e6-a213-86f665324574", reference_code: "loc-ybor" }],
       clients: [{
@@ -1805,7 +1851,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       pos_sales: [],
       pos_sale_items: []
@@ -1834,7 +1880,7 @@ describe("barber POS sales", () => {
         profile_id: "profile-phillip",
         reference_code: "barber-43b3cda2",
         compensation_model: "freelance",
-        commission_rate: null
+        autobooth_percent: null
       }],
       pos_sales: [],
       pos_sale_items: [],

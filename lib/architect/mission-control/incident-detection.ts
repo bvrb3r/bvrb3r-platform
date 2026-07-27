@@ -1,5 +1,6 @@
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isPaymentSuccessful, numberValue, roundMoney } from "@/lib/architect/debug/diagnosis";
+import { isRetiredRevenueShareModel } from "@/lib/doctrine/legacy-data-aliases";
 import { readArchitectDebugEnvironment } from "@/lib/architect/debug/env";
 import type { ArchitectActor, JsonRecord } from "@/lib/architect/debug/types";
 import { buildAppointmentSqlSnippets } from "@/lib/architect/debug/sql-snippets";
@@ -99,7 +100,7 @@ const MISSION_SYSTEMS: Array<{ key: MissionControlHealthItem["key"]; label: stri
 
 const CANONICAL_PUBLIC_PROFILE_ROLES = ["client_user", "barber_user", "shop_owner_user"] as const;
 const INTERNAL_PROFILE_ROLES = ["platform_admin"] as const;
-const EXPECTED_SHOP_RELATIONSHIP_TYPES = ["freelance", "booth_rent", "commission"] as const;
+const EXPECTED_SHOP_RELATIONSHIP_TYPES = ["freelance", "booth_rent", "autobooth_rent"] as const;
 
 async function selectRows<T extends JsonRecord>(
   supabase: SupabaseClient,
@@ -197,7 +198,7 @@ const CONTROLLED_REFUND_REASON = "Cancelled appointment captured booking payment
 const LEGAL_ROUTING_VALUES = {
   payout_readiness_status: new Set(["not_ready", "needs_attention", "ready", "blocked"]),
   money_routing_status: new Set(["pending", "ready_for_payout", "blocked", "manual_review", "paid_out", "refunded"]),
-  routing_model: new Set(["freelance", "commission", "booth_rent"]),
+  routing_model: new Set(["freelance", "booth_rent", "autobooth_rent"]),
   payout_recipient_type: new Set(["barber", "shop", "split"]),
   reconciliation_status: new Set(["open", "settled", "partially_reversed", "reversed", "manual_review"])
 };
@@ -1565,7 +1566,17 @@ function buildProductionRoleTruthInventory(tables: {
   const relationshipTypeValues = tables.shopBarberRelationships.rows.map((row) => stringValue(row.relationship_type).trim());
   const relationshipTypeCounts = countByValue(relationshipTypeValues.filter(Boolean));
   const missingRelationshipTypeCount = relationshipTypeValues.filter((value) => !value).length;
-  const invalidRelationshipTypeCounts = countByValue(relationshipTypeValues.filter((value) => value && !relationshipTypeSet.has(value)));
+  // Ended pre-doctrine revenue-share rows are deliberately retained for audit
+  // by the doctrine-lock migration; only an ACTIVE retired row is an incident.
+  const invalidRelationshipTypeCounts = countByValue(
+    tables.shopBarberRelationships.rows
+      .filter((row) => {
+        const value = stringValue(row.relationship_type).trim();
+        if (!value || relationshipTypeSet.has(value)) return false;
+        return !(isRetiredRevenueShareModel(value) && row.is_active === false);
+      })
+      .map((row) => stringValue(row.relationship_type).trim())
+  );
   const invalidRoleCount = [...invalidRoleCounts.values()].reduce((total, count) => total + count, 0);
   const invalidRelationshipTypeCount = [...invalidRelationshipTypeCounts.values()].reduce((total, count) => total + count, 0);
   const totalLinkageGapCount = clientLinkageGaps + barberLinkageGaps + shopOwnerLinkageGaps;

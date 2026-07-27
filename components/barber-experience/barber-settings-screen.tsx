@@ -97,8 +97,8 @@ import type { BarberSubtype, UserAccount } from "@/types/domain";
 
 const subtypeOptions: Array<{ subtype: BarberSubtype; label: string; description: string }> = [
   { subtype: "freelance", label: "Freelance", description: "Independent chair posture with self-managed availability." },
-  { subtype: "commission", label: "Commission", description: "Shop commission model with shared schedule and payout rails." },
-  { subtype: "booth_rent", label: "Booth rent", description: "Booth-rent model with independent revenue posture." }
+  { subtype: "booth_rent", label: "Full Booth Rent", description: "You rent the booth and keep your service proceeds. Rent is billed on its own schedule." },
+  { subtype: "autobooth_rent", label: "AutoBooth Rent", description: "Full Booth Rent plus an owner-approved portion of eligible proceeds that pays down your outstanding rent automatically. It never exceeds what you owe." }
 ];
 
 const payoutCurrencyFormatter = new Intl.NumberFormat("en-US", {
@@ -2263,7 +2263,7 @@ export function BarberSettingsScreen({
 
               {activeBusinessTool === "booking" && !activeBusinessPanel ? (
                 <div className="space-y-2">
-                  <BusinessToolRow icon={ShieldCheck} title="Business Model" subtitle="Freelance, commission, or booth rent posture" status={<StatusPill tone="green">{subtypeLabel}</StatusPill>} onClick={() => setActiveBusinessPanel("booking-model")} testId="booking-panel-business-model" />
+                  <BusinessToolRow icon={ShieldCheck} title="Business Model" subtitle="Freelance, Full Booth Rent, or AutoBooth Rent posture" status={<StatusPill tone="green">{subtypeLabel}</StatusPill>} onClick={() => setActiveBusinessPanel("booking-model")} testId="booking-panel-business-model" />
                   <BusinessToolRow icon={UserCheck} title="Booking Visibility" subtitle="Public profile and accepting-bookings controls" status={<StatusPill tone={isBookingActive ? "green" : "amber"}>{isBookingActive ? "Active" : "Not active"}</StatusPill>} onClick={() => setActiveBusinessPanel("booking-visibility")} />
                   <BusinessToolRow icon={MapPin} title="Booking Location" subtitle="Where clients go for appointments" status={<StatusPill tone={hasServiceLocation ? "green" : "amber"}>{hasServiceLocation ? "Set" : "Missing"}</StatusPill>} onClick={() => setActiveBusinessPanel("booking-location")} />
                   <BusinessToolRow icon={SlidersHorizontal} title="Scheduling Rules" subtitle="Notice, buffers, and booking preferences" status={<StatusPill tone="neutral">Coming next</StatusPill>} onClick={() => setActiveBusinessPanel("booking-rules")} />

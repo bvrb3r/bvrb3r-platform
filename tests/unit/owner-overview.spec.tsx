@@ -59,7 +59,7 @@ function mockCanonicalOwnerData() {
         {
           id: "barber-maya",
           name: "Maya Cole",
-          compensationModel: "commission",
+          compensationModel: "autobooth_rent",
           activeAppointmentCount: 1,
           liveAppointmentCount: 0,
           bookedCount: 2,
@@ -83,7 +83,7 @@ function mockCanonicalOwnerData() {
         {
           id: "barber-maya",
           name: "Maya Cole",
-          compensationModel: "commission",
+          compensationModel: "autobooth_rent",
           activeAppointmentCount: 1,
           liveAppointmentCount: 0,
           bookedCount: 2,

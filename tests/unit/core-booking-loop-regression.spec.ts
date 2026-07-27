@@ -126,7 +126,7 @@ function createTables(): Record<string, Row[]> {
       is_bookable: true,
       is_discoverable: true,
       status: "active",
-      commission_rate: null,
+      autobooth_percent: null,
       booth_rent_amount: null,
       booth_rent_frequency: null
     }],

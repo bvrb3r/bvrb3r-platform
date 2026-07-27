@@ -235,7 +235,7 @@ async function resolveBarber(supabase: SupabaseClient, barberReference: string) 
   if (referenceResult.error && isMissingRelationOrColumn(referenceResult.error)) {
     referenceResult = await supabase
       .from("barbers")
-      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+      .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency")
       .eq("reference_code", barberReference)
       .maybeSingle();
   }
@@ -250,14 +250,14 @@ async function resolveBarber(supabase: SupabaseClient, barberReference: string) 
       reference_code: string | null;
       profile_id: string;
       compensation_model?: string | null;
-      commission_rate?: number | string | null;
+      autobooth_percent?: number | string | null;
       booth_rent_amount?: number | string | null;
       booth_rent_frequency?: string | null;
     };
     return {
       ...row,
       compensation_model: row.compensation_model ?? "freelance",
-      commission_rate: row.commission_rate ?? null,
+      autobooth_percent: row.autobooth_percent ?? null,
       booth_rent_amount: row.booth_rent_amount ?? null,
       booth_rent_frequency: row.booth_rent_frequency ?? null
     };
@@ -272,7 +272,7 @@ async function resolveBarber(supabase: SupabaseClient, barberReference: string) 
   if (uuidResult.error && isMissingRelationOrColumn(uuidResult.error)) {
     uuidResult = await supabase
       .from("barbers")
-      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+      .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency")
       .eq("id", barberReference)
       .maybeSingle();
   }
@@ -286,7 +286,7 @@ async function resolveBarber(supabase: SupabaseClient, barberReference: string) 
     reference_code: string | null;
     profile_id: string;
     compensation_model?: string | null;
-    commission_rate?: number | string | null;
+    autobooth_percent?: number | string | null;
     booth_rent_amount?: number | string | null;
     booth_rent_frequency?: string | null;
   } | null;
@@ -294,7 +294,7 @@ async function resolveBarber(supabase: SupabaseClient, barberReference: string) 
     ? {
         ...row,
         compensation_model: row.compensation_model ?? "freelance",
-        commission_rate: row.commission_rate ?? null,
+        autobooth_percent: row.autobooth_percent ?? null,
         booth_rent_amount: row.booth_rent_amount ?? null,
         booth_rent_frequency: row.booth_rent_frequency ?? null
       }
@@ -371,7 +371,7 @@ async function persistActivationAvailability(
         profile_id: barber.profile_id,
         location_id: location.id,
         routing_model: "freelance",
-        commission_rate: barber.commission_rate,
+        autobooth_percent: barber.autobooth_percent,
         booth_rent_amount: barber.booth_rent_amount,
         booth_rent_frequency: barber.booth_rent_frequency,
         updated_at: now,
@@ -541,7 +541,7 @@ async function persistBookingLocation(
       profile_id: barber.profile_id,
       location_id: location.id,
       routing_model: "freelance",
-      commission_rate: barber.commission_rate,
+      autobooth_percent: barber.autobooth_percent,
       booth_rent_amount: barber.booth_rent_amount,
       booth_rent_frequency: barber.booth_rent_frequency,
       updated_at: now,

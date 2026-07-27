@@ -72,10 +72,12 @@ function validateImageFile(file: File | null) {
 
 function isNonFreelanceBarberMode(user: UserAccount) {
   if (user.barberSubtype) {
-    return user.barberSubtype === "booth_rent" || user.barberSubtype === "commission";
+    return user.barberSubtype === "booth_rent" || user.barberSubtype === "autobooth_rent";
   }
 
-  return user.role === "booth_rent_barber" || user.role === "commission_barber";
+  // Retired revenue-share roles normalize to freelance (lib/auth/roles.ts), so
+  // they must not inherit the shop-locked location posture here.
+  return user.role === "booth_rent_barber";
 }
 
 function isBarberLocationLocked(user: UserAccount, profile: { shop?: unknown } | null) {

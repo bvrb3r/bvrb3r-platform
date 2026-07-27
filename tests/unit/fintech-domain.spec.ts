@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RETIRED_REVENUE_SHARE_MODEL } from "@/lib/doctrine/legacy-data-aliases";
 import {
   CURRENT_AGREEMENT_VERSIONS,
   calculatePaymentRouting,
@@ -104,7 +105,7 @@ describe("phase 13 fintech domain", () => {
       paymentType: "subscription",
       paymentStatus: "captured",
       grossAmount: 20,
-      routingModel: "commission",
+      routingModel: "autobooth_rent",
       barberReady: true,
       shopReady: true,
       appointmentCompleted: true
@@ -118,13 +119,14 @@ describe("phase 13 fintech domain", () => {
     expect(subscriptionCharge.payoutRecipientType).toBe("shop");
   });
 
-  it("calculates commission routing as a split between barber and shop", () => {
+  it("applies the owner-approved AutoBooth portion of eligible proceeds to outstanding rent", () => {
     const result = calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
       grossAmount: 100,
-      routingModel: "commission",
-      commissionRate: 0.6,
+      routingModel: "autobooth_rent",
+      autoBoothPercent: 0.6,
+      outstandingRentCents: 100_000,
       barberReady: true,
       shopReady: true,
       appointmentCompleted: true
@@ -132,20 +134,23 @@ describe("phase 13 fintech domain", () => {
 
     expect(result.payoutRecipientType).toBe("split");
     expect(result.platformFeeAmount).toBe(5);
-    expect(result.barberPayoutAmount).toBe(57);
-    expect(result.shopSplitAmount).toBe(38);
+    // 95 distributable service money, 60% of which retires rent.
+    expect(result.autoBoothRentAppliedAmount).toBe(57);
+    expect(result.shopSplitAmount).toBe(57);
+    expect(result.barberPayoutAmount).toBe(38);
     expect(result.moneyRoutingStatus).toBe("ready_for_payout");
   });
 
-  it("keeps tips out of platform fees and commission while paying them fully to the barber", () => {
+  it("keeps tips out of platform fees and out of AutoBooth rent application", () => {
     const result = calculatePaymentRouting({
       paymentType: "pos_sale",
       paymentStatus: "captured",
       grossAmount: 110,
       serviceAmount: 100,
       tipAmount: 10,
-      routingModel: "commission",
-      commissionRate: 0.6,
+      routingModel: "autobooth_rent",
+      autoBoothPercent: 0.6,
+      outstandingRentCents: 100_000,
       barberReady: true,
       shopReady: true,
       appointmentCompleted: true
@@ -154,8 +159,11 @@ describe("phase 13 fintech domain", () => {
     expect(result.serviceAmount).toBe(100);
     expect(result.tipAmount).toBe(10);
     expect(result.platformFeeAmount).toBe(5);
-    expect(result.barberPayoutAmount).toBe(67);
-    expect(result.shopSplitAmount).toBe(38);
+    // Rent application is computed on service money only, never on gratuity.
+    expect(result.autoBoothRentAppliedAmount).toBe(57);
+    expect(result.shopSplitAmount).toBe(57);
+    // Barber keeps the 38 remainder plus the full 10 tip.
+    expect(result.barberPayoutAmount).toBe(48);
   });
 
   it("routes a tip payment entirely to the barber with no platform fee", () => {
@@ -163,8 +171,9 @@ describe("phase 13 fintech domain", () => {
       paymentType: "tip",
       paymentStatus: "captured",
       grossAmount: 10,
-      routingModel: "commission",
-      commissionRate: 0.6,
+      routingModel: "autobooth_rent",
+      autoBoothPercent: 0.6,
+      outstandingRentCents: 100_000,
       barberReady: true,
       shopReady: false,
       appointmentCompleted: true
@@ -187,8 +196,9 @@ describe("phase 13 fintech domain", () => {
       paymentType: "booking",
       paymentStatus: "captured",
       grossAmount: 80,
-      routingModel: "commission",
-      commissionRate: 0.5,
+      routingModel: "autobooth_rent",
+      autoBoothPercent: 0.5,
+      outstandingRentCents: 100_000,
       barberReady: false,
       shopReady: true,
       appointmentCompleted: true
@@ -232,13 +242,14 @@ describe("phase 13 fintech domain", () => {
     expect(result.blockedReason).toMatch(/barber payout readiness/i);
   });
 
-  it("keeps commission payout execution blocked if shop payout setup is missing", () => {
+  it("keeps AutoBooth payout execution blocked if shop payout setup is missing", () => {
     const result = calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
       grossAmount: 80,
-      routingModel: "commission",
-      commissionRate: 0.6,
+      routingModel: "autobooth_rent",
+      autoBoothPercent: 0.6,
+      outstandingRentCents: 100_000,
       barberReady: true,
       shopReady: false,
       appointmentCompleted: true
@@ -308,14 +319,34 @@ describe("phase 13 fintech domain", () => {
     }).payoutBlockReason).toBe("waiting on onboarding");
 
     expect(normalizeCompensationAssignment({
-      routingModel: "commission",
-      commissionRate: 0.45
-    }).commissionRate).toBe(0.45);
+      routingModel: "autobooth_rent",
+      autoBoothPercent: 0.45,
+      boothRentAmount: 250,
+      boothRentFrequency: "weekly"
+    }).autoBoothPercent).toBe(0.45);
 
     expect(() => normalizeCompensationAssignment({
       routingModel: "booth_rent",
       boothRentAmount: 250
     })).toThrow(/billing frequency/i);
+
+    // AutoBooth is still a rent agreement: it needs real rent terms.
+    expect(() => normalizeCompensationAssignment({
+      routingModel: "autobooth_rent",
+      autoBoothPercent: 0.45
+    })).toThrow(/booth-rent amount/i);
+
+    // And it needs an owner-approved portion.
+    expect(() => normalizeCompensationAssignment({
+      routingModel: "autobooth_rent",
+      boothRentAmount: 250,
+      boothRentFrequency: "weekly"
+    })).toThrow(/owner-approved portion/i);
+
+    // The retired revenue-share model is not assignable at all.
+    expect(() => normalizeCompensationAssignment({
+      routingModel: RETIRED_REVENUE_SHARE_MODEL as never
+    })).toThrow(/Full Booth Rent and AutoBooth Rent/i);
   });
 
   it("maps Stripe processor state into canonical onboarding and tax statuses", () => {

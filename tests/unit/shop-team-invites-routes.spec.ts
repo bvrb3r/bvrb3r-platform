@@ -111,7 +111,7 @@ describe("shop team invite routes", () => {
   it("lets barbers search approved shops that can receive team requests", async () => {
     getSessionUserMock.mockResolvedValue({
       id: "profile-barber",
-      role: "commission_barber",
+      role: "barber_user",
       barberId: "barber-real",
       email: "barber@example.com"
     });
@@ -136,7 +136,7 @@ describe("shop team invite routes", () => {
     expect(response.status).toBe(200);
     expect(body.shops[0].readinessLabels).toContain("Setup incomplete");
     expect(listBarberJoinableShopsMock).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "commission_barber", barberId: "barber-real" }),
+      expect.objectContaining({ role: "barber_user", barberId: "barber-real" }),
       "ybor"
     );
   });
@@ -175,7 +175,7 @@ describe("shop team invite routes", () => {
   it("lets a barber accept a shop invitation through the canonical response service", async () => {
     getSessionUserMock.mockResolvedValue({
       id: "profile-barber",
-      role: "commission_barber",
+      role: "barber_user",
       barberId: "barber-real",
       email: "barber@example.com"
     });
@@ -203,7 +203,7 @@ describe("shop team invite routes", () => {
     expect(response.status).toBe(200);
     expect(body.invite.status).toBe("active");
     expect(respondToBarberTeamInviteMock).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "commission_barber", barberId: "barber-real" }),
+      expect.objectContaining({ role: "barber_user", barberId: "barber-real" }),
       {
         inviteId: "invite-1",
         status: "accepted"

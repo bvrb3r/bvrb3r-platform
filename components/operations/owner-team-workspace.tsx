@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { normalizeCompensationModel } from "@/lib/auth/roles";
 import {
   commandButtonIconAccentClassName,
   commandButtonIconClassName,
@@ -165,15 +166,15 @@ function formatTime(iso: string | null) {
 }
 
 function formatRoutingLabel(value: string) {
-  switch (value) {
+  // Normalize first so retired pre-doctrine values render as Freelance
+  // instead of leaking their raw stored string.
+  switch (normalizeCompensationModel(value)) {
     case "booth_rent":
       return "Booth rent";
-    case "commission":
-      return "Commission";
-    case "freelance":
-      return "Freelance";
+    case "autobooth_rent":
+      return "AutoBooth Rent";
     default:
-      return value.replaceAll("_", " ");
+      return "Freelance";
   }
 }
 
@@ -416,8 +417,8 @@ export function OwnerTeamWorkspace() {
   const [addBarbersOpen, setAddBarbersOpen] = useState(false);
   const [inviteSearch, setInviteSearch] = useState("");
   const [pendingInviteBarber, setPendingInviteBarber] = useState<ShopTeamInviteDirectoryBarber | null>(null);
-  const [inviteRelationshipModel, setInviteRelationshipModel] = useState<"commission" | "booth_rent">("commission");
-  const [inviteBarberPercent, setInviteBarberPercent] = useState("70");
+  const [inviteRelationshipModel, setInviteRelationshipModel] = useState<"booth_rent" | "autobooth_rent">("booth_rent");
+  const [inviteAutoBoothPercent, setInviteAutoBoothPercent] = useState("25");
   const [inviteBoothRentAmount, setInviteBoothRentAmount] = useState("250");
   const [inviteBoothRentFrequency, setInviteBoothRentFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
@@ -599,8 +600,8 @@ export function OwnerTeamWorkspace() {
   }
 
   function openInviteConfirmation(barber: ShopTeamInviteDirectoryBarber) {
-    setInviteRelationshipModel(barber.compensationModel === "booth_rent" ? "booth_rent" : "commission");
-    setInviteBarberPercent("70");
+    setInviteRelationshipModel(barber.compensationModel === "autobooth_rent" ? "autobooth_rent" : "booth_rent");
+    setInviteAutoBoothPercent("25");
     setInviteBoothRentAmount("250");
     setInviteBoothRentFrequency("weekly");
     setPendingInviteBarber(barber);
@@ -608,25 +609,33 @@ export function OwnerTeamWorkspace() {
 
   async function handleCreateInvite(barber: ShopTeamInviteDirectoryBarber) {
     setInviteFeedback(null);
-    const barberPercent = Number(inviteBarberPercent);
+    const autoBoothPercent = Number(inviteAutoBoothPercent);
     const boothRentAmount = Number(inviteBoothRentAmount);
-    if (inviteRelationshipModel === "commission" && (!Number.isFinite(barberPercent) || barberPercent < 0 || barberPercent > 100)) {
-      setInviteFeedback({ tone: "error", message: "Barber commission percentage must be between 0 and 100." });
+    // Both supported models are rent agreements, so rent terms are always required.
+    if (!Number.isFinite(boothRentAmount) || boothRentAmount <= 0) {
+      setInviteFeedback({ tone: "error", message: "Booth rent must be a positive amount." });
       return;
     }
-    if (inviteRelationshipModel === "booth_rent" && (!Number.isFinite(boothRentAmount) || boothRentAmount <= 0)) {
-      setInviteFeedback({ tone: "error", message: "Booth rent must be a positive amount." });
+    if (
+      inviteRelationshipModel === "autobooth_rent"
+      && (!Number.isFinite(autoBoothPercent) || autoBoothPercent <= 0 || autoBoothPercent > 100)
+    ) {
+      setInviteFeedback({
+        tone: "error",
+        message: "The AutoBooth portion applied toward rent must be greater than 0 and at most 100."
+      });
       return;
     }
     try {
       const response = await createInviteMutation.mutateAsync({
         barberId: barber.barberId,
         shopId: inviteDirectoryQuery.data?.shop.id,
-        proposal: inviteRelationshipModel === "commission"
+        proposal: inviteRelationshipModel === "autobooth_rent"
           ? {
-              routingModel: "commission",
-              barberPercent: barberPercent / 100,
-              shopPercent: (100 - barberPercent) / 100
+              routingModel: "autobooth_rent",
+              boothRentAmount,
+              boothRentFrequency: inviteBoothRentFrequency,
+              autoBoothPercent: autoBoothPercent / 100
             }
           : {
               routingModel: "booth_rent",
@@ -1480,7 +1489,7 @@ export function OwnerTeamWorkspace() {
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-white/46">Relationship model</p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  {(["commission", "booth_rent"] as const).map((model) => (
+                  {(["booth_rent", "autobooth_rent"] as const).map((model) => (
                     <button
                       key={model}
                       type="button"
@@ -1497,49 +1506,49 @@ export function OwnerTeamWorkspace() {
                   ))}
                 </div>
               </div>
-              {inviteRelationshipModel === "commission" ? (
+              {/* Both supported models are rent agreements, so rent terms always apply. */}
+              <div className="grid gap-3 sm:grid-cols-[1fr_0.8fr]">
                 <label className="block text-sm font-bold text-white/72">
-                  Barber share of post-fee service money (%)
+                  Fixed rent amount
                   <input
                     type="number"
-                    min="0"
+                    min="0.01"
+                    step="0.01"
+                    value={inviteBoothRentAmount}
+                    onChange={(event) => setInviteBoothRentAmount(event.target.value)}
+                    className="mt-2 min-h-12 w-full rounded-[14px] border border-white/10 bg-black/30 px-4 text-white outline-none focus:border-[#C4F24E]/55"
+                  />
+                </label>
+                <label className="block text-sm font-bold text-white/72">
+                  Billing period
+                  <select
+                    value={inviteBoothRentFrequency}
+                    onChange={(event) => setInviteBoothRentFrequency(event.target.value as "daily" | "weekly" | "monthly")}
+                    className="mt-2 min-h-12 w-full rounded-[14px] border border-white/10 bg-black/30 px-4 text-white outline-none focus:border-[#C4F24E]/55"
+                  >
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </label>
+              </div>
+              {inviteRelationshipModel === "autobooth_rent" ? (
+                <label className="block text-sm font-bold text-white/72">
+                  Portion of eligible proceeds applied toward outstanding rent (%)
+                  <input
+                    type="number"
+                    min="0.01"
                     max="100"
                     step="0.01"
-                    value={inviteBarberPercent}
-                    onChange={(event) => setInviteBarberPercent(event.target.value)}
+                    value={inviteAutoBoothPercent}
+                    onChange={(event) => setInviteAutoBoothPercent(event.target.value)}
                     className="mt-2 min-h-12 w-full rounded-[14px] border border-white/10 bg-black/30 px-4 text-white outline-none focus:border-[#C4F24E]/55"
                   />
                   <span className="mt-2 block text-xs font-medium text-white/46">
-                    Shop share: {Math.max(0, 100 - (Number(inviteBarberPercent) || 0)).toFixed(2)}%. Tips remain 100% barber.
+                    Applied only against rent still owed, never more. Tips remain 100% barber.
                   </span>
                 </label>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-[1fr_0.8fr]">
-                  <label className="block text-sm font-bold text-white/72">
-                    Fixed rent amount
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={inviteBoothRentAmount}
-                      onChange={(event) => setInviteBoothRentAmount(event.target.value)}
-                      className="mt-2 min-h-12 w-full rounded-[14px] border border-white/10 bg-black/30 px-4 text-white outline-none focus:border-[#C4F24E]/55"
-                    />
-                  </label>
-                  <label className="block text-sm font-bold text-white/72">
-                    Billing period
-                    <select
-                      value={inviteBoothRentFrequency}
-                      onChange={(event) => setInviteBoothRentFrequency(event.target.value as "daily" | "weekly" | "monthly")}
-                      className="mt-2 min-h-12 w-full rounded-[14px] border border-white/10 bg-black/30 px-4 text-white outline-none focus:border-[#C4F24E]/55"
-                    >
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                    </select>
-                  </label>
-                </div>
-              )}
+              ) : null}
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <button

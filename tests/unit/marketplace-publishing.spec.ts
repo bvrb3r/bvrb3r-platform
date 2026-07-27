@@ -95,7 +95,7 @@ function createReadyTables(overrides: Record<string, Row[]> = {}) {
       compensation_model: "booth_rent",
       app_approval_status: "approved",
       shop_approval_status: "not_required",
-      commission_rate: null,
+      autobooth_percent: null,
       booth_rent_amount: null,
       booth_rent_frequency: null,
       bio: "Precision cuts.",

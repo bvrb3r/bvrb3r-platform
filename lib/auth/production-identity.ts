@@ -545,10 +545,10 @@ function getTitle(role: Role, subtype?: BarberSubtype | null) {
       return "Freelance Barber";
     }
     if (subtype === "booth_rent") {
-      return "Booth-rent Barber";
+      return "Full Booth Rent Barber";
     }
-    if (subtype === "commission") {
-      return "Commission Barber";
+    if (subtype === "autobooth_rent") {
+      return "AutoBooth Rent Barber";
     }
     return "Barber";
   }
@@ -2360,7 +2360,7 @@ async function ensureClientLane(profileId: string, identity: { email: string; na
 }
 
 function toBarberCompensation(subtype: BarberSubtype): CompensationModel {
-  return subtype === "commission" ? "commission" : "booth_rent";
+  return subtype === "autobooth_rent" ? "autobooth_rent" : "booth_rent";
 }
 
 async function ensureBarberLaneBootstrap(

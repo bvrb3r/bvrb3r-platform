@@ -807,7 +807,7 @@ describe("production identity provisioning", () => {
       }
     }, {
       role: "barber",
-      barberSubtype: "commission"
+      barberSubtype: "autobooth_rent"
     });
 
     expect(state.profiles[0]).toMatchObject({
@@ -819,8 +819,8 @@ describe("production identity provisioning", () => {
     expect(state.barbers[0]).toMatchObject({
       profile_id: "auth-dashboard-barber",
       reference_code: "barber-dashboard",
-      barber_subtype: "commission",
-      compensation_model: "commission"
+      barber_subtype: "autobooth_rent",
+      compensation_model: "autobooth_rent"
     });
     expect(state.verification_profiles).toHaveLength(1);
     expect(state.verification_profiles[0]).toMatchObject({
@@ -829,7 +829,7 @@ describe("production identity provisioning", () => {
       role: "barber",
       overall_status: "submitted"
     });
-    expect(result.user.barberSubtype).toBe("commission");
+    expect(result.user.barberSubtype).toBe("autobooth_rent");
     expect(result.user.role).toBe("barber_user");
     expect(result.user.accountStatus).toBe("active");
   });

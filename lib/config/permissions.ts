@@ -3,13 +3,13 @@ import type { PermissionGroup } from "@/types/domain";
 export const permissionMatrix: PermissionGroup[] = [
   {
     role: "owner",
-    allows: ["Manage locations", "Set commission and booth-rent rules", "Control shop service catalog", "View all analytics", "Manage billing and permissions"],
+    allows: ["Manage locations", "Set Full Booth Rent and AutoBooth Rent terms", "Control shop service catalog", "View all analytics", "Manage billing and permissions"],
     restricted: []
   },
   {
     role: "manager",
     allows: ["Run daily operations", "Adjust appointments", "Approve limited discounts", "View location reports"],
-    restricted: ["Cannot edit ownership financial structures", "Cannot change global billing", "Cannot edit owner-controlled commission service pricing"]
+    restricted: ["Cannot edit ownership financial structures", "Cannot change global billing", "Cannot edit owner-controlled service pricing"]
   },
   {
     role: "front_desk",
@@ -22,14 +22,9 @@ export const permissionMatrix: PermissionGroup[] = [
     restricted: ["Cannot access owner reports", "Cannot edit unrelated shop-owned services"]
   },
   {
-    role: "commission_barber",
-    allows: ["Manage own schedule", "See own earnings", "View shop-defined services", "Update personal notes"],
-    restricted: ["Cannot view team financials", "Cannot edit service pricing or service definitions"]
-  },
-  {
     role: "booth_rent_barber",
     allows: ["Manage own bookings", "View rent ledger", "Update availability", "Manage self-owned services"],
-    restricted: ["Cannot access owner reports", "Cannot edit shop-owned commission services"]
+    restricted: ["Cannot access owner reports", "Cannot edit shop-owned services"]
   },
   {
     role: "client",

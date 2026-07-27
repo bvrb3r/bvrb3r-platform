@@ -3896,7 +3896,7 @@ export async function getShopDashboardPayload(viewer: LiveOperationsViewer) {
       return {
         id: barberId,
         name: identity?.name ?? barberId,
-        compensationModel: identity?.compensationModel ?? "commission",
+        compensationModel: identity?.compensationModel ?? "freelance",
         activeAppointmentCount,
         liveAppointmentCount,
         bookedCount,

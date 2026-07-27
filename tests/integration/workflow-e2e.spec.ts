@@ -8,7 +8,7 @@ import {
 } from "@/lib/operations/live-state";
 
 describe("six-step workflow end-to-end coverage", () => {
-  it("runs the full commission workflow from booking through owner revenue visibility", () => {
+  it("runs the full booking workflow through owner revenue visibility", () => {
     let snapshot = createInitialLiveOperationsSnapshot();
     const booking = bookAppointmentInSnapshot(snapshot, {
       locationId: "loc-ybor",
@@ -65,7 +65,7 @@ describe("six-step workflow end-to-end coverage", () => {
     expect(appointment?.balanceDue).toBe(0);
     expect(appointment?.tipAmount).toBe(18);
     expect(eventTypes).toEqual(["checkout", "service_complete", "service_start", "check_in", "booking"]);
-    expect(barberMetrics.commissionToday).toBeGreaterThan(18);
+    expect(barberMetrics.rentAppliedToday).toBe(0);
     expect(ownerMetrics.revenueToday).toBeGreaterThan(70);
     expect(ownerMetrics.tipsToday).toBeGreaterThanOrEqual(18);
   });

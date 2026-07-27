@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "mission": 5,
+  "missionName": "Barber service-completion truth",
+  "generatedAt": "2026-07-27T03:56:19.565Z",
+  "validationCommit": "c9530face9df01581a5fc3d3436c178296ca0375",
+  "status": "pass",
+  "certifiable": true,
+  "findingCount": 0,
+  "findings": [],
+  "certifiedInvariants": {
+    "barberOwnedCompletionAction": true,
+    "capturedPaymentRequired": true,
+    "legalCompletedTransitionCovered": true,
+    "immutableAppointmentIdentityProtected": true,
+    "statusHistoryWritten": true,
+    "routingCreatedOrReconciled": true,
+    "payoutEligibilityEvaluated": true,
+    "payoutNotAutoReleased": true,
+    "repeatedCompletionIsIdempotent": true,
+    "refundAndHoldLifecycleCovered": true
+  },
+  "requiredRuntimeSmoke": [
+    "Barber can load the canonical appointment before completion.",
+    "Unpaid appointment completion is denied without changing appointment status.",
+    "Captured paid appointment transitions to completed once.",
+    "Completion writes canonical status history.",
+    "Routing becomes ready, blocked, or held-equivalent from evidence and is not automatically released.",
+    "Repeated completion repairs missing routing without duplicating lifecycle history."
+  ],
+  "inventory": [
+    "lib/fintech/service.ts",
+    "lib/operations/live-provider.ts",
+    "lib/operations/live-state.ts",
+    "tests/unit/core-booking-loop-regression.spec.ts",
+    "tests/unit/money-routing-lifecycle.spec.ts"
+  ]
+}

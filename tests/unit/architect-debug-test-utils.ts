@@ -188,7 +188,7 @@ export function createArchitectDebugTables(overrides: Partial<Tables> = {}): Tab
       check_clause: "CHECK ((money_routing_status = ANY (ARRAY['pending'::text, 'ready_for_payout'::text, 'blocked'::text, 'manual_review'::text, 'paid_out'::text, 'refunded'::text])))"
     }, {
       constraint_name: "payment_routing_records_routing_model_check",
-      check_clause: "CHECK ((routing_model = ANY (ARRAY['freelance'::text, 'commission'::text, 'booth_rent'::text])))"
+      check_clause: "CHECK ((routing_model = ANY (ARRAY['freelance'::text, 'booth_rent'::text, 'autobooth_rent'::text])))"
     }, {
       constraint_name: "payment_routing_records_payout_recipient_type_check",
       check_clause: "CHECK ((payout_recipient_type = ANY (ARRAY['barber'::text, 'shop'::text, 'split'::text])))"

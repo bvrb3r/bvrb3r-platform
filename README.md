@@ -1,6 +1,6 @@
 # BVRB3R Platform
 
-BVRB3R Platform is a multi-role, barbershop-first operating system for The BVRB3R Shop(TM) & Co. The MVP includes a premium public marketing site, a client booking flow, role-based dashboards, walk-in and appointment operations, compensation views for booth-rent and commission barbers, analytics, and a Supabase-first backend architecture.
+BVRB3R Platform is a multi-role, barbershop-first operating system for The BVRB3R Shop(TM) & Co. The MVP includes a premium public marketing site, a client booking flow, role-based dashboards, walk-in and appointment operations, Full Booth Rent and AutoBooth Rent views, analytics, and a Supabase-first backend architecture.
 
 The current foundation also includes the first marketplace layer: public barber profile pages at /barber/{username}, a discovery route at /discover, a service ownership engine, service popularity scaffolding, map discovery groundwork, and a GET A HAIRCUT NOW matching foundation.
 
@@ -15,6 +15,54 @@ Trust, Verification, and Safety Layer now adds barber and shop verification arch
 Marketplace Activation and Monetization now adds secure verification upload flows, activation-ready notification delivery ledgers, boosted visibility controls, featured placement inventory, city rollout tooling, trust-aware monetization rules, and monetization analytics on top of the stable marketplace and operating-system foundations.
 
 Mobile App / PWA Conversion, Mobile Push and Native Activation, Native Distribution and Live Delivery, and Real Device QA and Store Submission now add an installable app shell, service-worker caching, deep-link infrastructure, device registration, persisted push-subscription APIs, hashed native APNs or FCM bridge storage, provider-backed delivery execution where credentials are available, native bootstrap and association routes, and release-candidate wrapper foundations across every role experience.
+
+## Financial doctrine (locked)
+
+**Full Booth Rent and AutoBooth Rent are the only supported shop-barber financial models.** BVRB3R does not broker labor compensation and does not share a barber's service revenue with a shop.
+
+Specifically prohibited across active code, UI, fixtures, seed data, tests, and current docs: commission compensation, commission rate or percentage, revenue split, pay split, barber split, owner split, and ratio terms such as 60/40, 65/35, 70/30, and 75/25. <!-- doctrine-allow -->
+
+
+### Full Booth Rent
+
+The barber rents the booth for a fixed amount on a fixed billing period. Service proceeds belong to the barber, less the BVRB3R 5% platform fee and Stripe processing fees. Rent is billed as its own separate charge and is never taken implicitly out of an appointment.
+
+### AutoBooth Rent
+
+AutoBooth Rent is Full Booth Rent plus one addition: the owner and barber agree that **an owner-approved portion of eligible transaction proceeds is applied automatically toward the barber's outstanding booth rent.**
+
+AutoBooth is a rent payment mechanism, not compensation:
+
+- The applied amount **can never exceed outstanding rent.** It settles a debt the barber already owes.
+- **It is not labor compensation and it is not revenue sharing.** The shop is never a revenue-share recipient of the barber's work.
+- Once rent is settled, AutoBooth applies nothing and the barber keeps the full remainder.
+- **Tips are never eligible.** Gratuity belongs entirely to the barber.
+- Refunded, disputed, and uncaptured money is never applied.
+- A replayed processor event is a no-op, so rent is never double-retired.
+
+`freelance` is not a shop-barber financial model. It describes a barber operating with no shop relationship, so no rent exists to apply.
+
+### Legitimate BVRB3R fees
+
+The doctrine removes revenue sharing between shop and barber. It does not remove platform economics:
+
+- the **BVRB3R 5% platform fee** on service money (`PLATFORM_FEE_RATE`)
+- **Stripe processing and application fees**
+
+### Where the doctrine lives
+
+| Concern | Location |
+| --- | --- |
+| Doctrine engine and rent cap | `lib/fintech/booth-rent-doctrine.ts` |
+| Money routing | `lib/fintech/domain.ts` |
+| Retired pre-doctrine literals (sole exception) | `lib/doctrine/legacy-data-aliases.ts` |
+| Storage boundary lock | `supabase/migrations/20260727120100_autobooth_rent_doctrine_lock.sql` |
+| Terminology guard | `scripts/verify-financial-doctrine.mjs` (`npm run verify:doctrine`) |
+| Cap, refund, dispute, and duplicate-event proofs | `tests/unit/autobooth-rent-doctrine.spec.ts` |
+
+Rows written before the doctrine was locked normalize to `freelance`, never to a rent model. Promoting a retired revenue-share arrangement into booth rent would invent a debt the barber never agreed to, so the shop collects nothing until owner and barber establish a real Full Booth Rent or AutoBooth Rent agreement.
+
+`npm run verify:doctrine` fails the build if prohibited terminology reappears in active code, UI, fixtures, seed data, tests, or current docs. Already-applied migrations and tests that prove rejection are documented exceptions in the guard's allowlist.
 
 ## Stack
 
@@ -58,7 +106,7 @@ Use this when you want local auth, database, storage, row-level security, and re
 7. Update `.env.local` with the local anon and service role keys from the Supabase CLI output.
 8. Run `npm run dev`.
 
-The local seed now includes live appointments, walk-ins, workflow events, compensation snapshots, and owner analytics so the realtime dashboards have meaningful starter data.
+The local seed now includes live appointments, walk-ins, workflow events, compensation snapshots, and owner analytics so the realtime dashboards have meaningful starter data. Seeded shop-barber relationships use Full Booth Rent or AutoBooth Rent only.
 
 ## Payment and live operations architecture
 
@@ -75,7 +123,7 @@ Live operations now flow through:
 Modes:
 
 - `demo`: in-memory provider with the same conflict-aware lifecycle contract for easy local startup
-- `supabase`: Postgres-backed live operations tables plus Supabase realtime publication and persisted analytics or compensation tables
+- `supabase`: Postgres-backed live operations tables plus Supabase realtime publication and persisted analytics or rent tables
 - `stripe`: payment provider shape for deposits and saved payment method setup intents
 
 ## Key folders

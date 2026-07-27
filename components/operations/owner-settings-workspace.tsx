@@ -520,8 +520,8 @@ export function OwnerSettingsWorkspace({
 
   const businessSetupRows: SettingRow[] = [
     {
-      title: "Booth Rent, Commission & Fees",
-      subtitle: "Manage booth rent, commission splits, pricing rules, caps, and platform fees",
+      title: "Booth Rent, AutoBooth & Fees",
+      subtitle: "Manage Full Booth Rent and AutoBooth Rent terms, pricing rules, caps, and platform fees",
       href: "/dashboard/owner/money?view=fintech",
       icon: <CircleDollarSign className="h-5 w-5" />,
       status: blockedRoutingCount ? "Needs review" : "Read-only",
@@ -541,7 +541,7 @@ export function OwnerSettingsWorkspace({
     },
     {
       title: "Team & Roles",
-      subtitle: "Manage team roles, permissions, booth rent barbers, commission barbers, and active members",
+      subtitle: "Manage team roles, permissions, Full Booth Rent and AutoBooth Rent barbers, and active members",
       href: "/dashboard/owner/team",
       icon: <Users className="h-5 w-5" />,
       status: membershipCount ? `${membershipCount} linked` : "Not set",
@@ -586,7 +586,7 @@ export function OwnerSettingsWorkspace({
     },
     {
       title: "Owner Payouts",
-      subtitle: "Shop payout schedule, commission payouts, payout status, release timing, and payout history",
+      subtitle: "Shop payout schedule, rent collection, payout status, release timing, and payout history",
       href: "/dashboard/owner/money?section=payouts",
       icon: <CalendarDays className="h-5 w-5" />,
       status: "View schedule",

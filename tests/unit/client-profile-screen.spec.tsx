@@ -410,7 +410,7 @@ describe("client profile screen", () => {
     expect(screen.getByText("Creator tools locked")).toBeInTheDocument();
     expect(screen.queryByText("0 posts")).not.toBeInTheDocument();
     expect(screen.queryByText("No violations")).not.toBeInTheDocument();
-    ["Service Library", "Hours", "Booking Rules", "Shop Relationship", "Team & Roles", "Kiosk Settings", "Booth Rent, Commission & Fees"].forEach((label) => {
+    ["Service Library", "Hours", "Booking Rules", "Shop Relationship", "Team & Roles", "Kiosk Settings", "Booth Rent, AutoBooth & Fees"].forEach((label) => {
       expect(screen.queryByText(label)).not.toBeInTheDocument();
     });
     expect(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method for bookings, auto-booking, subscriptions, tools, ads, and promotions/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");

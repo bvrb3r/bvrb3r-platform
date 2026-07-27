@@ -19,6 +19,7 @@ import { buildShopOwnerPaywallSummary } from "@/lib/entitlements/shop-owner-payw
 import { buildSubscriptionSettingsSummary } from "@/lib/entitlements/subscription-settings";
 import { buildStripeEntitlementWebhookUpdate, syncServerEntitlementFromStripeSubscription } from "@/lib/entitlements/stripe-webhook";
 import { checkEntitledFeatureAccess, resolveServerEntitlementForUser } from "@/lib/entitlements/server";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 const accountRoles = ["client_user", "barber_user", "shop_owner_user"] as const satisfies readonly EntitlementAccountRole[];
 const tiers = ["free", "pro", "elite"] as const satisfies readonly EntitlementTier[];
@@ -54,11 +55,11 @@ const forbiddenRoles = [
   "guest_user",
   "freelance_barber",
   "booth_rent_barber",
-  "commission_barber"
+  RETIRED_REVENUE_SHARE_ACCOUNT_ROLE
 ];
 
 const forbiddenUserCopy =
-  /client_user|barber_user|shop_owner_user|account_entitlements|stripe_customer_id|stripe_subscription_id|payment_intent|provider_payment_method_id|webhook_unverified|localStorage|server_default|payment_routing_records|payout_readiness_status|relationship_type|booth_rent_barber|commission_barber|freelance_barber/i;
+  /client_user|barber_user|shop_owner_user|account_entitlements|stripe_customer_id|stripe_subscription_id|payment_intent|provider_payment_method_id|webhook_unverified|localStorage|server_default|payment_routing_records|payout_readiness_status|relationship_type|booth_rent_barber|commission_barber|freelance_barber/i;  // doctrine-allow
 
 function activeEntitlement(
   accountRole: EntitlementAccountRole,

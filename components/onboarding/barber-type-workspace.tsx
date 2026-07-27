@@ -21,15 +21,15 @@ const barberSubtypeCards: Array<{
     approvalCopy: "Requires BVRB3R app approval before going live."
   },
   {
-    subtype: "commission",
-    title: "Commission Barber",
-    copy: "Commission-based barber working inside shop operating controls and payout structure.",
+    subtype: "booth_rent",
+    title: "Full Booth Rent Barber",
+    copy: "Independent booth-rent barber operating inside a shop with location approval and verification controls. You keep your service proceeds and rent is billed separately.",
     approvalCopy: "Requires BVRB3R app approval and shop approval."
   },
   {
-    subtype: "booth_rent",
-    title: "Booth Rent Barber",
-    copy: "Independent booth-rent barber operating inside a shop with location approval and verification controls.",
+    subtype: "autobooth_rent",
+    title: "AutoBooth Rent Barber",
+    copy: "Full Booth Rent with an owner-approved portion of eligible proceeds applied automatically toward your outstanding rent. It never exceeds what you owe, and it is never a cut of your work.",
     approvalCopy: "Requires BVRB3R app approval and shop approval."
   }
 ];

@@ -76,7 +76,7 @@ describe("shop owner onboarding path UI", () => {
     expect(screen.getByRole("link", { name: "Enter Home" })).toHaveAttribute("href", "/dashboard/owner");
     fireEvent.click(screen.getByRole("button", { name: "Set Up My Shop" }));
     expect(replaceMock).toHaveBeenCalledWith("/onboarding/owner?step=access");
-    expect(container.textContent).not.toMatch(/shop_owner_user|guest_user|profiles\.role|auth\.uid|username_normalized|owner_profile_id|shop-private-record-id|payout_readiness_status|stripe_connect_status|relationship_type|booth_rent_barber|commission_barber|freelance_barber/);
+    expect(container.textContent).not.toMatch(/shop_owner_user|guest_user|profiles\.role|auth\.uid|username_normalized|owner_profile_id|shop-private-record-id|payout_readiness_status|stripe_connect_status|relationship_type|booth_rent_barber|commission_barber|freelance_barber/);  // doctrine-allow
   });
 
   it("captures owner authority and flags manager authority for review copy-free", () => {
@@ -184,7 +184,7 @@ describe("shop owner onboarding path UI", () => {
   it("selects payment model without marking payout or money ready", () => {
     const { container } = render(<ShopOwnerOnboardingWorkspace step="payment_model" initialDraft={readyDraft} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Commission through BVRB3R Pay/i }));
+    fireEvent.click(screen.getByRole("button", { name: /AutoBooth Rent through BVRB3R Pay/i }));
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(container.textContent).toContain("Needs review");

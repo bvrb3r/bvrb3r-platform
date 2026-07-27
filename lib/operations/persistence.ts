@@ -1,12 +1,19 @@
 import type { Appointment, Barber, Client } from "@/types/domain";
 import { CheckoutRecord, FlowActivity, getOwnerFlowMetrics, isAppointmentPaid } from "@/lib/utils/operations";
+import { calculateAutoBoothRentApplication } from "@/lib/fintech/booth-rent-doctrine";
 
 export type WorkflowPersistenceBarber = Pick<
   Barber,
-  "id" | "compensationModel" | "commissionRate" | "boothRentAmount" | "boothRentFrequency"
+  "id" | "compensationModel" | "autoBoothPercent" | "boothRentAmount" | "boothRentFrequency"
 > & {
   userId: string;
   email?: string | null;
+  /**
+   * Outstanding booth rent for the current period. When omitted, the periodic
+   * rent amount bounds the application, so AutoBooth still can never apply more
+   * than the barber could possibly owe for the period.
+   */
+  outstandingRentAmount?: number | null;
 };
 
 export interface WorkflowEventRecord {
@@ -39,8 +46,10 @@ export interface CompensationSnapshotRecord {
   depositAmount: number;
   collectedAmount: number;
   tipAmount: number;
-  commissionRate: number | null;
-  commissionAmount: number;
+  /** Owner-approved AutoBooth portion (0..1) in force at capture time. */
+  autoBoothPercent: number | null;
+  /** Rent settled by AutoBooth for this transaction. Never exceeds rent owed. */
+  autoBoothRentAppliedAmount: number;
   boothRentAmount: number | null;
   boothRentPeriodLabel: string | null;
   rentCoverageAmount: number | null;
@@ -118,13 +127,25 @@ export function buildCompensationSnapshot({ appointment, barber, client, checkou
   }
 
   const tipAmount = checkout?.tipAmount ?? appointment.tipAmount;
-  const commissionAmount = barber.compensationModel === "commission"
-    ? roundCurrency(appointment.totalAmount * (barber.commissionRate ?? 0) + tipAmount)
-    : 0;
-  const boothRentAmount = barber.compensationModel === "booth_rent"
-    ? barber.boothRentAmount ?? null
-    : null;
-  const rentCoverageAmount = barber.compensationModel === "booth_rent"
+  const isRentModel = barber.compensationModel === "booth_rent"
+    || barber.compensationModel === "autobooth_rent";
+
+  // Tips are never eligible for rent application, so only service money can
+  // retire rent. The shared doctrine engine enforces the outstanding-rent cap.
+  const outstandingRentCents = Math.round(
+    Math.max(barber.outstandingRentAmount ?? barber.boothRentAmount ?? 0, 0) * 100
+  );
+  const autoBoothApplication = calculateAutoBoothRentApplication({
+    model: barber.compensationModel === "autobooth_rent" ? "autobooth_rent" : "booth_rent",
+    autoBoothPercent: barber.autoBoothPercent ?? null,
+    eligibleProceedsCents: Math.round(Math.max(appointment.totalAmount, 0) * 100),
+    outstandingRentCents,
+    paymentStatus: "captured"
+  });
+  const autoBoothRentAppliedAmount = roundCurrency(autoBoothApplication.appliedToRentCents / 100);
+
+  const boothRentAmount = isRentModel ? barber.boothRentAmount ?? null : null;
+  const rentCoverageAmount = isRentModel
     ? (boothRentAmount === null ? null : roundCurrency(appointment.totalAmount + tipAmount - boothRentAmount))
     : null;
 
@@ -142,10 +163,10 @@ export function buildCompensationSnapshot({ appointment, barber, client, checkou
     depositAmount: appointment.depositAmount,
     collectedAmount: checkout?.amountCollected ?? roundCurrency(Math.max(appointment.totalAmount - appointment.depositAmount, 0)),
     tipAmount,
-    commissionRate: barber.compensationModel === "commission" ? barber.commissionRate ?? null : null,
-    commissionAmount,
+    autoBoothPercent: barber.compensationModel === "autobooth_rent" ? barber.autoBoothPercent ?? null : null,
+    autoBoothRentAppliedAmount,
     boothRentAmount,
-    boothRentPeriodLabel: barber.compensationModel === "booth_rent" ? barber.boothRentFrequency ?? null : null,
+    boothRentPeriodLabel: isRentModel ? barber.boothRentFrequency ?? null : null,
     rentCoverageAmount,
     checkoutReference: checkout?.id ?? null,
     capturedAt: checkout?.collectedAt ?? new Date().toISOString()

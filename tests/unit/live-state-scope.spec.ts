@@ -37,7 +37,7 @@ describe("live operations snapshot role scoping", () => {
 
   it("limits barber views to personal appointments and compensation only", () => {
     const snapshot = createInitialLiveOperationsSnapshot();
-    const barberView = scopeLiveOperationsSnapshot(snapshot, { role: "commission_barber", barberId: "barber-wave", locationIds: ["loc-ybor"] });
+    const barberView = scopeLiveOperationsSnapshot(snapshot, { role: "barber_user", barberId: "barber-wave", locationIds: ["loc-ybor"] });
 
     expect(barberView.appointments.every((appointment) => appointment.barberId === "barber-wave")).toBe(true);
     expect(barberView.compensationSnapshots.every((entry) => entry.barberReference === "barber-wave")).toBe(true);

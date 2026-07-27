@@ -1,7 +1,7 @@
 ﻿import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
-import { getCanonicalAccountRole, isBarberAccountRole } from "@/lib/auth/roles";
+import { getCanonicalAccountRole, isBarberAccountRole, normalizeBarberSubtype, normalizeCompensationModel } from "@/lib/auth/roles";
 import { isAvailabilityBlockingAppointmentStatus } from "@/lib/appointments/domain";
 import {
   DEFAULT_BOOKING_TIME_ZONE,
@@ -69,16 +69,16 @@ type CanonicalBarberRow = {
   id: string;
   reference_code: string | null;
   profile_id: string;
-  compensation_model: "commission" | "booth_rent" | "freelance" | string | null;
-  default_money_relationship?: "freelance" | "booth_rent" | "commission" | null;
-  barber_subtype?: "freelance" | "booth_rent" | "commission" | "blueprint" | null;
+  compensation_model: "booth_rent" | "autobooth_rent" | "freelance" | string | null;
+  default_money_relationship?: "freelance" | "booth_rent" | "autobooth_rent" | null;
+  barber_subtype?: "freelance" | "booth_rent" | "autobooth_rent" | "blueprint" | null;
   app_approval_status: string | null;
   shop_approval_status: string | null;
   status?: string | null;
   onboarding_status?: string | null;
   is_bookable?: boolean | null;
   is_discoverable?: boolean | null;
-  commission_rate: number | string | null;
+  autobooth_percent: number | string | null;
   booth_rent_amount: number | string | null;
   booth_rent_frequency: "weekly" | "monthly" | null;
   bio: string | null;
@@ -127,7 +127,7 @@ function normalizeCanonicalBarberRow(row: Partial<CanonicalBarberRow>): Canonica
     onboarding_status: row.onboarding_status ?? null,
     is_bookable: row.is_bookable ?? null,
     is_discoverable: row.is_discoverable ?? null,
-    commission_rate: row.commission_rate ?? null,
+    autobooth_percent: row.autobooth_percent ?? null,
     booth_rent_amount: row.booth_rent_amount ?? null,
     booth_rent_frequency: row.booth_rent_frequency ?? null,
     bio: row.bio ?? null,
@@ -879,13 +879,13 @@ function normalizeAvailabilityRules(input: {
 function resolveDiscoveryRelationshipType(
   barberRow: CanonicalBarberRow,
   hasShopAssignment: boolean
-): "freelance" | "booth_rent" | "commission" {
+): "freelance" | "booth_rent" | "autobooth_rent" {
   if (barberRow.barber_subtype === "freelance") {
     return "freelance";
   }
 
-  if (barberRow.barber_subtype === "commission") {
-    return hasShopAssignment ? "commission" : "freelance";
+  if (barberRow.barber_subtype === "autobooth_rent") {
+    return hasShopAssignment ? "autobooth_rent" : "freelance";
   }
 
   if (barberRow.barber_subtype === "booth_rent" || barberRow.barber_subtype === "blueprint") {
@@ -897,23 +897,18 @@ function resolveDiscoveryRelationshipType(
   }
 
   const normalized = `${barberRow.compensation_model ?? ""}`.toLowerCase();
-  if (normalized.includes("commission")) {
-    return "commission";
+  if (normalized.includes("autobooth")) {
+    return "autobooth_rent";
   }
   if (normalized.includes("booth")) {
     return "booth_rent";
   }
+  // Retired revenue-share values resolve to freelance.
   return "freelance";
 }
 
-function toDomainCompensationModel(value?: string | null): "freelance" | "booth_rent" | "commission" {
-  if (value === "commission") {
-    return "commission";
-  }
-  if (value === "booth_rent" || value === "blueprint") {
-    return "booth_rent";
-  }
-  return "freelance";
+function toDomainCompensationModel(value?: string | null) {
+  return normalizeCompensationModel(value);
 }
 
 function isCanonicalBarberProfileRole(profile?: CanonicalProfileRow) {
@@ -2043,7 +2038,7 @@ function buildCandidateRecords(
     targetCanonicalBarberIdPresent: false,
     targetHasActiveService: false,
     targetHasAvailability: false,
-    targetRelationshipType: null as "freelance" | "booth_rent" | "commission" | null,
+    targetRelationshipType: null as "freelance" | "booth_rent" | "autobooth_rent" | null,
     targetMarketplaceVisible: false,
     targetFilteredReason: null as string | null
   };
@@ -2964,18 +2959,19 @@ export async function buildCanonicalBarberProfile(
     userId: barberRow.profile_id,
     name,
     role: "barber",
-    barberSubtype: barberRow.barber_subtype === "commission"
-      ? "commission"
-      : barberRow.barber_subtype === "booth_rent" || barberRow.barber_subtype === "blueprint"
-        ? "booth_rent"
-        : "freelance",
+    barberSubtype: normalizeBarberSubtype(barberRow.barber_subtype),
     locationIds,
     specialties: profileRow?.specialties?.length ? profileRow.specialties : [...new Set(serviceCatalog.map((entry) => entry.service.category))],
     rating: averageRating,
     reviewCount: reviews.length,
     compensationModel: toDomainCompensationModel(barberRow.compensation_model),
-    commissionRate: barberRow.compensation_model === "commission" ? numeric(barberRow.commission_rate) : undefined,
-    boothRentAmount: barberRow.compensation_model === "booth_rent" ? numeric(barberRow.booth_rent_amount) : undefined,
+    autoBoothPercent: barberRow.compensation_model === "autobooth_rent" && barberRow.autobooth_percent !== null
+      ? numeric(barberRow.autobooth_percent)
+      : undefined,
+    // Both supported models are rent agreements, so both carry rent terms.
+    boothRentAmount: barberRow.compensation_model === "booth_rent" || barberRow.compensation_model === "autobooth_rent"
+      ? numeric(barberRow.booth_rent_amount)
+      : undefined,
     boothRentFrequency: barberRow.booth_rent_frequency ?? undefined,
     todayEarnings: Number(completedAppointments.filter((entry) => entry.starts_at.slice(0, 10) === new Date().toISOString().slice(0, 10)).reduce((sum, entry) => sum + numeric(entry.total_amount), 0).toFixed(2)),
     upcomingPayout: Number(completedAppointments.reduce((sum, entry) => sum + numeric(entry.total_amount), 0).toFixed(2)),

@@ -48,7 +48,7 @@ describe("team workspace", () => {
           {
             id: "barber-wave",
             name: "Wave Carter",
-            compensationModel: "commission",
+            compensationModel: "autobooth_rent",
             activeAppointmentCount: 1,
             liveAppointmentCount: 0,
             bookedCount: 1,

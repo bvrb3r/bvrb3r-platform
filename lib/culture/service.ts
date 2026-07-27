@@ -2,6 +2,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isBarberAccountRole, isShopOwnerRole, normalizeAccountRole } from "@/lib/auth/roles";
 import { toPublicMediaUrl } from "@/lib/profile/public-media-url";
 import type { Role, UserAccount } from "@/types/domain";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 export type CultureSurfaceRole = "client" | "barber" | "owner" | "shop";
 export type CultureActorRole = "client_user" | "barber_user" | "shop_owner_user";
@@ -531,7 +532,7 @@ function roleLabel(role: CultureActorRole | Role | string) {
   switch (role) {
     case "barber_user":
     case "barber":
-    case "commission_barber":
+    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
     case "booth_rent_barber":
     case "freelance_barber":
       return "Barber";

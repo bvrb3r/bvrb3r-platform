@@ -2,6 +2,7 @@ import { runtimeConfig } from "@/lib/config/runtime";
 import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import type { Role } from "@/types/domain";
 import type { MobileActivationLink } from "@/types/mobile";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 const ROLE_HOME_ROUTE: Record<Role, string> = {
   platform_admin: "/architect",
@@ -13,7 +14,7 @@ const ROLE_HOME_ROUTE: Record<Role, string> = {
   barber_user: "/dashboard/barber",
   barber: "/dashboard/barber",
   freelance_barber: "/dashboard/barber",
-  commission_barber: "/dashboard/barber",
+  [RETIRED_REVENUE_SHARE_ACCOUNT_ROLE]: "/dashboard/barber",
   booth_rent_barber: "/dashboard/barber",
   client_user: "/dashboard/client",
   client: "/dashboard/client"

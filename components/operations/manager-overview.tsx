@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Card } from "@/components/ui/card";
 import { ShopManagerPanel } from "@/components/operations/shop-manager-panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { normalizeCompensationModel } from "@/lib/auth/roles";
 import { useShopDashboardQuery } from "@/lib/operations/barber-client";
 import { currency, dateLabel } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
@@ -75,19 +76,19 @@ function formatActivityTimestamp(iso: string) {
 }
 
 function getCompensationLabel(model: string) {
-  if (model === "commission") {
-    return "Commission barber";
+  // Normalize first so retired pre-doctrine values render as Freelance
+  // instead of leaking their raw stored string.
+  const normalized = normalizeCompensationModel(model);
+
+  if (normalized === "autobooth_rent") {
+    return "AutoBooth Rent barber";
   }
 
-  if (model === "booth_rent") {
+  if (normalized === "booth_rent") {
     return "Booth-rent barber";
   }
 
-  if (model === "freelance") {
-    return "Freelance barber";
-  }
-
-  return model.replaceAll("_", " ");
+  return "Freelance barber";
 }
 
 function getScheduleDetail(note: string, statusLabel: string, locationLabel: string) {

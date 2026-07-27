@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { Building2, Clock3, ShieldCheck, Users, WalletCards } from "lucide-react";
 import { isScheduledAppointmentStatus } from "@/lib/appointments/domain";
+import { normalizeCompensationModel } from "@/lib/auth/roles";
 import { useShopDashboardQuery, type ShopDashboardBarberSummary } from "@/lib/operations/barber-client";
 import { currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
@@ -55,15 +56,15 @@ function formatTime(value: string | null) {
 }
 
 function formatCompensationLabel(value: string) {
-  switch (value) {
+  // Normalize first so retired pre-doctrine values render as Freelance
+  // instead of leaking their raw stored string.
+  switch (normalizeCompensationModel(value)) {
     case "booth_rent":
       return "Booth rent";
-    case "commission":
-      return "Commission";
-    case "freelance":
-      return "Freelance";
+    case "autobooth_rent":
+      return "AutoBooth Rent";
     default:
-      return value.replaceAll("_", " ");
+      return "Freelance";
   }
 }
 

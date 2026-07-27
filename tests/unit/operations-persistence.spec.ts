@@ -30,21 +30,48 @@ const latestActivity = {
 };
 
 describe("Milestone 8 persistence builders", () => {
-  it("builds a commission compensation snapshot", () => {
-    const commissionBarber = demoBarbers.find((entry) => entry.id === "barber-wave")!;
-    const commissionAppointment = demoAppointments.find((entry) => entry.id === "appt-7")!;
-    const commissionSnapshot = buildCompensationSnapshot({
-      appointment: commissionAppointment,
+  it("applies nothing to rent for a barber with no rent agreement", () => {
+    const freelanceBarber = demoBarbers.find((entry) => entry.id === "barber-wave")!;
+    const freelanceAppointment = demoAppointments.find((entry) => entry.id === "appt-7")!;
+    const snapshot = buildCompensationSnapshot({
+      appointment: freelanceAppointment,
       appointments: demoAppointments,
-      barber: commissionBarber,
-      client: demoClients.find((entry) => entry.id === commissionAppointment.clientId),
+      barber: freelanceBarber,
+      client: demoClients.find((entry) => entry.id === freelanceAppointment.clientId),
       latestActivity,
       checkout
     });
 
-    expect(commissionSnapshot?.compensationModel).toBe("commission");
-    expect(commissionSnapshot?.commissionAmount).toBeGreaterThan(0);
-    expect(commissionSnapshot?.boothRentAmount).toBeNull();
+    expect(snapshot?.compensationModel).toBe("freelance");
+    expect(snapshot?.autoBoothPercent).toBeNull();
+    expect(snapshot?.autoBoothRentAppliedAmount).toBe(0);
+    expect(snapshot?.boothRentAmount).toBeNull();
+  });
+
+  it("caps an AutoBooth application at the rent the barber still owes", () => {
+    const autoBoothAppointment = demoAppointments.find((entry) => entry.id === "appt-7")!;
+    const snapshot = buildCompensationSnapshot({
+      appointment: autoBoothAppointment,
+      barber: {
+        id: "barber-autobooth",
+        userId: "user-autobooth",
+        compensationModel: "autobooth_rent",
+        autoBoothPercent: 0.5,
+        boothRentAmount: 400,
+        boothRentFrequency: "weekly",
+        // Only $12 of rent is still outstanding.
+        outstandingRentAmount: 12,
+        email: "autobooth@bvrb3r.demo"
+      },
+      appointments: demoAppointments,
+      client: demoClients.find((entry) => entry.id === autoBoothAppointment.clientId),
+      latestActivity,
+      checkout
+    });
+
+    expect(snapshot?.compensationModel).toBe("autobooth_rent");
+    expect(snapshot?.autoBoothPercent).toBe(0.5);
+    expect(snapshot?.autoBoothRentAppliedAmount).toBe(12);
   });
 
   it("builds a booth-rent snapshot and owner analytics snapshot", () => {

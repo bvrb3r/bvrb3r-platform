@@ -186,7 +186,7 @@ describe("points routes", () => {
     getCurrentUserFromServerMock.mockResolvedValue({
       user: {
         id: "user-blaze",
-        role: "commission_barber",
+        role: "barber_user",
         email: "blaze@bvrb3r.demo"
       }
     });

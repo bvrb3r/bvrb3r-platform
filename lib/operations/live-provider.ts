@@ -72,6 +72,7 @@ import { getTrustProvider } from "@/lib/trust/provider";
 import { Client } from "@/types/domain";
 import type { TrustState } from "@/types/trust";
 import type { CheckoutRecord, FlowActivity } from "@/lib/utils/operations";
+import { normalizeCompensationModel } from "@/lib/auth/roles";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 const APPOINTMENT_OVERLAP_CONSTRAINT = "appointments_no_overlap_active";
@@ -207,14 +208,8 @@ function normalizeCanonicalBarberRow(row: Partial<CanonicalBarberRow>): Canonica
   };
 }
 
-function toDomainCompensationModel(value?: string | null): "freelance" | "booth_rent" | "commission" {
-  if (value === "commission") {
-    return "commission";
-  }
-  if (value === "booth_rent" || value === "blueprint") {
-    return "booth_rent";
-  }
-  return "freelance";
+function toDomainCompensationModel(value?: string | null) {
+  return normalizeCompensationModel(value);
 }
 
 type StaffMembershipRow = {
@@ -538,7 +533,7 @@ function assertBookableBarberLane(input: {
   barberId: string;
   locationId: string;
   trustState?: TrustState;
-  relationshipType?: "freelance" | "booth_rent" | "commission" | null;
+  relationshipType?: "freelance" | "booth_rent" | "autobooth_rent" | null;
   serviceOwnerType?: string | null;
 }) {
   if (!input.trustState) {
@@ -722,7 +717,7 @@ export type ResolvedBookableBarber = {
   displayName: string | null;
   isFreelance: boolean;
   shopAssignment: StaffMembershipRow | null;
-  relationshipType: "freelance" | "booth_rent" | "commission";
+  relationshipType: "freelance" | "booth_rent" | "autobooth_rent";
   barber: CanonicalBarberRow;
 };
 
@@ -783,8 +778,9 @@ export async function resolveBookableBarber(
   const membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
   const explicitRelationship = (barber.default_money_relationship ?? barber.barber_subtype ?? "").toLowerCase();
   const compensationModel = (barber.compensation_model ?? "").toLowerCase();
-  const configuredRelationshipType = explicitRelationship === "commission" || compensationModel.includes("commission")
-    ? "commission"
+  // Retired revenue-share values fall through to freelance.
+  const configuredRelationshipType = explicitRelationship === "autobooth_rent" || compensationModel.includes("autobooth")
+    ? "autobooth_rent"
     : explicitRelationship === "booth_rent" || explicitRelationship === "blueprint" || compensationModel.includes("booth")
       ? "booth_rent"
       : "freelance";
@@ -1852,7 +1848,7 @@ async function loadWorkflowPersistenceBarber(
     id: barberRow.reference_code ?? barberReference,
     userId: barberRow.profile_id,
     compensationModel: toDomainCompensationModel(barberRow.compensation_model),
-    commissionRate: undefined,
+    autoBoothPercent: undefined,
     boothRentAmount: undefined,
     boothRentFrequency: undefined,
     email: profileResult.data?.email ?? null
@@ -2134,7 +2130,7 @@ async function insertPaymentRecord(
     createdAt?: string;
     paymentMethodId?: string | null;
     shopId?: string | null;
-    payoutRoute?: "freelance" | "booth_rent" | "commission";
+    payoutRoute?: "freelance" | "booth_rent" | "autobooth_rent";
     platformHold?: boolean;
   } = {}
 ) {
@@ -2407,8 +2403,8 @@ async function persistArtifactsForAppointment(
         deposit_amount: compensationSnapshot.depositAmount,
         collected_amount: compensationSnapshot.collectedAmount,
         tip_amount: compensationSnapshot.tipAmount,
-        commission_rate: compensationSnapshot.commissionRate,
-        commission_amount: compensationSnapshot.commissionAmount,
+        autobooth_percent: compensationSnapshot.autoBoothPercent,
+        autobooth_rent_applied_amount: compensationSnapshot.autoBoothRentAppliedAmount,
         booth_rent_amount: compensationSnapshot.boothRentAmount,
         booth_rent_period_label: compensationSnapshot.boothRentPeriodLabel,
         rent_coverage_amount: compensationSnapshot.rentCoverageAmount,

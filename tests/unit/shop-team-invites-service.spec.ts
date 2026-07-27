@@ -15,8 +15,8 @@ function makeBarberQuery() {
             id: "barber-real",
             reference_code: "barber-real-ref",
             profile_id: "profile-barber",
-            compensation_model: "commission",
-            commission_rate: null,
+            compensation_model: "autobooth_rent",
+            autobooth_percent: null,
             booth_rent_amount: null,
             booth_rent_frequency: null,
             app_approval_status: "approved",
@@ -93,7 +93,7 @@ describe("shop team invite service", () => {
 
     await expect(listBarberTeamInvites({
       id: "profile-barber",
-      role: "commission_barber",
+      role: "barber_user",
       email: "barber@example.com",
       password: "",
       name: "Real Barber",
@@ -279,8 +279,8 @@ describe("shop team invite service", () => {
               id: "barber-real",
               reference_code: "barber-real-ref",
               profile_id: "profile-barber",
-              compensation_model: "commission",
-              commission_rate: null,
+              compensation_model: "autobooth_rent",
+              autobooth_percent: null,
               booth_rent_amount: null,
               booth_rent_frequency: null,
               app_approval_status: "approved",
@@ -402,8 +402,8 @@ describe("shop team invite service", () => {
       booth_rent_frequency: "weekly",
       barber_percent: null,
       shop_percent: null,
-      commission_cap_amount: null,
-      commission_cap_frequency: null
+      autobooth_cap_amount: null,
+      autobooth_cap_frequency: null
     };
     const updatedInvite = {
       ...pendingInvite,
@@ -618,8 +618,8 @@ describe("shop team invite service", () => {
               id: "barber-real",
               reference_code: "barber-real-ref",
               profile_id: "profile-barber",
-              compensation_model: "commission",
-              commission_rate: null,
+              compensation_model: "autobooth_rent",
+              autobooth_percent: null,
               booth_rent_amount: null,
               booth_rent_frequency: null,
               app_approval_status: "approved",
@@ -667,7 +667,7 @@ describe("shop team invite service", () => {
               shop_id: "shop-other",
               location_id: "loc-other",
               relationship_status: "active",
-              routing_model: "commission",
+              routing_model: "autobooth_rent",
               ended_at: null
             }],
             error: null
@@ -707,8 +707,8 @@ describe("shop team invite service", () => {
               id: "barber-real",
               reference_code: "barber-real-ref",
               profile_id: "profile-barber",
-              compensation_model: "commission",
-              commission_rate: null,
+              compensation_model: "autobooth_rent",
+              autobooth_percent: null,
               booth_rent_amount: null,
               booth_rent_frequency: null,
               app_approval_status: "approved",

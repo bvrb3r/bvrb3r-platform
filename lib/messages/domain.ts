@@ -1,5 +1,6 @@
 import type { Role } from "@/types/domain";
 import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
+import type { RetiredRevenueShareAccountRole } from "@/lib/doctrine/legacy-data-aliases";
 
 export type MessagingThreadType = "client_barber" | "client_shop" | "barber_shop" | "support" | "shop_team";
 export type MessagingMessageType = "text" | "system";
@@ -42,7 +43,7 @@ export type MessagingAppointmentContext = {
   barberProfileId: string;
   clientName: string;
   barberName: string;
-  barberRole?: Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">;
+  barberRole?: Extract<Role, "barber_user" | "barber" | "freelance_barber" | "booth_rent_barber" | RetiredRevenueShareAccountRole>;
   serviceName: string;
   startsAt: string;
 };

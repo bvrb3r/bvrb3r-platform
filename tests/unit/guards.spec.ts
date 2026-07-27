@@ -57,14 +57,14 @@ describe("authorized user guard", () => {
     await expect(getAuthorizedUser(["front_desk"])).rejects.toThrow("REDIRECT:/dashboard/manager");
   });
 
-  it("returns the commission barber for the barber workspace", async () => {
+  it("returns the freelance barber for the barber workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("fade@bvrb3r.demo") });
 
     const user = await getAuthorizedUser(["barber_user"]);
 
     expect(user.email).toBe("fade@bvrb3r.demo");
     expect(user.role).toBe("barber_user");
-    expect(user.barberSubtype).toBe("commission");
+    expect(user.barberSubtype).toBe("freelance");
     expect(redirectMock).not.toHaveBeenCalled();
   });
 

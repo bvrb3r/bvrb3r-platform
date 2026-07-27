@@ -57,7 +57,7 @@ function createTables(overrides: Partial<Record<string, Row[]>> = {}) {
       profile_id: BARBER_PROFILE_ID,
       barber_subtype: "freelance",
       compensation_model: "freelance",
-      commission_rate: null,
+      autobooth_percent: null,
       booth_rent_amount: null,
       booth_rent_frequency: null
     }],
@@ -1001,22 +1001,45 @@ describe("payout completion flow", () => {
     expect(result.payoutRecipientType).toBe("barber");
   });
 
-  it("splits commission after the platform fee", () => {
+  it("applies the AutoBooth portion after the platform fee and caps it at rent owed", () => {
     const result = calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
       grossAmount: 100,
-      routingModel: "commission",
-      commissionRate: 0.7,
+      routingModel: "autobooth_rent",
+      autoBoothPercent: 0.7,
+      outstandingRentCents: 100_000,
       barberReady: true,
       shopReady: true,
       appointmentCompleted: true
     });
 
     expect(Math.round(result.platformFeeAmount * 100)).toBe(500);
-    expect(Math.round(result.barberPayoutAmount * 100)).toBe(6650);
-    expect(Math.round(result.shopSplitAmount * 100)).toBe(2850);
+    // 70% of the 9500 distributable service money retires rent.
+    expect(Math.round(result.autoBoothRentAppliedAmount * 100)).toBe(6650);
+    expect(Math.round(result.shopSplitAmount * 100)).toBe(6650);
+    expect(Math.round(result.barberPayoutAmount * 100)).toBe(2850);
     expect(result.payoutRecipientType).toBe("split");
+  });
+
+  it("never applies more AutoBooth rent than the barber still owes", () => {
+    const result = calculatePaymentRouting({
+      paymentType: "booking",
+      paymentStatus: "captured",
+      grossAmount: 100,
+      routingModel: "autobooth_rent",
+      autoBoothPercent: 0.7,
+      // Only $10 of rent is still outstanding.
+      outstandingRentCents: 1_000,
+      barberReady: true,
+      shopReady: true,
+      appointmentCompleted: true
+    });
+
+    expect(Math.round(result.autoBoothRentAppliedAmount * 100)).toBe(1_000);
+    expect(Math.round(result.shopSplitAmount * 100)).toBe(1_000);
+    // Everything above the rent owed stays with the barber.
+    expect(Math.round(result.barberPayoutAmount * 100)).toBe(8_500);
   });
 
   it("rejects completing another barber's appointment", async () => {
