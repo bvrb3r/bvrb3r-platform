@@ -68,10 +68,18 @@ export function ContactVerificationWorkspace() {
         statusQuery.refetch(),
         onboardingQuery.refetch()
       ]);
-      const nextPath: Route = onboardingResult.data?.nextPath
-        ?? contactResult.data?.nextPath
-        ?? preferredNextPath
-        ?? "/post-auth";
+      const onboardingNextPath = onboardingResult.data?.nextPath;
+      const contactNextPath = contactResult.data?.nextPath;
+      let nextPath = "/post-auth";
+      if (preferredNextPath !== undefined) {
+        nextPath = String(preferredNextPath);
+      }
+      if (contactNextPath != null) {
+        nextPath = String(contactNextPath);
+      }
+      if (onboardingNextPath != null) {
+        nextPath = String(onboardingNextPath);
+      }
 
       console.info("[verify-contact] continuation resolved", {
         contactState: contactResult.data,
@@ -83,7 +91,7 @@ export function ContactVerificationWorkspace() {
       if (nextPath && nextPath !== "/verify-contact") {
         hasForwardedRef.current = true;
         console.info("[verify-contact] redirecting", { nextPath });
-        router.replace(nextPath);
+        router.replace(nextPath as Route);
       }
 
       return nextPath;
