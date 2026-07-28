@@ -51,6 +51,7 @@ function formatTimeLabel(iso?: string | null) {
 
 type ActionSize = "md" | "lg";
 type ActionVariant = "primary" | "secondary" | "outline";
+type GetCutNowState = "location" | "unavailable" | "payment" | "ready";
 
 type ClientGetCutNowActionProps = {
   hasResolvedLocation: boolean;
@@ -91,13 +92,14 @@ export function ClientGetCutNowAction({
     });
   }, [nextAvailableChair]);
 
-  const state = !hasResolvedLocation
-    ? "location"
-    : !nextAvailableChair
-      ? "unavailable"
-      : !defaultPaymentMethod
-        ? "payment"
-        : "ready";
+  let state: GetCutNowState = "ready";
+  if (!hasResolvedLocation) {
+    state = "location";
+  } else if (!nextAvailableChair) {
+    state = "unavailable";
+  } else if (!defaultPaymentMethod) {
+    state = "payment";
+  }
   const barberName = nextAvailableChair
     ? getClientFacingBarberName({
       username: nextAvailableChair.username,
@@ -105,13 +107,14 @@ export function ClientGetCutNowAction({
     })
     : "";
 
-  const ctaHref = state === "location"
-    ? locationHref
-    : state === "unavailable"
-      ? barberSearchHref
-      : state === "payment"
-        ? walletHref
-        : bookingHref;
+  let ctaHref: Route | null = bookingHref;
+  if (state === "location") {
+    ctaHref = locationHref;
+  } else if (state === "unavailable") {
+    ctaHref = barberSearchHref;
+  } else if (state === "payment") {
+    ctaHref = walletHref;
+  }
 
   return (
     <div className={cn("space-y-3", className)}>

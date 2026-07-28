@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
@@ -8,6 +9,10 @@ export default async function BarberTypePage() {
     redirect("/login");
   }
 
-  const destination = await resolvePostAuthDestination(user);
-  redirect(destination === "/onboarding/barber-type" ? "/dashboard/barber" : destination);
+  const destination = String(await resolvePostAuthDestination(user));
+  let nextPath = destination;
+  if (destination === "/onboarding/barber-type") {
+    nextPath = "/dashboard/barber";
+  }
+  redirect(nextPath as Route);
 }

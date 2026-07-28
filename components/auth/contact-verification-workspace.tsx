@@ -34,6 +34,10 @@ export function ContactVerificationWorkspace() {
   const [isContinuing, setIsContinuing] = useState(false);
 
   const payload = statusQuery.data;
+  let canonicalNextPath: string | null = null;
+  if (payload?.nextPath != null) {
+    canonicalNextPath = String(payload.nextPath);
+  }
   const resolvedFirstName = firstName || payload?.firstName || "";
   const resolvedLastName = lastName || payload?.lastName || "";
   const resolvedPhone = phone || payload?.phone || "";
@@ -68,10 +72,18 @@ export function ContactVerificationWorkspace() {
         statusQuery.refetch(),
         onboardingQuery.refetch()
       ]);
-      const nextPath: Route = onboardingResult.data?.nextPath
-        ?? contactResult.data?.nextPath
-        ?? preferredNextPath
-        ?? "/post-auth";
+      const onboardingNextPath = onboardingResult.data?.nextPath;
+      const contactNextPath = contactResult.data?.nextPath;
+      let nextPath = "/post-auth";
+      if (preferredNextPath !== undefined) {
+        nextPath = String(preferredNextPath);
+      }
+      if (contactNextPath != null) {
+        nextPath = String(contactNextPath);
+      }
+      if (onboardingNextPath != null) {
+        nextPath = String(onboardingNextPath);
+      }
 
       console.info("[verify-contact] continuation resolved", {
         contactState: contactResult.data,
@@ -83,7 +95,7 @@ export function ContactVerificationWorkspace() {
       if (nextPath && nextPath !== "/verify-contact") {
         hasForwardedRef.current = true;
         console.info("[verify-contact] redirecting", { nextPath });
-        router.replace(nextPath);
+        router.replace(nextPath as Route);
       }
 
       return nextPath;
@@ -97,14 +109,14 @@ export function ContactVerificationWorkspace() {
       return;
     }
 
-    const nextPath = payload.nextPath ?? "/post-auth";
+    const nextPath = canonicalNextPath ?? "/post-auth";
     if (nextPath === "/verify-contact") {
       return;
     }
 
     hasForwardedRef.current = true;
-    router.replace(nextPath);
-  }, [payload?.canContinue, payload?.nextPath, router]);
+    router.replace(nextPath as Route);
+  }, [canonicalNextPath, payload?.canContinue, router]);
 
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -3,6 +3,7 @@ name: V22 package gate
 on:
   pull_request:
     branches:
+      - main
       - release/v22
     types:
       - opened
@@ -39,7 +40,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Focused PR 18–20 regression tests
+      - name: Focused release regression tests
         run: >-
           npx vitest run
           tests/unit/architect-routing-repair.spec.ts
@@ -76,6 +77,8 @@ jobs:
           tests/unit/pr20-booking-lifecycle.spec.ts
           tests/unit/pr20-booking-routes.spec.ts
           tests/unit/public-booking-entry.spec.tsx
+          tests/unit/public-home-routing.spec.tsx
+          tests/unit/public-site.spec.tsx
           tests/unit/runtime-resilience-provider.spec.tsx
 
       - name: Full test suite

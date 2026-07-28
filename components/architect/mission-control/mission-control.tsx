@@ -752,6 +752,10 @@ function buildCeoStateSemantics(input: {
     || stateType === "blocked_requires_repair"
     || (stateType === "needs_proof" && input.underlyingStatus !== "Pass")
   );
+  let openLaneTarget = laneHref(nextOfficerLane);
+  if (input.href) {
+    openLaneTarget = input.href;
+  }
 
   return {
     cardId: input.id,
@@ -766,7 +770,7 @@ function buildCeoStateSemantics(input: {
     v1Blocking,
     requiredAction: input.requiredAction ?? requiredActionForState(input.label, stateType, nextOfficerLane),
     nextOfficerLane,
-    openLaneTarget: input.href ?? laneHref(nextOfficerLane)
+    openLaneTarget
   };
 }
 

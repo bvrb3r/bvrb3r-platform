@@ -16,11 +16,16 @@ export async function GET() {
     logAuthRoute(context, "route_entry");
     const authUser = await getAuthenticatedAuthUserForRoute(context);
     const debugState = await getContactVerificationDebugState(authUser);
-    const nextPath = !debugState.computed.contactComplete
-      ? "/verify-contact"
-      : debugState.computed.requiresRoleSelection
-        ? "/role-select"
-        : await resolvePostAuthDestination(await buildRuntimeUserFromProductionAuth(authUser));
+    const contactComplete = Boolean(debugState.computed.contactComplete);
+    const requiresRoleSelection = Boolean(debugState.computed.requiresRoleSelection);
+    let nextPath: string;
+    if (!contactComplete) {
+      nextPath = "/verify-contact";
+    } else if (requiresRoleSelection) {
+      nextPath = "/role-select";
+    } else {
+      nextPath = await resolvePostAuthDestination(await buildRuntimeUserFromProductionAuth(authUser));
+    }
     const responseBody = {
       userId: authUser.id,
       profile: debugState.profile,
