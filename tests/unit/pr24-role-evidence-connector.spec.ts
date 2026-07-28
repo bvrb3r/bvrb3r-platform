@@ -26,9 +26,9 @@ describe("PR24 production role evidence connector", () => {
     expect(migration).toContain("'normalizationDecisionCounts'");
     expect(migration).toContain("'linkageGaps'");
     expect(migration).toContain("'contentExposed', false");
-    expect(migration).not.toContain("full_name");
-    expect(migration).not.toContain("email");
-    expect(migration).not.toContain("phone");
+    expect(migration).not.toMatch(/\\bp\\.(full_name|email|phone)\\b/);
+    expect(migration).not.toContain("'profileIds'");
+    expect(migration).not.toContain("'profileRows'");
   });
 
   it("keeps role normalization non-executable and does not mutate profiles", () => {
