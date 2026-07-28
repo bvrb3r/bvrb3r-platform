@@ -96,7 +96,7 @@ describe("public home routing", () => {
     expect(getCurrentUserFromServerMock).not.toHaveBeenCalled();
   });
 
-  it("keeps the auth-first public front door available for unauthenticated visitors", async () => {
+  it("keeps the cinematic public front door available for unauthenticated visitors", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({
       mode: "supabase",
       authenticated: false,
@@ -113,12 +113,13 @@ describe("public home routing", () => {
 
     render(await HomePage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByLabelText("BVRB3R home")).toHaveTextContent("BVRB3R");
+    expect(screen.getAllByLabelText("BVRB3R home")[0]).toHaveTextContent("BVRB3R");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Run your chair, your shop, and your income — in one system."
+      "Every great cut starts with a spin."
     );
-    expect(screen.getByLabelText("Mobile number, email, or username")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Book a cut" })).toHaveAttribute("href", "/booking/new");
+    expect(screen.getAllByRole("link", { name: "Enter as guest" })[0]).toHaveAttribute("href", "/discover?entry=guest");
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
   });
 
   it("redirects authenticated Supabase users away from the public client home shell", async () => {

@@ -22,13 +22,17 @@ export async function POST(request: NextRequest) {
 
     const user = await getOnboardingSessionUser();
     const result = await markOnboardingStepComplete(user, "client", "client_profile", parsed.data);
+    const onboardingComplete = result.state.status === "completed";
+    const nextPath: string = onboardingComplete
+      ? await resolvePostAuthDestination(user)
+      : "/onboarding/client/preferences";
+    const state: unknown = result.state;
     return NextResponse.json({
-      state: result.state,
-      degraded: result.degraded,
-      nextPath: result.state.status === "completed" ? await resolvePostAuthDestination(user) : "/onboarding/client/preferences"
+      state,
+      degraded: Boolean(result.degraded),
+      nextPath
     });
   } catch (error) {
     return toOnboardingErrorResponse(error);
   }
 }
-
