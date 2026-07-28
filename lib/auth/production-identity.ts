@@ -1993,7 +1993,7 @@ export async function sendPhoneVerificationChallenge(
       .from("profiles")
       .upsert({
         id: profileId,
-        role: existingProfile?.role === "shop_owner" ? "owner" : existingProfile?.role ?? "client",
+        role: getCanonicalAccountRole(existingProfile?.role),
         full_name: existingProfile?.full_name?.trim() || getDisplayName(authUser, existingProfile),
         email: existingProfile?.email?.trim() || authUser.email || `${profileId}@bvrb3r.local`,
         phone: candidatePhone,
@@ -2017,7 +2017,7 @@ export async function sendPhoneVerificationChallenge(
         .from("profiles")
         .upsert({
           id: profileId,
-          role: existingProfile?.role === "shop_owner" ? "owner" : existingProfile?.role ?? "client",
+          role: getCanonicalAccountRole(existingProfile?.role),
           full_name: existingProfile?.full_name?.trim() || getDisplayName(authUser, existingProfile),
           email: existingProfile?.email?.trim() || authUser.email || `${profileId}@bvrb3r.local`,
           phone: candidatePhone

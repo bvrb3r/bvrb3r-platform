@@ -192,20 +192,23 @@ describe("role normalization migration plan", () => {
     )).toBe(true);
   });
 
-  it("keeps the migration-ready SQL plan reversible and approval-gated", () => {
+  it("keeps the PR25 SQL plan aggregate-only, reversible, and approval-gated", () => {
     const sql = readFileSync(join(process.cwd(), "supabase", "migration-plans", "role_normalization_migration_plan.sql"), "utf8");
+    const executableSql = sql
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("--"))
+      .join("\n");
 
-    expect(sql).toContain("Status: migration-ready plan only. Do not run against production until founder approval.");
-    expect(sql).toContain("Dry-run affected row preview");
-    expect(sql).toContain("create table if not exists public.role_normalization_profile_backup_20260623");
+    expect(sql).toContain("Status: plan only.");
+    expect(sql).toContain("Aggregate dry-run");
+    expect(sql).toContain("private.role_normalization_profile_backups");
+    expect(sql).not.toContain("public.role_normalization_profile_backup_");
     expect(sql).toContain("Rollback plan");
     expect(sql).toContain("update public.profiles p");
     expect(sql).toContain("front_desk");
     expect(sql).toContain("manager");
     expect(sql).toContain("platform_admin");
-    expect(sql).not.toContain("delete from");
-    expect(sql).not.toContain("alter table");
-    expect(sql).not.toContain("create policy");
+    expect(executableSql).not.toMatch(/\b(insert|update|delete|alter|create|drop|grant|revoke|truncate)\b/i);
   });
 
   it("keeps the approved eligible-only migration candidate guarded, reversible, and canonical-only", () => {
