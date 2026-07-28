@@ -7,7 +7,7 @@ PR 25 freezes a safe, reviewable role-normalization plan without executing a pro
 The plan maps only evidence-backed legacy account roles to the three canonical public identities:
 
 - `client` → `client_user` only with a linked client record
-- `booth_rent_barber` or `commission_barber` → `barber_user` only with a linked barber record
+- a retired pre-doctrine barber account role → `barber_user` only with a linked barber record
 - `owner` → `shop_owner_user` only with an owned-shop record
 
 Operational/internal roles and missing evidence remain blocked for manual review. Relationship economics remain outside `profiles.role`.
