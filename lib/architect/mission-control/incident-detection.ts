@@ -1573,7 +1573,20 @@ function buildProductionRoleTruthInventory(tables: {
       .filter((row) => {
         const value = stringValue(row.relationship_type).trim();
         if (!value || relationshipTypeSet.has(value)) return false;
-        return !(isRetiredRevenueShareModel(value) && row.is_active === false);
+        const status = stringValue(row.status).trim().toLowerCase();
+        const endedRelationshipStatuses = new Set([
+          "ended",
+          "inactive",
+          "terminated",
+          "revoked",
+          "rejected",
+          "declined",
+          "cancelled",
+          "canceled"
+        ]);
+        const isHistorical = Boolean(row.ended_at)
+          || endedRelationshipStatuses.has(status);
+        return !(isRetiredRevenueShareModel(value) && isHistorical);
       })
       .map((row) => stringValue(row.relationship_type).trim())
   );
