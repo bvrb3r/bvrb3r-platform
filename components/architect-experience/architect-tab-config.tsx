@@ -1,4 +1,4 @@
-import { BadgeDollarSign, BrainCircuit, Building2, Megaphone, Rocket, Scale, ShieldCheck, Siren, UsersRound } from "lucide-react";
+import { BadgeCheck, BadgeDollarSign, BrainCircuit, Building2, Megaphone, Rocket, Scale, ShieldCheck, Siren, UsersRound } from "lucide-react";
 
 export const ARCHITECT_PRIMARY_NAV_ITEMS = [
   {
@@ -48,6 +48,12 @@ export const ARCHITECT_PRIMARY_NAV_ITEMS = [
     label: "Security",
     href: "/architect/security",
     icon: Siren
+  },
+  {
+    id: "release_readiness",
+    label: "Release",
+    href: "/architect/release-readiness",
+    icon: BadgeCheck
   },
   {
     id: "content_community",
