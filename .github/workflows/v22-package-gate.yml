@@ -83,6 +83,8 @@ jobs:
           tests/unit/pr22-rent-service.spec.ts
           tests/unit/pr23-release-certificate-migration.spec.ts
           tests/unit/pr23-retired-model-migration.spec.ts
+          tests/unit/pr24-release-certificate-migration.spec.ts
+          tests/unit/pr24-role-evidence-connector.spec.ts
           tests/unit/public-booking-entry.spec.tsx
           tests/unit/public-home-routing.spec.tsx
           tests/unit/public-site.spec.tsx
@@ -115,6 +117,8 @@ jobs:
           tests/unit/pr22-booth-rent-contract-migration.spec.ts
           tests/unit/pr23-release-certificate-migration.spec.ts
           tests/unit/pr23-retired-model-migration.spec.ts
+          tests/unit/pr24-release-certificate-migration.spec.ts
+          tests/unit/pr24-role-evidence-connector.spec.ts
 
       - name: Production build
         run: npm run build
