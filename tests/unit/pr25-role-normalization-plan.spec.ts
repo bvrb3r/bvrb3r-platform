@@ -30,7 +30,7 @@ describe("PR25 role normalization migration plan", () => {
 
   it("requires linkage evidence for every automatic mapping", () => {
     expect(plan).toContain("old_role = 'client' and has_client_record");
-    expect(plan).toContain("old_role in ('booth_rent_barber', 'commission_barber') and has_barber_record");
+    expect(plan).toContain(`old_role in ('booth_rent_barber', '${RETIRED_REVENUE_SHARE_ACCOUNT_ROLE}') and has_barber_record`);
     expect(plan).toContain("old_role = 'owner' and has_owned_shop_record");
     expect(plan).toContain("then 'manual_review'");
     expect(plan).toContain("then 'blocked_missing_linkage'");
