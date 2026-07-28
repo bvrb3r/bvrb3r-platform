@@ -105,13 +105,16 @@ export function ContactVerificationWorkspace() {
       return;
     }
 
-    const nextPath = payload.nextPath ?? "/post-auth";
+    let nextPath = "/post-auth";
+    if (payload.nextPath != null) {
+      nextPath = String(payload.nextPath);
+    }
     if (nextPath === "/verify-contact") {
       return;
     }
 
     hasForwardedRef.current = true;
-    router.replace(nextPath);
+    router.replace(nextPath as Route);
   }, [payload?.canContinue, payload?.nextPath, router]);
 
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
