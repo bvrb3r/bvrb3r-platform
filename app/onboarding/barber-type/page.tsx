@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
@@ -13,5 +14,5 @@ export default async function BarberTypePage() {
   if (destination === "/onboarding/barber-type") {
     nextPath = "/dashboard/barber";
   }
-  redirect(nextPath);
+  redirect(nextPath as Route);
 }
