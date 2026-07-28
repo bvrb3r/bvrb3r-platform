@@ -106,10 +106,10 @@ where model = 'commission'
   and is_active;
 
 update public.shop_barber_relationships
-set is_active = false,
+set status = 'ended',
     ended_at = coalesce(ended_at, now())
 where relationship_type = 'commission'
-  and is_active;
+  and status in ('invited', 'active', 'suspended');
 
 -- ---------------------------------------------------------------------------
 -- 3. Tighten the model/routing constraints onto the locked doctrine.

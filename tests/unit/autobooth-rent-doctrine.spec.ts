@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   SHOP_BARBER_FINANCIAL_MODELS,
@@ -8,6 +10,11 @@ import {
   resolveTotalOutstandingRentCents
 } from "@/lib/fintech/booth-rent-doctrine";
 import { calculatePaymentRouting, normalizeCompensationAssignment, normalizeRoutingModel } from "@/lib/fintech/domain";
+
+const doctrineMigrationSql = readFileSync(join(
+  process.cwd(),
+  "supabase/migrations/20260727120100_autobooth_rent_doctrine_lock.sql"
+), "utf8");
 
 function application(overrides: Partial<Parameters<typeof calculateAutoBoothRentApplication>[0]> = {}) {
   return calculateAutoBoothRentApplication({
@@ -21,6 +28,14 @@ function application(overrides: Partial<Parameters<typeof calculateAutoBoothRent
 }
 
 describe("locked shop-barber financial doctrine", () => {
+  it("ends retired commission relationships through the canonical status lifecycle", () => {
+    expect(doctrineMigrationSql).toContain("set status = 'ended'");
+    expect(doctrineMigrationSql).toContain("and status in ('invited', 'active', 'suspended')");
+    expect(doctrineMigrationSql).not.toMatch(
+      /update public\.shop_barber_relationships[\s\S]*?set is_active = false/
+    );
+  });
+
   it("supports exactly Full Booth Rent and AutoBooth Rent", () => {
     expect([...SHOP_BARBER_FINANCIAL_MODELS]).toEqual(["booth_rent", "autobooth_rent"]);
     expect(SHOP_BARBER_FINANCIAL_MODEL_LABELS).toEqual({

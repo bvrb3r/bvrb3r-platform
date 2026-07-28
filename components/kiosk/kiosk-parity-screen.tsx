@@ -939,7 +939,11 @@ export function KioskParityScreen({
                 {payload.shop.locationLabel}
               </span>
               <span className="rounded-full border border-[#c4f24e]/35 bg-[#c4f24e]/[0.05] px-5 py-3 font-mono text-[9px] uppercase tracking-[0.16em] text-[#e4f9b8]">
-                {kioskQueueChip(locale, payload.queue.activeCount, payload.queue.averageWaitMinutes)}
+                {kioskQueueChip(
+                  locale,
+                  scope === "barber" ? queueAhead : payload.queue.activeCount,
+                  scope === "barber" ? waitMinutes : payload.queue.averageWaitMinutes
+                )}
               </span>
             </div>
 

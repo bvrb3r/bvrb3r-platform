@@ -44,7 +44,13 @@ jobs:
           npx vitest run
           tests/unit/architect-routing-repair.spec.ts
           tests/unit/autobooth-rent-doctrine.spec.ts
+          tests/unit/booking-form.spec.tsx
+          tests/unit/bookings-route.spec.ts
+          tests/unit/client-booking-proof.spec.ts
+          tests/unit/core-booking-loop-regression.spec.ts
           tests/unit/financial-doctrine-guard.spec.ts
+          tests/unit/guest-entry.spec.tsx
+          tests/unit/homepage-front-door.spec.tsx
           tests/unit/kiosk-accessibility.spec.tsx
           tests/unit/kiosk-local-fixture.spec.ts
           tests/unit/kiosk-locale.spec.ts
@@ -69,6 +75,7 @@ jobs:
           tests/unit/pr20-booking-holds.spec.ts
           tests/unit/pr20-booking-lifecycle.spec.ts
           tests/unit/pr20-booking-routes.spec.ts
+          tests/unit/public-booking-entry.spec.tsx
 
       - name: Full test suite
         run: npm test

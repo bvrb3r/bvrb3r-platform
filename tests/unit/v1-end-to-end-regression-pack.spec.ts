@@ -90,7 +90,7 @@ const coverageGroups = [
       "tests/unit/booking-mutation-routes.spec.ts"
     ],
     surfaces: [
-      "app/(platform)/booking/new/page.tsx",
+      "app/(public-booking)/booking/new/page.tsx",
       "components/booking/booking-form.tsx",
       "lib/booking/platform-service.ts",
       "lib/operations/live-provider.ts"

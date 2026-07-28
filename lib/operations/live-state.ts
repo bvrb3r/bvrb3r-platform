@@ -70,6 +70,7 @@ export interface BookingMutationInput {
   pointsToRedeem?: number;
   pointsUserId?: string;
   paymentMethodId?: string;
+  deferPaymentCollection?: boolean;
   actorProfileId?: string;
   createdBy?: string;
   internalNotes?: string;
@@ -1056,4 +1057,3 @@ export function noShowAppointmentInSnapshot(snapshot: LiveOperationsSnapshot, in
     snapshot: nextSnapshot
   };
 }
-

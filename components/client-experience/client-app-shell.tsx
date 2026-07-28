@@ -24,7 +24,12 @@ export function ClientAppShell({
       </div>
       <div className="relative page-shell safe-top-pad app-safe-bottom pb-[calc(env(safe-area-inset-bottom,0px)+6.5rem)] pt-3 sm:pt-4 lg:pt-5">
         <ClientAppHeader mode={mode} />
-        <div className="mt-5 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-5 2xl:grid-cols-[19rem_minmax(0,1fr)]">
+        <div
+          className={mode === "client"
+            ? "mt-5 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-5 2xl:grid-cols-[19rem_minmax(0,1fr)]"
+            : "mt-5"}
+          data-testid="client-app-shell-content"
+        >
           {mode === "client" ? <ClientSidebar activeTab={activeTab} /> : null}
           <main className="min-w-0 space-y-5">{children}</main>
         </div>

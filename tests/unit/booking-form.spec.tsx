@@ -481,7 +481,17 @@ describe("booking form", () => {
     expect(screen.getByRole("button", { name: "Confirm booking" })).toBeEnabled();
   });
 
-  it("blocks paid guest booking without calling payment setup or fake booking success", async () => {
+  it("books a paid service for a guest without collecting payment or requiring sign-in", async () => {
+    const createBooking = vi.fn().mockResolvedValue({
+      appointment: {
+        id: "appt-paid-guest",
+        confirmationCode: "BVRPAID1"
+      }
+    });
+    useCreateBookingMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: createBooking
+    });
     useClientHomeQueryMock.mockReturnValue({
       data: null,
       isLoading: false,
@@ -504,17 +514,29 @@ describe("booking form", () => {
     expect(screen.queryByText("Offers & promo codes")).not.toBeInTheDocument();
     expect(screen.queryByText("Rewards")).not.toBeInTheDocument();
     expect(screen.getByText("Guest booking identity")).toBeInTheDocument();
-    expect(screen.getByText("This appointment requires $40 due today.")).toBeInTheDocument();
-    expect(screen.getByText("Guest online payment setup is not connected yet. Sign in or create an account to add a payment method before booking.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in to continue" })).toHaveAttribute("href", "/login?redirect=%2Fbooking%2Fnew");
+    expect(screen.getByText("No payment is collected on this booking screen.")).toBeInTheDocument();
+    expect(screen.getByText("The $40 balance remains due and must be confirmed by the shop before service or checkout.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sign in to continue" })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Guest Booker" } });
     fireEvent.change(screen.getByLabelText("Phone"), { target: { value: "(813) 555-0199" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "guest@example.com" } });
     fireEvent.click(screen.getByLabelText("I acknowledge the cancellation policy."));
 
-    expect(screen.getByRole("button", { name: "Confirm booking" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Confirm booking" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm booking" }));
+
+    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      serviceId: "srv-cut",
+      clientName: "Guest Booker",
+      clientPhone: "(813) 555-0199",
+      clientEmail: "guest@example.com",
+      paymentMethodId: undefined,
+      pointsToRedeem: undefined
+    })));
+    expect(await screen.findByText("Confirmation BVRPAID1. Keep this code. Support can look up your appointment with your email, phone, confirmation code, and appointment time. No payment was taken on this booking screen.")).toBeInTheDocument();
     expect(useCreateSavedPaymentMethodSetupMutationMock).not.toHaveBeenCalled();
+    expect(useCreateAppointmentPaymentMutationMock).not.toHaveBeenCalled();
   });
 
   it("submits zero-due guest booking identity and shows public lookup support actions after server success", async () => {
@@ -591,7 +613,7 @@ describe("booking form", () => {
       paymentMethodId: undefined,
       pointsToRedeem: undefined
     })));
-    expect(await screen.findByText("Confirmation BVRGUEST1. Keep this code. Support can look up your appointment with your email, phone, confirmation code, and appointment time. Receipt status is verifying.")).toBeInTheDocument();
+    expect(await screen.findByText("Confirmation BVRGUEST1. Keep this code. Support can look up your appointment with your email, phone, confirmation code, and appointment time. No payment was taken on this booking screen.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Look up booking" })).toHaveAttribute("href", "/bookings?confirmation=BVRGUEST1");
     expect(screen.getByRole("link", { name: "Contact support" })).toHaveAttribute("href", expect.stringContaining("mailto:support@bvrb3r.app"));
     expect(screen.getByRole("link", { name: "Create or sign in" })).toHaveAttribute("href", "/login?redirect=%2Fbookings%3Fconfirmation%3DBVRGUEST1");

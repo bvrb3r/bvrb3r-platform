@@ -208,6 +208,8 @@ describe("kiosk parity screen", () => {
 
       expect(screen.getByText("You’re at the chair of")).toBeInTheDocument();
       expect(screen.getByText("marcusfade")).toBeInTheDocument();
+      expect(screen.getByText("2 ahead · ~35 min")).toBeInTheDocument();
+      expect(screen.queryByText("2 ahead · ~10 min")).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Take the next chair/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Pick a future time/i })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Next available chair/i })).not.toBeInTheDocument();

@@ -2743,6 +2743,15 @@ function withCapturedBookingSettlement(appointment: LiveAppointmentRecord) {
   } satisfies LiveAppointmentRecord;
 }
 
+function withDeferredBookingSettlement(appointment: LiveAppointmentRecord) {
+  const outstandingAmount = Math.max(appointment.grandTotal ?? appointment.totalAmount, 0);
+  return {
+    ...appointment,
+    depositAmount: 0,
+    balanceDue: outstandingAmount
+  } satisfies LiveAppointmentRecord;
+}
+
 function replaceAppointmentInSnapshot(
   snapshot: LiveOperationsSnapshot,
   appointment: LiveAppointmentRecord
@@ -2893,8 +2902,11 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       });
 
       const bookingPaymentAmount = Math.max(bookedAppointment.grandTotal ?? bookedAppointment.totalAmount, 0);
-      const appointmentForPayment = bookingPaymentAmount > 0
+      const shouldCollectPayment = bookingPaymentAmount > 0 && !input.deferPaymentCollection;
+      const appointmentForPayment = shouldCollectPayment
         ? withCapturedBookingSettlement(bookedAppointment)
+        : input.deferPaymentCollection && bookingPaymentAmount > 0
+          ? withDeferredBookingSettlement(bookedAppointment)
         : bookedAppointment;
       const snapshotForPayment = appointmentForPayment.id === bookedAppointment.id
         ? replaceAppointmentInSnapshot(snapshotWithBookingClient, appointmentForPayment)
@@ -2910,7 +2922,8 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         shopId: appointmentRow.shop_id,
         shopIdNull: appointmentRow.shop_id === null,
         payloadKeys: Object.keys(appointmentRow),
-        paymentRequired: bookingPaymentAmount > 0
+        paymentRequired: shouldCollectPayment,
+        paymentCollectionDeferred: Boolean(input.deferPaymentCollection)
       });
       const existingAppointment = await supabase
         .from("appointments")
@@ -2971,7 +2984,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       });
 
       try {
-        if (bookingPaymentAmount > 0) {
+        if (shouldCollectPayment) {
           diagnostics.paymentRecordInsertStarted = true;
           const payment = await insertPaymentRecord(
             supabase,
@@ -3605,8 +3618,6 @@ export async function getLiveOperationsProvider(): Promise<LiveOperationsProvide
 
   return createSupabaseProvider(supabase);
 }
-
-
 
 
 

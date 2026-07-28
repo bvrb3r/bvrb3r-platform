@@ -266,6 +266,7 @@ export async function POST(request: NextRequest) {
       actorEmail,
       actorProfileId: !isGuestBooking && isClientRole(clientContext.viewer.role) ? clientContext.viewer.id : undefined,
       createdBy: isGuestBooking ? undefined : clientContext.viewer.id,
+      deferPaymentCollection: isGuestBooking,
       bookingSource: normalizedCultureAttribution ? "culture" : sourceKind ?? "booking"
     });
     await recordBookingCreatedPlatformEvent({
