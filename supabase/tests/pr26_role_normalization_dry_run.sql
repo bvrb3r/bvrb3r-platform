@@ -20,6 +20,10 @@ begin
     raise exception 'PR26 packet crossed its read-only/redaction boundary.';
   end if;
 
+  if packet -> 'currentRoleCounts' ? current_user then
+    raise exception 'PR26 current role counts resolved the SQL session role instead of profile role evidence.';
+  end if;
+
   if coalesce((packet ->> 'checkCount')::integer, 0) <> 10
      or coalesce((packet ->> 'passedCount')::integer, 0) <> 10
   then
