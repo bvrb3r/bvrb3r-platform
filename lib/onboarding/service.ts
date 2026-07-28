@@ -1134,14 +1134,17 @@ export async function getOnboardingState(user: UserAccount): Promise<OnboardingM
     .map((entry) => {
       const verificationProfile = verificationPayload.profiles.find((profile) => profile.role === entry.role);
       const activationState = resolveLaneActivationState(user, entry.role, entry, verificationProfile);
+      let resumePath = getStepRoute(entry.role, entry.currentStep);
+      if (entry.status === "completed" && activationState === "verification") {
+        resumePath = "/activation-status";
+      }
+
       return {
         role: entry.role,
         status: entry.status,
         currentStep: entry.currentStep,
         completedSteps: entry.completedSteps,
-        resumePath: entry.status === "completed" && activationState === "verification"
-          ? "/activation-status"
-          : getStepRoute(entry.role, entry.currentStep),
+        resumePath,
         activationState,
         isActive: activationState === "active",
         profileData: entry.profileData,
