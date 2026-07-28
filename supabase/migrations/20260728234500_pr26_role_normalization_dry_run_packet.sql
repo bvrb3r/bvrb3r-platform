@@ -26,7 +26,7 @@ as $$
   decisions as (
     select
       profile_id,
-      coalesce(old_role, '__NULL_OR_EMPTY__') as current_role,
+      coalesce(old_role, '__NULL_OR_EMPTY__') as role_value,
       case
         when old_role in ('client_user', 'barber_user', 'shop_owner_user') then old_role
         when old_role = 'client' and has_client_record then 'client_user'
@@ -70,12 +70,12 @@ as $$
     from decisions
   ),
   current_role_counts as (
-    select coalesce(jsonb_object_agg(current_role, role_count), '{}'::jsonb) as value
+    select coalesce(jsonb_object_agg(role_value, role_count), '{}'::jsonb) as value
     from (
-      select current_role, count(*)::integer as role_count
+      select role_value, count(*)::integer as role_count
       from decisions
-      group by current_role
-      order by current_role
+      group by role_value
+      order by role_value
     ) grouped
   ),
   proposed_role_counts as (
