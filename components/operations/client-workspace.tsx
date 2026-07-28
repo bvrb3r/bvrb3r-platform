@@ -192,23 +192,24 @@ export function ClientWorkspace({ clientId, locationIds }: { clientId: string; l
     ?? bookingsPayload?.routine?.serviceReference
     ?? bookingsPayload?.favoriteBarber?.mostBookedService?.service.id
     ?? engagementSummary?.intelligence.primaryServiceId;
-  const heroHref = homePayload && bookingsPayload && engagementSummary
-    ? buildClientPrimaryBookingHref({
-        home: {
-          ...homePayload,
-          locationId: homePayload.locationId || preferredLocationId
-        },
-        bookings: bookingsPayload,
-        summary: engagementSummary
-      })
-    : favoriteBarberId
-      ? buildQuickRebookHref({
-          barberId: favoriteBarberId,
-          username: favoriteBarberUsername,
-          locationId: bookingsPayload?.favoriteBarber?.shopLocations[0]?.id ?? bookingsPayload?.nextAppointment?.locationId ?? preferredLocationId,
-          serviceId: preferredServiceId
-        })
-      : ("/booking/new?mode=next-available" as Route);
+  let heroHref: Route = "/booking/new?mode=next-available";
+  if (homePayload && bookingsPayload && engagementSummary) {
+    heroHref = buildClientPrimaryBookingHref({
+      home: {
+        ...homePayload,
+        locationId: homePayload.locationId || preferredLocationId
+      },
+      bookings: bookingsPayload,
+      summary: engagementSummary
+    });
+  } else if (favoriteBarberId) {
+    heroHref = buildQuickRebookHref({
+      barberId: favoriteBarberId,
+      username: favoriteBarberUsername,
+      locationId: bookingsPayload?.favoriteBarber?.shopLocations[0]?.id ?? bookingsPayload?.nextAppointment?.locationId ?? preferredLocationId,
+      serviceId: preferredServiceId
+    });
+  }
 
   const feedItems = useMemo(() => {
     if (!homePayload || !bookingsPayload || !engagementSummary) {
