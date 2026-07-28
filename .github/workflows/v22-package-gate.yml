@@ -76,6 +76,7 @@ jobs:
           tests/unit/pr20-booking-lifecycle.spec.ts
           tests/unit/pr20-booking-routes.spec.ts
           tests/unit/public-booking-entry.spec.tsx
+          tests/unit/runtime-resilience-provider.spec.tsx
 
       - name: Full test suite
         run: npm test
