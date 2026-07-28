@@ -81,6 +81,10 @@ const ALLOWLIST = [
     why: "Asserts the literal text of an already-applied historical migration."
   },
   {
+    exact: "tests/unit/pr23-retired-model-migration.spec.ts",
+    why: "Asserts the literal historical column and function names that PR23 removes from executable use."
+  },
+  {
     exact: "tests/unit/rls-disabled-evidence-cleanup.spec.ts",
     why: "Asserts the literal text of an already-applied historical migration."
   },
