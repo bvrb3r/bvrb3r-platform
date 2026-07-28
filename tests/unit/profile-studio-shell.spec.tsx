@@ -279,7 +279,7 @@ describe("ProfileStudioShell", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(document.body.style.overflow).toBe(previousOverflow);
+    await waitFor(() => expect(document.body.style.overflow).toBe(previousOverflow));
   });
 
   it("keeps the username editor open briefly with saved confirmation before closing", async () => {
