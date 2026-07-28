@@ -42,6 +42,7 @@ import type {
   VerificationProfileRecord,
   VerificationStatus
 } from "@/types/trust";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 const REPORT_OPEN = new Set<SafetyReportStatus>(["open", "under_review", "escalated"]);
 const DISPUTE_OPEN = new Set(["open", "under_review", "escalated"]);
@@ -61,7 +62,7 @@ const REPORT_SUBJECTS: Record<Role, readonly SafetyReportRecord["subjectType"][]
   barber_user: ["client", "review", "booking"],
   barber: ["client", "review", "booking"],
   freelance_barber: ["client", "review", "booking"],
-  commission_barber: ["client", "review", "booking"],
+  [RETIRED_REVENUE_SHARE_ACCOUNT_ROLE]: ["client", "review", "booking"],
   booth_rent_barber: ["client", "review", "booking"],
   client_user: ["barber", "shop", "review", "booking"],
   client: ["barber", "shop", "review", "booking"]

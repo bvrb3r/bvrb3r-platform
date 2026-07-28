@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { assertKioskLaunchReady } from "@/lib/kiosk/launch-gate";
+import { createKioskFixtureBooking, isKioskFixtureTarget } from "@/lib/kiosk/local-fixture";
+import { clientKeyFromRequest, consumeRateLimit } from "@/lib/kiosk/rate-limit";
 import { createBarberKioskBooking, KioskServiceError } from "@/lib/kiosk/service";
+import { KioskSessionError, assertKioskDeviceSession, readKioskSessionToken } from "@/lib/kiosk/session-service";
 
 const barberKioskBookingSchema = z.object({
   fullName: z.string().trim().optional(),
@@ -16,9 +20,10 @@ const barberKioskBookingSchema = z.object({
     return;
   }
 
-  if (!payload.publicUsername?.trim()) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["publicUsername"], message: "Username is required." });
-  }
+  // No username check on purpose. A kiosk walk-in books as a guest with name,
+  // phone and email; claiming a public handle is opt-in, and guest-to-account
+  // conversion belongs to PR 23. `claimUsername` already no-ops on a blank
+  // value, so the booking completes with no public identity attached.
   if (!payload.fullName?.trim() || payload.fullName.trim().length < 2) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["fullName"], message: "Full name is required." });
   }
@@ -34,23 +39,38 @@ function toErrorResponse(error: unknown, fallback: string) {
   if (error instanceof KioskServiceError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
+  if (error instanceof KioskSessionError) {
+    return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+  }
 
   return NextResponse.json({ error: error instanceof Error ? error.message : fallback }, { status: 500 });
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ barberId: string }> }) {
   try {
+    const rate = consumeRateLimit({ bucket: "kiosk-barber-booking", key: clientKeyFromRequest(request), limit: 10, windowMs: 60_000 });
+    if (!rate.allowed) {
+      return NextResponse.json({ error: "Too many kiosk requests. Try again shortly." }, { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } });
+    }
+
     const { barberId } = await params;
+    // See the shop booking route: the seeded fixture has no Supabase row, so it
+    // bypasses the launch gate and device session but keeps payload validation.
+    const isFixture = isKioskFixtureTarget("barber", barberId);
+    if (!isFixture) {
+      await assertKioskLaunchReady("barber", barberId);
+      await assertKioskDeviceSession({ scope: "barber", targetReference: barberId, token: readKioskSessionToken(request) });
+    }
+
     const parsed = barberKioskBookingSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid barber kiosk booking payload." }, { status: 400 });
     }
 
-    const result = await createBarberKioskBooking({
-      barberId,
-      ...parsed.data,
-      email: parsed.data.email || undefined
-    });
+    const input = { ...parsed.data, email: parsed.data.email || undefined };
+    const result = isFixture
+      ? createKioskFixtureBooking("barber", barberId, input)
+      : await createBarberKioskBooking({ barberId, ...input });
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

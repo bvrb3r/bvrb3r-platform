@@ -4,8 +4,8 @@ import { getSessionUser } from "@/lib/booking/route-auth";
 import { FintechServiceError, updateMembershipCompensation } from "@/lib/fintech/service";
 
 const compensationSchema = z.object({
-  routingModel: z.enum(["freelance", "commission", "booth_rent"]),
-  commissionRate: z.coerce.number().min(0).max(1).optional().nullable(),
+  routingModel: z.enum(["freelance", "booth_rent", "autobooth_rent"]),
+  autoBoothPercent: z.coerce.number().min(0).max(1).optional().nullable(),
   boothRentAmount: z.coerce.number().min(0).optional().nullable(),
   boothRentFrequency: z.enum(["weekly", "monthly"]).optional().nullable(),
   payoutBlockReason: z.string().trim().optional().nullable()

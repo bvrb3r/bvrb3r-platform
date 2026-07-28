@@ -10,7 +10,7 @@ const schema = z.object({
   professionalType: z.string().trim().min(2),
   yearsExperience: z.string().trim().min(1),
   bio: z.string().trim().min(8),
-  compensationModel: z.enum(["commission", "booth_rent"]).default("booth_rent")
+  compensationModel: z.enum(["freelance", "booth_rent", "autobooth_rent"]).default("booth_rent")
 });
 
 export async function POST(request: NextRequest) {

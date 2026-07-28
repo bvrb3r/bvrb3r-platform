@@ -47,6 +47,7 @@ import type {
   ReferralEventRecord
 } from "@/types/engagement";
 import type { Appointment, Client, Role } from "@/types/domain";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 const DEFAULT_REFERENCE_TIME = "2026-03-09T12:00:00-05:00";
 const DEFAULT_REWARDS: Array<Omit<ClientRewardOption, "unlocked">> = [
@@ -70,7 +71,7 @@ const ALLOWED_EVENT_TYPES: Record<Role, readonly EngagementEventType[]> = {
   barber_user: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
   barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
   freelance_barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
-  commission_barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
+  [RETIRED_REVENUE_SHARE_ACCOUNT_ROLE]: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
   booth_rent_barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
   client_user: ["appointment_booked", "appointment_rebooked", "waitlist_joined", "barber_followed", "barber_reviewed", "reward_redeemed"],
   client: ["appointment_booked", "appointment_rebooked", "waitlist_joined", "barber_followed", "barber_reviewed", "reward_redeemed"]

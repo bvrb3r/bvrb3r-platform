@@ -4,6 +4,7 @@ import { canonicalBarberUuid } from "@/lib/booking/canonical-booking";
 import { createCapturedStripePaymentRecord, createPaymentLedgerEntry, PaymentServiceError } from "@/lib/payments/service";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PLATFORM_FEE_RATE, roundCurrency } from "@/lib/fintech/domain";
+import { calculateAutoBoothRentApplication } from "@/lib/fintech/booth-rent-doctrine";
 import type { UserAccount } from "@/types/domain";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -15,7 +16,7 @@ type BarberRow = {
   barber_subtype?: string | null;
   compensation_model?: string | null;
   default_money_relationship?: string | null;
-  commission_rate?: number | string | null;
+  autobooth_percent?: number | string | null;
 };
 
 type ProfileRow = {
@@ -187,7 +188,7 @@ export type BarberPosSaleQuote = {
   totalCents: number;
   barberPayoutCents: number;
   shopSplitCents: number;
-  relationshipType: "freelance" | "booth_rent" | "commission";
+  relationshipType: "freelance" | "booth_rent" | "autobooth_rent";
 };
 
 export type BarberPosSaleDebug = {
@@ -253,8 +254,10 @@ function formatUsdFromCents(value: number) {
 }
 
 function normalizeRelationshipType(value: string | null | undefined): BarberPosSaleQuote["relationshipType"] {
-  if (value === "commission") return "commission";
+  if (value === "autobooth_rent") return "autobooth_rent";
   if (value === "booth_rent" || value === "blueprint") return "booth_rent";
+  // Retired revenue-share values normalize to freelance: the shop collects
+  // nothing until a real rent agreement exists.
   return "freelance";
 }
 
@@ -298,7 +301,7 @@ async function maybeLoadProfileForPosUser(supabase: SupabaseClient, user: UserAc
 }
 
 async function loadBarberByAttempt(supabase: SupabaseClient, attempt: BarberLookupAttempt) {
-  const fullSelect = "id, profile_id, reference_code, compensation_model, commission_rate, barber_subtype, default_money_relationship";
+  const fullSelect = "id, profile_id, reference_code, compensation_model, autobooth_percent, barber_subtype, default_money_relationship";
   const result = await supabase
     .from("barbers")
     .select(fullSelect)
@@ -845,33 +848,49 @@ function calculateSplit(input: {
   serviceCents: number;
   tipCents: number;
   relationshipType: BarberPosSaleQuote["relationshipType"];
-  commissionRate?: number | string | null;
+  autoBoothPercent?: number | string | null;
+  outstandingRentCents?: number | null;
 }) {
   const platformFeeCents = Math.round(input.serviceCents * PLATFORM_FEE_RATE);
   const netServiceAfterPlatformCents = Math.max(input.serviceCents - platformFeeCents, 0);
 
-  if (input.relationshipType !== "commission") {
+  // Under Full Booth Rent and freelance the barber keeps everything after the
+  // platform fee. Rent is billed separately.
+  if (input.relationshipType !== "autobooth_rent") {
     return {
       platformFeeCents,
       barberPayoutCents: netServiceAfterPlatformCents + input.tipCents,
-      shopSplitCents: 0
+      shopSplitCents: 0,
+      autoBoothRentAppliedCents: 0
     };
   }
 
-  const rateNumber = Number(input.commissionRate ?? 0);
-  const barberRate = rateNumber > 1 ? rateNumber / 100 : rateNumber;
-  const safeBarberRate = barberRate > 0 && barberRate <= 1 ? barberRate : 0.6;
-  const barberServicePayoutCents = Math.round(netServiceAfterPlatformCents * safeBarberRate);
+  const rateNumber = Number(input.autoBoothPercent ?? 0);
+  // Stored values may be a fraction or a percentage; both mean the same portion.
+  const approvedPortion = rateNumber > 1 ? rateNumber / 100 : rateNumber;
+  const application = calculateAutoBoothRentApplication({
+    model: "autobooth_rent",
+    // No approved portion means nothing is applied. There is no default rate:
+    // inventing one would take money the owner never approved.
+    autoBoothPercent: approvedPortion > 0 && approvedPortion <= 1 ? approvedPortion : 0,
+    // Tips are never eligible for rent application.
+    eligibleProceedsCents: netServiceAfterPlatformCents,
+    outstandingRentCents: Math.max(Math.trunc(input.outstandingRentCents ?? 0), 0),
+    paymentStatus: "captured"
+  });
+
   return {
     platformFeeCents,
-    barberPayoutCents: barberServicePayoutCents + input.tipCents,
-    shopSplitCents: Math.max(netServiceAfterPlatformCents - barberServicePayoutCents, 0)
+    barberPayoutCents: application.barberRemainderCents + input.tipCents,
+    shopSplitCents: application.appliedToRentCents,
+    autoBoothRentAppliedCents: application.appliedToRentCents
   };
 }
 
 export function quoteBarberPosSale(input: BarberPosSaleQuoteInput, relationship?: {
   relationshipType?: BarberPosSaleQuote["relationshipType"] | string | null;
-  commissionRate?: number | string | null;
+  autoBoothPercent?: number | string | null;
+  outstandingRentCents?: number | null;
 }): BarberPosSaleQuote {
   const subtotalCents = cents(input.amountCents);
   if (subtotalCents <= 0) {
@@ -887,7 +906,8 @@ export function quoteBarberPosSale(input: BarberPosSaleQuoteInput, relationship?
     serviceCents: Math.max(subtotalCents - discountCents, 0),
     tipCents,
     relationshipType,
-    commissionRate: relationship?.commissionRate
+    autoBoothPercent: relationship?.autoBoothPercent,
+    outstandingRentCents: relationship?.outstandingRentCents
   });
 
   return {
@@ -2431,7 +2451,7 @@ export async function quoteBarberPosSaleForUser(user: UserAccount, input: Barber
   const actor = await resolveBarberActor(supabase, user);
   return quoteBarberPosSale(input, {
     relationshipType: actor.relationshipType,
-    commissionRate: actor.barber.commission_rate
+    autoBoothPercent: actor.barber.autobooth_percent
   });
 }
 
@@ -2441,7 +2461,7 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
   const clientId = await resolvePosSaleClientId(supabase, input.clientId);
   const quote = quoteBarberPosSale(input, {
     relationshipType: actor.relationshipType,
-    commissionRate: actor.barber.commission_rate
+    autoBoothPercent: actor.barber.autobooth_percent
   });
   await verifyPosStorageSchema({
     supabase,
@@ -2551,7 +2571,7 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
   const clientId = await resolvePosSaleClientId(supabase, input.clientId);
   const quote = quoteBarberPosSale(input, {
     relationshipType: actor.relationshipType,
-    commissionRate: actor.barber.commission_rate
+    autoBoothPercent: actor.barber.autobooth_percent
   });
   await verifyPosStorageSchema({
     supabase,

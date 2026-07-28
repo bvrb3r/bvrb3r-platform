@@ -96,7 +96,7 @@ export const SHOP_REQUIREMENTS = {
   location: requirement("shop.location", "Add shop location", "Location is required before shop publishing, booking, and kiosk readiness.", "critical", "SHOP BUSINESS SETTINGS"),
   hours: requirement("shop.hours", "Add shop hours", "Hours are required before shop booking and kiosk readiness.", "critical", "SHOP BUSINESS SETTINGS"),
   chairs: requirement("shop.chairs", "Add chair count", "Chair capacity is required before shop operations can be trusted.", "critical", "SHOP BUSINESS SETTINGS"),
-  operatingModel: requirement("shop.operatingModel", "Choose operating model", "Booth rent, commission, mixed, and owner-operated are business models, not account roles.", "critical", "SHOP BUSINESS SETTINGS"),
+  operatingModel: requirement("shop.operatingModel", "Choose operating model", "Full Booth Rent, AutoBooth Rent, mixed, and owner-operated are business models, not account roles.", "critical", "SHOP BUSINESS SETTINGS"),
   bookingMode: requirement("shop.bookingMode", "Choose shop booking mode", "Shop booking mode must be set before public booking can publish.", "critical", "SHOP BUSINESS SETTINGS"),
   policies: requirement("shop.policies", "Finish shop policies", "Shop policies must exist before publishing and kiosk activation.", "critical", "SHOP BUSINESS SETTINGS"),
   paymentModel: requirement("shop.paymentModel", "Choose shop payment model", "Shop payment posture must be configured before money surfaces can be trusted.", "critical", "Payments & Banking"),

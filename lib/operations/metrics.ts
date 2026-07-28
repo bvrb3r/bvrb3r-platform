@@ -105,8 +105,8 @@ export function getBarberCompensationSummary(barberId: string, appointments: Liv
     activeCount,
     serviceRevenueToday: todayRows.reduce((sum, entry) => sum + entry.grossServiceAmount, 0),
     tipsToday: todayRows.reduce((sum, entry) => sum + entry.tipAmount, 0),
-    commissionToday: todayRows.reduce((sum, entry) => sum + entry.commissionAmount, 0),
-    projectedPayout: barberRows.reduce((sum, entry) => sum + entry.commissionAmount, 0),
+    rentAppliedToday: todayRows.reduce((sum, entry) => sum + entry.autoBoothRentAppliedAmount, 0),
+    projectedPayout: barberRows.reduce((sum, entry) => sum + entry.autoBoothRentAppliedAmount, 0),
     nextRent: undefined,
     completedPaidCount: todayRows.length,
     rentCoverageToday: todayRows.reduce((sum, entry) => sum + (entry.rentCoverageAmount ?? 0), 0)

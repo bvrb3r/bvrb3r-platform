@@ -34,6 +34,8 @@ type ProfileRow = {
   id: string;
   email: string;
   full_name: string | null;
+  /** The handle a client may be shown. Null for a profile that has not set one. */
+  public_username?: string | null;
   phone: string | null;
   role: UserAccount["role"];
 };
@@ -58,6 +60,8 @@ type ServiceRow = {
   reference_code: string | null;
   name: string;
   category: string;
+  /** `numeric(10,2)` — Supabase returns it as a number or a numeric string. */
+  price: number | string | null;
   location_id: string;
   barber_reference: string | null;
   shop_reference: string | null;
@@ -129,7 +133,14 @@ type QueueActorContext = QueueScopeContext & {
 
 export type QueueBarberOptionView = {
   id: string;
+  /** Real name — internal operator surfaces only. */
   name: string;
+  /**
+   * The barber's public handle, or null. Public surfaces such as the kiosk
+   * show this and never `name`; null means "no public label", never "use the
+   * real name instead".
+   */
+  publicUsername: string | null;
   currentShopId: string | null;
   currentShopLabel: string | null;
   liveStatus: "offline" | "available" | "busy" | "on_break" | "away";
@@ -144,6 +155,13 @@ export type QueueServiceOptionView = {
   name: string;
   category: string;
   shopId: string;
+  /**
+   * Present so the shop kiosk can show each barber their own prices. Null when
+   * the row carries no price — callers must render the absence, never a zero.
+   */
+  priceCents: number | null;
+  /** Null for a shop-wide service every chair offers. */
+  barberReference: string | null;
 };
 
 export type QueueShopScopeView = {
@@ -363,7 +381,7 @@ async function resolveServiceByReference(supabase: SupabaseClient, serviceRefere
   const serviceUuid = canonicalServiceUuid(serviceReference);
   const result = await supabase
     .from("services")
-    .select("id, reference_code, name, category, location_id, barber_reference, shop_reference")
+    .select("id, reference_code, name, category, price, location_id, barber_reference, shop_reference")
     .or(`reference_code.eq.${serviceReference},id.eq.${serviceUuid}`)
     .maybeSingle();
 
@@ -536,10 +554,10 @@ async function loadScopedQueueDependencies(
       ? supabase.from("waitlist_entries").select("id, location_id, shop_id, client_id, service_id, barber_id, barber_preference, preferred_date, preferred_start_time, preferred_end_time, flexibility_minutes, queue_source, notes, status_reason, status, created_at, called_at, assigned_at, converted_appointment_id, converted_at, completed_at, cancelled_at, created_by, updated_at").in("shop_id", scopedLocationIds).order("created_at", { ascending: true }).limit(80)
       : supabase.from("waitlist_entries").select("id, location_id, shop_id, client_id, service_id, barber_id, barber_preference, preferred_date, preferred_start_time, preferred_end_time, flexibility_minutes, queue_source, notes, status_reason, status, created_at, called_at, assigned_at, converted_appointment_id, converted_at, completed_at, cancelled_at, created_by, updated_at").order("created_at", { ascending: true }).limit(80),
     supabase.from("barbers").select("id, reference_code, profile_id"),
-    supabase.from("profiles").select("id, email, full_name, phone, role"),
+    supabase.from("profiles").select("id, email, full_name, public_username, phone, role"),
     scopedLocationIds.length
-      ? supabase.from("services").select("id, reference_code, name, category, location_id, barber_reference, shop_reference").in("location_id", scopedLocationIds)
-      : supabase.from("services").select("id, reference_code, name, category, location_id, barber_reference, shop_reference"),
+      ? supabase.from("services").select("id, reference_code, name, category, price, location_id, barber_reference, shop_reference").in("location_id", scopedLocationIds)
+      : supabase.from("services").select("id, reference_code, name, category, price, location_id, barber_reference, shop_reference"),
     scopedLocationIds.length
       ? supabase.from("staff_locations").select("location_id, profile_id").in("location_id", scopedLocationIds)
       : supabase.from("staff_locations").select("location_id, profile_id"),
@@ -613,9 +631,12 @@ async function loadScopedQueueDependencies(
           const currentShopReference = status?.current_shop_id ? locationReferenceById.get(status.current_shop_id) ?? status.current_shop_id : null;
           const currentShop = currentShopReference ? locationByReference.get(currentShopReference) : null;
 
+          const barberProfile = barber.profile_id ? profileById.get(barber.profile_id) : undefined;
+
           return [reference, {
             id: reference,
             name: barberNameByReference.get(reference) ?? reference,
+            publicUsername: barberProfile?.public_username?.trim().replace(/^@+/, "") || null,
             currentShopId: currentShopReference,
             currentShopLabel: currentShop ? formatShopLabel(currentShop) : null,
             liveStatus: status?.live_status ?? "offline",
@@ -632,11 +653,14 @@ async function loadScopedQueueDependencies(
     .map((service) => {
       const serviceReference = service.reference_code ?? service.id;
       const shopReference = service.shop_reference ?? locationReferenceById.get(service.location_id) ?? service.location_id;
+      const rawPrice = Number(service.price);
       return {
         id: serviceReference,
         name: service.name,
         category: service.category,
-        shopId: shopReference
+        shopId: shopReference,
+        priceCents: Number.isFinite(rawPrice) && rawPrice > 0 ? Math.round(rawPrice * 100) : null,
+        barberReference: service.barber_reference ?? null
       } satisfies QueueServiceOptionView;
     })
     .sort((left, right) => left.name.localeCompare(right.name));

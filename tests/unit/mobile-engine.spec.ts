@@ -30,7 +30,7 @@ describe("mobile engine", () => {
   it("syncs a new device and push subscription for a barber", () => {
     const state = createInitialMobileState();
     const result = syncDeviceActivation(state, {
-      role: "commission_barber",
+      role: "barber_user",
       userEmail: "wave@bvrb3r.demo",
       barberId: "barber-wave"
     }, {

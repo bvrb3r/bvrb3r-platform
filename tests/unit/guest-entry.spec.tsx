@@ -40,5 +40,8 @@ describe("guest entry", () => {
     expect(screen.queryByRole("link", { name: "Rewards" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Open messages")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Open profile")).not.toBeInTheDocument();
+    expect(screen.getByTestId("client-app-shell-content")).not.toHaveClass(
+      "lg:grid-cols-[18rem_minmax(0,1fr)]"
+    );
   });
 });

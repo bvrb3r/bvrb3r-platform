@@ -1,3 +1,8 @@
+import {
+  isRetiredRevenueShareModel,
+  type RetiredRevenueShareAccountRole
+} from "@/lib/doctrine/legacy-data-aliases";
+import { calculateAutoBoothRentApplication } from "@/lib/fintech/booth-rent-doctrine";
 import type { InternalPaymentStatus, InternalPaymentType } from "@/lib/payments/domain";
 
 export type FintechSubjectType = "barber" | "shop";
@@ -7,7 +12,14 @@ export type FintechPayoutReadinessStatus = "not_ready" | "needs_attention" | "re
 export type FintechLegalReadinessStatus = "pending" | "accepted" | "outdated";
 export type FintechTaxReadinessStatus = "pending" | "submitted" | "verified";
 export type FintechOperationalStatus = "not_started" | "onboarding_required" | "pending_verification" | "action_required" | "payout_ready" | "blocked";
-export type RoutingModel = "freelance" | "commission" | "booth_rent";
+/**
+ * Money routing models. Full Booth Rent (`booth_rent`) and AutoBooth Rent
+ * (`autobooth_rent`) are the only supported shop-barber financial models;
+ * `freelance` means no shop relationship exists. Service proceeds always belong
+ * to the barber less the BVRB3R platform fee and Stripe processing fees — the
+ * shop is never a revenue-share recipient.
+ */
+export type RoutingModel = "freelance" | "booth_rent" | "autobooth_rent";
 export type MoneyRoutingStatus = "pending" | "ready_for_payout" | "blocked" | "manual_review" | "paid_out" | "refunded";
 export type PayoutExecutionType = "transfer" | "reversal";
 export type PayoutExecutionStatus = "pending" | "blocked" | "executed" | "failed" | "reversed";
@@ -19,8 +31,8 @@ export type FintechParticipantRole =
   | "manager"
   | "front_desk"
   | "barber_user"
-  | "commission_barber"
   | "booth_rent_barber"
+  | RetiredRevenueShareAccountRole
   | "client_user"
   | "client";
 export type BoothRentFrequency = "weekly" | "monthly";
@@ -36,7 +48,11 @@ export const CURRENT_AGREEMENT_VERSIONS: Record<AgreementType, string> = {
 
 export type CompensationAssignmentInput = {
   routingModel: RoutingModel;
-  commissionRate?: number | null;
+  /**
+   * Owner-approved portion (0..1) of eligible proceeds AutoBooth Rent applies
+   * toward outstanding booth rent. Required for `autobooth_rent`.
+   */
+  autoBoothPercent?: number | null;
   boothRentAmount?: number | null;
   boothRentFrequency?: BoothRentFrequency | null;
   payoutBlockReason?: string | null;
@@ -72,7 +88,14 @@ export type PaymentRoutingCalculationInput = {
   providerFeeAmount?: number;
   platformFeeAmount?: number;
   routingModel: RoutingModel;
-  commissionRate?: number | null;
+  /** Owner-approved AutoBooth portion (0..1) of eligible proceeds. */
+  autoBoothPercent?: number | null;
+  /**
+   * Outstanding booth rent, in cents, at the moment this payment is routed.
+   * AutoBooth can never apply more than this. Omitted or zero means rent is
+   * settled and the barber keeps the full remainder.
+   */
+  outstandingRentCents?: number | null;
   barberReady: boolean;
   shopReady: boolean;
   barberVerificationAllowed?: boolean;
@@ -93,7 +116,15 @@ export type PaymentRoutingCalculation = {
   tipAmount: number;
   platformFeeAmount: number;
   barberPayoutAmount: number;
+  /**
+   * Shop-destined amount. Under Full Booth Rent this is always 0 for service
+   * money. Under AutoBooth Rent it is a booth-rent application capped at
+   * outstanding rent — never a revenue share and never labor compensation. For
+   * rent and subscription billing it is the billed amount itself.
+   */
   shopSplitAmount: number;
+  /** Portion of `shopSplitAmount` that settled outstanding booth rent. */
+  autoBoothRentAppliedAmount: number;
   payoutReadinessStatus: FintechPayoutReadinessStatus;
   moneyRoutingStatus: MoneyRoutingStatus;
   blockedReason: string | null;
@@ -137,11 +168,17 @@ export function normalizeRoutingModel(value?: string | null, fallback: RoutingMo
     return fallback;
   }
 
-  if (normalized === "freelance" || normalized === "commission" || normalized === "booth_rent") {
+  if (normalized === "freelance" || normalized === "booth_rent" || normalized === "autobooth_rent") {
     return normalized;
   }
 
-  throw new Error("Unsupported routing model.");
+  // Retired revenue-share rows normalize to freelance: the shop collects
+  // nothing until a Full Booth Rent or AutoBooth Rent agreement exists.
+  if (isRetiredRevenueShareModel(normalized)) {
+    return "freelance";
+  }
+
+  throw new Error("Unsupported routing model. Only Full Booth Rent and AutoBooth Rent are supported.");
 }
 
 export function normalizeRequirementList(value?: string[] | string | null) {
@@ -309,37 +346,32 @@ export function inferStripeProcessorStatuses(input: {
 }
 
 export function normalizeCompensationAssignment(input: CompensationAssignmentInput) {
+  // Reads normalize retired revenue-share rows to freelance, but a WRITE must
+  // never silently reinterpret an operator's intent. Reject it outright.
+  if (isRetiredRevenueShareModel(input.routingModel)) {
+    throw new Error(
+      "Unsupported routing model. Only Full Booth Rent and AutoBooth Rent are supported shop-barber financial models."
+    );
+  }
+
   const routingModel = normalizeRoutingModel(input.routingModel);
   const payoutBlockReason = input.payoutBlockReason?.trim() || null;
 
   if (routingModel === "freelance") {
     return {
       routingModel,
-      commissionRate: null,
+      autoBoothPercent: null,
       boothRentAmount: null,
       boothRentFrequency: null,
       payoutBlockReason
     };
   }
 
-  if (routingModel === "commission") {
-    const commissionRate = input.commissionRate ?? null;
-    if (commissionRate === null || commissionRate < 0 || commissionRate > 1) {
-      throw new Error("Commission routing requires a commission rate between 0 and 1.");
-    }
-
-    return {
-      routingModel,
-      commissionRate: roundToFour(commissionRate),
-      boothRentAmount: null,
-      boothRentFrequency: null,
-      payoutBlockReason
-    };
-  }
-
+  // Both supported shop-barber models are rent agreements, so both require a
+  // real rent amount and billing frequency.
   const boothRentAmount = input.boothRentAmount ?? null;
-  if (boothRentAmount === null || boothRentAmount < 0) {
-    throw new Error("Booth-rent routing requires a non-negative booth-rent amount.");
+  if (boothRentAmount === null || boothRentAmount <= 0) {
+    throw new Error("Booth-rent routing requires a positive booth-rent amount.");
   }
 
   const boothRentFrequency = input.boothRentFrequency ?? null;
@@ -347,9 +379,24 @@ export function normalizeCompensationAssignment(input: CompensationAssignmentInp
     throw new Error("Booth-rent routing requires a weekly or monthly billing frequency.");
   }
 
+  if (routingModel === "autobooth_rent") {
+    const autoBoothPercent = input.autoBoothPercent ?? null;
+    if (autoBoothPercent === null || autoBoothPercent <= 0 || autoBoothPercent > 1) {
+      throw new Error("AutoBooth Rent requires an owner-approved portion greater than 0 and at most 1.");
+    }
+
+    return {
+      routingModel,
+      autoBoothPercent: roundToFour(autoBoothPercent),
+      boothRentAmount: roundToTwo(boothRentAmount),
+      boothRentFrequency,
+      payoutBlockReason
+    };
+  }
+
   return {
     routingModel,
-    commissionRate: null,
+    autoBoothPercent: null,
     boothRentAmount: roundToTwo(boothRentAmount),
     boothRentFrequency,
     payoutBlockReason
@@ -399,7 +446,10 @@ function resolvePayoutRecipientType(
     return "shop";
   }
 
-  if (routingModel === "commission") {
+  // AutoBooth Rent routes to both destinations: the barber keeps the remainder
+  // while an owner-approved portion retires outstanding booth rent. The rent
+  // application is capped at outstanding rent, so it is never a revenue share.
+  if (routingModel === "autobooth_rent") {
     return "split";
   }
 
@@ -442,18 +492,28 @@ export function calculatePaymentRouting(input: PaymentRoutingCalculationInput): 
 
   let barberPayoutAmount = 0;
   let shopSplitAmount = 0;
+  let autoBoothRentAppliedAmount = 0;
 
   if (payoutRecipientType === "shop") {
     shopSplitAmount = roundToTwo(distributableServiceAmount + tipAmount);
   } else if (payoutRecipientType === "split") {
-    const commissionRate = input.commissionRate ?? null;
-    if (commissionRate === null || commissionRate < 0 || commissionRate > 1) {
-      throw new Error("Commission split routing requires a commission rate between 0 and 1.");
-    }
+    // AutoBooth Rent. Tips are never eligible for rent application, so only
+    // service money net of the platform fee can retire rent. The shared
+    // doctrine engine enforces the outstanding-rent cap in integer cents.
+    const application = calculateAutoBoothRentApplication({
+      model: "autobooth_rent",
+      autoBoothPercent: input.autoBoothPercent ?? null,
+      eligibleProceedsCents: Math.round(distributableServiceAmount * 100),
+      outstandingRentCents: Math.max(Math.trunc(input.outstandingRentCents ?? 0), 0),
+      paymentStatus: input.paymentStatus,
+      disputeHold
+    });
 
-    const barberServiceAmount = roundToTwo(distributableServiceAmount * commissionRate);
-    barberPayoutAmount = roundToTwo(barberServiceAmount + tipAmount);
-    shopSplitAmount = roundToTwo(Math.max(distributableServiceAmount - barberServiceAmount, 0));
+    autoBoothRentAppliedAmount = roundToTwo(application.appliedToRentCents / 100);
+    shopSplitAmount = autoBoothRentAppliedAmount;
+    barberPayoutAmount = roundToTwo(
+      Math.max(distributableServiceAmount - autoBoothRentAppliedAmount, 0) + tipAmount
+    );
   } else {
     barberPayoutAmount = roundToTwo(distributableServiceAmount + tipAmount);
   }
@@ -526,6 +586,7 @@ export function calculatePaymentRouting(input: PaymentRoutingCalculationInput): 
     platformFeeAmount,
     barberPayoutAmount,
     shopSplitAmount,
+    autoBoothRentAppliedAmount,
     payoutReadinessStatus,
     moneyRoutingStatus,
     blockedReason

@@ -318,7 +318,7 @@ export function BarberFintechReadinessPanel() {
                         <p className="font-semibold">{membership.shopLabel}</p>
                         <p className="mt-1 text-sm text-white/55">
                           {membership.routingModel.replaceAll("_", " ")}
-                          {membership.commissionRate !== null ? ` | ${(membership.commissionRate * 100).toFixed(0)}% commission` : ""}
+                          {membership.autoBoothPercent !== null ? ` | ${(membership.autoBoothPercent * 100).toFixed(0)}% auto-applied to rent` : ""}
                           {membership.boothRentAmount !== null ? ` | ${currency(membership.boothRentAmount)} booth rent` : ""}
                         </p>
                       </div>

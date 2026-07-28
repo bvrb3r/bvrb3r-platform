@@ -4,6 +4,7 @@ import { isEligibleWalkInBarber } from "@/lib/kiosk/service";
 const baseBarber = {
   id: "barber-live",
   name: "Live Barber",
+  publicUsername: "livebarber",
   currentShopId: "shop-ybor",
   currentShopLabel: "BVRB3R Ybor",
   liveStatus: "available" as const,

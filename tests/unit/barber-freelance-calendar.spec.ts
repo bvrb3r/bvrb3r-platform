@@ -38,6 +38,7 @@ vi.mock("@/lib/booking/canonical-booking", async () => {
   };
 });
 
+import { RETIRED_REVENUE_SHARE_MODEL } from "@/lib/doctrine/legacy-data-aliases";
 import { getBarberSchedulePayload } from "@/lib/barber/service";
 import { canonicalAppointmentUuid } from "@/lib/booking/canonical-booking";
 
@@ -137,7 +138,7 @@ function buildDashboard(appointments: Array<Record<string, unknown>> = []) {
       activeCount: 0,
       serviceRevenueToday: 0,
       tipsToday: 0,
-      commissionToday: 0,
+      rentAppliedToday: 0,
       projectedPayout: 0,
       completedPaidCount: 0,
       rentCoverageToday: 0,
@@ -224,11 +225,11 @@ describe("freelance barber calendar", () => {
     expect(payload.upcomingAppointments).toHaveLength(1);
   });
 
-  it("treats a commission-configured barber with no active assignment as freelance", async () => {
+  it("normalizes a retired revenue-share barber with no active assignment to freelance", async () => {
     createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock({
       barber: {
         ...freelanceBarber,
-        compensation_model: "commission"
+        compensation_model: RETIRED_REVENUE_SHARE_MODEL
       },
       staffLocations: [],
       locationLookupFails: true
@@ -236,7 +237,7 @@ describe("freelance barber calendar", () => {
 
     const payload = await getBarberSchedulePayload({
       id: "22345678-1234-5123-9234-123456789abc",
-      role: "commission_barber",
+      role: "barber_user",
       email: "philforsure@example.com",
       password: "DevOnly!123",
       name: "philforsure",

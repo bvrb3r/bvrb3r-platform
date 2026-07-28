@@ -62,7 +62,7 @@ export const demoUsers: UserAccount[] = [
   { id: "user-manager", role: "manager", email: "manager@bvrb3r.demo", password: "DevOnly!123", name: "Mia Torres", title: "Shop Manager", locationIds: ["loc-ybor"] },
   { id: "user-frontdesk", role: "front_desk", email: "frontdesk@bvrb3r.demo", password: "DevOnly!123", name: "Kayla Brooks", title: "Front Desk / Kiosk Ops", locationIds: ["loc-ybor"] },
   { id: "user-wave", role: "manager", email: "wave@bvrb3r.demo", password: "DevOnly!123", name: "Wave Carter", title: "Barber Manager", locationIds: ["loc-ybor"], barberId: "barber-wave" },
-  { id: "user-fade", role: "barber_user", email: "fade@bvrb3r.demo", password: "DevOnly!123", name: "Fade Monroe", title: "Commission Barber", locationIds: ["loc-hyde"], barberId: "barber-fade", barberSubtype: "commission" },
+  { id: "user-fade", role: "barber_user", email: "fade@bvrb3r.demo", password: "DevOnly!123", name: "Fade Monroe", title: "Freelance Barber", locationIds: ["loc-hyde"], barberId: "barber-fade", barberSubtype: "freelance" },
   { id: "user-blaze", role: "barber_user", email: "blaze@bvrb3r.demo", password: "DevOnly!123", name: "Blaze King", title: "Booth-Rent Barber", locationIds: ["loc-ybor"], barberId: "barber-blaze", barberSubtype: "booth_rent" },
   { id: "user-luxe", role: "barber_user", email: "lux@bvrb3r.demo", password: "DevOnly!123", name: "Luxe Reed", title: "Freelance Barber", locationIds: ["loc-hyde"], barberId: "barber-luxe", barberSubtype: "freelance" },
   { id: "user-client", role: "client_user", email: "client@bvrb3r.demo", password: "DevOnly!123", name: "Jordan Ellis", title: "Client", locationIds: ["loc-ybor"], clientId: "client-jordan" }
@@ -78,8 +78,7 @@ export const demoBarbers: Barber[] = [
     specialties: ["precision fades", "beard architecture", "VIP clients"],
     rating: 4.9,
     reviewCount: 182,
-    compensationModel: "commission",
-    commissionRate: 0.48,
+    compensationModel: "freelance",
     todayEarnings: 420,
     upcomingPayout: 1280,
     availabilityLabel: "Today 10:00 AM - 7:00 PM",
@@ -95,8 +94,7 @@ export const demoBarbers: Barber[] = [
     specialties: ["texture work", "design lines", "kids cuts"],
     rating: 4.8,
     reviewCount: 126,
-    compensationModel: "commission",
-    commissionRate: 0.44,
+    compensationModel: "freelance",
     todayEarnings: 305,
     upcomingPayout: 980,
     availabilityLabel: "Today 11:00 AM - 6:00 PM",
@@ -211,7 +209,7 @@ export const notifications: NotificationItem[] = [
 ];
 
 export const auditLogs: AuditLogItem[] = [
-  { id: "audit-1", actor: "Brandon Rivers", action: "Updated commission rule", target: "Ybor commission profile", createdAt: "2026-03-06T09:12:00-05:00", severity: "critical" },
+  { id: "audit-1", actor: "Brandon Rivers", action: "Updated booth rent rule", target: "Ybor rent profile", createdAt: "2026-03-06T09:12:00-05:00", severity: "critical" },
   { id: "audit-2", actor: "Mia Torres", action: "Approved schedule swap", target: "Wave Carter / Blaze King", createdAt: "2026-03-07T17:20:00-05:00", severity: "info" },
   { id: "audit-3", actor: "Kayla Brooks", action: "Retained no-show deposit", target: "Lyric Mason", createdAt: "2026-03-07T18:18:00-05:00", severity: "warning" }
 ];
@@ -241,10 +239,9 @@ export const revenueSeries: RevenuePoint[] = [
 ];
 
 export const permissionMatrix: PermissionGroup[] = [
-  { role: "owner", allows: ["Manage locations", "Set commission and booth-rent rules", "Control shop service catalog", "View all analytics", "Manage billing and permissions"], restricted: [] },
-  { role: "manager", allows: ["Run daily operations", "Adjust appointments", "Approve limited discounts", "View location reports"], restricted: ["Cannot edit ownership financial structures", "Cannot change global billing", "Cannot edit owner-controlled commission service pricing"] },
+  { role: "owner", allows: ["Manage locations", "Set Full Booth Rent and AutoBooth Rent terms", "Control shop service catalog", "View all analytics", "Manage billing and permissions"], restricted: [] },
+  { role: "manager", allows: ["Run daily operations", "Adjust appointments", "Approve limited discounts", "View location reports"], restricted: ["Cannot edit ownership financial structures", "Cannot change global billing", "Cannot edit owner-controlled service pricing"] },
   { role: "front_desk", allows: ["Create and edit appointments", "Manage walk-ins", "Collect payments", "View client history"], restricted: ["Cannot access payroll or global analytics"] },
-  { role: "commission_barber", allows: ["Manage own schedule", "See own earnings", "View shop-defined services", "Update personal notes"], restricted: ["Cannot view team financials", "Cannot edit service pricing or service definitions"] },
-  { role: "booth_rent_barber", allows: ["Manage own bookings", "View rent ledger", "Update availability", "Manage self-owned services"], restricted: ["Cannot access owner reports", "Cannot edit shop-owned commission services"] },
+  { role: "booth_rent_barber", allows: ["Manage own bookings", "View rent ledger", "Update availability", "Manage self-owned services"], restricted: ["Cannot access owner reports", "Cannot edit shop-owned services"] },
   { role: "client", allows: ["Book and rebook", "Manage profile", "Join waitlist", "View history"], restricted: ["Cannot access internal operations"] }
 ];

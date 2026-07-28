@@ -72,7 +72,7 @@ describe("phase 8 ai routes", () => {
     });
     getSessionUserMock.mockResolvedValue({
       id: "user-barber",
-      role: "commission_barber",
+      role: "barber_user",
       barberId: "barber-wave"
     });
     getBarberAiSummaryMock.mockResolvedValue({

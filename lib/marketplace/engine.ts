@@ -256,12 +256,10 @@ export function createInitialMarketplaceState(): MarketplaceState {
   return createEmptyMarketplaceState();
 }
 
-function isCommissionBarberRelationship(actor: MarketplaceActor) {
-  return actor.barberSubtype === "commission";
-}
-
+// Shop-defined catalogs belong to the owner. A barber on either rent model owns
+// their own service menu, so only shop-scoped actors are excluded here.
 export function canCreateServiceDefinition(actor: MarketplaceActor) {
-  return isShopOwnerRole(actor.role) || (isBarberAccountRole(actor.role) && !isCommissionBarberRelationship(actor));
+  return isShopOwnerRole(actor.role) || isBarberAccountRole(actor.role);
 }
 
 export function canEditServiceDefinition(actor: MarketplaceActor, service: Service) {
@@ -271,7 +269,7 @@ export function canEditServiceDefinition(actor: MarketplaceActor, service: Servi
     return normalizedService.ownerType === "shop";
   }
 
-  if (isBarberAccountRole(actor.role) && !isCommissionBarberRelationship(actor)) {
+  if (isBarberAccountRole(actor.role)) {
     return normalizedService.ownerType === "barber" && normalizedService.barberId === actor.barberId;
   }
 
@@ -371,34 +369,8 @@ export function getServiceCatalogView(state: MarketplaceState, actor: Marketplac
     };
   }
 
-  if (isBarberAccountRole(actor.role) && isCommissionBarberRelationship(actor)) {
-    const barber = getBarber(state, actor.barberId);
-    const profile = actor.barberId ? getProfile(state, actor.barberId) : undefined;
-    if (!barber || !profile) {
-      return {
-        viewerRole: actor.role,
-        canCreate: false,
-        editableServices: [],
-        readOnlyServices: [],
-        shops: state.shops,
-        styleTags: state.styleTags
-      };
-    }
-
-    const readOnlyServices = getServicesForBarber(state, barber, profile)
-      .map((service) => ({ ...toCatalogItem(service, state, actor), popularity: popularityMap.get(service.id)! }))
-      .sort((left, right) => left.service.name.localeCompare(right.service.name));
-
-    return {
-      viewerRole: actor.role,
-      canCreate: false,
-      editableServices: [],
-      readOnlyServices,
-      shops: state.shops,
-      styleTags: state.styleTags
-    };
-  }
-
+  // Under the locked doctrine a barber owns their own service menu on both
+  // Full Booth Rent and AutoBooth Rent, so there is no read-only barber catalog.
   if (isBarberAccountRole(actor.role)) {
     const editableServices = services
       .filter((service) => service.ownerType === "barber" && service.barberId === actor.barberId)

@@ -12,18 +12,20 @@ const createInviteSchema = z.object({
   barberId: z.string().trim().min(1),
   shopId: z.string().trim().min(1).optional(),
   message: z.string().trim().max(500).optional(),
+  // Full Booth Rent and AutoBooth Rent are the only proposable shop-barber
+  // financial models. Both require real rent terms; AutoBooth additionally
+  // carries the owner-approved portion applied toward outstanding rent.
   proposal: z.union([
-    z.object({
-      routingModel: z.literal("commission"),
-      barberPercent: z.number().min(0).max(1),
-      shopPercent: z.number().min(0).max(1)
-    }).refine((terms) => Math.abs(terms.barberPercent + terms.shopPercent - 1) < 0.0001, {
-      message: "Commission percentages must total 100%."
-    }),
     z.object({
       routingModel: z.literal("booth_rent"),
       boothRentAmount: z.number().positive(),
       boothRentFrequency: z.enum(["daily", "weekly", "monthly"])
+    }),
+    z.object({
+      routingModel: z.literal("autobooth_rent"),
+      boothRentAmount: z.number().positive(),
+      boothRentFrequency: z.enum(["daily", "weekly", "monthly"]),
+      autoBoothPercent: z.number().gt(0).max(1)
     })
   ]).optional()
 });

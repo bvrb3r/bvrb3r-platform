@@ -1,4 +1,8 @@
 import type { BarberSubtype, Role } from "@/types/domain";
+import {
+  RETIRED_REVENUE_SHARE_ACCOUNT_ROLE,
+  isRetiredRevenueShareAccountRole
+} from "@/lib/doctrine/legacy-data-aliases";
 
 export const ROLE_NORMALIZATION_PLAN_VERSION = "role-normalization-v1";
 
@@ -161,7 +165,7 @@ export function decideRoleNormalization(input: RoleNormalizationProfileEvidence)
     };
   }
 
-  if (currentRole === "booth_rent_barber" || currentRole === "commission_barber") {
+  if (currentRole === "booth_rent_barber" || isRetiredRevenueShareAccountRole(currentRole)) {
     if (!input.hasBarberRecord) {
       return {
         ...baseDecision,
@@ -171,7 +175,7 @@ export function decideRoleNormalization(input: RoleNormalizationProfileEvidence)
         reason: `${currentRole} can map to barber_user only when a linked barber record exists.`,
         rollbackSql: null,
         relationshipMetadataPreserved: true,
-        proposedBarberSubtype: currentRole === "booth_rent_barber" ? "booth_rent" : "commission"
+        proposedBarberSubtype: currentRole === "booth_rent_barber" ? "booth_rent" : "freelance"
       };
     }
 
@@ -183,7 +187,7 @@ export function decideRoleNormalization(input: RoleNormalizationProfileEvidence)
       reason: `${currentRole} is account-role drift; linked barber evidence supports barber_user while relationship metadata stays separate.`,
       rollbackSql: rollbackSql(input.profileId, currentRole),
       relationshipMetadataPreserved: true,
-      proposedBarberSubtype: currentRole === "booth_rent_barber" ? "booth_rent" : "commission"
+      proposedBarberSubtype: currentRole === "booth_rent_barber" ? "booth_rent" : "freelance"
     };
   }
 
@@ -247,7 +251,7 @@ export function summarizeRoleNormalizationPlan(inputs: RoleNormalizationProfileE
     .filter((decision) => decision.status === "blocked")
     .map((decision) => decision.currentRole || "__NULL_OR_EMPTY__"))].sort();
   const unsupportedRoles = ambiguousRoles.filter((role) =>
-    !["front_desk", "manager", "platform_admin", "client", "owner", "booth_rent_barber", "commission_barber"].includes(role)
+    !["front_desk", "manager", "platform_admin", "client", "owner", "booth_rent_barber", RETIRED_REVENUE_SHARE_ACCOUNT_ROLE].includes(role)
   );
 
   return {
@@ -286,7 +290,7 @@ function approvalProposedRoleFor(decision: RoleNormalizationDecision, packetDeci
 
 function requiredEvidenceFor(decision: RoleNormalizationDecision) {
   if (decision.currentRole === "client") return ["clients.profile_id link"];
-  if (decision.currentRole === "booth_rent_barber" || decision.currentRole === "commission_barber") {
+  if (decision.currentRole === "booth_rent_barber" || isRetiredRevenueShareAccountRole(decision.currentRole)) {
     return ["barbers.profile_id link", "relationship metadata preserved outside profiles.role"];
   }
   if (decision.currentRole === "owner") return ["shops.owner_profile_id link"];

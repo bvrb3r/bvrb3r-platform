@@ -565,7 +565,7 @@ export function ArchitectFreelancePayoutQueue() {
           ["Ready", String(payload?.summary.readyCount ?? 0), payoutCurrency(payload?.summary.readyAmount ?? 0)],
           ["Blocked", String(payload?.summary.blockedCount ?? 0), "Needs review"],
           ["Released", String(payload?.summary.releasedCount ?? 0), "Already paid out"],
-          ["Scope", "Freelance", "Commission and booth rent release stay locked"]
+          ["Scope", "Freelance", "Booth rent release stays locked"]
         ].map(([label, value, detail]) => (
           <div key={label} className="rounded-[22px] border border-white/8 bg-black/28 p-4">
             <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/36">{label}</p>
@@ -699,7 +699,7 @@ export function ArchitectFreelancePayoutQueue() {
         <div className="flex gap-3">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <p>
-            Phase 1 releases barber payouts only. Cash sales, commission splits, booth-rent invoices, and shop-owner payouts stay outside this manual action.
+            Phase 1 releases barber payouts only. Cash sales, booth-rent invoices, AutoBooth rent applications, and shop-owner payouts stay outside this manual action.
           </p>
         </div>
       </div>

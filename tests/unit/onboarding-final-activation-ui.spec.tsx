@@ -51,7 +51,7 @@ describe("onboarding final activation UI", () => {
     expect(container.textContent).not.toMatch(/client_user|barber_user|shop_owner_user|guest_user/);
     expect(container.textContent).not.toMatch(/profiles\.role|auth\.uid|username_normalized|owner_profile_id|shop_id/);
     expect(container.textContent).not.toMatch(/payment_intent|stripe_customer_id|provider_payment_method_id|payout_readiness_status|payment_routing_records/);
-    expect(container.textContent).not.toMatch(/relationship_type|booth_rent_barber|commission_barber|freelance_barber/);
+    expect(container.textContent).not.toMatch(/relationship_type|booth_rent_barber|commission_barber|freelance_barber/);  // doctrine-allow
   });
 
   it("shows blocked and retry states with safe next actions", () => {

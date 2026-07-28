@@ -196,7 +196,7 @@ function createBaseTables(overrides: Partial<Record<string, Row[]>> = {}) {
       reference_code: "barber-phillip",
       profile_id: BARBER_PROFILE_ID,
       compensation_model: "freelance",
-      commission_rate: null,
+      autobooth_percent: null,
       booth_rent_amount: null,
       booth_rent_frequency: null
     }],
@@ -902,19 +902,19 @@ describe("freelance payout execution", () => {
       barberPayout: 14.25,
       routing: { money_routing_status: "paid_out", released_at: "2026-05-26T15:00:00.000Z" }
     });
-    const commission = createFreelanceScenario(base, {
-      routingId: "routing-commission",
-      paymentId: "payment-commission",
-      posSaleId: "sale-commission",
+    const autoBooth = createFreelanceScenario(base, {
+      routingId: "routing-autobooth",
+      paymentId: "payment-autobooth",
+      posSaleId: "sale-autobooth",
       gross: 40,
       platformFee: 2,
       barberPayout: 26.6,
-      routing: { routing_model: "commission", shop_split_amount: 11.4 }
+      routing: { routing_model: "autobooth_rent", shop_split_amount: 11.4 }
     });
     const tables = createBaseTables({
-      payment_routing_records: [readyOne.routing, readyTwo.routing, blocked.routing, paidOut.routing, commission.routing],
-      payments: [readyOne.payment, readyTwo.payment, blocked.payment, paidOut.payment, commission.payment],
-      pos_sales: [readyOne.posSale, readyTwo.posSale, blocked.posSale, paidOut.posSale, commission.posSale]
+      payment_routing_records: [readyOne.routing, readyTwo.routing, blocked.routing, paidOut.routing, autoBooth.routing],
+      payments: [readyOne.payment, readyTwo.payment, blocked.payment, paidOut.payment, autoBooth.payment],
+      pos_sales: [readyOne.posSale, readyTwo.posSale, blocked.posSale, paidOut.posSale, autoBooth.posSale]
     });
     const supabase = createSupabaseStub(tables);
     createSupabaseAdminClientMock.mockReturnValue(supabase);
@@ -950,7 +950,7 @@ describe("freelance payout execution", () => {
     expect(tables.payment_routing_records.find((row) => row.id === "routing-ready-1")?.money_routing_status).toBe("paid_out");
     expect(tables.payment_routing_records.find((row) => row.id === "routing-ready-2")?.money_routing_status).toBe("paid_out");
     expect(tables.payment_routing_records.find((row) => row.id === "routing-blocked")?.money_routing_status).toBe("pending");
-    expect(tables.payment_routing_records.find((row) => row.id === "routing-commission")?.money_routing_status).toBe("pending");
+    expect(tables.payment_routing_records.find((row) => row.id === "routing-autobooth")?.money_routing_status).toBe("pending");
   });
 
   it("batch release blocks before row transfers when platform balance is below the ready total", async () => {
@@ -1338,8 +1338,8 @@ describe("freelance payout execution", () => {
     });
   });
 
-  it("ignores booth rent and commission routing in Phase 1 release", async () => {
-    for (const routingModel of ["booth_rent", "commission"]) {
+  it("ignores booth rent and AutoBooth routing in Phase 1 release", async () => {
+    for (const routingModel of ["booth_rent", "autobooth_rent"]) {
       const supabase = createSupabaseStub(createBaseTables({
         payment_routing_records: [createBaseTables().payment_routing_records[0], {
           ...createBaseTables().payment_routing_records[0],

@@ -214,6 +214,7 @@ describe("bookings route", () => {
       actorEmail: "guest@example.com",
       actorProfileId: undefined,
       createdBy: undefined,
+      deferPaymentCollection: true,
       bookingSource: "public_profile"
     }));
     expect(queueBookingCreatedNotificationsMock).toHaveBeenCalledWith(expect.objectContaining({

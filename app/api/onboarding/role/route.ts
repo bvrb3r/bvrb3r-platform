@@ -10,7 +10,7 @@ const schema = z.discriminatedUnion("role", [
   }),
   z.object({
     role: z.literal("barber"),
-    barberSubtype: z.enum(["freelance", "booth_rent", "blueprint", "commission"]).transform(normalizeBarberSubtype).optional()
+    barberSubtype: z.enum(["freelance", "booth_rent", "blueprint", "autobooth_rent"]).transform(normalizeBarberSubtype).optional()
   }),
   z.object({
     role: z.literal("shop_owner"),

@@ -11,7 +11,7 @@ import {
 import { approvedMarketplaceTrustState, visibleMarketplaceState } from "@/tests/unit/marketplace-fixtures";
 
 describe("marketplace engine", () => {
-  it("lets the owner update a shop-owned commission service", () => {
+  it("lets the owner update a shop-owned service", () => {
     const state = visibleMarketplaceState();
     const result = updateServiceDefinition(state, { role: "shop_owner_user" }, "srv-shop-real", {
       price: 59,
@@ -87,20 +87,22 @@ describe("marketplace engine", () => {
     expect(state.services.find((service) => service.id === "srv-real")).toBeDefined();
   });
 
-  it("blocks commission barbers from creating services", () => {
-    const state = visibleMarketplaceState();
+  it("lets a barber own their service menu on either rent model", () => {
+    for (const barberSubtype of ["booth_rent", "autobooth_rent"] as const) {
+      const state = visibleMarketplaceState();
 
-    expect(() => createServiceDefinition(state, { role: "barber_user", barberSubtype: "commission", barberId: "barber-real" }, {
-      category: "Haircuts",
-      name: "Unauthorized Service",
-      description: "Should not be allowed.",
-      durationMin: 45,
-      bufferMin: 5,
-      price: 65,
-      deposit: 15,
-      fullPrepay: false,
-      styleTagIds: []
-    })).toThrow(MarketplacePermissionError);
+      expect(() => createServiceDefinition(state, { role: "barber_user", barberSubtype, barberId: "barber-real" }, {
+        category: "Haircuts",
+        name: `Barber Owned ${barberSubtype}`,
+        description: "A barber owns their own menu under both rent models.",
+        durationMin: 45,
+        bufferMin: 5,
+        price: 65,
+        deposit: 15,
+        fullPrepay: false,
+        styleTagIds: []
+      })).not.toThrow();
+    }
   });
 
   it("blocks managers from editing service definitions", () => {

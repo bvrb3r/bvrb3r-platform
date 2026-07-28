@@ -110,7 +110,7 @@ describe("barber earnings workspace", () => {
           activeCount: 0,
           serviceRevenueToday: 140,
           tipsToday: 18,
-          commissionToday: 0,
+          rentAppliedToday: 0,
           projectedPayout: 220,
           completedPaidCount: 2,
           rentCoverageToday: 0,

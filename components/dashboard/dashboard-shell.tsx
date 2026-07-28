@@ -24,6 +24,7 @@ import { getDefaultRouteForUser, getUserRoleLabel } from "@/lib/auth/demo-auth";
 import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 import type { Role, UserAccount } from "@/types/domain";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 type NavItem = {
   href: ComponentProps<typeof Link>["href"];
@@ -72,7 +73,7 @@ function getNavigation(user: UserAccount): NavItem[] {
     case "barber_user":
     case "barber":
     case "freelance_barber":
-    case "commission_barber":
+    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
     case "booth_rent_barber":
       return BARBER_PRIMARY_NAV_ITEMS;
     case "client_user":
@@ -105,7 +106,7 @@ function getPrimaryFocusLabel(role: Role) {
     case "barber_user":
     case "barber":
     case "freelance_barber":
-    case "commission_barber":
+    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
     case "booth_rent_barber":
       return "Barber tools";
     case "client_user":
@@ -128,7 +129,7 @@ function getPrimaryActionTitle(role: Role) {
     case "barber_user":
     case "barber":
     case "freelance_barber":
-    case "commission_barber":
+    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
     case "booth_rent_barber":
       return "Home, Checkout, Profile, Messages, and More stay focused by job.";
     case "client_user":
@@ -151,7 +152,7 @@ function getBoundaryCopy(role: Role) {
     case "barber_user":
     case "barber":
     case "freelance_barber":
-    case "commission_barber":
+    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
       return "Barber tools stay separated so schedule, payment, profile, messages, and setup stay easy to scan.";
     case "booth_rent_barber":
       return "Barber tools stay separated so schedule, payment, profile, messages, and setup stay easy to scan.";
@@ -175,7 +176,7 @@ function getLocationScopeLabel(role: Role) {
     case "barber_user":
     case "barber":
     case "freelance_barber":
-    case "commission_barber":
+    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
     case "booth_rent_barber":
       return "Assigned locations";
     case "client_user":
@@ -198,7 +199,7 @@ function getAlertLabel(role: Role) {
     case "barber_user":
     case "barber":
     case "freelance_barber":
-    case "commission_barber":
+    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
     case "booth_rent_barber":
       return "No alerts yet";
     case "client_user":
@@ -257,7 +258,7 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
     case "barber_user":
     case "barber":
     case "freelance_barber":
-    case "commission_barber":
+    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
     case "booth_rent_barber":
       return [
         { label: "Barber account", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Private account details stay in More.", icon: CalendarDays },
@@ -287,7 +288,7 @@ function getNotificationsHref(role: Role): ComponentProps<typeof Link>["href"] {
     case "barber_user":
     case "barber":
     case "freelance_barber":
-    case "commission_barber":
+    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
     case "booth_rent_barber":
       return "/dashboard/barber";
     case "client_user":
@@ -306,7 +307,7 @@ function getMessagesHref(role: Role): ComponentProps<typeof Link>["href"] {
     case "barber_user":
     case "barber":
     case "freelance_barber":
-    case "commission_barber":
+    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
     case "booth_rent_barber":
       return "/dashboard/barber/messages";
     case "shop_owner_user":
@@ -447,10 +448,10 @@ function getApprovalBanner(user: UserAccount): ApprovalBanner | null {
       return null;
     }
 
-    const subtypeLabel = user.barberSubtype === "commission"
-      ? "Commission barber"
+    const subtypeLabel = user.barberSubtype === "autobooth_rent"
+      ? "AutoBooth Rent barber"
       : user.barberSubtype === "booth_rent"
-        ? "Booth-rent barber"
+        ? "Full Booth Rent barber"
         : "Freelance barber";
     const detailParts = [
       `${subtypeLabel} lane is open for setup.`,

@@ -11,6 +11,7 @@ import {
   resolveRoleScope
 } from "@/lib/onboarding/readiness";
 import type { OnboardingReadinessContext, ReadinessKey } from "@/lib/onboarding/types";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 const clientAccount: OnboardingReadinessContext = {
   authenticated: true,
@@ -99,7 +100,7 @@ describe("onboarding readiness engine", () => {
       "elite_client",
       "freelance_barber",
       "booth_rent_barber",
-      "commission_barber"
+      RETIRED_REVENUE_SHARE_ACCOUNT_ROLE
     ];
 
     forbiddenRoles.forEach((role) => {

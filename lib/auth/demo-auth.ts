@@ -41,8 +41,8 @@ const demoLauncherCopy: Record<string, { dashboardLabel: string; description: st
     description: "Open Blaze's booth-rent chair flow with independent bookings and revenue visibility."
   },
   "fade@bvrb3r.demo": {
-    dashboardLabel: "Commission barber dashboard",
-    description: "Open the commission barber workspace with shop-aligned service flow and payout visibility."
+    dashboardLabel: "Freelance barber dashboard",
+    description: "Open Fade's freelance barber workspace with shop-aligned service flow and payout visibility."
   },
   "wave@bvrb3r.demo": {
     dashboardLabel: "Barber-manager dashboard",
@@ -156,10 +156,10 @@ export function getUserRoleLabel(user: UserAccount) {
     return "Freelance barber";
   }
   if (user.barberSubtype === "booth_rent") {
-    return "Booth-rent barber";
+    return "Full Booth Rent barber";
   }
-  if (user.barberSubtype === "commission") {
-    return "Commission barber";
+  if (user.barberSubtype === "autobooth_rent") {
+    return "AutoBooth Rent barber";
   }
 
   return getRoleLabel(user.role);

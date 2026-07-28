@@ -5,11 +5,14 @@ import type { UserAccount } from "@/types/domain";
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
 export type ShopTeamInviteStatus = "invited" | "requested" | "active" | "rejected" | "declined" | "ended";
-export type RelationshipRoutingModel = "freelance" | "booth_rent" | "commission";
+export type RelationshipRoutingModel = "freelance" | "booth_rent" | "autobooth_rent";
 export type ShopRelationshipProposal = {
-  routingModel: "booth_rent" | "commission";
-  barberPercent?: number | null;
-  shopPercent?: number | null;
+  routingModel: "booth_rent" | "autobooth_rent";
+  /**
+   * Owner-approved portion (0..1) of eligible proceeds applied toward the
+   * barber's outstanding booth rent. Required for AutoBooth Rent.
+   */
+  autoBoothPercent?: number | null;
   boothRentAmount?: number | null;
   boothRentFrequency?: "daily" | "weekly" | "monthly" | null;
 };
@@ -27,8 +30,8 @@ type BarberRow = {
   id: string;
   reference_code: string | null;
   profile_id: string;
-  compensation_model: "commission" | "booth_rent";
-  commission_rate: number | string | null;
+  compensation_model: RelationshipRoutingModel;
+  autobooth_percent: number | string | null;
   booth_rent_amount: number | string | null;
   booth_rent_frequency: "weekly" | "monthly" | null;
   app_approval_status: string | null;
@@ -67,10 +70,9 @@ type StaffLocationRow = {
   routing_model?: RelationshipRoutingModel | null;
   booth_rent_amount?: number | string | null;
   booth_rent_frequency?: "daily" | "weekly" | "monthly" | null;
-  barber_percent?: number | string | null;
-  shop_percent?: number | string | null;
-  commission_cap_amount?: number | string | null;
-  commission_cap_frequency?: "weekly" | "monthly" | null;
+  autobooth_percent?: number | string | null;
+  autobooth_cap_amount?: number | string | null;
+  autobooth_cap_frequency?: "weekly" | "monthly" | null;
   ended_at?: string | null;
   public_team_visible?: boolean | null;
   public_team_order?: number | string | null;
@@ -98,10 +100,9 @@ type InviteRow = {
   ended_by_role?: "barber" | "owner" | "architect" | null;
   ended_reason?: string | null;
   routing_model?: RelationshipRoutingModel | null;
-  barber_percent?: number | string | null;
-  shop_percent?: number | string | null;
-  commission_cap_amount?: number | string | null;
-  commission_cap_frequency?: "weekly" | "monthly" | null;
+  autobooth_percent?: number | string | null;
+  autobooth_cap_amount?: number | string | null;
+  autobooth_cap_frequency?: "weekly" | "monthly" | null;
   booth_rent_amount?: number | string | null;
   booth_rent_frequency?: "daily" | "weekly" | "monthly" | null;
   payout_block_reason?: string | null;
@@ -121,8 +122,8 @@ type ShopRow = {
   app_approval_status: string | null;
 };
 
-const inviteSelectColumns = "id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, requested_by_profile_id, status, message, created_at, updated_at, responded_at, approved_by_owner_at, approved_by_barber_at, rejected_at, declined_at, ended_at, ended_by_profile_id, ended_by_role, ended_reason, routing_model, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, booth_rent_amount, booth_rent_frequency, payout_block_reason, public_team_visible, public_team_order, featured_on_shop_profile";
-const membershipSelectColumns = "id, profile_id, location_id, shop_id, relationship_status, routing_model, booth_rent_amount, booth_rent_frequency, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, ended_at, public_team_visible, public_team_order, featured_on_shop_profile";
+const inviteSelectColumns = "id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, requested_by_profile_id, status, message, created_at, updated_at, responded_at, approved_by_owner_at, approved_by_barber_at, rejected_at, declined_at, ended_at, ended_by_profile_id, ended_by_role, ended_reason, routing_model, autobooth_percent, autobooth_cap_amount, autobooth_cap_frequency, booth_rent_amount, booth_rent_frequency, payout_block_reason, public_team_visible, public_team_order, featured_on_shop_profile";
+const membershipSelectColumns = "id, profile_id, location_id, shop_id, relationship_status, routing_model, booth_rent_amount, booth_rent_frequency, autobooth_percent, autobooth_cap_amount, autobooth_cap_frequency, ended_at, public_team_visible, public_team_order, featured_on_shop_profile";
 const pendingInviteStatuses = ["invited", "requested", "pending"];
 const activeInviteStatuses = ["active", "accepted"];
 
@@ -186,10 +187,9 @@ export interface ShopTeamInviteView {
   operatingModel: RelationshipRoutingModel;
   boothRentAmount: number | null;
   boothRentFrequency: "daily" | "weekly" | "monthly" | null;
-  barberPercent: number | null;
-  shopPercent: number | null;
-  commissionCapAmount: number | null;
-  commissionCapFrequency: "weekly" | "monthly" | null;
+  autoBoothPercent: number | null;
+  autoBoothCapAmount: number | null;
+  autoBoothCapFrequency: "weekly" | "monthly" | null;
 }
 
 export interface BarberJoinableShopView {
@@ -320,65 +320,70 @@ function getBarberDefaultRoutingModel(barber: BarberRow): RelationshipRoutingMod
     return "booth_rent";
   }
 
-  if (barber.compensation_model === "commission" || barber.barber_subtype === "commission") {
-    return "commission";
+  if (barber.compensation_model === "autobooth_rent" || barber.barber_subtype === "autobooth_rent") {
+    return "autobooth_rent";
   }
 
+  // Retired revenue-share values fall through to freelance: the shop collects
+  // nothing until owner and barber establish a real rent agreement.
   return "freelance";
 }
 
 function getDefaultRelationshipTerms(barber: BarberRow) {
   const routingModel = getBarberDefaultRoutingModel(barber);
-  const commissionRate = numericOrNull(barber.commission_rate);
-  const barberPercent = routingModel === "commission" ? commissionRate ?? 0.7 : null;
-  const shopPercent = routingModel === "commission" ? Math.max(0, 1 - (barberPercent ?? 0.7)) : null;
+  // Both supported shop-barber models are rent agreements, so both carry rent
+  // terms. Only AutoBooth Rent carries an owner-approved application portion.
+  const isRentModel = routingModel === "booth_rent" || routingModel === "autobooth_rent";
 
   return {
     routing_model: routingModel,
-    booth_rent_amount: routingModel === "booth_rent" ? numericOrNull(barber.booth_rent_amount) : null,
-    booth_rent_frequency: routingModel === "booth_rent" ? barber.booth_rent_frequency ?? "weekly" : null,
-    barber_percent: barberPercent,
-    shop_percent: shopPercent,
-    commission_cap_amount: null,
-    commission_cap_frequency: null
+    booth_rent_amount: isRentModel ? numericOrNull(barber.booth_rent_amount) : null,
+    booth_rent_frequency: isRentModel ? barber.booth_rent_frequency ?? "weekly" : null,
+    autobooth_percent: routingModel === "autobooth_rent" ? numericOrNull(barber.autobooth_percent) : null,
+    autobooth_cap_amount: null,
+    autobooth_cap_frequency: null
   };
 }
 
 function getProposedRelationshipTerms(barber: BarberRow, proposal?: ShopRelationshipProposal) {
   const defaults = getDefaultRelationshipTerms(barber);
   const routingModel = proposal?.routingModel
-    ?? (defaults.routing_model === "freelance" ? "commission" : defaults.routing_model);
+    ?? (defaults.routing_model === "freelance" ? "booth_rent" : defaults.routing_model);
 
-  if (routingModel === "commission") {
-    const barberPercent = proposal?.barberPercent ?? defaults.barber_percent ?? 0.7;
-    const shopPercent = proposal?.shopPercent ?? Math.max(0, 1 - barberPercent);
-    if (barberPercent < 0 || shopPercent < 0 || Math.abs(barberPercent + shopPercent - 1) > 0.0001) {
-      throw new ShopTeamInviteServiceError("Commission agreement percentages must total 100%.", 400);
-    }
-    return {
-      routing_model: routingModel,
-      barber_percent: barberPercent,
-      shop_percent: shopPercent,
-      booth_rent_amount: null,
-      booth_rent_frequency: null,
-      commission_cap_amount: null,
-      commission_cap_frequency: null
-    };
-  }
-
+  // Full Booth Rent and AutoBooth Rent are both rent agreements, so a real rent
+  // amount and billing frequency are required either way.
   const boothRentAmount = proposal?.boothRentAmount ?? defaults.booth_rent_amount;
   const boothRentFrequency = proposal?.boothRentFrequency ?? defaults.booth_rent_frequency ?? "weekly";
   if (!boothRentAmount || boothRentAmount <= 0) {
     throw new ShopTeamInviteServiceError("Booth rent requires a positive fixed amount.", 400);
   }
+
+  if (routingModel === "autobooth_rent") {
+    const autoBoothPercent = proposal?.autoBoothPercent ?? defaults.autobooth_percent;
+    if (autoBoothPercent === null || autoBoothPercent === undefined || autoBoothPercent <= 0 || autoBoothPercent > 1) {
+      throw new ShopTeamInviteServiceError(
+        "AutoBooth Rent requires an owner-approved portion greater than 0 and at most 1.",
+        400
+      );
+    }
+
+    return {
+      routing_model: routingModel,
+      autobooth_percent: autoBoothPercent,
+      booth_rent_amount: boothRentAmount,
+      booth_rent_frequency: boothRentFrequency,
+      autobooth_cap_amount: null,
+      autobooth_cap_frequency: null
+    };
+  }
+
   return {
     routing_model: routingModel,
-    barber_percent: null,
-    shop_percent: null,
+    autobooth_percent: null,
     booth_rent_amount: boothRentAmount,
     booth_rent_frequency: boothRentFrequency,
-    commission_cap_amount: null,
-    commission_cap_frequency: null
+    autobooth_cap_amount: null,
+    autobooth_cap_frequency: null
   };
 }
 
@@ -584,7 +589,7 @@ async function readShopScopesByIds(supabase: SupabaseClient, shopIds: string[]) 
 async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: string, profileId?: string | null) {
   const referenceResult = await supabase
     .from("barbers")
-    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
+    .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
     .eq("reference_code", barberIdOrReference)
     .maybeSingle();
 
@@ -603,7 +608,7 @@ async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: stri
 
     const profileResult = await supabase
       .from("barbers")
-      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
+      .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
       .eq("profile_id", profileId)
       .maybeSingle();
 
@@ -616,7 +621,7 @@ async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: stri
 
   const uuidResult = await supabase
     .from("barbers")
-    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
+    .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
     .eq("id", barberIdOrReference)
     .maybeSingle();
 
@@ -634,7 +639,7 @@ async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: stri
 
   const profileResult = await supabase
     .from("barbers")
-    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
+    .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
     .eq("profile_id", profileId)
     .maybeSingle();
 
@@ -666,10 +671,9 @@ function mapInvite(row: InviteRow, shopsById: Map<string, ShopScope>, profilesBy
     operatingModel,
     boothRentAmount: numericOrNull(row.booth_rent_amount),
     boothRentFrequency: row.booth_rent_frequency ?? null,
-    barberPercent: numericOrNull(row.barber_percent),
-    shopPercent: numericOrNull(row.shop_percent),
-    commissionCapAmount: numericOrNull(row.commission_cap_amount),
-    commissionCapFrequency: row.commission_cap_frequency ?? null
+    autoBoothPercent: numericOrNull(row.autobooth_percent),
+    autoBoothCapAmount: numericOrNull(row.autobooth_cap_amount),
+    autoBoothCapFrequency: row.autobooth_cap_frequency ?? null
   };
 }
 
@@ -756,7 +760,7 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
 
   const barbersResult = await supabase
     .from("barbers")
-    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
+    .select("id, reference_code, profile_id, compensation_model, autobooth_percent, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -952,7 +956,7 @@ export async function createOwnerTeamInvite(user: UserAccount, input: {
     throw new ShopTeamInviteServiceError("Unable to verify shop owner authority.", 500);
   }
   if (ownerAuthorityResult.data?.owner_profile_id !== user.id) {
-    throw new ShopTeamInviteServiceError("Only the shop owner can propose commission or booth-rent terms.", 403);
+    throw new ShopTeamInviteServiceError("Only the shop owner can propose Full Booth Rent or AutoBooth Rent terms.", 403);
   }
 
   const barber = await resolveBarber(supabase, input.barberId);

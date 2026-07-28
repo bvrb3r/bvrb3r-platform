@@ -54,9 +54,9 @@ Work is tracked by milestone. The verification gate for each milestone is:
 - Includes: front desk live board, walk-in queue basics, check-in action, checkout action, payment-and-tip capture flow, and live state updates
 - Verification: Passed in the 2026-03-09 full-project gate
 
-### Milestone 5: compensation logic for booth rent and commission
-- Status: Complete and verified
-- Includes: derived commission views, booth-rent due visibility, and live compensation metrics from appointment outcomes
+### Milestone 5: compensation logic for the shop-barber financial models of that era
+- Status: Complete and verified (the revenue-share model it covered has since been retired; Full Booth Rent and AutoBooth Rent are now the only supported models)
+- Includes: derived compensation views for the since-retired revenue-share model, booth-rent due visibility, and live compensation metrics from appointment outcomes
 - Verification: Passed in the 2026-03-09 full-project gate
 
 ### Milestone 6: analytics and reporting
@@ -88,7 +88,7 @@ Work is tracked by milestone. The verification gate for each milestone is:
 ### Marketplace Foundation Phase
 - Status: Complete and verified
 - Includes:
-  - service ownership engine with owner-controlled shop services for commission work and self-owned services for booth-rent barbers
+  - service ownership engine with owner-controlled shop services for shop-attached barbers (then on the since-retired revenue-share model) and self-owned services for booth-rent barbers
   - service popularity engine scaffolding with booking count, revenue, rating, repeat-rate, and popularity rank signals
   - public barber profile routes at `/barber/{username}`
   - discovery search at `/discover` for barber, shop, service, style, and location-driven exploration
@@ -207,7 +207,7 @@ Current alignment:
 - booking engine is implemented through booking routes, availability logic, waitlist support, and live appointment lifecycle flows
 - barber profiles exist at an operational level through profile, barber, service, availability, and compensation data, but profile trust depth is still limited
 - owner dashboards are implemented with persisted activity, revenue, and compensation reporting basics
-- payment and compensation systems are implemented at the MVP level through deposits, checkout capture, commission visibility, booth-rent visibility, and persisted compensation snapshots
+- payment and rent systems are implemented at the MVP level through deposits, checkout capture, AutoBooth rent-application visibility, booth-rent visibility, and persisted compensation snapshots
 
 Remaining Phase 1 closure work:
 

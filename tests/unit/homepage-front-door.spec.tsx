@@ -74,7 +74,7 @@ describe("homepage front door", () => {
     expect(screen.getByRole("heading", { name: "Booking" })).toBeInTheDocument();
     expect(screen.getByText("Fast booking + walk-ins handled automatically")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Money" })).toBeInTheDocument();
-    expect(screen.getByText("Payments, payouts, and splits handled for you")).toBeInTheDocument();
+    expect(screen.getByText("Payments, payouts, and booth rent managed in one place")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Growth" })).toBeInTheDocument();
     expect(screen.getByText("Clients, loyalty, and referrals built in")).toBeInTheDocument();
 

@@ -33,7 +33,7 @@ export const demoDeviceRegistrations: DeviceRegistrationRecord[] = [
     id: "device-wave-pwa",
     deviceId: "wave-pixel-pwa",
     userEmail: "wave@bvrb3r.demo",
-    role: "commission_barber",
+    role: "barber_user",
     barberId: "barber-wave",
     platform: "android",
     runtimeMode: "standalone",
@@ -97,7 +97,7 @@ export const demoPushSubscriptions: PushSubscriptionRecord[] = [
     id: "push-wave-primary",
     deviceId: "wave-pixel-pwa",
     userEmail: "wave@bvrb3r.demo",
-    role: "commission_barber",
+    role: "barber_user",
     barberId: "barber-wave",
     endpoint: "https://push.placeholder.bvrb3r/wave-primary",
     provider: "web_push_placeholder",
@@ -155,7 +155,7 @@ export const demoNativePushTokens: NativePushTokenRecord[] = [
     id: "native-token-wave-android",
     deviceId: "wave-pixel-pwa",
     userEmail: "wave@bvrb3r.demo",
-    role: "commission_barber",
+    role: "barber_user",
     barberId: "barber-wave",
     provider: "fcm",
     tokenHash: "sha256-demo-wave-fcm",
@@ -208,7 +208,7 @@ export const demoNotificationDeliveryAttempts: NotificationDeliveryAttemptRecord
     deepLinkUrl: "bvrb3r://open?href=%2Fdashboard%2Fbarber",
     metadata: {
       notificationType: "review_alert",
-      role: "commission_barber"
+      role: "barber_user"
     },
     createdAt: "2026-03-10T08:06:00-04:00",
     updatedAt: "2026-03-10T08:06:00-04:00"
@@ -259,7 +259,7 @@ export const demoDeepLinks: DeepLinkRecord[] = [
     appUrl: "bvrb3r://open?href=%2Fdashboard%2Fbarber",
     source: "push",
     userEmail: "wave@bvrb3r.demo",
-    role: "commission_barber",
+    role: "barber_user",
     deviceId: "wave-pixel-pwa",
     createdAt: "2026-03-10T08:07:00-04:00",
     metadata: {

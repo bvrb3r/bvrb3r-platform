@@ -478,11 +478,11 @@ export function ShopOwnerOnboardingWorkspace({
         <div className="mt-8 grid gap-3">
           {SHOP_OPERATING_MODEL_VALUES.map((value) => (
             <button key={value} type="button" className={`rounded-[22px] border p-4 text-left ${draft.operatingModel === value ? "border-[#d6b46a] bg-[#d6b46a]/12 text-white" : "border-white/10 bg-black/20 text-white/66"}`} onClick={() => setDraft((current) => ({ ...current, operatingModel: value as ShopOperatingModel }))}>
-              {value === "booth_rent" ? "Booth rent" : value === "commission" ? "Commission" : value === "mixed" ? "Mixed model" : "Owner-operated"}
+              {value === "booth_rent" ? "Full Booth Rent" : value === "autobooth_rent" ? "AutoBooth Rent" : value === "mixed" ? "Mixed model" : "Owner-operated"}
             </button>
           ))}
         </div>
-        <p className="mt-4 text-sm leading-7 text-white/56">Booth rent and commission are shop relationship models, not account roles.</p>
+        <p className="mt-4 text-sm leading-7 text-white/56">Full Booth Rent and AutoBooth Rent are shop relationship models, not account roles.</p>
         <Button type="button" className="mt-6 h-12 w-full" onClick={() => draft.operatingModel ? continueToNext() : setErrorMessage("Choose an operating model before continuing.")}>Continue</Button>
       </Card>
     );

@@ -958,7 +958,7 @@ describe("architect mission control", () => {
     expect(inventory).toHaveTextContent("Account role misuse");
     expect(inventory).toHaveTextContent("client_user");
     expect(inventory).toHaveTextContent("platform_admin");
-    expect(inventory).toHaveTextContent("commission_barber");
+    expect(inventory).toHaveTextContent("barber_user");
     expect(inventory).toHaveTextContent("front_desk");
     expect(inventory).not.toHaveTextContent("Normalize roles");
     expect(inventory).not.toHaveTextContent("Run migration");

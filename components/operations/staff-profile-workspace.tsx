@@ -26,8 +26,8 @@ function getRoleProfileCopy(user: UserAccount) {
   }
 
   if (isBarberAccountRole(user.role)) {
-    return user.barberSubtype === "commission"
-      ? "Commission barber profile keeps chair identity, payout model, and guest-facing trust signals close together."
+    return user.barberSubtype === "autobooth_rent"
+      ? "AutoBooth Rent profile keeps chair identity, rent standing, and guest-facing trust signals close together."
       : "Barber profile keeps independent chair identity, payout posture, and public-facing presence visible together.";
   }
 
@@ -61,7 +61,7 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
   const permissions = permissionMatrix.find((group) => group.role === user.role)
     ?? (isBarberAccountRole(user.role) ? permissionMatrix.find((group) => group.role === "barber") : undefined);
   const isBarber = isBarberAccountRole(user.role);
-  const barberCompensationModel = user.barberSubtype === "commission" ? "commission" : "booth_rent";
+  const barberCompensationModel = user.barberSubtype === "autobooth_rent" ? "autobooth_rent" : "booth_rent";
   const trustQuery = useBarberTrustSummary(isBarber);
   const fintechQuery = useBarberFintechReadinessQuery(isBarber);
   const verificationDecision = trustQuery.data?.verificationDecision;
@@ -308,7 +308,7 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="surface-label">Payout posture</p>
-                  <p className="mt-3 text-lg font-semibold">{barberCompensationModel === "booth_rent" ? "Independent chair revenue" : "Commission split visibility"}</p>
+                  <p className="mt-3 text-lg font-semibold">{barberCompensationModel === "booth_rent" ? "Independent chair revenue" : "Rent auto-applied from proceeds"}</p>
                   <p className="mt-2 text-sm leading-6 text-white/60">Barber-facing revenue settings stay readable without leaking owner-only financial configuration.</p>
                 </div>
                 <WalletCards className="h-5 w-5 text-[#d9f985]" />
@@ -317,8 +317,8 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
               <div className="mt-4 rounded-[20px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Role posture</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <span className={`status-pill ${barberCompensationModel === "commission" ? "text-[#e4f9b8]" : "text-white/72"}`}>Commission</span>
-                  <span className={`status-pill ${barberCompensationModel === "booth_rent" ? "text-[#e4f9b8]" : "text-white/72"}`}>Booth rent</span>
+                  <span className={`status-pill ${barberCompensationModel === "autobooth_rent" ? "text-[#e4f9b8]" : "text-white/72"}`}>AutoBooth Rent</span>
+                  <span className={`status-pill ${barberCompensationModel === "booth_rent" ? "text-[#e4f9b8]" : "text-white/72"}`}>Full Booth Rent</span>
                   <span className="status-pill text-white/52">Freelance</span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-white/58">
@@ -329,7 +329,7 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
               <div className="mt-4 rounded-[20px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Location logic</p>
                 <p className="mt-3 text-sm leading-6 text-white/62">
-                  {barberCompensationModel === "commission" || barberCompensationModel === "booth_rent"
+                  {barberCompensationModel === "autobooth_rent" || barberCompensationModel === "booth_rent"
                     ? "This barber operates from shop-based chair territory. Location assignment stays attached to the active shop scope."
                     : "Freelance territory can be edited when the payout posture allows independent location control."}
                 </p>

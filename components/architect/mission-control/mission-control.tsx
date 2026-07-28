@@ -199,7 +199,7 @@ function issuePassRequirement(card: MissionEvidenceCard, lane: MissionDepartment
     return "Platform fee posture must be backed by routing math evidence and cannot be inferred from UI totals.";
   }
 
-  return "Booth rent and commission readiness must remain approval-gated and backed by explicit money-rule evidence.";
+  return "Full Booth Rent and AutoBooth Rent readiness must remain approval-gated and backed by explicit money-rule evidence.";
 }
 
 function issueMissingOrFailed(card: MissionEvidenceCard, status: IssueStatusLabel) {
@@ -243,7 +243,7 @@ function issueSuggestedFixDirection(card: MissionEvidenceCard, lane: MissionDepa
     return "Inspect routing math and platform-fee source fields. Add tests that prevent UI-derived revenue or fake totals.";
   }
 
-  return "Inspect future money-model gates and ensure booth-rent/commission rules remain disabled or approval-gated until explicit implementation.";
+  return "Inspect future money-model gates and ensure booth-rent and AutoBooth rules remain disabled or approval-gated until explicit implementation.";
 }
 
 function issuePrimaryRepairTarget(card: MissionEvidenceCard, lane: MissionDepartmentLane) {
@@ -275,7 +275,7 @@ function issuePrimaryRepairTarget(card: MissionEvidenceCard, lane: MissionDepart
     return "Platform fee evidence, routing math, and server-side revenue posture.";
   }
 
-  return "Booth rent / commission readiness gates and future money-model evidence.";
+  return "Full Booth Rent / AutoBooth Rent readiness gates and future money-model evidence.";
 }
 
 function buildIssueDetail(card: MissionEvidenceCard, lane: MissionDepartmentLane): ArchitectIssueDetail {

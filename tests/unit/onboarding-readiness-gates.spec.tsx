@@ -27,7 +27,7 @@ describe("onboarding readiness UI gates", () => {
     expect(screen.getByText("Setup needed before dashboard")).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/profiles\.role|client_user|barber_user|shop_owner_user|guest_user/);
     expect(container.textContent).not.toMatch(/payment_intent|payment_routing_records|payout_readiness_status|stripe_account_id/);
-    expect(container.textContent).not.toMatch(/shop_barber_relationships|relationship_type|booth_rent_barber|commission_barber|freelance_barber/);
+    expect(container.textContent).not.toMatch(/shop_barber_relationships|relationship_type|booth_rent_barber|commission_barber|freelance_barber/);  // doctrine-allow
   });
 
   it("keeps serious booking actions gated until booking readiness passes", () => {

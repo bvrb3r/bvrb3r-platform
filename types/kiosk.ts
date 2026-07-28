@@ -11,17 +11,41 @@ export interface KioskServiceOption {
   id: string;
   name: string;
   category: string;
+  /**
+   * The barber's own price, in cents. Optional because a shop can have a
+   * service row with no price set — the kiosk then shows the service without a
+   * price chip rather than inventing one.
+   */
+  priceCents?: number | null;
+  durationMinutes?: number | null;
+  /**
+   * Which barber owns this price. The shop kiosk shows each barber their own
+   * service list, so a service with no owner is a shop-wide service every
+   * chair offers.
+   */
+  barberId?: string | null;
 }
 
 export interface KioskBarberOption {
   id: string;
+  /**
+   * The barber's real name. The kiosk is a public screen, so this is only ever
+   * rendered on the confirmation reveal card, after the client has booked.
+   */
   name: string;
+  /**
+   * The public handle. Everything a walk-up client sees before booking uses
+   * this instead of `name`.
+   */
+  publicUsername?: string | null;
   liveStatusLabel: string;
   nextAvailableAt: string | null;
   acceptsWalkIns: boolean;
   waitDisplayLabel?: string;
   estimatedWaitMinutes?: number | null;
   estimatedStartTime?: string | null;
+  /** How many clients are ahead of this chair right now. */
+  queueAhead?: number | null;
 }
 
 export interface KioskPayload {

@@ -970,13 +970,6 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
         return;
       }
 
-      if (displayedQuote.grandTotal > 0) {
-        setStatusUpdate({
-          tone: "error",
-          message: "This appointment requires payment due today. Sign in or create an account to add a payment method before booking."
-        });
-        return;
-      }
     } else if (!selectedPaymentMethod) {
       setStatusUpdate({
         tone: "error",
@@ -1045,7 +1038,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
       });
 
       setConfirmationId(result.appointment.confirmationCode ?? result.appointment.id);
-      setConfirmationPaymentStatus("verifying");
+      setConfirmationPaymentStatus(isGuestMode ? null : "verifying");
       setConfirmationPaymentLabel(isGuestMode ? null : selectedPaymentMethod?.label ?? null);
       clearBookingDraft();
       setStatusUpdate({
@@ -1136,8 +1129,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
   const activeStepIndex = getStepIndex(bookingStep);
   const serviceReady = Boolean(currentService);
   const timeReady = Boolean(selectedSlot);
-  const guestPaymentReady = !isGuestMode || displayedQuote.grandTotal <= 0;
-  const paymentRequirementSatisfied = isGuestMode ? guestPaymentReady : Boolean(selectedPaymentMethod);
+  const paymentRequirementSatisfied = isGuestMode || Boolean(selectedPaymentMethod);
   const reviewReady = serviceReady && timeReady && paymentRequirementSatisfied && hasClientName && hasClientPhone && hasClientEmail && Boolean(watchAcknowledgePolicy) && isOnline && !paymentSetupPending;
 
   function continueToTime() {
@@ -1200,7 +1192,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
           </div>
           <p className="mt-5 text-sm leading-7 text-white/62">
             Confirmation {confirmationId}. {isGuestMode
-              ? "Keep this code. Support can look up your appointment with your email, phone, confirmation code, and appointment time. Receipt status is verifying."
+              ? "Keep this code. Support can look up your appointment with your email, phone, confirmation code, and appointment time. No payment was taken on this booking screen."
               : confirmationPaymentStatus === "verifying" && confirmationPaymentLabel
                 ? `${confirmationPaymentLabel} is verifying through the server. Activity will show the final receipt state.`
                 : "Payment status will update in Activity."}
@@ -1764,20 +1756,11 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
                 <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                   <p className="surface-label">Guest payment posture</p>
                   <div className="mt-3 grid gap-2 text-sm leading-6 text-white/64">
-                    {displayedQuote.grandTotal > 0 ? (
-                      <>
-                        <p className="font-semibold text-rose-100">This appointment requires {currency(displayedQuote.grandTotal)} due today.</p>
-                        <p>Guest online payment setup is not connected yet. Sign in or create an account to add a payment method before booking.</p>
-                        <Link href={`/login?redirect=${encodeURIComponent(getCurrentBookingRoute())}` as Route} className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full bg-[#C4F24E] px-5 text-sm font-semibold text-black transition hover:bg-[#d9f985]">
-                          Sign in to continue
-                        </Link>
-                      </>
-                    ) : (
-                      <>
-                        <p>No payment is due on this screen.</p>
-                        <p>Receipt and payment status still come from server records, not this page.</p>
-                      </>
-                    )}
+                    <p>No payment is collected on this booking screen.</p>
+                    {displayedQuote.grandTotal > 0
+                      ? <p>The {currency(displayedQuote.grandTotal)} balance remains due and must be confirmed by the shop before service or checkout.</p>
+                      : <p>No balance is due for this appointment.</p>}
+                    <p>Receipt and payment status come from server records, not this page.</p>
                   </div>
                 </div>
               ) : (
@@ -1800,7 +1783,7 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Booking confirmation</p>
                 <div className="mt-3 grid gap-2 text-sm leading-6 text-white/64">
-                  <p>{isGuestMode ? (guestPaymentReady ? "Guest booking identity ready." : "Guest payment setup required.") : selectedPaymentMethod ? "Payment method ready." : "Needs payment method."}</p>
+                  <p>{isGuestMode ? "Guest booking identity ready." : selectedPaymentMethod ? "Payment method ready." : "Needs payment method."}</p>
                   <p>Appointment confirmation appears only after the server creates the appointment.</p>
                   <p>Payment status comes from server and Stripe evidence, not this screen.</p>
                 </div>
@@ -1890,4 +1873,3 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
     </div>
   );
 }
-
