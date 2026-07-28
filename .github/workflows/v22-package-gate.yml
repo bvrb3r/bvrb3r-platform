@@ -90,6 +90,9 @@ jobs:
       - name: Financial doctrine guard
         run: npm run verify:doctrine
 
+      - name: Tracked secret hygiene
+        run: npm run verify:secrets
+
       - name: Production dependency security audit
         run: npm audit --omit=dev --audit-level=high
 
