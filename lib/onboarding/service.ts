@@ -124,15 +124,28 @@ function getFirstStep(role: OnboardingRole) {
 
 function getLastStep(role: OnboardingRole) {
   const steps = getStepDefinitions(role);
-  return steps[steps.length - 1]?.key ?? steps[0].key;
+  const lastStep = steps[steps.length - 1];
+  if (lastStep) {
+    return lastStep.key;
+  }
+  return steps[0].key;
 }
 
 function getStepRoute(role: OnboardingRole, step: OnboardingStepKey): Route {
-  return getStepDefinitions(role).find((entry) => entry.key === step)?.route ?? getStepDefinitions(role)[0].route;
+  const steps = getStepDefinitions(role);
+  const matchingStep = steps.find((entry) => entry.key === step);
+  if (matchingStep) {
+    return matchingStep.route;
+  }
+  return steps[0].route;
 }
 
 function getNextStep(role: OnboardingRole, completedSteps: OnboardingStepKey[]) {
-  return getStepDefinitions(role).find((entry) => !completedSteps.includes(entry.key))?.key ?? null;
+  const matchingStep = getStepDefinitions(role).find((entry) => !completedSteps.includes(entry.key));
+  if (matchingStep) {
+    return matchingStep.key;
+  }
+  return null;
 }
 
 function normalizeCompletedSteps(role: OnboardingRole, steps: unknown): OnboardingStepKey[] {
