@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Link from "next/link";
 import { PublicFooter } from "./public-footer";
 import { PublicNav } from "./public-nav";
@@ -24,8 +25,8 @@ export type MarketingPageContent = {
   eyebrow: string;
   title: string;
   description: string;
-  primaryCta: { href: string; label: string };
-  secondaryCta: { href: string; label: string };
+  primaryCta: { href: Route; label: string };
+  secondaryCta: { href: Route; label: string };
   problemEyebrow: string;
   problemTitle: string;
   problems: MarketingCard[];
