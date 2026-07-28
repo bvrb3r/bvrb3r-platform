@@ -24,6 +24,8 @@ describe("PR26 role normalization dry-run packet", () => {
     expect(migration).toContain("'publicOutputRedacted', true");
     expect(migration).not.toContain("'profileIds'");
     expect(migration).not.toContain("'rows',");
+    expect(migration).toContain("as role_value");
+    expect(migration).not.toContain("as current_role");
     expect(migration).not.toMatch(/p\.(full_name|email|phone)/);
   });
 
