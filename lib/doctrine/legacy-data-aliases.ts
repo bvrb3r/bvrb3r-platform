@@ -30,9 +30,6 @@ export const RETIRED_REVENUE_SHARE_MODEL = "commission" as const;
  */
 export const RETIRED_REVENUE_SHARE_ACCOUNT_ROLE = "commission_barber" as const;
 
-/** Retired per-relationship rate column exposed by pre-doctrine tables. */
-export const RETIRED_REVENUE_SHARE_RATE_COLUMN = "commission_rate" as const;
-
 export type RetiredRevenueShareModel = typeof RETIRED_REVENUE_SHARE_MODEL;
 export type RetiredRevenueShareAccountRole = typeof RETIRED_REVENUE_SHARE_ACCOUNT_ROLE;
 
