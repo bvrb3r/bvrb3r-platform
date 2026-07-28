@@ -1,5 +1,7 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import { CONTACT_VERIFICATION_POLICY, isCanonicalContactComplete } from "@/lib/auth/contact-policy";
+import { recordIdentityAuditEvent } from "@/lib/auth/identity-audit";
+import { evaluateRoleActivation } from "@/lib/auth/role-activation";
 import { ensureBarberProfileForUser } from "@/lib/barber/profile-repair";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -783,6 +785,29 @@ async function writeSignupRoleIntentToProfile(authUser: AuthUserLike, role: Sign
   const profile = await readProfile(authUser.id);
   if (profile?.primary_onboarding_role) {
     return isSignupRoleIntent(profile.primary_onboarding_role) ? profile.primary_onboarding_role : null;
+  }
+
+  // The requested lane can originate from a cookie or from auth metadata, both
+  // of which the account holder controls. Neither is authority, so the request
+  // is run through the activation policy before it can touch a role column: an
+  // account that already holds an operator or internal role is never re-laned,
+  // and an operator role is never reachable from a signup intent.
+  const activation = evaluateRoleActivation(role, profile?.role ?? null);
+  if (!activation.allowed) {
+    await recordIdentityAuditEvent({
+      actor: { id: authUser.id, role: (profile?.role as Role) ?? "client_user", platformAdmin: false },
+      source: "auth.signup_role_intent",
+      entityType: "profile",
+      entityId: authUser.id,
+      action: "role_activation",
+      outcome: "denied",
+      metadata: { requestedIntent: role, decision: activation.outcome }
+    });
+    return null;
+  }
+
+  if (activation.outcome === "already_active") {
+    return role;
   }
 
   const payload = getProfileSyncPayload(authUser, profile);
