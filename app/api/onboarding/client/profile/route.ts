@@ -23,9 +23,10 @@ export async function POST(request: NextRequest) {
     const user = await getOnboardingSessionUser();
     const result = await markOnboardingStepComplete(user, "client", "client_profile", parsed.data);
     const onboardingComplete = result.state.status === "completed";
-    const nextPath: string = onboardingComplete
-      ? await resolvePostAuthDestination(user)
-      : "/onboarding/client/preferences";
+    let nextPath = "/onboarding/client/preferences";
+    if (onboardingComplete) {
+      nextPath = String(await resolvePostAuthDestination(user));
+    }
     const state: unknown = result.state;
     return NextResponse.json({
       state,
