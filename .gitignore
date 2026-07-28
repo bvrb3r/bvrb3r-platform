@@ -9,6 +9,7 @@ node_modules
 .tools
 coverage
 dist
+.qa-*.log
 .android-user-home
 .gradle-user-home
 .vercel
