@@ -136,13 +136,13 @@ export const demoEngagementEvents: EngagementEventRecord[] = [
   { id: "engagement-1", actorRole: "client", actorId: "client-jordan", targetType: "barber", targetId: "barber-wave", eventType: "appointment_rebooked", metadata: { cadenceDays: 14 }, createdAt: "2026-03-08T11:25:00-05:00" },
   { id: "engagement-2", actorRole: "client", actorId: "client-cam", targetType: "service", targetId: "srv-signature", eventType: "waitlist_joined", metadata: { locationId: "loc-ybor" }, createdAt: "2026-03-08T12:10:00-05:00" },
   { id: "engagement-3", actorRole: "client", actorId: "client-jordan", targetType: "barber", targetId: "barber-wave", eventType: "barber_reviewed", metadata: { rating: 5 }, createdAt: "2026-03-06T10:00:00-05:00" },
-  { id: "engagement-4", actorRole: "commission_barber", actorId: "barber-wave", targetType: "barber", targetId: "barber-wave", eventType: "service_completed", metadata: { appointmentId: "appt-2" }, createdAt: "2026-03-08T12:55:00-05:00" },
+  { id: "engagement-4", actorRole: "barber_user", actorId: "barber-wave", targetType: "barber", targetId: "barber-wave", eventType: "service_completed", metadata: { appointmentId: "appt-2" }, createdAt: "2026-03-08T12:55:00-05:00" },
   { id: "engagement-5", actorRole: "booth_rent_barber", actorId: "barber-blaze", targetType: "barber", targetId: "barber-blaze", eventType: "payout_released", metadata: { period: "Week of Mar 3" }, createdAt: "2026-03-04T17:00:00-05:00" },
-  { id: "engagement-6", actorRole: "commission_barber", actorId: "barber-fade", targetType: "barber", targetId: "barber-fade", eventType: "portfolio_updated", metadata: { assetCount: 3 }, createdAt: "2026-03-07T09:40:00-05:00" },
-  { id: "engagement-7", actorRole: "commission_barber", actorId: "barber-wave", targetType: "barber", targetId: "barber-wave", eventType: "review_received", metadata: { reviewId: "review-1" }, createdAt: "2026-03-06T10:05:00-05:00" },
+  { id: "engagement-6", actorRole: "barber_user", actorId: "barber-fade", targetType: "barber", targetId: "barber-fade", eventType: "portfolio_updated", metadata: { assetCount: 3 }, createdAt: "2026-03-07T09:40:00-05:00" },
+  { id: "engagement-7", actorRole: "barber_user", actorId: "barber-wave", targetType: "barber", targetId: "barber-wave", eventType: "review_received", metadata: { reviewId: "review-1" }, createdAt: "2026-03-06T10:05:00-05:00" },
   { id: "engagement-8", actorRole: "client", actorId: "client-jordan", targetType: "barber", targetId: "barber-blaze", eventType: "barber_followed", metadata: { notifyOnAvailability: true }, createdAt: "2026-03-06T17:00:00-05:00" },
   { id: "engagement-9", actorRole: "client", actorId: "client-ava", targetType: "service", targetId: "srv-color", eventType: "reward_redeemed", metadata: { pointsUsed: 80 }, createdAt: "2026-03-02T16:10:00-05:00" },
-  { id: "engagement-10", actorRole: "commission_barber", actorId: "barber-fade", targetType: "barber", targetId: "barber-fade", eventType: "booking_accepted", metadata: { appointmentId: "appt-5" }, createdAt: "2026-03-08T12:15:00-05:00" }
+  { id: "engagement-10", actorRole: "barber_user", actorId: "barber-fade", targetType: "barber", targetId: "barber-fade", eventType: "booking_accepted", metadata: { appointmentId: "appt-5" }, createdAt: "2026-03-08T12:15:00-05:00" }
 ];
 
 export const demoRebookingCycles: RebookingCycleRecord[] = [
@@ -160,7 +160,7 @@ export const demoRebookingRecommendations: RebookingRecommendationRecord[] = [
 
 export const demoNotificationPreferences: NotificationPreferenceRecord[] = [
   { id: "pref-client-jordan", userEmail: "client@bvrb3r.demo", role: "client", clientId: "client-jordan", inAppEnabled: true, smsEnabled: true, emailEnabled: true, pushEnabled: true, updatedAt: "2026-03-08T08:00:00-05:00" },
-  { id: "pref-wave", userEmail: "wave@bvrb3r.demo", role: "commission_barber", barberId: "barber-wave", inAppEnabled: true, smsEnabled: false, emailEnabled: true, pushEnabled: true, updatedAt: "2026-03-08T08:05:00-05:00" },
+  { id: "pref-wave", userEmail: "wave@bvrb3r.demo", role: "barber_user", barberId: "barber-wave", inAppEnabled: true, smsEnabled: false, emailEnabled: true, pushEnabled: true, updatedAt: "2026-03-08T08:05:00-05:00" },
   { id: "pref-blaze", userEmail: "blaze@bvrb3r.demo", role: "booth_rent_barber", barberId: "barber-blaze", inAppEnabled: true, smsEnabled: false, emailEnabled: true, pushEnabled: false, updatedAt: "2026-03-08T08:10:00-05:00" },
   { id: "pref-owner", userEmail: "owner@bvrb3r.demo", role: "owner", inAppEnabled: true, smsEnabled: false, emailEnabled: true, pushEnabled: true, updatedAt: "2026-03-08T08:20:00-05:00" }
 ];
@@ -168,7 +168,7 @@ export const demoNotificationPreferences: NotificationPreferenceRecord[] = [
 export const demoEngagementNotifications: EngagementNotificationRecord[] = [
   { id: "engage-note-1", userEmail: "client@bvrb3r.demo", role: "client", clientId: "client-jordan", channel: "sms", type: "rebooking_reminder", title: "Your fade refresh window is coming up", body: "Wave Carter still has premium afternoon availability next week.", status: "scheduled", createdAt: "2026-03-08T18:00:00-05:00", scheduledFor: "2026-03-16T09:00:00-05:00" },
   { id: "engage-note-2", userEmail: "client@bvrb3r.demo", role: "client", clientId: "client-jordan", channel: "in_app", type: "loyalty_milestone", title: "BVRB3R Points unlocked", body: "You are 30 points away from a premium add-on reward.", status: "sent", createdAt: "2026-03-08T18:05:00-05:00" },
-  { id: "engage-note-3", userEmail: "wave@bvrb3r.demo", role: "commission_barber", barberId: "barber-wave", channel: "in_app", type: "review_alert", title: "New 5-star review", body: "Jordan Ellis left a premium review after the last visit.", status: "sent", createdAt: "2026-03-06T10:05:00-05:00" },
+  { id: "engage-note-3", userEmail: "wave@bvrb3r.demo", role: "barber_user", barberId: "barber-wave", channel: "in_app", type: "review_alert", title: "New 5-star review", body: "Jordan Ellis left a premium review after the last visit.", status: "sent", createdAt: "2026-03-06T10:05:00-05:00" },
   { id: "engage-note-4", userEmail: "blaze@bvrb3r.demo", role: "booth_rent_barber", barberId: "barber-blaze", channel: "email", type: "payout_alert", title: "Revenue ledger refreshed", body: "Your weekly rent ledger and collected revenue summary are ready.", status: "sent", createdAt: "2026-03-04T17:05:00-05:00" },
   { id: "engage-note-5", userEmail: "owner@bvrb3r.demo", role: "owner", channel: "in_app", type: "instant_booking_alert", title: "Discovery demand rising in Ybor", body: "Instant-booking demand is growing faster than current chair capacity during late afternoon windows.", status: "placeholder", createdAt: "2026-03-08T19:00:00-05:00" }
 ];

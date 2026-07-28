@@ -271,13 +271,12 @@ function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSe
     ];
   }
 
-  if (roleScope === "owner" && (title.includes("booth rent") || title.includes("commission") || title.includes("fees"))) {
+  if (roleScope === "owner" && (title.includes("booth rent") || title.includes("autobooth") || title.includes("fees"))) {
     return [
       { key: "default_booth_rent_amount", label: "Default booth rent amount", helper: "Shop-level default charged to booth-rent barbers when that operating model is enabled.", type: "money", value: 0, editable: false, private: true },
       { key: "booth_rent_frequency", label: "Booth rent frequency", helper: "Allowed values should be daily, weekly, or monthly once compensation persistence is wired.", type: "select", value: "Not configured", editable: false, private: true, options: [{ label: "Not configured", value: "not_configured" }] },
-      { key: "barber_commission_percent", label: "Barber commission percent", helper: "Must pair with shop commission percent to equal 100 when fixed commission is enabled.", type: "number", value: 0, editable: false, private: true },
-      { key: "shop_commission_percent", label: "Shop commission percent", helper: "Must pair with barber commission percent to equal 100 when fixed commission is enabled.", type: "number", value: 0, editable: false, private: true },
-      { key: "commission_cap", label: "Commission cap", helper: "Optional cap if supported by the compensation rules table/service.", type: "money", value: "Not supported yet", editable: false, private: true },
+      { key: "autobooth_percent", label: "AutoBooth portion applied to rent", helper: "Owner-approved portion of eligible proceeds applied toward outstanding booth rent. Never exceeds rent owed and never applies to tips.", type: "number", value: 0, editable: false, private: true },
+      { key: "autobooth_cap", label: "AutoBooth cap", helper: "Optional cap if supported by the compensation rules table/service.", type: "money", value: "Not supported yet", editable: false, private: true },
       { key: "platform_fee_display", label: "Platform fee display", helper: "Read-only platform fees must come from the Money/fintech source of truth.", type: "readonly", value: "Read-only", editable: false, private: true },
       { key: "per_barber_overrides", label: "Per-barber override summary", helper: "Relationship-specific overrides belong on shop_barber_relationships/staff relationship records when available.", type: "readonly", value: "No canonical override editor wired", editable: false, private: true }
     ];
@@ -431,7 +430,7 @@ function dataSourcesFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): s
     return [...base, "support message threads", "support messages", "platform events"];
   }
 
-  if (roleScope === "owner" && (title.includes("booth rent") || title.includes("commission") || title.includes("fees"))) {
+  if (roleScope === "owner" && (title.includes("booth rent") || title.includes("autobooth") || title.includes("fees"))) {
     return [...base, "compensation_rules or canonical shop compensation settings", "shop_barber_relationships/staff relationship overrides", "fintech platform fee configuration"];
   }
 
@@ -473,7 +472,7 @@ function syncTargetsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): s
     return ["Support inbox", "Architect support posture", "role-safe issue routing metadata"];
   }
 
-  if (roleScope === "owner" && (title.includes("booth rent") || title.includes("commission") || title.includes("fees"))) {
+  if (roleScope === "owner" && (title.includes("booth rent") || title.includes("autobooth") || title.includes("fees"))) {
     return ["Owner More row state", "Owner Money", "barber shop relationship summaries", "future payout routing assumptions", "team relationship summaries"];
   }
 
@@ -519,8 +518,8 @@ function validationsFor(row: MoreSectionRow): string[] {
     return ["Signed-in role must be Client, Barber, or Shop Owner", "Category must be available for this role", "Description is required", "Safety concerns show emergency guidance", "No private provider IDs render in the UI"];
   }
 
-  if (title.includes("booth rent") || title.includes("commission") || title.includes("fees")) {
-    return ["Owner must own the shop", "Booth rent amount must be non-negative", "Frequency must be daily, weekly, or monthly", "Barber percent plus shop percent must equal 100", "Platform fees stay read-only"];
+  if (title.includes("booth rent") || title.includes("autobooth") || title.includes("fees")) {
+    return ["Owner must own the shop", "Booth rent amount must be non-negative", "Frequency must be daily, weekly, or monthly", "AutoBooth percent must be between 0 and 1", "Platform fees stay read-only"];
   }
 
   if (title.includes("notifications")) {
@@ -599,7 +598,7 @@ function missingSavePathFor(row: MoreSectionRow, mode: MoreSettingMode) {
     return undefined;
   }
 
-  if (title.includes("booth rent") || title.includes("commission") || title.includes("fees")) {
+  if (title.includes("booth rent") || title.includes("autobooth") || title.includes("fees")) {
     return "Wire owner compensation settings to compensation_rules or the canonical shop relationship compensation service before enabling Save Changes. Relationship-specific overrides should persist through shop_barber_relationships/staff relationship records, not local UI state.";
   }
 

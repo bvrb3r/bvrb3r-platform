@@ -111,17 +111,25 @@ export function getClientBookingSummary(clientId: string) {
 }
 
 export function getBarberCompSummary(barber: Barber) {
-  if (barber.compensationModel === "commission") {
+  if (barber.compensationModel === "autobooth_rent") {
     return {
-      mode: "Commission",
-      headline: `${Math.round((barber.commissionRate ?? 0) * 100)}% split`,
-      detail: `Upcoming payout ${barber.upcomingPayout}`
+      mode: "AutoBooth Rent",
+      headline: `${barber.boothRentFrequency} rent ${barber.boothRentAmount}, ${Math.round((barber.autoBoothPercent ?? 0) * 100)}% auto-applied`,
+      detail: "Applied only against rent you still owe"
+    };
+  }
+
+  if (barber.compensationModel === "booth_rent") {
+    return {
+      mode: "Full Booth Rent",
+      headline: `${barber.boothRentFrequency} rent ${barber.boothRentAmount}`,
+      detail: "Track due dates and overdue exposure"
     };
   }
 
   return {
-    mode: "Booth Rent",
-    headline: `${barber.boothRentFrequency} rent ${barber.boothRentAmount}`,
-    detail: "Track due dates and overdue exposure"
+    mode: "Freelance",
+    headline: "No shop rent agreement",
+    detail: `Upcoming payout ${barber.upcomingPayout}`
   };
 }

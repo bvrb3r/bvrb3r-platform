@@ -122,7 +122,7 @@ type ProductionBarberRow = {
   id: string;
   reference_code?: string | null;
   profile_id: string;
-  compensation_model: "commission" | "booth_rent" | string | null;
+  compensation_model: "booth_rent" | "autobooth_rent" | string | null;
   barber_subtype?: string | null;
   app_approval_status?: ApprovalStatus | null;
   shop_approval_status?: ApprovalStatus | null;
@@ -1110,9 +1110,9 @@ function getRoleLabel(user: UserAccount) {
 
   if (user.primaryOnboardingRole === "barber") {
     return user.barberSubtype === "booth_rent"
-      ? "Booth-rent barber"
-      : user.barberSubtype === "commission"
-        ? "Commission barber"
+      ? "Full Booth Rent barber"
+      : user.barberSubtype === "autobooth_rent"
+        ? "AutoBooth Rent barber"
         : "Freelance barber";
   }
 

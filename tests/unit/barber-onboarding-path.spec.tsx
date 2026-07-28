@@ -64,7 +64,7 @@ describe("barber onboarding path UI", () => {
     expect(screen.getByRole("heading", { name: "Your chair path is ready." })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Set Up My Barber Profile" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Enter Home" })).toHaveAttribute("href", "/dashboard/barber");
-    expect(container.textContent).not.toMatch(/barber_user|freelance_barber|booth_rent_barber|commission_barber|profiles\.role|username_normalized|stripe_connect_status|payment_routing_records|barber-private-record-id/);
+    expect(container.textContent).not.toMatch(/barber_user|freelance_barber|booth_rent_barber|commission_barber|profiles\.role|username_normalized|stripe_connect_status|payment_routing_records|barber-private-record-id/);  // doctrine-allow
   });
 
   it("claims a clean public username before saving identity", async () => {

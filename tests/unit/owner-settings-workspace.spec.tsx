@@ -206,7 +206,7 @@ describe("owner More workspace", () => {
     expect(screen.getByText("Manage the tools that control your shop profile, team, services, hours, policies, kiosk, and operating model.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Shop Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Business Setup" })).not.toBeInTheDocument();
-    ["Booth Rent, Commission & Fees", "Shop Hours", "Shop Policies", "Team & Roles", "Kiosk Settings", "Performance"].forEach((label) => {
+    ["Booth Rent, AutoBooth & Fees", "Shop Hours", "Shop Policies", "Team & Roles", "Kiosk Settings", "Performance"].forEach((label) => {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     });
     expect(screen.queryByText("Shop Information")).not.toBeInTheDocument();
@@ -230,7 +230,7 @@ describe("owner More workspace", () => {
     expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();
     expect(screen.getByText("Stripe Connect")).toBeInTheDocument();
     expect(screen.getByText("Owner Payouts")).toBeInTheDocument();
-    expect(screen.getByText("Shop payout schedule, commission payouts, payout status, release timing, and payout history")).toBeInTheDocument();
+    expect(screen.getByText("Shop payout schedule, rent collection, payout status, release timing, and payout history")).toBeInTheDocument();
     expect(screen.getByText("Rewards")).toBeInTheDocument();
     expect(screen.getByText("Transactions")).toBeInTheDocument();
     expect(screen.getByText("Shop sales, receipts, spending, subscriptions, refunds, failed payments, credits, and payout movement")).toBeInTheDocument();
@@ -276,7 +276,7 @@ describe("owner More workspace", () => {
     ["Paywall", "Subscriptions", "Upgrade", "Plans", "Billing Settings", "Premium", "Pro Settings", "Elite Settings"].forEach((heading) => {
       expect(screen.queryByRole("heading", { name: heading })).not.toBeInTheDocument();
     });
-    expect(document.body.textContent).not.toMatch(/shop_owner_user|client_user|barber_user|stripe_customer_id|stripe_subscription_id|account_entitlements|payment_routing_records|booth_rent_barber|commission_barber/i);
+    expect(document.body.textContent).not.toMatch(/shop_owner_user|client_user|barber_user|stripe_customer_id|stripe_subscription_id|account_entitlements|payment_routing_records|booth_rent_barber|commission_barber/i);  // doctrine-allow
   });
 
   it("uses the public shop profile image in the single owner account identity card", () => {
@@ -459,12 +459,11 @@ describe("owner More workspace", () => {
     expect(await within(dialog).findByText("No account activity yet.")).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
-    fireEvent.click(screen.getByRole("link", { name: /Booth Rent, Commission & Fees Manage booth rent/ }));
-    dialog = screen.getByRole("dialog", { name: "Booth Rent, Commission & Fees" });
+    fireEvent.click(screen.getByRole("link", { name: /Booth Rent, AutoBooth & Fees Manage/ }));
+    dialog = screen.getByRole("dialog", { name: "Booth Rent, AutoBooth & Fees" });
     expect(within(dialog).getByText("Default booth rent amount")).toBeInTheDocument();
     expect(within(dialog).getByText("Booth rent frequency")).toBeInTheDocument();
-    expect(within(dialog).getByText("Barber commission percent")).toBeInTheDocument();
-    expect(within(dialog).getByText("Shop commission percent")).toBeInTheDocument();
+    expect(within(dialog).getByText("AutoBooth portion applied to rent")).toBeInTheDocument();
     expect(within(dialog).getByText(/Wire owner compensation settings to compensation_rules/)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));

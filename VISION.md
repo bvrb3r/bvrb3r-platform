@@ -117,7 +117,7 @@ The owner must always have stronger visibility, stronger reporting, stronger ove
 
 ### 3. Multi-model revenue support
 
-The platform must support commission barbers, booth-rent barbers, retail sales, deposits, saved payment methods, tips, and future payouts without forcing one compensation model across the business.
+The platform must support Full Booth Rent barbers, AutoBooth Rent barbers, retail sales, deposits, saved payment methods, tips, and future payouts. Full Booth Rent and AutoBooth Rent are the only supported shop-barber financial models.
 
 ### 4. Premium brand experience
 
@@ -454,9 +454,7 @@ The financial engine should remain provider-driven, ledger-first, and tax-ready.
 
 It must support:
 
-- commission models
-- booth-rent models
-- hybrid compensation
+- Full Booth Rent and AutoBooth Rent models
 - payout scheduling
 - ledger tracking
 - tax-ready reporting
@@ -472,7 +470,7 @@ Principles:
 - Stripe is the initial payment provider direction for deposits, saved payment methods, and future payout support.
 - Sensitive payment handling stays behind provider adapters and route handlers, never in UI code.
 - Internal product logic should think in terms of business events and ledgers, not raw provider objects.
-- Deposits, tips, services, retail, rent collection, commissions, refunds, and payouts should be recordable as first-class financial events.
+- Deposits, tips, services, retail, rent collection, AutoBooth rent applications, refunds, and payouts should be recordable as first-class financial events.
 - Saved payment methods should be stored as provider references plus product-safe display metadata, never full card details.
 
 ## Data logic and source of truth
@@ -528,9 +526,9 @@ The long-range data architecture should be organized into these domains:
 
 ### Compensation and finance
 
-- commission rules
+- booth-rent and AutoBooth rules
 - booth-rent ledgers
-- hybrid compensation rules
+- Full Booth Rent and AutoBooth Rent agreement rules
 - payout schedules
 - ledger entries
 - payout summaries
@@ -599,7 +597,7 @@ The current codebase already supports a strong subset of this model:
 - `services`, `availability_rules`, `blocked_times`, `appointments`, and `waitlist_entries` cover the booking graph
 - `walk_in_queue`, `workflow_events`, `live_appointments`, and `live_walk_in_queue` cover active shop-floor operations
 - `payments`, `deposits`, `billing_customers`, and `saved_payment_methods` establish commerce and payment-provider boundaries
-- `commission_rules`, `booth_rent_ledgers`, `payouts`, `bonuses`, `compensation_snapshots`, and `owner_daily_analytics` establish the beginnings of finance and reporting
+- `compensation_rules`, `booth_rent_charges`, `payouts`, `bonuses`, `compensation_snapshots`, and `owner_daily_analytics` establish the beginnings of finance and reporting
 
 The largest current architectural gaps are that live operational tables still rely on string references, public discovery is not yet modeled as a first-class layer, and trust or ranking data structures do not yet exist.
 
@@ -641,7 +639,7 @@ The largest current architectural gaps are that live operational tables still re
 - complete checkout order model with line items, taxes, discounts, refunds, receipts, and referral credits
 - full relationship engine across client, barber, shop, and owner entities
 - general ledger tables for every financial action
-- hybrid compensation and payout scheduling model
+- rent-agreement and payout scheduling model for the two supported financial models
 - campaign automation and referral system data model
 - discovery feed and public marketplace layer
 - map mode and `Get a Haircut Now` real-time shortcut
@@ -707,7 +705,7 @@ The product UX standard is:
 - multi-role barbershop operations
 - booking, appointments, walk-ins, and front desk flow
 - owner dashboards and reporting basics
-- mixed booth-rent and commission support at a basic level
+- mixed Full Booth Rent and AutoBooth Rent support at a basic level
 - Supabase-first auth, database, storage, RLS, and realtime direction
 - provider-abstracted payments
 - persisted workflow, compensation, and owner analytics foundations
@@ -733,7 +731,7 @@ The product UX standard is:
 - formalize scoped permissions beyond app-role checks
 - model checkout orders, line items, taxes, discounts, refunds, receipts, and referrals more explicitly
 - add general ledger and financial-event tables so every financial action creates an entry
-- add hybrid compensation rules, payout schedules, and tax-ready reporting tables
+- add Full Booth Rent and AutoBooth Rent agreement rules, payout schedules, and tax-ready reporting tables
 - add campaign, referral, communication, trust, and discovery-ranking tables
 - add stronger relationship-engine tables across client, barber, shop, and owner entities
 - add marketplace visibility, ranking, search-history, style, and search-index tables

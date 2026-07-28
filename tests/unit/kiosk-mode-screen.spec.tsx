@@ -142,7 +142,7 @@ describe("kiosk mode screen", () => {
     expect(screen.queryByText("Preferred barber")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Accept kiosk booking policy")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book next eligible opening" })).toBeInTheDocument();
-    expect(pushMock).toHaveBeenCalledWith("/kiosk/loc-ybor?mode=booking");
+    expect(pushMock).toHaveBeenCalledWith("/kiosk/shop/loc-ybor?mode=booking");
   });
 
   it("renders username before private intake fields", () => {
@@ -469,7 +469,7 @@ describe("kiosk mode screen", () => {
     expect(await screen.findByText("Exit requires the 4-digit kiosk PIN.")).toBeInTheDocument();
     expect(verifyPinMock).toHaveBeenCalledWith({ scope: "shop", targetReference: "loc-ybor", pin: "2468" });
     expect(deactivateMock).toHaveBeenCalledTimes(1);
-    expect(pushMock).toHaveBeenCalledWith("/login?redirect=%2Fkiosk%2Floc-ybor&unlock=true");
+    expect(pushMock).toHaveBeenCalledWith("/login?redirect=%2Fkiosk%2Fshop%2Floc-ybor&unlock=true");
   });
 
   it("shows clear validation if required booking fields are missing", async () => {

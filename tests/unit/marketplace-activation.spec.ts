@@ -40,7 +40,7 @@ function makeState(): MarketplaceActivationState {
         dailyBudgetCents: 4500,
         startsAt: "2026-03-01T00:00:00.000Z",
         endsAt: "2026-03-30T00:00:00.000Z",
-        createdByRole: "commission_barber",
+        createdByRole: "barber_user",
         createdById: "barber-wave",
         createdAt: "2026-03-01T00:00:00.000Z"
       }

@@ -83,7 +83,7 @@ describe("phase 10 barber tools routes", () => {
         activeCount: 1,
         serviceRevenueToday: 55,
         tipsToday: 10,
-        commissionToday: 30,
+        rentAppliedToday: 30,
         projectedPayout: 30,
         completedPaidCount: 1,
         rentCoverageToday: 0,

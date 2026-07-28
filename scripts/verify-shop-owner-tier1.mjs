@@ -52,7 +52,7 @@ const requiredEvidence = [
 const forbiddenPatterns = [
   {
     path: "lib/operations/persistence.ts",
-    pattern: /commissionAmount[\s\S]{0,240}tipAmount\s*:\s*0/i,
+    pattern: /autoBoothRentAppliedAmount[\s\S]{0,240}tipAmount\s*:\s*0/i,
     code: "owner_money_erases_tip_truth"
   },
   {
@@ -140,7 +140,7 @@ const proof = {
     "Barber membership does not grant manager or front-desk authority.",
     "Client identity cannot access Shop Owner controls.",
     "Owner schedule reflects canonical shop-linked appointments.",
-    "Owner money separates service revenue, tips, commission, booth rent, and outstanding balances.",
+    "Owner money separates service revenue, tips, booth rent, and outstanding balances.",
     "Cross-shop location access is denied."
   ],
   inventory: inventory.sort()

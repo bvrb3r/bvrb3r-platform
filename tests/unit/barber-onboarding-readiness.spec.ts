@@ -14,6 +14,7 @@ import {
   validateServiceDurationMinutes,
   type BarberOnboardingDraft
 } from "@/lib/onboarding/barber-path";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 const completeDraft: BarberOnboardingDraft = {
   authenticated: true,
@@ -45,7 +46,7 @@ describe("barber onboarding readiness path", () => {
     expect(isAllowedBarberOnboardingRole("barber_user")).toBe(true);
     expect(isAllowedBarberOnboardingRole("freelance_barber")).toBe(false);
     expect(isAllowedBarberOnboardingRole("booth_rent_barber")).toBe(false);
-    expect(isAllowedBarberOnboardingRole("commission_barber")).toBe(false);
+    expect(isAllowedBarberOnboardingRole(RETIRED_REVENUE_SHARE_ACCOUNT_ROLE)).toBe(false);
     expect(isAllowedBarberOnboardingRole("shop_owner_user")).toBe(false);
 
     const forbidden = buildBarberOnboardingReadiness({

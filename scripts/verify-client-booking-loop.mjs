@@ -7,6 +7,7 @@ const root = dirname(fileURLToPath(new URL("../package.json", import.meta.url)))
 const proofPath = join(root, "public", ".well-known", "bvrb3r-client-booking-proof.json");
 
 const requiredFiles = [
+  "app/api/bookings/route.ts",
   "lib/operations/live-provider.ts",
   "lib/booking/canonical-booking.ts",
   "lib/appointments/domain.ts",
@@ -23,15 +24,24 @@ const requiredEvidence = [
       "canonicalBarberUuid",
       "canonicalServiceUuid",
       "canonicalLocationUuid",
+      "withDeferredBookingSettlement",
+      "shouldCollectPayment",
       "createCapturedStripePaymentRecord",
       "syncPaymentRoutingRecord",
       "appointment_status_history"
     ]
   },
   {
+    path: "app/api/bookings/route.ts",
+    tokens: [
+      "deferPaymentCollection: isGuestBooking"
+    ]
+  },
+  {
     path: "tests/unit/core-booking-loop-regression.spec.ts",
     tokens: [
       "protects the paid freelance booking loop from public refs through calendar visibility",
+      "confirms a guest appointment with its balance due and no payment capture",
       "paymentIntents",
       "status: \"confirmed\"",
       "appointment_status_history",
@@ -115,8 +125,9 @@ const proof = {
     serverOwnedBookingMutation: findings.length === 0,
     canonicalRoleIdentityResolution: findings.length === 0,
     canonicalServiceAndLocationResolution: findings.length === 0,
-    paymentConfirmationBeforeConfirmedState: findings.length === 0,
-    appointmentAndPaymentPersistenceCovered: findings.length === 0,
+    signedInPaidBookingConfirmsCapturedPayment: findings.length === 0,
+    guestBookingDefersPaymentAndPreservesBalanceDue: findings.length === 0,
+    appointmentAndApplicablePaymentPersistenceCovered: findings.length === 0,
     clientActivityAndBarberCalendarVisibilityCovered: findings.length === 0,
     cancellationReleasesAvailabilityCovered: findings.length === 0,
     statusHistoryCovered: findings.length === 0,
@@ -124,7 +135,8 @@ const proof = {
   },
   requiredRuntimeSmoke: [
     "Public discovery returns a stable response.",
-    "Authenticated Client booking creates one confirmed appointment.",
+    "Authenticated paid Client booking creates one confirmed appointment with captured payment evidence.",
+    "Guest paid-service booking creates one confirmed appointment, captures no payment, and preserves the full balance due.",
     "The same appointment is visible to Client Activity and Barber Calendar.",
     "A duplicate active-slot booking is rejected.",
     "Cancellation preserves payment history and releases the slot."

@@ -1,5 +1,6 @@
 ﻿import { boothRentLedger, demoBarbers, demoClients, demoLocations, demoServices } from "@/lib/data/demo";
 import { isScheduledAppointmentStatus, isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
+import { calculateAutoBoothRentApplication } from "@/lib/fintech/booth-rent-doctrine";
 import { Appointment, Barber, BoothRentLedgerEntry, Client, Location, RevenuePoint, Service } from "@/types/domain";
 
 export interface CheckoutRecord {
@@ -122,18 +123,37 @@ export function getBarberFlowMetrics(barber: Barber, appointments: Appointment[]
     .filter((entry) => entry.barberId === barber.id && entry.status !== "paid")
     .sort((left, right) => left.dueDate.localeCompare(right.dueDate))[0];
 
-  if (barber.compensationModel === "commission") {
-    const commissionToday = paidToday.reduce((sum, appointment) => sum + appointment.totalAmount * (barber.commissionRate ?? 0) + appointment.tipAmount, 0);
+  if (barber.compensationModel === "autobooth_rent") {
+    // AutoBooth can only ever retire rent the barber still owes, so the running
+    // total is bounded by the outstanding balance on the next open rent charge.
+    let outstandingRentCents = Math.round(Math.max(nextRent?.amount ?? 0, 0) * 100);
+    let appliedTodayCents = 0;
+
+    for (const appointment of paidToday) {
+      const application = calculateAutoBoothRentApplication({
+        model: "autobooth_rent",
+        autoBoothPercent: barber.autoBoothPercent ?? null,
+        // Tips are never eligible for rent application.
+        eligibleProceedsCents: Math.round(Math.max(appointment.totalAmount, 0) * 100),
+        outstandingRentCents,
+        paymentStatus: "captured"
+      });
+
+      appliedTodayCents += application.appliedToRentCents;
+      outstandingRentCents = application.outstandingRentAfterCents;
+    }
+
+    const rentAppliedToday = appliedTodayCents / 100;
     const projectedPayout = barberAppointments
       .filter(isAppointmentPaid)
-      .reduce((sum, appointment) => sum + appointment.totalAmount * (barber.commissionRate ?? 0) + appointment.tipAmount, 0);
+      .reduce((sum, appointment) => sum + appointment.totalAmount + appointment.tipAmount, 0) - rentAppliedToday;
 
     return {
       businessDateKey,
       activeCount,
       serviceRevenueToday,
       tipsToday,
-      commissionToday,
+      rentAppliedToday,
       projectedPayout,
       nextRent,
       completedPaidCount: paidToday.length
@@ -145,7 +165,7 @@ export function getBarberFlowMetrics(barber: Barber, appointments: Appointment[]
     activeCount,
     serviceRevenueToday,
     tipsToday,
-    commissionToday: 0,
+    rentAppliedToday: 0,
     projectedPayout: 0,
     nextRent,
     completedPaidCount: paidToday.length,

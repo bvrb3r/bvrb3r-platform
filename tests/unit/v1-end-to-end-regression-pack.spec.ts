@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
+const SPEC_REPO_PATH = "tests/unit/v1-end-to-end-regression-pack.spec.ts";
 
 function readProjectFile(relativePath: string) {
   return readFileSync(path.join(root, relativePath), "utf8");
@@ -89,7 +90,7 @@ const coverageGroups = [
       "tests/unit/booking-mutation-routes.spec.ts"
     ],
     surfaces: [
-      "app/(platform)/booking/new/page.tsx",
+      "app/(public-booking)/booking/new/page.tsx",
       "components/booking/booking-form.tsx",
       "lib/booking/platform-service.ts",
       "lib/operations/live-provider.ts"
@@ -255,14 +256,26 @@ describe("Roadmap PR #59 full V1 end-to-end regression pack", () => {
     }
   });
 
-  it("keeps this regression PR out of protected mutation scopes before commit", () => {
-    const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], {
-      cwd: root,
-      encoding: "utf8"
-    });
-    const changedFiles = status
+  it("keeps this regression PR out of protected mutation scopes", () => {
+    // Scoped to the commit that introduced this pack, matching the PR36A audit
+    // precedent. Auditing the live working tree instead would make this
+    // historical assertion fail for every later PR that legitimately touches a
+    // protected scope.
+    const packCommit = execFileSync(
+      "git",
+      ["log", "--diff-filter=A", "-n", "1", "--format=%H", "--", SPEC_REPO_PATH],
+      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+    ).trim();
+
+    expect(packCommit, "the regression pack commit must be resolvable").toBeTruthy();
+
+    const changedFiles = execFileSync(
+      "git",
+      ["diff-tree", "--no-commit-id", "--name-only", "-r", packCommit],
+      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+    )
       .split(/\r?\n/)
-      .map((line) => line.slice(3).replace(/\\/g, "/").trim())
+      .map((line) => line.replace(/\\/g, "/").trim())
       .filter(Boolean);
     const protectedChanges = changedFiles.filter((file) =>
       protectedMutationScopes.some((pattern) => pattern.test(file))

@@ -26,7 +26,7 @@ vi.mock("@/lib/booking/route-auth", () => ({
     if (user.role === "client" && user.clientId) {
       return { role: "client", clientId: user.clientId, email: user.email };
     }
-    if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+    if (user.role === "barber_user" || user.role === "booth_rent_barber") {
       return { role: user.role, barberId: user.barberId, locationIds: user.locationIds ?? [], email: user.email };
     }
     if (user.role === "owner" || user.role === "manager" || user.role === "front_desk") {
@@ -35,7 +35,7 @@ vi.mock("@/lib/booking/route-auth", () => ({
     return null;
   },
   toLifecycleActorRole: (role: string) => {
-    if (role === "commission_barber" || role === "booth_rent_barber") {
+    if (role === "barber_user" || role === "booth_rent_barber") {
       return "barber";
     }
     if (role === "client" || role === "owner" || role === "manager" || role === "front_desk") {
@@ -170,7 +170,7 @@ describe("booking mutation routes", () => {
   it("allows a barber to cancel through the canonical booking route", async () => {
     getSessionUserMock.mockResolvedValueOnce({
       id: "profile-barber",
-      role: "commission_barber",
+      role: "barber_user",
       barberId: "barber-live",
       locationIds: ["loc-live"],
       email: "barber@bvrb3r.app"
@@ -230,7 +230,7 @@ describe("booking mutation routes", () => {
   it("allows a barber to reschedule through the canonical booking route", async () => {
     getSessionUserMock.mockResolvedValueOnce({
       id: "profile-barber",
-      role: "commission_barber",
+      role: "barber_user",
       barberId: "barber-live",
       locationIds: ["loc-live"],
       email: "barber@bvrb3r.app"

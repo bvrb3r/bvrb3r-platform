@@ -17,6 +17,10 @@ import {
 } from "@/lib/messages/domain";
 import { isClientRole } from "@/lib/auth/roles";
 import type { AppointmentStatus, Role, UserAccount } from "@/types/domain";
+import {
+  RETIRED_REVENUE_SHARE_ACCOUNT_ROLE,
+  type RetiredRevenueShareAccountRole
+} from "@/lib/doctrine/legacy-data-aliases";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -528,7 +532,11 @@ function toDatabaseThreadRole(role: Role): Role {
   }
 
   if (isBarberRole(role)) {
-    return "commission_barber";
+    // Message threads persist into the historical `public.app_role` enum, whose
+    // only generic barber member is the retired revenue-share value. This is a
+    // storage-compatibility detail for thread participants and carries no
+    // financial meaning: money models live on the relationship, not the thread.
+    return RETIRED_REVENUE_SHARE_ACCOUNT_ROLE;
   }
 
   return role;
@@ -2855,7 +2863,7 @@ async function writeAppointmentSystemMessageIfMissing(
     barberProfileId: appointment.barberProfileId,
     clientName: appointment.clientName,
     barberName: appointment.barberName,
-    barberRole: appointment.barberRole as Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">,
+    barberRole: appointment.barberRole as Extract<Role, "barber_user" | "barber" | "freelance_barber" | "booth_rent_barber" | RetiredRevenueShareAccountRole>,
     serviceName: appointment.serviceName,
     startsAt: appointment.startsAt
   });
@@ -4075,7 +4083,7 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
         barberProfileId: appointment.barberProfileId,
         clientName: appointment.clientName,
         barberName: appointment.barberName,
-        barberRole: appointment.barberRole as Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">,
+        barberRole: appointment.barberRole as Extract<Role, "barber_user" | "barber" | "freelance_barber" | "booth_rent_barber" | RetiredRevenueShareAccountRole>,
         serviceName: appointment.serviceName,
         startsAt: appointment.startsAt
       }

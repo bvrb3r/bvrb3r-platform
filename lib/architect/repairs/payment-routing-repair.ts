@@ -12,9 +12,11 @@ import {
   reconciliationDbValueForOpen
 } from "@/lib/architect/mission-control/schema-constraints";
 import { writeArchitectRepairAudit } from "@/lib/architect/repairs/audit";
+import { isRetiredRevenueShareModel } from "@/lib/doctrine/legacy-data-aliases";
+import { calculateAutoBoothRentApplication } from "@/lib/fintech/booth-rent-doctrine";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
-type RoutingModel = "freelance" | "booth_rent" | "commission";
+type RoutingModel = "freelance" | "booth_rent" | "autobooth_rent";
 type RoutingRecipient = "barber" | "shop" | "split";
 
 type RoutingRelationshipContext = {
@@ -22,8 +24,8 @@ type RoutingRelationshipContext = {
   payoutRecipientType: RoutingRecipient;
   barberId: unknown;
   shopId: unknown;
-  barberPercent: number | null;
-  shopPercent: number | null;
+  autoBoothPercent: number | null;
+  outstandingRentCents: number | null;
   relationshipId: unknown;
   compensationRuleId: unknown;
   relationshipKnown: boolean;
@@ -78,8 +80,15 @@ function filterPayloadToColumns<T extends JsonRecord>(payload: T, columns: Set<s
 
 function normalizeRoutingModel(value: unknown): RoutingModel | null {
   const normalized = String(value ?? "").toLowerCase();
-  if (normalized === "freelance" || normalized === "booth_rent" || normalized === "commission") {
+  if (normalized === "freelance" || normalized === "booth_rent" || normalized === "autobooth_rent") {
     return normalized;
+  }
+  // Retired revenue-share rows normalize to freelance, never to a rent model.
+  if (isRetiredRevenueShareModel(normalized)) {
+    return "freelance";
+  }
+  if (normalized === "blueprint") {
+    return "booth_rent";
   }
   return null;
 }
@@ -103,8 +112,8 @@ async function resolveRoutingRelationshipContext(
       payoutRecipientType: "barber",
       barberId: appointment.barber_id ?? barber?.id ?? null,
       shopId: null,
-      barberPercent: null,
-      shopPercent: null,
+      autoBoothPercent: null,
+      outstandingRentCents: null,
       relationshipId: null,
       compensationRuleId: null,
       relationshipKnown: true,
@@ -121,13 +130,15 @@ async function resolveRoutingRelationshipContext(
     .maybeSingle();
 
   const relationship = relationshipResult.error ? null : ((relationshipResult.data as JsonRecord | null) ?? null);
-  const routingModel = normalizeRoutingModel(relationship?.relationship_type)
+  // Unrecognized model values fall back to freelance: the barber keeps
+  // everything, which is the doctrine's fail-safe outcome.
+  let routingModel = normalizeRoutingModel(relationship?.relationship_type)
     ?? normalizeRoutingModel(relationship?.type)
     ?? normalizeRoutingModel(barber?.barber_subtype)
-    ?? "booth_rent";
+    ?? "freelance";
 
   let compensationRule: JsonRecord | null = null;
-  if (routingModel === "commission") {
+  if (routingModel === "autobooth_rent") {
     const ruleResult = await supabase
       .from("compensation_rules")
       .select("*")
@@ -138,39 +149,73 @@ async function resolveRoutingRelationshipContext(
     compensationRule = ruleResult.error ? null : ((ruleResult.data as JsonRecord | null) ?? null);
   }
 
-  const barberPercent = numberOrNull(compensationRule?.barber_percent ?? compensationRule?.barber_rate_percent ?? relationship?.barber_percent);
-  const shopPercent = numberOrNull(compensationRule?.shop_percent ?? compensationRule?.shop_rate_percent ?? relationship?.shop_percent);
+  const rawPercent = numberOrNull(compensationRule?.autobooth_percent ?? relationship?.autobooth_percent);
+  // Stored values may be a fraction or a percentage; both mean the same portion.
+  let autoBoothPercent = rawPercent !== null && rawPercent > 1 ? rawPercent / 100 : rawPercent;
+
+  let reviewReason = relationship
+    ? null
+    : "Shop relationship truth is missing for this completed captured payment; routing requires manual review.";
+
+  // The AutoBooth routing record contract requires the relationship, the rule,
+  // and an owner-approved portion in (0, 1]. Without all three there is no
+  // valid AutoBooth agreement, so the payment routes as plain Full Booth Rent
+  // (barber keeps everything) and is flagged for manual review.
+  const autoBoothTermsComplete = Boolean(relationship?.id)
+    && Boolean(compensationRule?.id)
+    && autoBoothPercent !== null
+    && autoBoothPercent > 0
+    && autoBoothPercent <= 1;
+  if (routingModel === "autobooth_rent" && !autoBoothTermsComplete) {
+    routingModel = "booth_rent";
+    autoBoothPercent = null;
+    reviewReason = reviewReason
+      ?? "AutoBooth Rent terms are incomplete for this relationship; the payment was routed without a rent application and needs manual review.";
+  }
 
   return {
     routingModel,
-    payoutRecipientType: routingModel === "commission" ? "split" : "barber",
+    payoutRecipientType: routingModel === "autobooth_rent" ? "split" : "barber",
     barberId: appointment.barber_id ?? barber?.id ?? null,
     shopId: appointment.shop_id,
-    barberPercent,
-    shopPercent,
+    autoBoothPercent,
+    // Live money paths do not apply proceeds toward rent yet (AutoBooth
+    // application is a declared future phase), and no charge ledger is read
+    // here to know what is genuinely outstanding. Repairs mirror the live
+    // paths: zero outstanding rent means zero application, never a guess that
+    // could over-collect from the barber.
+    outstandingRentCents: 0,
     relationshipId: relationship?.id ?? null,
     compensationRuleId: compensationRule?.id ?? null,
     relationshipKnown: Boolean(relationship),
-    reviewReason: relationship
-      ? null
-      : "Shop relationship truth is missing for this completed captured payment; routing requires manual review."
+    reviewReason
   };
 }
 
 function calculateRoutingAmounts(input: {
   gross: number;
   routingModel: RoutingModel;
-  barberPercent: number | null;
-  shopPercent: number | null;
+  autoBoothPercent: number | null;
+  outstandingRentCents: number | null;
 }) {
   const platformFee = roundMoney(input.gross * 0.05);
   const netAfterPlatform = roundMoney(Math.max(input.gross - platformFee, 0));
 
-  if (input.routingModel === "commission" && input.barberPercent !== null && input.shopPercent !== null) {
+  if (input.routingModel === "autobooth_rent" && input.autoBoothPercent !== null) {
+    // Stored values may be a fraction or a percentage; both mean the same portion.
+    const approvedPortion = input.autoBoothPercent > 1 ? input.autoBoothPercent / 100 : input.autoBoothPercent;
+    const application = calculateAutoBoothRentApplication({
+      model: "autobooth_rent",
+      autoBoothPercent: approvedPortion,
+      eligibleProceedsCents: Math.round(netAfterPlatform * 100),
+      outstandingRentCents: Math.max(Math.trunc(input.outstandingRentCents ?? 0), 0),
+      paymentStatus: "captured"
+    });
+
     return {
       platformFee,
-      barberPayout: roundMoney(netAfterPlatform * (input.barberPercent / 100)),
-      shopSplit: roundMoney(netAfterPlatform * (input.shopPercent / 100))
+      barberPayout: roundMoney(application.barberRemainderCents / 100),
+      shopSplit: roundMoney(application.appliedToRentCents / 100)
     };
   }
 
@@ -193,11 +238,12 @@ export function buildPaymentRoutingRepairPayload(input: {
   const amounts = calculateRoutingAmounts({
     gross,
     routingModel: input.relationshipContext.routingModel,
-    barberPercent: input.relationshipContext.barberPercent,
-    shopPercent: input.relationshipContext.shopPercent
+    autoBoothPercent: input.relationshipContext.autoBoothPercent,
+    outstandingRentCents: input.relationshipContext.outstandingRentCents
   });
   const constraintEvidence = input.constraintEvidence ?? DEFAULT_PAYMENT_ROUTING_CONSTRAINTS;
-  const requiresManualReview = !input.relationshipContext.relationshipKnown;
+  const requiresManualReview = !input.relationshipContext.relationshipKnown
+    || input.relationshipContext.reviewReason !== null;
   const payoutReadinessStatus = requiresManualReview
     ? readinessDbValueForBusinessMeaning(constraintEvidence, "needs_attention")
     : readinessDbValueForBusinessMeaning(constraintEvidence, "eligible");
@@ -216,6 +262,11 @@ export function buildPaymentRoutingRepairPayload(input: {
     membership_id: null,
     routing_model: input.relationshipContext.routingModel,
     payout_recipient_type: input.relationshipContext.payoutRecipientType,
+    shop_barber_relationship_id: input.relationshipContext.relationshipId ?? null,
+    compensation_rule_id: input.relationshipContext.compensationRuleId ?? null,
+    autobooth_percent_snapshot: input.relationshipContext.routingModel === "autobooth_rent"
+      ? input.relationshipContext.autoBoothPercent
+      : null,
     provider_gross_amount: gross,
     refunded_amount: 0,
     provider_fee_amount: 0,
@@ -268,8 +319,8 @@ export function buildFreelancePaymentRoutingRepairPayload(input: {
       payoutRecipientType: "barber",
       barberId: input.appointment.barber_id ?? null,
       shopId: null,
-      barberPercent: null,
-      shopPercent: null,
+      autoBoothPercent: null,
+      outstandingRentCents: null,
       relationshipId: null,
       compensationRuleId: null,
       relationshipKnown: true,
@@ -458,7 +509,7 @@ export async function repairMissingPaymentRouting(
     const rawPayload = isCapturedCancelled
       ? buildCapturedCancelledPaymentRoutingReviewPayload({ appointment, payment, constraintEvidence })
       : buildPaymentRoutingRepairPayload({ appointment, payment, relationshipContext, constraintEvidence });
-    const payload = filterPayloadToColumns(rawPayload, routingColumns);
+    const payload: JsonRecord = filterPayloadToColumns(rawPayload, routingColumns);
     console.info("[architect-repair] payment_routing_repair_started", {
       appointmentId,
       payloadKeys: Object.keys(payload),
@@ -473,7 +524,7 @@ export async function repairMissingPaymentRouting(
       allowedPayoutReadinessStatus: constraintEvidence.allowedValues.payout_readiness_status
     });
 
-    const relinkPayload = routingColumns && !routingColumns.has("created_at")
+    const relinkPayload: JsonRecord = routingColumns && !routingColumns.has("created_at")
       ? payload
       : {
         ...payload,

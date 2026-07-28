@@ -284,7 +284,7 @@ export interface BarberDashboardResponse {
     activeCount: number;
     serviceRevenueToday: number;
     tipsToday: number;
-    commissionToday: number;
+    rentAppliedToday: number;
     projectedPayout: number;
     completedPaidCount: number;
     rentCoverageToday: number;
@@ -885,13 +885,15 @@ export function useCreateOwnerTeamInviteMutation() {
       shopId?: string;
       message?: string;
       proposal?: {
-        routingModel: "commission";
-        barberPercent: number;
-        shopPercent: number;
-      } | {
         routingModel: "booth_rent";
         boothRentAmount: number;
         boothRentFrequency: "daily" | "weekly" | "monthly";
+      } | {
+        routingModel: "autobooth_rent";
+        boothRentAmount: number;
+        boothRentFrequency: "daily" | "weekly" | "monthly";
+        /** Owner-approved portion (0..1) applied toward outstanding rent. */
+        autoBoothPercent: number;
       };
     }) =>
       requestJson<CreateShopTeamInviteResponse>("/api/owner/team/invites", {

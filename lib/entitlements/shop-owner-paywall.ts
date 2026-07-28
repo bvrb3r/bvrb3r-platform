@@ -2,6 +2,7 @@ import type { Route } from "next";
 import type { EntitlementAccessState, EntitlementSnapshot, EntitlementTier, ServerEntitlementTruth } from "@/lib/entitlements/domain";
 import { buildEntitlementSnapshot, checkEntitledFeatureAccess, resolveServerEntitlementForUser } from "@/lib/entitlements/server";
 import type { EntitledFeatureKey } from "@/lib/entitlements/features";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 import type { UserAccount } from "@/types/domain";
 
 export type ShopOwnerPaywallFeatureState =
@@ -124,7 +125,7 @@ const SHOP_OWNER_PLAN_FEATURES: ShopOwnerPaywallFeatureDefinition[] = [
   },
   {
     id: "owner-compensation-advanced",
-    title: "Booth rent and commission controls",
+    title: "Full Booth Rent and AutoBooth Rent controls",
     description: "Reserved for advanced compensation controls after the canonical money rules are ready.",
     requiredTier: "pro",
     featureKey: "shop_owner.money.pro",
@@ -191,7 +192,7 @@ const SHOP_OWNER_GUARDRAILS: ShopOwnerPaywallGuardrail[] = [
   },
   {
     title: "Money stays server-owned",
-    description: "This UI does not calculate owner money, payout readiness, booth rent, commission, or ledger truth."
+    description: "This UI does not calculate owner money, payout readiness, booth rent, or ledger truth."
   },
   {
     title: "Plan management is parked",
@@ -199,8 +200,19 @@ const SHOP_OWNER_GUARDRAILS: ShopOwnerPaywallGuardrail[] = [
   }
 ];
 
-const FORBIDDEN_USER_COPY_PATTERN =
-  /shop_owner_user|client_user|barber_user|guest_user|owner_user|shop_admin|entitlement_status|stripe_customer_id|stripe_subscription_id|account_entitlements|provider_payment_method_id|payment_intent|localStorage|webhook_unverified|server_default|payout_readiness_status|payment_routing_records|relationship_type|booth_rent_barber|commission_barber|freelance_barber/i;
+// Internal identifiers that must never leak into user-facing paywall copy. The
+// retired revenue-share role is included so pre-doctrine tokens are still
+// caught if they resurface in copy.
+const FORBIDDEN_USER_COPY_PATTERN = new RegExp(
+  [
+    "shop_owner_user", "client_user", "barber_user", "guest_user", "owner_user", "shop_admin",
+    "entitlement_status", "stripe_customer_id", "stripe_subscription_id", "account_entitlements",
+    "provider_payment_method_id", "payment_intent", "localStorage", "webhook_unverified",
+    "server_default", "payout_readiness_status", "payment_routing_records", "relationship_type",
+    "booth_rent_barber", RETIRED_REVENUE_SHARE_ACCOUNT_ROLE, "freelance_barber"
+  ].join("|"),
+  "i"
+);
 
 function planLabel(tier: EntitlementTier): ShopOwnerPaywallSummary["currentPlanLabel"] {
   if (tier === "elite") return "Elite";

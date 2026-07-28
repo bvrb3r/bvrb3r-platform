@@ -294,8 +294,8 @@ export function useUpdateMembershipCompensationMutation() {
   return useMutation({
     mutationFn: (input: {
       membershipId: string;
-      routingModel: "freelance" | "commission" | "booth_rent";
-      commissionRate?: number | null;
+      routingModel: "freelance" | "booth_rent" | "autobooth_rent";
+      autoBoothPercent?: number | null;
       boothRentAmount?: number | null;
       boothRentFrequency?: "weekly" | "monthly" | null;
       payoutBlockReason?: string | null;
@@ -304,7 +304,7 @@ export function useUpdateMembershipCompensationMutation() {
         method: "POST",
         body: JSON.stringify({
           routingModel: input.routingModel,
-          commissionRate: input.commissionRate,
+          autoBoothPercent: input.autoBoothPercent,
           boothRentAmount: input.boothRentAmount,
           boothRentFrequency: input.boothRentFrequency,
           payoutBlockReason: input.payoutBlockReason

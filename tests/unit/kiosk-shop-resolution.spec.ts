@@ -139,6 +139,94 @@ describe("shop kiosk resolution", () => {
     expect(shopFilters.join(" ")).not.toContain("shop_username");
   });
 
+  /**
+   * The kiosk front door is public. The queue payload is the only source of
+   * barber identity for a shop kiosk, so these two cases pin the contract at
+   * the seam: a real handle travels through, and its absence produces null —
+   * never the barber's name.
+   */
+  it("propagates a real public handle from the queue payload", async () => {
+    getQueueWorkspacePayloadForShopsMock.mockResolvedValue({
+      summary: { activeCount: 1, calledCount: 0, assignedCount: 0, averageWaitMinutes: 12 },
+      shops: [],
+      barbers: [{
+        id: "barber-marcus",
+        name: "Marcus Fade",
+        publicUsername: "marcusfade",
+        currentShopId: null,
+        currentShopLabel: null,
+        liveStatus: "available" as const,
+        liveStatusLabel: "Available",
+        isOnline: true,
+        acceptsWalkIns: true,
+        nextAvailableAt: "2026-07-28T18:00:00.000Z"
+      }],
+      services: [],
+      entries: [],
+      recentResolvedEntries: []
+    });
+
+    const { getKioskPayload } = await import("@/lib/kiosk/service");
+    const payload = await getKioskPayload("shop-the-bvrb3r-shop-universi-a02c68");
+
+    expect(payload.barbers[0]?.publicUsername).toBe("marcusfade");
+    expect(payload.barbers[0]?.publicUsername).not.toBe("Marcus Fade");
+  });
+
+  it("emits a null handle rather than the real name when no handle is set", async () => {
+    getQueueWorkspacePayloadForShopsMock.mockResolvedValue({
+      summary: { activeCount: 1, calledCount: 0, assignedCount: 0, averageWaitMinutes: 12 },
+      shops: [],
+      barbers: [{
+        id: "barber-nohandle",
+        name: "Phillip McGee",
+        publicUsername: null,
+        currentShopId: null,
+        currentShopLabel: null,
+        liveStatus: "available" as const,
+        liveStatusLabel: "Available",
+        isOnline: true,
+        acceptsWalkIns: true,
+        nextAvailableAt: null
+      }],
+      services: [],
+      entries: [],
+      recentResolvedEntries: []
+    });
+
+    const { getKioskPayload } = await import("@/lib/kiosk/service");
+    const payload = await getKioskPayload("shop-the-bvrb3r-shop-universi-a02c68");
+
+    expect(payload.barbers[0]?.publicUsername).toBeNull();
+  });
+
+  it("rejects an internal reference masquerading as a handle", async () => {
+    getQueueWorkspacePayloadForShopsMock.mockResolvedValue({
+      summary: { activeCount: 0, calledCount: 0, assignedCount: 0, averageWaitMinutes: 0 },
+      shops: [],
+      barbers: [{
+        id: "barber-blaze",
+        name: "Blaze King",
+        publicUsername: "barber-blaze",
+        currentShopId: null,
+        currentShopLabel: null,
+        liveStatus: "available" as const,
+        liveStatusLabel: "Available",
+        isOnline: true,
+        acceptsWalkIns: true,
+        nextAvailableAt: null
+      }],
+      services: [],
+      entries: [],
+      recentResolvedEntries: []
+    });
+
+    const { getKioskPayload } = await import("@/lib/kiosk/service");
+    const payload = await getKioskPayload("shop-the-bvrb3r-shop-universi-a02c68");
+
+    expect(payload.barbers[0]?.publicUsername).toBeNull();
+  });
+
   it("resolves a shop public username with or without @", async () => {
     const { getKioskPayload } = await import("@/lib/kiosk/service");
 

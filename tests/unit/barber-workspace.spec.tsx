@@ -98,7 +98,7 @@ function buildOverview(overrides: Record<string, unknown> = {}) {
       activeCount: 1,
       serviceRevenueToday: 120,
       tipsToday: 18,
-      commissionToday: 60,
+      rentAppliedToday: 60,
       projectedPayout: 60,
       completedPaidCount: 1,
       rentCoverageToday: 0,

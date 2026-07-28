@@ -23,7 +23,7 @@ export type PaymentRoutingConstraintEvidence = {
 const FALLBACK_ALLOWED_VALUES: PaymentRoutingConstraintEvidence["allowedValues"] = {
   payout_readiness_status: ["not_ready", "needs_attention", "ready", "blocked"],
   money_routing_status: ["pending", "ready_for_payout", "blocked", "manual_review", "paid_out", "refunded"],
-  routing_model: ["freelance", "commission", "booth_rent"],
+  routing_model: ["freelance", "booth_rent", "autobooth_rent"],
   payout_recipient_type: ["barber", "shop", "split"],
   reconciliation_status: ["open", "settled", "partially_reversed", "reversed", "manual_review"]
 };

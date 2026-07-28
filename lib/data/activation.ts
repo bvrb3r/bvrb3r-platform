@@ -19,7 +19,7 @@ export const demoVerificationUploads: VerificationUploadRecord[] = [
     storagePath: "verification/barbers/barber-wave/license/wave-license-renewal.pdf",
     secureReference: "secure://verification/barber-wave/license-2026",
     uploadStatus: "submitted",
-    uploadedByRole: "commission_barber",
+    uploadedByRole: "barber_user",
     uploadedAt: "2026-03-08T10:18:00-05:00",
     expiresAt: "2027-06-30T00:00:00-04:00"
   },
@@ -68,7 +68,7 @@ export const demoBoostCampaigns: BoostCampaignRecord[] = [
     dailyBudgetCents: 4800,
     startsAt: "2026-03-08T00:00:00-05:00",
     endsAt: "2026-03-15T23:59:00-04:00",
-    createdByRole: "commission_barber",
+    createdByRole: "barber_user",
     createdById: "barber-wave",
     createdAt: "2026-03-07T19:10:00-05:00"
   },

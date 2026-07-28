@@ -136,7 +136,7 @@ export async function resolveBarberAppointmentActionContext(input: {
     barber,
     appointment,
     providerAppointmentId: appointment.reference_code ?? appointment.id,
-    relationshipType: barber.barber_subtype === "commission" || barber.barber_subtype === "booth_rent"
+    relationshipType: barber.barber_subtype === "autobooth_rent" || barber.barber_subtype === "booth_rent"
       ? barber.barber_subtype
       : "freelance"
   };

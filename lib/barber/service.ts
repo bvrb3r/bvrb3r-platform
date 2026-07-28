@@ -122,7 +122,7 @@ type BarberContext = {
   viewer: ReturnType<typeof assertBarberUser>;
   barber: BarberRow;
   barberReference: string;
-  relationshipType: "freelance" | "booth_rent" | "commission";
+  relationshipType: "freelance" | "booth_rent" | "autobooth_rent";
   locations: LocationRow[];
 };
 
@@ -366,18 +366,14 @@ function resolveBarberRelationshipType(input: {
   if (explicit === "freelance") {
     return "freelance";
   }
-  if (explicit === "commission" || normalized.includes("commission")) {
-    return input.hasShopAssignment ? "commission" : "freelance";
+  if (explicit === "autobooth_rent" || normalized.includes("autobooth")) {
+    return input.hasShopAssignment ? "autobooth_rent" : "freelance";
   }
   if (explicit === "booth_rent" || explicit === "blueprint" || normalized.includes("booth")) {
     return input.hasShopAssignment ? "booth_rent" : "freelance";
   }
-  if (normalized.includes("commission")) {
-    return "commission";
-  }
-  if (normalized.includes("booth")) {
-    return "booth_rent";
-  }
+  // Retired revenue-share values land here and resolve to freelance: the shop
+  // collects nothing until a real rent agreement exists.
   return "freelance";
 }
 

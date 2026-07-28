@@ -9,6 +9,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 import { createMessagingThread, getMessagingInboxPayload, getMessagingThreadPayload } from "@/lib/messages/service";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 type Row = Record<string, unknown>;
 
@@ -551,7 +552,7 @@ describe("messaging create or open conversation", () => {
     expect(supabase.state.inserts.message_threads).toBe(1);
     expect(supabase.state.thread_participants).toEqual(expect.arrayContaining([
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner", thread_role: "owner" }),
-      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-barber", thread_role: "commission_barber" })
+      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-barber", thread_role: RETIRED_REVENUE_SHARE_ACCOUNT_ROLE })
     ]));
     expect(supabase.state.messages).toHaveLength(1);
     expect(supabase.state.message_thread_requests).toEqual(expect.arrayContaining([
@@ -587,7 +588,7 @@ describe("messaging create or open conversation", () => {
     ]));
     expect(supabase.state.thread_participants).toEqual(expect.arrayContaining([
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner", thread_role: "owner" }),
-      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-barber", thread_role: "commission_barber" })
+      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-barber", thread_role: RETIRED_REVENUE_SHARE_ACCOUNT_ROLE })
     ]));
     expect(supabase.state.message_thread_requests).toEqual(expect.arrayContaining([
       expect.objectContaining({

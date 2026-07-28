@@ -9,7 +9,7 @@ BVRB3R Platform is a mobile-first operating system for The BVRB3R Shop(TM) & Co.
 ## Current release goals
 
 - Run daily barbershop operations across multiple locations.
-- Support booth-rent and commission compensation in the same business.
+- Support Full Booth Rent and AutoBooth Rent in the same business. These are the only supported shop-barber financial models.
 - Protect owner-level financial and permissions controls.
 - Create a frictionless booking experience for clients on mobile.
 - Give each role a focused dashboard with only the controls they need.
@@ -51,7 +51,7 @@ The next major expansion layer is the BVRB3R Marketplace: the discovery network 
 - booking engine with appointments, availability, waitlist support, and walk-in operations
 - basic barber operational profiles tied to services, availability, and compensation type
 - owner and manager dashboards with persisted operational analytics
-- payment and compensation rails for deposits, checkout totals, booth-rent visibility, and commission snapshots
+- payment and rent rails for deposits, checkout totals, booth-rent visibility, and AutoBooth rent-application snapshots
 - multi-location basics through locations, staff assignments, and scoped reporting
 
 #### Partially implemented features
@@ -100,7 +100,7 @@ The next major expansion layer is the BVRB3R Marketplace: the discovery network 
 - role-aware dashboards for owner, manager, front desk, barber, and client
 - live appointment board, walk-in queue, check-in, service completion, and checkout flow
 - payment-plus-tip capture flow through the operational lifecycle
-- commission summary and booth-rent ledger visibility
+- AutoBooth rent-application summary and booth-rent ledger visibility
 - persisted workflow events, compensation snapshots, and owner analytics rails
 - owner and manager reporting views backed by persisted operational data
 - Supabase-ready schema, storage bucket config, auth sync trigger, RLS extensions, and realtime publication wiring
@@ -144,7 +144,7 @@ The next major expansion layer is the BVRB3R Marketplace: the discovery network 
 ### Barber
 
 - manages availability, appointments, notes, service execution, rebooking, and personal compensation visibility
-- commission and booth-rent variants remain role-scoped
+- Full Booth Rent and AutoBooth Rent variants remain role-scoped
 
 ### Client
 

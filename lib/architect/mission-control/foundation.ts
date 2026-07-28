@@ -49,6 +49,7 @@ import {
   AUDIT_WRITE_SPINE_SAFE_CATEGORIES,
   buildAuditWriteSpineDryRunProof
 } from "@/lib/architect/audit-write-spine";
+import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 type BooleanCheck = {
   label: string;
@@ -302,7 +303,7 @@ const DEFAULT_ROLE_TRUTH_INVENTORY_ROWS: RoleTruthInventoryRowInput[] = [
     futureParked: false,
     userImpactRisk: "low",
     securityRisk: "low",
-    suggestedMigrationPath: "Keep as canonical public account role; model commission/booth rent through relationship tables.",
+    suggestedMigrationPath: "Keep as canonical public account role; model Full Booth Rent and AutoBooth Rent through relationship tables.",
     rollbackNote: "No migration needed for canonical rows.",
     nextRepairLane: "security",
     evidenceSource: "MASTER_TRUTH_ACCOUNT_ROLES includes barber_user.",
@@ -472,21 +473,21 @@ const DEFAULT_ROLE_TRUTH_INVENTORY_ROWS: RoleTruthInventoryRowInput[] = [
     currentStatus: "Needs Review"
   },
   {
-    id: "role-commission-barber-relationship",
-    currentRoleValue: "commission_barber",
-    normalizedDisplayLabel: "Commission barber relationship",
+    id: "role-retired-revenue-share-relationship",
+    currentRoleValue: RETIRED_REVENUE_SHARE_ACCOUNT_ROLE,
+    normalizedDisplayLabel: "Retired revenue-share relationship",
     canonicalClassification: "business_relationship",
-    expectedCanonicalDestination: "barber_user account role plus commission relationship/service terms",
-    currentUsageLocations: ["lib/auth/roles.ts LEGACY_BARBER_ACCOUNT_ROLES", "supabase/seed.sql user_roles"],
+    expectedCanonicalDestination: "barber_user account role plus a Full Booth Rent or AutoBooth Rent relationship",
+    currentUsageLocations: ["lib/doctrine/legacy-data-aliases.ts", "lib/auth/roles.ts LEGACY_BARBER_ACCOUNT_ROLES"],
     affectedRoleOrLane: "Barber / Finance",
     v1Required: true,
     futureParked: false,
     userImpactRisk: "high",
     securityRisk: "high",
-    suggestedMigrationPath: "Move primary account identity to barber_user and preserve commission terms in shop relationship/money configuration.",
-    rollbackNote: "Rollback primary role separately from commission relationship terms.",
+    suggestedMigrationPath: "Move primary account identity to barber_user. The retired revenue-share terms are not portable: owner and barber must establish a Full Booth Rent or AutoBooth Rent agreement, and the shop collects nothing until they do.",
+    rollbackNote: "Rollback the primary role independently; no revenue-share terms are ever restored.",
     nextRepairLane: "compliance",
-    evidenceSource: "commission_barber is accepted as a legacy barber account role and appears in seed user_roles.",
+    evidenceSource: `${RETIRED_REVENUE_SHARE_ACCOUNT_ROLE} is recognized only as a retired legacy account role so pre-doctrine rows normalize to freelance.`,
     accountRoleMisuse: true
   },
   {
@@ -1902,7 +1903,7 @@ export const ACTION_REGISTRY: ActionRegistryEntry[] = [
   { id: "mutate-role", label: "Mutate role", riskClass: "Unsafe / blocked", department: "Security", description: "Blocked. Shop relationships must not mutate account role identity.", allowed: false, approvalRequired: true, status: "Failed" },
   { id: "delete-appointment", label: "Delete appointment", riskClass: "Unsafe / blocked", department: "Operations", description: "Blocked. Appointment deletion is not a Mission Control repair.", allowed: false, approvalRequired: true, status: "Failed" },
   { id: "change-payment-status", label: "Change payment status without Stripe truth", riskClass: "Unsafe / blocked", department: "Finance", description: "Blocked. Payment status must follow provider truth.", allowed: false, approvalRequired: true, status: "Failed" },
-  { id: "change-money-rules", label: "Change commission or booth-rent rules", riskClass: "Unsafe / blocked", department: "Finance", description: "Blocked. Money-rule mutation is an executive/product change, not a repair.", allowed: false, approvalRequired: true, status: "Failed" },
+  { id: "change-money-rules", label: "Change Full Booth Rent or AutoBooth Rent rules", riskClass: "Unsafe / blocked", department: "Finance", description: "Blocked. Money-rule mutation is an executive/product change, not a repair.", allowed: false, approvalRequired: true, status: "Failed" },
   { id: "change-production-schema", label: "Change production schema", riskClass: "Unsafe / blocked", department: "Technology", description: "Blocked from v1 UI. Schema work requires migration review.", allowed: false, approvalRequired: true, status: "Failed" },
   { id: "accept-shop-relationship-for-barber", label: "Accept shop relationship on behalf of barber", riskClass: "Unsafe / blocked", department: "Operations", description: "Blocked. Barber consent is required for active shop membership.", allowed: false, approvalRequired: true, status: "Failed" }
 ];
@@ -2095,7 +2096,7 @@ export const CODEX_FAILURE_CLASSES: CodexFailureClass[] = [
   failureClass("owner_kpi_mismatch", "Owner KPI mismatch", ["Operations", "Finance"], ["components/operations/owner-team-workspace.tsx", "lib/booking/platform-service.ts"], ["appointments", "shop_barber_relationships", "payment_routing_records"], ["payout release", "Stripe", "appointment completion"], ["owner KPI aggregation test", "pending invite exclusion test"], ["npm run typecheck", "targeted owner tests", "npm run build"]),
   failureClass("payment_routing_missing", "Payment routing missing", ["Finance", "Technology"], ["lib/architect/repairs/payment-routing-repair.ts", "lib/architect/mission-control/schema-constraints.ts", "app/api/architect/repairs/payment-routing/route.ts"], ["appointments", "payments", "payment_routing_records", "appointment_status_history"], ["booking creation", "Stripe booking charge", "payout release", "client discovery"], ["architect routing repair test", "payment routing incident test", "payout completion regression"], ["npm run typecheck", "targeted Architect routing tests", "npm run build"]),
   failureClass("cancelled_captured_refund_unresolved", "Cancelled/captured refund unresolved", ["Finance"], ["components/architect/mission-control/mission-control.tsx", "app/api/payments/[paymentId]/refund/route.ts", "lib/payments/service.ts"], ["appointments", "payments", "refunds", "payment_routing_records", "payout_executions", "audit_logs"], ["raw SQL refund mutation", "direct Stripe calls outside canonical route", "payout release", "appointment lifecycle changes", "role/RLS/migration changes"], ["cancelled captured refund blocker incident test", "controlled refund UI guard test", "payment route refund test"], ["npm run typecheck", "targeted Architect Mission Control tests", "targeted payments route tests", "npm run build"]),
-  failureClass("payout_constraint_mismatch", "Payout constraint mismatch", ["Finance", "Technology"], ["lib/architect/mission-control/schema-constraints.ts", "lib/architect/repairs/payment-routing-repair.ts"], ["payment_routing_records", "information_schema.check_constraints"], ["payout release", "Stripe payment status", "commission/booth-rent rules"], ["schema constraint debug test", "routing repair constraint test"], ["npm run typecheck", "targeted schema constraint tests", "npm run build"]),
+  failureClass("payout_constraint_mismatch", "Payout constraint mismatch", ["Finance", "Technology"], ["lib/architect/mission-control/schema-constraints.ts", "lib/architect/repairs/payment-routing-repair.ts"], ["payment_routing_records", "information_schema.check_constraints"], ["payout release", "Stripe payment status", "Full Booth Rent and AutoBooth Rent rules"], ["schema constraint debug test", "routing repair constraint test"], ["npm run typecheck", "targeted schema constraint tests", "npm run build"]),
   failureClass("deployment_pending_or_failed", "Deployment mismatch", ["Technology"], ["app/api/architect/mission-control/route.ts", "lib/architect/debug/env.ts"], [], ["application feature UX", "database schema", "payment internals"], ["deployment debug test", "Mission Control status test"], ["npm run typecheck", "targeted Architect deployment tests", "npm run build"]),
   failureClass("regression_test_missing", "Regression missing", ["Technology"], ["tests/unit"], [], ["runtime business logic without evidence", "production data"], ["new targeted regression test"], ["npm run typecheck", "targeted regression test", "npm run build"]),
   failureClass("schema_constraint_mismatch", "Schema constraint mismatch", ["Technology", "Finance"], ["lib/architect/mission-control/schema-constraints.ts", "lib/architect/repairs/payment-routing-repair.ts"], ["information_schema.check_constraints", "payment_routing_records"], ["payout release", "production schema drop/recreate", "Stripe truth"], ["schema constraint mismatch packet test", "repair legal value test"], ["npm run typecheck", "targeted Architect schema tests", "npm run build"]),
@@ -4074,7 +4075,7 @@ function buildDepartmentLanes(validators: CoreLoopValidator[], incidents: Archit
       ]),
       evidenceCard("finance-repair-audit-coverage", "Repair audit coverage", "Finance", "Audit", auditEvidence.status, auditEvidence.status === "Pass" ? "Finance repair audit evidence is connected." : "Repair approvals, executions, verification, and score updates require audit evidence before Finance can Pass.", [...auditEvidence.evidence, ...auditPlanEvidence]),
       buildAuditWriteSpineEvidenceCard("Finance"),
-      evidenceCard("finance-future", "Booth rent/commission future readiness", "Finance", "Future Money Models", "Needs Review", "Future money models remain approval-gated.", ["No commission or booth-rent rule mutation."])
+      evidenceCard("finance-future", "Full Booth Rent / AutoBooth Rent future readiness", "Finance", "Future Money Models", "Needs Review", "Future money models remain approval-gated.", ["No booth-rent or AutoBooth rule mutation."])
     ],
     marketing: [
       evidenceCard("marketing-culture-feed", "Culture feed", "Marketing", "Culture", validatorStatus(validators, "culture-feed-proof"), "Culture feed can Pass only from public approved post/read-path evidence.", validatorEvidence(validators, "culture-feed-proof")),

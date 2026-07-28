@@ -16,7 +16,6 @@ import type { Role } from "@/types/domain";
 
 interface ServiceCatalogWorkspaceProps {
   role: Role;
-  barberSubtype?: "freelance" | "booth_rent" | "commission";
   barberId?: string;
 }
 
@@ -54,7 +53,7 @@ function MetricSkeleton() {
   );
 }
 
-export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogWorkspaceProps) {
+export function ServiceCatalogWorkspace({ role }: ServiceCatalogWorkspaceProps) {
   const catalogQuery = useMarketplaceServiceCatalog();
   const createMutation = useCreateMarketplaceServiceMutation();
   const updateMutation = useUpdateMarketplaceServiceMutation();
@@ -72,9 +71,7 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
   });
 
   const isInitialLoading = catalogQuery.isLoading && !catalogQuery.data;
-  const canOwnBarberServices = isBarberAccountRole(role)
-    ? barberSubtype !== "commission"
-    : false;
+  const canOwnBarberServices = isBarberAccountRole(role);
 
   function updateDraft(serviceId: string, field: keyof ServiceDraft, value: string) {
     setDrafts((current) => ({
@@ -140,13 +137,13 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="surface-label">Service ownership engine</p>
-              <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{role === "owner" ? "Control the commission catalog" : canOwnBarberServices ? "Own your chair services" : "Shop-defined services only"}</h3>
+              <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{role === "owner" ? "Control the shop catalog" : canOwnBarberServices ? "Own your chair services" : "Shop-defined services only"}</h3>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
                 {role === "owner"
-                  ? "Owner accounts control shop-defined commission services, pricing, and marketplace presentation across the business."
+                  ? "Owner accounts control shop-defined services, pricing, and marketplace presentation across the business."
                   : canOwnBarberServices
-                    ? "Booth-rent barbers can create and edit their own self-owned services without touching the shop-controlled commission catalog."
-                    : "Commission barbers perform the shop catalog, but service names, pricing, duration, and structure remain owner-controlled."}
+                    ? "Barbers on either rent model can create and edit their own self-owned services without touching the shop-controlled catalog."
+                    : "Shop-defined services stay owner-controlled for names, pricing, duration, and structure."}
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm text-white/68">
@@ -221,7 +218,7 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
             </div>
           ) : (
             <div className="empty-state-panel mt-4 rounded-[24px] p-5 text-sm leading-7 text-white/58">
-              Commission barbers can see how services perform, but only the owner can change shop pricing or rename commission services.
+              Barbers can see how services perform, but only the owner can change shop pricing or rename shop-owned services.
             </div>
           )}
         </Card>
@@ -295,7 +292,7 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="surface-label">Protected catalog visibility</p>
-              <p className="mt-2 text-sm text-white/58">Shop-owned commission services and self-owned booth-rent services are visible here without weakening the permission boundary.</p>
+              <p className="mt-2 text-sm text-white/58">Shop-owned services and self-owned barber services are visible here without weakening the permission boundary.</p>
             </div>
             <LockKeyhole className="h-5 w-5 text-[#d9f985]" />
           </div>

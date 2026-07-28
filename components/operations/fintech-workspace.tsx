@@ -41,8 +41,8 @@ type AccountFormState = {
 };
 
 type MembershipFormState = {
-  routingModel: "freelance" | "commission" | "booth_rent";
-  commissionRate: string;
+  routingModel: "freelance" | "booth_rent" | "autobooth_rent";
+  autoBoothPercent: string;
   boothRentAmount: string;
   boothRentFrequency: "" | "weekly" | "monthly";
   payoutBlockReason: string;
@@ -66,7 +66,7 @@ function createAccountForm(account: FintechManagementPayload["shops"][number] | 
 function createMembershipForm(membership: FintechManagementPayload["memberships"][number]): MembershipFormState {
   return {
     routingModel: membership.routingModel,
-    commissionRate: membership.commissionRate === null ? "" : String(membership.commissionRate),
+    autoBoothPercent: membership.autoBoothPercent === null ? "" : String(membership.autoBoothPercent),
     boothRentAmount: membership.boothRentAmount === null ? "" : String(membership.boothRentAmount),
     boothRentFrequency: membership.boothRentFrequency ?? "",
     payoutBlockReason: membership.payoutBlockReason ?? ""
@@ -205,7 +205,7 @@ export function FintechWorkspace({
       await updateMembershipMutation.mutateAsync({
         membershipId,
         routingModel: form.routingModel,
-        commissionRate: form.commissionRate ? Number(form.commissionRate) : null,
+        autoBoothPercent: form.autoBoothPercent ? Number(form.autoBoothPercent) : null,
         boothRentAmount: form.boothRentAmount ? Number(form.boothRentAmount) : null,
         boothRentFrequency: form.boothRentFrequency || null,
         payoutBlockReason: form.payoutBlockReason || null
@@ -497,10 +497,10 @@ export function FintechWorkspace({
                       <div className="mt-3 grid gap-3 sm:grid-cols-2">
                         <Select value={membershipForm.routingModel} onChange={(event) => setMembershipForms((current) => ({ ...current, [membership.id]: { ...membershipForm, routingModel: event.target.value as MembershipFormState["routingModel"] } }))}>
                           <option value="freelance">Freelance</option>
-                          <option value="commission">Commission</option>
-                          <option value="booth_rent">Booth rent</option>
+                          <option value="autobooth_rent">AutoBooth Rent</option>
+                          <option value="booth_rent">Full Booth Rent</option>
                         </Select>
-                        <Input value={membershipForm.commissionRate} onChange={(event) => setMembershipForms((current) => ({ ...current, [membership.id]: { ...membershipForm, commissionRate: event.target.value } }))} placeholder="Commission rate (0-1)" />
+                        <Input value={membershipForm.autoBoothPercent} onChange={(event) => setMembershipForms((current) => ({ ...current, [membership.id]: { ...membershipForm, autoBoothPercent: event.target.value } }))} placeholder="AutoBooth portion of eligible proceeds (0-1)" />
                         <Input value={membershipForm.boothRentAmount} onChange={(event) => setMembershipForms((current) => ({ ...current, [membership.id]: { ...membershipForm, boothRentAmount: event.target.value } }))} placeholder="Booth-rent amount" />
                         <Select value={membershipForm.boothRentFrequency} onChange={(event) => setMembershipForms((current) => ({ ...current, [membership.id]: { ...membershipForm, boothRentFrequency: event.target.value as MembershipFormState["boothRentFrequency"] } }))}>
                           <option value="">Frequency</option>

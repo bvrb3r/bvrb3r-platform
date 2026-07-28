@@ -30,13 +30,13 @@ export type ShopHoursType = (typeof SHOP_HOURS_TYPE_VALUES)[number];
 export const SHOP_CHAIR_RANGE_VALUES = ["1_3", "4_6", "7_10", "11_plus", "not_sure"] as const;
 export type ShopChairRange = (typeof SHOP_CHAIR_RANGE_VALUES)[number];
 
-export const SHOP_OPERATING_MODEL_VALUES = ["booth_rent", "commission", "mixed", "owner_operated"] as const;
+export const SHOP_OPERATING_MODEL_VALUES = ["booth_rent", "autobooth_rent", "mixed", "owner_operated"] as const;
 export type ShopOperatingModel = (typeof SHOP_OPERATING_MODEL_VALUES)[number];
 
 export const SHOP_BOOKING_MODE_VALUES = ["pick_barber", "next_available", "shop_controlled", "both"] as const;
 export type ShopBookingMode = (typeof SHOP_BOOKING_MODE_VALUES)[number];
 
-export const SHOP_PAYMENT_MODEL_VALUES = ["barber_direct", "commission_bvrb3r_pay", "booth_rent_tracking", "setup_later"] as const;
+export const SHOP_PAYMENT_MODEL_VALUES = ["barber_direct", "autobooth_bvrb3r_pay", "booth_rent_tracking", "setup_later"] as const;
 export type ShopPaymentModel = (typeof SHOP_PAYMENT_MODEL_VALUES)[number];
 
 export const SHOP_POLICY_VALUES = ["standard", "custom", "set_later"] as const;
@@ -120,9 +120,9 @@ export const SHOP_OWNER_ONBOARDING_MORE_METADATA = [
   moreMetadata("Location", "BVRB3R App Settings", "Top ID Card -> Public Profile -> Location"),
   moreMetadata("Hours", "SHOP BUSINESS SETTINGS", "Shop Hours"),
   moreMetadata("Chair Count", "SHOP BUSINESS SETTINGS", "Kiosk Settings"),
-  moreMetadata("Operating Model", "SHOP BUSINESS SETTINGS", "Booth Rent, Commission & Fees"),
+  moreMetadata("Operating Model", "SHOP BUSINESS SETTINGS", "Booth Rent, AutoBooth & Fees"),
   moreMetadata("Booking Mode", "SHOP BUSINESS SETTINGS", "Kiosk Settings"),
-  moreMetadata("Payment Model", "SHOP BUSINESS SETTINGS", "Booth Rent, Commission & Fees"),
+  moreMetadata("Payment Model", "SHOP BUSINESS SETTINGS", "Booth Rent, AutoBooth & Fees"),
   moreMetadata("Owner Payouts", "Payments & Banking", "Stripe Connect / Owner Payouts"),
   moreMetadata("Policies", "SHOP BUSINESS SETTINGS", "Shop Policies"),
   moreMetadata("Invite First Barber", "SHOP BUSINESS SETTINGS", "Team & Roles"),
@@ -138,7 +138,7 @@ export const SHOP_BOOKING_MODE_OPTIONS = [
 
 export const SHOP_PAYMENT_MODEL_OPTIONS = [
   { value: "barber_direct", label: "Barber direct", detail: "Barbers collect directly; owner service-money readiness is not implied." },
-  { value: "commission_bvrb3r_pay", label: "Commission through BVRB3R Pay", detail: "Requires server/provider proof before money readiness can pass." },
+  { value: "autobooth_bvrb3r_pay", label: "AutoBooth Rent through BVRB3R Pay", detail: "Requires server/provider proof before money readiness can pass." },
   { value: "booth_rent_tracking", label: "Booth rent tracking", detail: "Tracks posture only; collection automation is not implied." },
   { value: "setup_later", label: "Set up later", detail: "Continue setup while money readiness stays incomplete." }
 ] as const;
@@ -230,7 +230,7 @@ export function buildShopOwnerOnboardingReadiness(draft: ShopOwnerOnboardingDraf
   const chairCount = typeof draft.estimatedChairCount === "number" ? draft.estimatedChairCount : 0;
   const bookingModeReady = Boolean(draft.bookingMode && canUseShopBookingMode(draft.bookingMode, draft));
   const paymentModelReady = Boolean(draft.paymentModel && draft.paymentModel !== "setup_later");
-  const provider = draft.paymentModel === "commission_bvrb3r_pay" ? "stripe" : draft.paymentModel ? "shop_model_selected" : null;
+  const provider = draft.paymentModel === "autobooth_bvrb3r_pay" ? "stripe" : draft.paymentModel ? "shop_model_selected" : null;
 
   return buildOnboardingReadiness({
     authenticated: draft.authenticated ?? true,

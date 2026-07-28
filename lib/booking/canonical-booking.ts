@@ -191,8 +191,8 @@ type CompensationSnapshotRow = {
   deposit_amount: number | string;
   collected_amount: number | string;
   tip_amount: number | string;
-  commission_rate: number | string | null;
-  commission_amount: number | string;
+  autobooth_percent: number | string | null;
+  autobooth_rent_applied_amount: number | string;
   booth_rent_amount: number | string | null;
   booth_rent_period_label: string | null;
   rent_coverage_amount: number | string | null;
@@ -715,8 +715,8 @@ export async function readCanonicalOperationsSnapshot(supabase: SupabaseClient):
       depositAmount: numeric(row.deposit_amount),
       collectedAmount: numeric(row.collected_amount),
       tipAmount: numeric(row.tip_amount),
-      commissionRate: row.commission_rate === null ? null : numeric(row.commission_rate),
-      commissionAmount: numeric(row.commission_amount),
+      autoBoothPercent: row.autobooth_percent === null ? null : numeric(row.autobooth_percent),
+      autoBoothRentAppliedAmount: numeric(row.autobooth_rent_applied_amount),
       boothRentAmount: row.booth_rent_amount === null ? null : numeric(row.booth_rent_amount),
       boothRentPeriodLabel: row.booth_rent_period_label,
       rentCoverageAmount: row.rent_coverage_amount === null ? null : numeric(row.rent_coverage_amount),

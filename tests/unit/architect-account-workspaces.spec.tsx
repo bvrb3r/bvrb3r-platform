@@ -183,7 +183,7 @@ const detailPayload: ArchitectAccountDetailPayload = {
     barber: {
       id: "barber-1",
       referenceCode: "barber-ref-1",
-      compensationModel: "commission",
+      compensationModel: "autobooth_rent",
       barberSubtype: "solo",
       appApprovalStatus: "pending",
       shopApprovalStatus: "pending",

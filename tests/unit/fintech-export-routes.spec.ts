@@ -43,7 +43,7 @@ describe("fintech export routes", () => {
   it("allows barber-safe payout, incentive, and tax exports but blocks revenue export", async () => {
     getSessionUserMock.mockResolvedValue({
       id: "user-blaze",
-      role: "commission_barber",
+      role: "barber_user",
       email: "blaze@bvrb3r.demo",
       locationIds: ["loc-ybor"]
     });
@@ -64,15 +64,15 @@ describe("fintech export routes", () => {
     expect(revenueResponse.status).toBe(403);
 
     expect(readFintechTaxSummaryExportMock).toHaveBeenCalledWith({
-      user: expect.objectContaining({ role: "commission_barber" }),
+      user: expect.objectContaining({ role: "barber_user" }),
       year: 2025
     });
     expect(readPayoutExportMock).toHaveBeenCalledWith({
-      user: expect.objectContaining({ role: "commission_barber" }),
+      user: expect.objectContaining({ role: "barber_user" }),
       year: 2025
     });
     expect(readIncentivesExportMock).toHaveBeenCalledWith({
-      user: expect.objectContaining({ role: "commission_barber" }),
+      user: expect.objectContaining({ role: "barber_user" }),
       year: 2025
     });
     expect(readRevenueExportMock).not.toHaveBeenCalled();

@@ -1,0 +1,120 @@
+name: V22 package gate
+
+on:
+  pull_request:
+    branches:
+      - release/v22
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v22-package-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Focused, full, security, migration, and build checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Focused PR 18–20 regression tests
+        run: >-
+          npx vitest run
+          tests/unit/architect-routing-repair.spec.ts
+          tests/unit/autobooth-rent-doctrine.spec.ts
+          tests/unit/booking-form.spec.tsx
+          tests/unit/bookings-route.spec.ts
+          tests/unit/client-booking-proof.spec.ts
+          tests/unit/core-booking-loop-regression.spec.ts
+          tests/unit/financial-doctrine-guard.spec.ts
+          tests/unit/guest-entry.spec.tsx
+          tests/unit/homepage-front-door.spec.tsx
+          tests/unit/kiosk-accessibility.spec.tsx
+          tests/unit/kiosk-local-fixture.spec.ts
+          tests/unit/kiosk-locale.spec.ts
+          tests/unit/kiosk-mode-screen.spec.tsx
+          tests/unit/kiosk-page-locale.spec.tsx
+          tests/unit/kiosk-page-routing.spec.tsx
+          tests/unit/kiosk-parity-screen.spec.tsx
+          tests/unit/kiosk-production-safety.spec.tsx
+          tests/unit/kiosk-routes.spec.ts
+          tests/unit/kiosk-service-eligibility.spec.ts
+          tests/unit/kiosk-session-route.spec.ts
+          tests/unit/kiosk-session-service.spec.ts
+          tests/unit/kiosk-settings-ownership.spec.ts
+          tests/unit/kiosk-shop-resolution.spec.ts
+          tests/unit/pr19-identity-audit.spec.ts
+          tests/unit/pr19-identity-authorization-rls.spec.ts
+          tests/unit/pr19-identity-boundary.spec.ts
+          tests/unit/pr19-permissions.spec.ts
+          tests/unit/pr19-role-activation.spec.ts
+          tests/unit/pr20-booking-availability.spec.ts
+          tests/unit/pr20-booking-engine-migration.spec.ts
+          tests/unit/pr20-booking-holds.spec.ts
+          tests/unit/pr20-booking-lifecycle.spec.ts
+          tests/unit/pr20-booking-routes.spec.ts
+          tests/unit/public-booking-entry.spec.tsx
+          tests/unit/runtime-resilience-provider.spec.tsx
+
+      - name: Full test suite
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Financial doctrine guard
+        run: npm run verify:doctrine
+
+      - name: Production dependency security audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Migration and RLS proof checks
+        run: >-
+          npx vitest run
+          tests/unit/pr19-identity-authorization-rls.spec.ts
+          tests/unit/pr20-booking-engine-migration.spec.ts
+
+      - name: Production build
+        run: npm run build
+
+      - name: Repository hygiene
+        run: |
+          git diff --check
+          for proof in \
+            public/.well-known/bvrb3r-barber-completion-proof.json \
+            public/.well-known/bvrb3r-client-booking-proof.json \
+            public/.well-known/bvrb3r-legal-data-rights-proof.json \
+            public/.well-known/bvrb3r-owner-kiosk-proof.json \
+            public/.well-known/bvrb3r-public-conversion-proof.json \
+            public/.well-known/bvrb3r-shop-owner-tier1-proof.json
+          do
+            if git ls-files --error-unmatch "$proof" >/dev/null 2>&1; then
+              echo "Generated certification proof must not be committed: $proof"
+              exit 1
+            fi
+          done

@@ -5,7 +5,7 @@ const values = [
   },
   {
     title: "Money",
-    body: "Payments, payouts, and splits handled for you"
+    body: "Payments, payouts, and booth rent managed in one place"
   },
   {
     title: "Growth",

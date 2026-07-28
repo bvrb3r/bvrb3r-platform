@@ -38,6 +38,59 @@ async function requireSignedInProfileId() {
   return session.user.id;
 }
 
+/**
+ * The caller must own the kiosk target: the shop's owner for shop scope, or
+ * the barber themself for barber scope. Without this, any signed-in account
+ * could overwrite any kiosk PIN via the admin-client upsert.
+ */
+async function assertKioskTargetOwnership(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  scope: KioskSettingsScope,
+  targetReference: string,
+  profileId: string
+) {
+  if (scope === "shop") {
+    const normalized = targetReference.replace(/^@+/, "");
+    const result = await supabase
+      .from("shops")
+      .select("id, owner_profile_id")
+      .or(`id.eq.${targetReference},public_username.ilike.${normalized}`)
+      .maybeSingle();
+
+    if (result.error) {
+      throw new KioskSettingsError("Unable to verify kiosk target ownership.", 500, "ownership_lookup_failed");
+    }
+    if (!result.data) {
+      throw new KioskSettingsError("This shop could not be found.", 404, "target_not_found");
+    }
+    if (String((result.data as { owner_profile_id?: unknown }).owner_profile_id ?? "") !== profileId) {
+      throw new KioskSettingsError("Only the shop owner can change this kiosk PIN.", 403, "not_target_owner");
+    }
+    return;
+  }
+
+  const result = await supabase
+    .from("barbers")
+    .select("id, profile_id")
+    .eq("id", targetReference)
+    .maybeSingle();
+
+  if (result.error) {
+    throw new KioskSettingsError("Unable to verify kiosk target ownership.", 500, "ownership_lookup_failed");
+  }
+  if (!result.data) {
+    // Barber settings fall back to the profile id when no barber row exists
+    // yet; a caller may always manage the kiosk PIN of their own profile.
+    if (targetReference === profileId) {
+      return;
+    }
+    throw new KioskSettingsError("This barber could not be found.", 404, "target_not_found");
+  }
+  if (String((result.data as { profile_id?: unknown }).profile_id ?? "") !== profileId) {
+    throw new KioskSettingsError("Only this barber can change their kiosk PIN.", 403, "not_target_owner");
+  }
+}
+
 export async function saveKioskPin(input: {
   scope: KioskSettingsScope;
   targetReference: string;
@@ -61,6 +114,8 @@ export async function saveKioskPin(input: {
       pinSet: true
     };
   }
+
+  await assertKioskTargetOwnership(supabase, input.scope, targetReference, ownerProfileId);
 
   const result = await supabase
     .from("kiosk_settings")

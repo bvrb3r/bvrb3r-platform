@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 const features = [
   { title: "Booking and waitlist", body: "Mobile-first booking with deposits, add-ons, waitlist enrollment, and frictionless rebooking.", tag: "Client flow" },
   { title: "Front desk speed", body: "Live queue, check-in board, walk-in claim flow, chair assignment, and POS-lite checkout views.", tag: "Ops" },
-  { title: "Dual compensation", body: "Support commission and booth-rent models in the same location with distinct dashboards and reporting.", tag: "Finance" },
+  { title: "Dual rent models", body: "Support Full Booth Rent and AutoBooth Rent in the same location with distinct dashboards and reporting.", tag: "Finance" },
   { title: "Ownership control", body: "Multi-location analytics, audit logs, and permission boundaries that protect core financial settings.", tag: "Governance" },
   { title: "Retention engine", body: "Review triggers, comeback campaigns, birthday offers, and loyalty placeholders scaffolded for launch.", tag: "Growth" },
   { title: "Expansion ready", body: "Architecture prepared for school operations, mobile bus units, franchise oversight, and branded experiences.", tag: "Future" }

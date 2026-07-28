@@ -617,7 +617,7 @@ export function OwnerMoneyWorkspace() {
           </h1>
           <p className="mt-3 text-lg font-medium text-white/68">Revenue & payouts</p>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
-            Platform-collected revenue, payout readiness, and future commission or booth-rent lanes stay separated from Architect payout execution.
+            Platform-collected revenue, payout readiness, and booth-rent lanes stay separated from Architect payout execution.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -676,9 +676,9 @@ export function OwnerMoneyWorkspace() {
           <p className="mt-2 text-sm leading-6 text-white/56">Separate invoices are parked until a proven booth-rent flow exists.</p>
         </div>
         <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Commission</p>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">AutoBooth Rent</p>
           <p className="mt-3 text-lg font-black text-amber-200">Needs implementation</p>
-          <p className="mt-2 text-sm leading-6 text-white/56">Commission display stays read-only until relationship proof is connected.</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">AutoBooth Rent display stays read-only until relationship proof is connected.</p>
         </div>
       </GlassCard>
 
@@ -903,9 +903,9 @@ export function OwnerMoneyWorkspace() {
           </p>
         </GlassCard>
         <GlassCard className="p-5">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Shop split readiness</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">AutoBooth rent readiness</p>
           <p className="mt-3 text-sm leading-6 text-white/58">
-            Commission and shop-owner payout release are future phases. This view shows honest readiness without moving money.
+            AutoBooth rent application and shop-owner payout release are future phases. This view shows honest readiness without moving money.
           </p>
         </GlassCard>
       </section>

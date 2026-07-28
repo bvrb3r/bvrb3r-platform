@@ -126,7 +126,7 @@ function createTables(): Record<string, Row[]> {
       is_bookable: true,
       is_discoverable: true,
       status: "active",
-      commission_rate: null,
+      autobooth_percent: null,
       booth_rent_amount: null,
       booth_rent_frequency: null
     }],
@@ -678,6 +678,45 @@ describe("core booking loop regression", () => {
     expect(Object.keys(completedHistory)).not.toContain("changed_by_profile_id");
     expect(Object.keys(completedHistory)).not.toContain("created_at");
     expect(Object.keys(completedHistory)).not.toContain("reason");
+  });
+
+  it("confirms a guest appointment with its balance due and no payment capture", async () => {
+    const tables = createTables();
+    const supabase = createSupabaseMock(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+    const stripeCreateMock = vi.fn();
+    getStripeConnectClientMock.mockReturnValue({
+      paymentIntents: { create: stripeCreateMock },
+      refunds: { create: vi.fn() }
+    });
+
+    const provider = await getLiveOperationsProvider();
+    const booking = await provider.createBooking({
+      barberId: "barber-43b3cda2",
+      locationId: "independent-barber-43b3cda2",
+      serviceId: SERVICE_REFERENCE,
+      addOnIds: [],
+      appointmentTime: "2026-05-16T16:30:00.000Z",
+      clientName: "Guest Booker",
+      clientPhone: "+18135550199",
+      actorRole: "client",
+      actorEmail: "guest@example.com",
+      deferPaymentCollection: true
+    });
+
+    expect(booking.appointment).toMatchObject({
+      status: "confirmed",
+      depositAmount: 0,
+      balanceDue: 5
+    });
+    expect(tables.appointments[0]).toMatchObject({
+      status: "confirmed",
+      deposit_amount: 0,
+      balance_due: 5
+    });
+    expect(tables.payments).toEqual([]);
+    expect(tables.payment_routing_records).toEqual([]);
+    expect(stripeCreateMock).not.toHaveBeenCalled();
   });
 
   it("repairs missing routing for an already completed appointment without rewriting lifecycle history", async () => {

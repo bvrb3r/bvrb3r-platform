@@ -70,6 +70,26 @@ describe("runtime resilience provider", () => {
   });
 
   it.each([
+    "/booking/new",
+    "/bookings"
+  ])("keeps the public booking route %s available without a false expired-session banner", (pathname) => {
+    usePathnameMock.mockReturnValue(pathname);
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RuntimeResilienceProvider>
+          <div>public booking child</div>
+        </RuntimeResilienceProvider>
+      </QueryClientProvider>
+    );
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Session needs attention/i)).not.toBeInTheDocument();
+    expect(screen.getByText("public booking child")).toBeInTheDocument();
+  });
+
+  it.each([
     ["client@bvrb3r.demo", "/dashboard/client", "Home"],
     ["blaze@bvrb3r.demo", "/dashboard/barber", "Checkout"],
     ["owner@bvrb3r.demo", "/dashboard/owner", "Money"]

@@ -1,12 +1,13 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isBarberAccountRole } from "@/lib/auth/roles";
+import type { RetiredRevenueShareAccountRole } from "@/lib/doctrine/legacy-data-aliases";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
 type BarberRoleLike =
   | "barber_user"
   | "barber"
-  | "commission_barber"
+  | RetiredRevenueShareAccountRole
   | "booth_rent_barber"
   | "freelance_barber";
 

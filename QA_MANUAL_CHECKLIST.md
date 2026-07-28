@@ -26,7 +26,7 @@
 - [ ] Barber can move the same appointment from checked in to in service
 - [ ] Barber can complete the service and the appointment becomes checkout-ready
 - [ ] Front desk can capture remaining payment and tip from the checkout panel
-- [ ] Commission barber view updates payout metrics after checkout
+- [ ] Freelance barber view updates payout metrics after checkout
 - [ ] Booth-rent barber view updates rent-coverage metrics after checkout
 - [ ] Owner dashboard revenue, tips, outstanding balance, and activity feed update after checkout
 - [ ] Workflow persistence status shows `synced` in Supabase mode or `demo` in quick-start mode
@@ -36,7 +36,7 @@
 - [ ] Owner can access dashboards, reports, settings, and multi-location views
 - [ ] Manager can access operational dashboards and reports but not owner-only controls
 - [ ] Front desk can manage appointments and checkout without owner-only financial settings
-- [ ] Commission barber only sees personal schedule and compensation data
+- [ ] Freelance barber only sees personal schedule and own earnings data
 - [ ] Booth-rent barber only sees personal bookings and rent-focused metrics
 - [ ] Client only sees booking and personal dashboard routes
 

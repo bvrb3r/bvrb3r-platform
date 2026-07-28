@@ -176,7 +176,7 @@ describe("phase 13 fintech routes", () => {
 
     const response = await postCompensation(new NextRequest("https://bvrb3r.demo/api/operations/fintech/memberships/mem-1/compensation", {
       method: "POST",
-      body: JSON.stringify({ routingModel: "commission", commissionRate: 0.5 })
+      body: JSON.stringify({ routingModel: "autobooth_rent", autoBoothPercent: 0.5, boothRentAmount: 250, boothRentFrequency: "weekly" })
     }), {
       params: Promise.resolve({ id: "mem-1" })
     });
