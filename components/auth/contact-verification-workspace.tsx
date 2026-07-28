@@ -34,6 +34,10 @@ export function ContactVerificationWorkspace() {
   const [isContinuing, setIsContinuing] = useState(false);
 
   const payload = statusQuery.data;
+  let canonicalNextPath: string | null = null;
+  if (payload?.nextPath != null) {
+    canonicalNextPath = String(payload.nextPath);
+  }
   const resolvedFirstName = firstName || payload?.firstName || "";
   const resolvedLastName = lastName || payload?.lastName || "";
   const resolvedPhone = phone || payload?.phone || "";
@@ -105,17 +109,14 @@ export function ContactVerificationWorkspace() {
       return;
     }
 
-    let nextPath = "/post-auth";
-    if (payload.nextPath != null) {
-      nextPath = String(payload.nextPath);
-    }
+    const nextPath = canonicalNextPath ?? "/post-auth";
     if (nextPath === "/verify-contact") {
       return;
     }
 
     hasForwardedRef.current = true;
     router.replace(nextPath as Route);
-  }, [payload?.canContinue, payload?.nextPath, router]);
+  }, [canonicalNextPath, payload?.canContinue, router]);
 
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
