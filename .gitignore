@@ -13,3 +13,9 @@ dist
 .gradle-user-home
 .vercel
 public/.well-known/bvrb3r-deployment-regression-proof.json
+public/.well-known/bvrb3r-barber-completion-proof.json
+public/.well-known/bvrb3r-client-booking-proof.json
+public/.well-known/bvrb3r-legal-data-rights-proof.json
+public/.well-known/bvrb3r-owner-kiosk-proof.json
+public/.well-known/bvrb3r-public-conversion-proof.json
+public/.well-known/bvrb3r-shop-owner-tier1-proof.json

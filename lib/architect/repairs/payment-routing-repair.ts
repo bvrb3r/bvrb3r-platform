@@ -509,7 +509,7 @@ export async function repairMissingPaymentRouting(
     const rawPayload = isCapturedCancelled
       ? buildCapturedCancelledPaymentRoutingReviewPayload({ appointment, payment, constraintEvidence })
       : buildPaymentRoutingRepairPayload({ appointment, payment, relationshipContext, constraintEvidence });
-    const payload = filterPayloadToColumns(rawPayload, routingColumns);
+    const payload: JsonRecord = filterPayloadToColumns(rawPayload, routingColumns);
     console.info("[architect-repair] payment_routing_repair_started", {
       appointmentId,
       payloadKeys: Object.keys(payload),
@@ -524,7 +524,7 @@ export async function repairMissingPaymentRouting(
       allowedPayoutReadinessStatus: constraintEvidence.allowedValues.payout_readiness_status
     });
 
-    const relinkPayload = routingColumns && !routingColumns.has("created_at")
+    const relinkPayload: JsonRecord = routingColumns && !routingColumns.has("created_at")
       ? payload
       : {
         ...payload,
