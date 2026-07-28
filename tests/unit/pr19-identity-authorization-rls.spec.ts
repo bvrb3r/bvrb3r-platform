@@ -45,9 +45,19 @@ describe("PR 19 migration hygiene", () => {
     expect(MIGRATION_NAME).toMatch(/^\d{14}_pr19_identity_authorization_foundation\.sql$/);
   });
 
-  it("sorts after every pre-existing migration so it applies last", () => {
+  /**
+   * Originally "applies last", which was true when PR 19 was the newest
+   * migration and is no longer the invariant worth holding — later PRs add
+   * migrations that must sort after it. What still has to be true is that PR 19
+   * applies after everything that predates it, because it hardens tables those
+   * migrations created.
+   */
+  it("sorts after every migration that predates it", () => {
     const all = readdirSync(MIGRATION_DIR).filter((name) => name.endsWith(".sql")).sort();
-    expect(all[all.length - 1]).toBe(MIGRATION_NAME);
+    const index = all.indexOf(MIGRATION_NAME);
+
+    expect(index).toBeGreaterThan(0);
+    expect(all[index - 1]).toBe("20260727120100_autobooth_rent_doctrine_lock.sql");
   });
 
   it("leaves no duplicate or leftover draft copy of the same SQL", () => {
