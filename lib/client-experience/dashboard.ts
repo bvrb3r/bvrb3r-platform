@@ -403,6 +403,11 @@ export function buildClientFavoriteCandidates(input: {
 
   for (const suggestion of input.summary.followSuggestions) {
     const existing = candidates.get(suggestion.barberId);
+    let profileHref: Route = "/discover";
+    if (suggestion.username) {
+      profileHref = `/barber/${suggestion.username}` as Route;
+    }
+
     candidates.set(suggestion.barberId, {
       barberId: suggestion.barberId,
       barberName: suggestion.barberName,
@@ -417,12 +422,17 @@ export function buildClientFavoriteCandidates(input: {
         serviceId: input.summary.intelligence.primaryServiceId,
         locationId: input.home.locationId
       }),
-      profileHref: suggestion.username ? (`/barber/${suggestion.username}` as Route) : ("/discover" as Route)
+      profileHref
     });
   }
 
   for (const recommendation of input.summary.recommendedBarbers) {
     const existing = candidates.get(recommendation.barberId);
+    let profileHref: Route = "/discover";
+    if (recommendation.username) {
+      profileHref = `/barber/${recommendation.username}` as Route;
+    }
+
     candidates.set(recommendation.barberId, {
       barberId: recommendation.barberId,
       barberName: recommendation.barberName,
@@ -437,7 +447,7 @@ export function buildClientFavoriteCandidates(input: {
         serviceId: input.summary.intelligence.recommendedServiceId ?? input.summary.intelligence.primaryServiceId,
         locationId: input.summary.intelligence.recommendedLocationId ?? input.home.locationId
       }),
-      profileHref: recommendation.username ? (`/barber/${recommendation.username}` as Route) : ("/discover" as Route)
+      profileHref
     });
   }
 
