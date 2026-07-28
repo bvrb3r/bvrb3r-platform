@@ -34,18 +34,18 @@ role_counts as (
 ),
 role_summary as (
   select
-    count(*)::integer as profile_total,
-    count(*) filter (
+    coalesce(sum(profile_count), 0)::integer as profile_total,
+    coalesce(sum(profile_count) filter (
       where role_value = '<null_or_blank>'
-    )::integer as null_or_blank_count,
-    count(*) filter (
+    ), 0)::integer as null_or_blank_count,
+    coalesce(sum(profile_count) filter (
       where role_value not in (
         'client_user',
         'barber_user',
         'shop_owner_user',
         'platform_admin'
       )
-    )::integer as invalid_role_count,
+    ), 0)::integer as invalid_role_count,
     coalesce(
       jsonb_object_agg(role_value, profile_count order by role_value)
         filter (where role_value is not null),
