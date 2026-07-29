@@ -1167,10 +1167,12 @@ export function BarberSettingsScreen({
       subtitle: "Identity, license, account security, and privacy.",
       roleScope: "barber" as const,
       rows: [
+        { title: "Setup Checklist", subtitle: "Five required go-live gates plus ChairSync, portfolio, and chair QR/NFC", href: "/dashboard/barber/setup", status: "Open checklist", tone: "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Identity Verification", subtitle: "Government ID or driver license proving who owns this account", onClick: () => openBusinessTool("verification"), status: formatStatusLabel(canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)), icon: <Fingerprint className="h-5 w-5" />, testId: "business-tool-verification" },
         { title: "License Verification", subtitle: "Barber license upload, license state, license review, and approval status", onClick: () => openBusinessTool("verification"), icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Password & Login", subtitle: "Password, sign-in method, email login, phone login, and connected access", onClick: () => openBusinessTool("account"), icon: <KeyRound className="h-5 w-5" />, testId: "business-tool-account-login" },
-        { title: "Privacy", subtitle: "Public profile and communication preferences", onClick: () => openBusinessTool("notifications"), icon: <SlidersHorizontal className="h-5 w-5" />, testId: "business-tool-privacy" },
+        { title: "Privacy", subtitle: "Export, deactivate, deletion grace, and communication visibility", href: "/dashboard/account/privacy", icon: <SlidersHorizontal className="h-5 w-5" />, testId: "business-tool-privacy" },
+        { title: "Culture Safety", subtitle: "Reports, blocks, mutes, appeals, and Culture standing", href: "/dashboard/culture/safety", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Account Security", subtitle: "Email verification, phone verification, device/session protection, and account status", onClick: () => openBusinessTool("account"), icon: <Settings2 className="h-5 w-5" />, testId: "business-tool-account" },
         { title: "Legal", subtitle: "Barber terms, platform agreement, payout terms, shop relationship terms, and service policies", onClick: () => openBusinessTool("legal"), icon: <FileText className="h-5 w-5" />, testId: "business-tool-legal" }
       ]

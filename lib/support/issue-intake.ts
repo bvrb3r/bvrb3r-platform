@@ -2,6 +2,7 @@ import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/r
 import { buildPlatformEventIdempotencyKey, recordRequiredPlatformEvent } from "@/lib/core/platform-events";
 import { createMessagingThread, MessagingServiceError, sendThreadMessage } from "@/lib/messages/service";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isDemoMode } from "@/lib/config/runtime";
 import type { UserAccount } from "@/types/domain";
 
 export const SUPPORT_SAFETY_DISCLAIMER = "If someone is in immediate danger, contact local emergency services.";
@@ -49,6 +50,8 @@ export type SupportIssueSubmissionResult = {
   roleScope: SupportIssueRoleScope;
   threadId: string;
   messageId: string;
+  caseId: string;
+  publicReference: string;
   receivedAt: string;
   routeTarget: SupportIssueRouteTarget;
   eventRecorded: true;
@@ -341,6 +344,38 @@ export async function submitSupportIssueIntake(user: UserAccount, input: Support
     idempotencyKey: buildPlatformEventIdempotencyKey(["support_issue_received", messageId])
   });
 
+  const publicReference = `SUP-${messageId.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase() || "RECEIVED"}`;
+  let caseId = `demo-${messageId}`;
+  if (!isDemoMode()) {
+    if (!supabase) {
+      throw new SupportIssueIntakeError(
+        "Support received the conversation, but its ticket could not be opened.",
+        503,
+        "support_case_unavailable"
+      );
+    }
+    const caseResult = await supabase.from("support_cases").insert({
+      reporter_profile_id: user.id,
+      thread_id: threadId,
+      category: parsed.category,
+      severity: parsed.severity,
+      status: "received",
+      public_reference: publicReference,
+      assigned_lane: routeTarget.supportQueue,
+      summary: routeTarget.architectSummary,
+      created_at: receivedAt,
+      updated_at: receivedAt
+    }).select("id").single();
+    if (caseResult.error || !caseResult.data?.id) {
+      throw new SupportIssueIntakeError(
+        "Support received the conversation, but its ticket could not be opened.",
+        503,
+        "support_case_create_failed"
+      );
+    }
+    caseId = caseResult.data.id;
+  }
+
   return {
     status: "received",
     category: parsed.category,
@@ -349,6 +384,8 @@ export async function submitSupportIssueIntake(user: UserAccount, input: Support
     roleScope,
     threadId,
     messageId,
+    caseId,
+    publicReference,
     receivedAt,
     routeTarget,
     eventRecorded: true

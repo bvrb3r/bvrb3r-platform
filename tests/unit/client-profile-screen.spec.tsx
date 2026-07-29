@@ -406,7 +406,7 @@ describe("client profile screen", () => {
     expect(screen.getByRole("link", { name: /Culture Profile Public creator identity, bio, interests, display style, and Culture profile visibility/ })).toHaveAttribute("href", "/dashboard/client/public-profile");
     expect(screen.getByRole("link", { name: /Content Settings Posting defaults, visibility, content categories, comments, sharing, and moderation preferences/ })).toHaveAttribute("href", "/dashboard/client/public-profile");
     expect(screen.getByRole("link", { name: /Performance Posts, views, followers, engagement, shares, profile clicks, and booking influence/ })).toHaveAttribute("href", "/dashboard/client/activity");
-    expect(screen.getByRole("link", { name: /Creator Safety Content rules, strikes, reports, appeal status, and platform standing/ })).toHaveAttribute("href", "/contact");
+    expect(screen.getByRole("link", { name: /Creator Safety Content rules, strikes, reports, appeal status, and platform standing/ })).toHaveAttribute("href", "/dashboard/culture/safety");
     expect(screen.getByText("Creator tools locked")).toBeInTheDocument();
     expect(screen.queryByText("0 posts")).not.toBeInTheDocument();
     expect(screen.queryByText("No violations")).not.toBeInTheDocument();
@@ -428,7 +428,7 @@ describe("client profile screen", () => {
     expect(screen.getByText("Required when this account becomes eligible to receive payouts, such as creator payouts. Not required for normal booking.")).toBeInTheDocument();
     expect(screen.queryByText("License Verification")).not.toBeInTheDocument();
     expect(screen.queryByText("Business Verification")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Privacy Booking data, rewards data/ })).toHaveAttribute("href", "/contact");
+    expect(screen.getByRole("link", { name: /Privacy Export, deactivate, deletion grace, and account visibility/ })).toHaveAttribute("href", "/dashboard/account/privacy");
     expect(screen.getByRole("link", { name: /Help Center Guides and support resources/ })).toHaveAttribute("href", "/contact");
     expect(screen.queryByRole("heading", { name: "Account & Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Booking Activity" })).not.toBeInTheDocument();

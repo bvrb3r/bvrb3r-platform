@@ -876,6 +876,12 @@ export function CulturePostCard({
                     >
                       {loadingAction === "report" ? "Submitting" : "Submit report"}
                     </button>
+                    <Link
+                      href={`/dashboard/culture/safety?targetProfileId=${encodeURIComponent(post.authorProfileId)}&postId=${encodeURIComponent(post.id)}&handle=${encodeURIComponent(post.authorUsername ?? post.authorDisplayName)}` as Route}
+                      className="rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/8 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#C4F24E]"
+                    >
+                      Safety controls
+                    </Link>
                   </div>
                 </div>
               ) : null}
