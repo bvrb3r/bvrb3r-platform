@@ -11,7 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  useKioskAppointmentCheckInMutation,
+  useKioskAppointmentSearchMutation,
   useKioskBookingMutation,
+  useKioskClientBridgeMutation,
   useKioskClientSearchQuery,
   useKioskDeviceState,
   useKioskPayloadQuery,
@@ -19,8 +22,9 @@ import {
   useKioskWaitlistMutation
 } from "@/lib/kiosk/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
+import { sourceBadge } from "@/lib/clientbridge/domain";
 
-type KioskStep = "welcome" | "booking" | "pick_barber" | "walk_in";
+type KioskStep = "welcome" | "booking" | "pick_barber" | "walk_in" | "check_in";
 
 type BookingFormState = {
   fullName: string;
@@ -43,6 +47,15 @@ type WalkInFormState = {
   policyAccepted: boolean;
 };
 
+type CheckInFormState = {
+  kind: "phone" | "email" | "name_time" | "code" | "qr";
+  value: string;
+  appointmentTime: string;
+  contactPhone: string;
+  contactEmail: string;
+  operationalSmsConsent: boolean;
+};
+
 type SuccessState =
   | {
       kind: "booking";
@@ -55,6 +68,16 @@ type SuccessState =
       title: string;
       detail: string;
       helper: string;
+    }
+  | {
+      kind: "check_in";
+      title: string;
+      detail: string;
+      helper: string;
+      waitlistEntryId: string;
+      contactPhone: string;
+      contactEmail: string;
+      bridgeResolved: boolean;
     }
   | null;
 
@@ -98,6 +121,13 @@ function isUnavailableWaitLabel(label?: string) {
   return ["not available today", "schedule ahead only"].includes(label?.toLowerCase() ?? "");
 }
 
+function newQueueRequestKey() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `queue-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function getStepFromMode(mode: string | null): KioskStep {
   if (mode === "booking") {
     return "booking";
@@ -110,6 +140,9 @@ function getStepFromMode(mode: string | null): KioskStep {
   if (mode === "walk-in" || mode === "walk_in") {
     return "walk_in";
   }
+  if (mode === "check-in" || mode === "check_in") {
+    return "check_in";
+  }
 
   return "welcome";
 }
@@ -120,6 +153,9 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
   const kioskQuery = useKioskPayloadQuery(shopId, scope);
   const bookingMutation = useKioskBookingMutation(shopId, scope);
   const waitlistMutation = useKioskWaitlistMutation(shopId);
+  const appointmentSearchMutation = useKioskAppointmentSearchMutation(shopId);
+  const appointmentCheckInMutation = useKioskAppointmentCheckInMutation(shopId);
+  const clientBridgeMutation = useKioskClientBridgeMutation(shopId);
   const verifyPinMutation = useVerifyKioskPinMutation();
   const kioskDevice = useKioskDeviceState();
   const mode = searchParams.get("mode");
@@ -153,15 +189,33 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     serviceId: "",
     policyAccepted: false
   });
+  const walkInRequestRef = useRef<{ payload: string; key: string } | null>(null);
+  const checkInRequestRef = useRef<{ payload: string; key: string } | null>(null);
+  const [checkInForm, setCheckInForm] = useState<CheckInFormState>({
+    kind: "phone",
+    value: "",
+    appointmentTime: "",
+    contactPhone: "",
+    contactEmail: "",
+    operationalSmsConsent: false
+  });
   const [bookingForm, setBookingForm] = useState<BookingFormState>(bookingFormRef.current);
   const [walkInForm, setWalkInForm] = useState<WalkInFormState>(walkInFormRef.current);
   const clientSearchQuery = useKioskClientSearchQuery(bookingForm.publicUsername);
 
   const payload = kioskQuery.data;
-  const formError = bookingMutation.error || waitlistMutation.error;
+  const formError = bookingMutation.error
+    || waitlistMutation.error
+    || appointmentSearchMutation.error
+    || appointmentCheckInMutation.error
+    || clientBridgeMutation.error;
   const autoResetSeconds = Math.min(8, Math.max(payload?.defaults.autoResetSeconds ?? 7, 5));
   const inactivityResetSeconds = Math.min(90, Math.max(payload?.defaults.inactivityResetSeconds ?? 75, 60));
-  const isSubmitting = bookingMutation.isPending || waitlistMutation.isPending;
+  const isSubmitting = bookingMutation.isPending
+    || waitlistMutation.isPending
+    || appointmentSearchMutation.isPending
+    || appointmentCheckInMutation.isPending
+    || clientBridgeMutation.isPending;
   const hasServiceOptions = Boolean(payload?.services.length);
   const eligibleWalkInBarbers = useMemo(
     () => (payload?.barbers ?? []).filter((barber) => barber.acceptsWalkIns && !isUnavailableWaitLabel(barber.waitDisplayLabel)),
@@ -217,39 +271,17 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
       setCountdown(null);
       return;
     }
+    if (success.kind === "check_in" && !success.bridgeResolved) {
+      setCountdown(null);
+      return;
+    }
 
     setCountdown(autoResetSeconds);
     const intervalId = window.setInterval(() => {
       setCountdown((current) => {
         if (current === null || current <= 1) {
           window.clearInterval(intervalId);
-          setSuccess(null);
-          setStep("welcome");
-          const defaultServiceId = payload?.services[0]?.id ?? "";
-          const nextBookingForm = {
-            fullName: "",
-            phone: "",
-            email: "",
-            publicUsername: "",
-            selectedProfileId: "",
-            serviceId: defaultServiceId,
-            preferredBarberId: "",
-            kioskAction: "book_next_opening" as const,
-            scheduledAt: "",
-            policyAccepted: false
-          };
-          const nextWalkInForm = {
-            fullName: "",
-            phone: "",
-            email: "",
-            serviceId: defaultServiceId,
-            policyAccepted: false
-          };
-          bookingFormRef.current = nextBookingForm;
-          walkInFormRef.current = nextWalkInForm;
-          setBookingForm(nextBookingForm);
-          setWalkInForm(nextWalkInForm);
-          router.replace((scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/shop/${shopId}`) as Route);
+          resetToWelcomeRef.current();
           return null;
         }
 
@@ -260,7 +292,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [autoResetSeconds, payload?.services, router, scope, shopId, success]);
+  }, [autoResetSeconds, success]);
 
   function resetFormsToDefaults() {
     const defaultServiceId = payload?.services[0]?.id ?? "";
@@ -287,6 +319,19 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     walkInFormRef.current = nextWalkInForm;
     setBookingForm(nextBookingForm);
     setWalkInForm(nextWalkInForm);
+    walkInRequestRef.current = null;
+    checkInRequestRef.current = null;
+    setCheckInForm({
+      kind: "phone",
+      value: "",
+      appointmentTime: "",
+      contactPhone: "",
+      contactEmail: "",
+      operationalSmsConsent: false
+    });
+    appointmentSearchMutation.reset();
+    appointmentCheckInMutation.reset();
+    clientBridgeMutation.reset();
   }
 
   const queueLabel = useMemo(() => {
@@ -481,11 +526,22 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     }
 
     setInteractionError(null);
+    const requestPayload = JSON.stringify({
+      fullName: walkInForm.fullName.trim(),
+      phone: walkInForm.phone.replace(/\D/g, ""),
+      email: walkInForm.email.trim().toLowerCase(),
+      serviceId: walkInForm.serviceId
+    });
+    if (walkInRequestRef.current?.payload !== requestPayload) {
+      walkInRequestRef.current = { payload: requestPayload, key: newQueueRequestKey() };
+    }
     const result = await waitlistMutation.mutateAsync({
       fullName: walkInForm.fullName.trim(),
       phone: walkInForm.phone.trim(),
       email: walkInForm.email.trim() || undefined,
-      serviceId: walkInForm.serviceId || undefined
+      serviceId: walkInForm.serviceId || undefined,
+      idempotencyKey: walkInRequestRef.current.key,
+      operationalSmsConsent: true
     });
 
     walkInFormRef.current = {
@@ -497,13 +553,116 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
       policyAccepted: false
     };
     setWalkInForm(walkInFormRef.current);
+    walkInRequestRef.current = null;
     setSuccess({
       kind: "walk_in",
       title: `You are #${result.queuePosition} in line`,
       detail: result.bestBarberName
         ? `${result.bestBarberName} is the current best eligible chair.`
         : "The shop will route you using the current walk-in queue.",
-      helper: `Estimated wait ${result.estimatedWaitMinutes} minutes. Queue position came from the server.`
+      helper: `${result.duplicate ? "Your existing live spot was kept — no duplicate was created. " : ""}Estimated wait ${result.estimatedWaitMinutes} minutes. ${result.waitReason ?? "Queue position came from the server."}${result.queueStatusUrl ? ` Private status: ${result.queueStatusUrl}` : " Ask the front desk to resend the existing private status link."}`
+    });
+  }
+
+  async function handleAppointmentSearch() {
+    if (checkInForm.value.trim().length < 2) {
+      setInteractionError("Enter the appointment phone, email, code, QR value, or name plus time.");
+      return;
+    }
+    if (checkInForm.kind === "name_time" && !checkInForm.appointmentTime) {
+      setInteractionError("Name lookup requires the appointment time too. A name alone is never enough.");
+      return;
+    }
+    setInteractionError(null);
+    await appointmentSearchMutation.mutateAsync({
+      kind: checkInForm.kind,
+      value: checkInForm.value.trim(),
+      appointmentTime: checkInForm.kind === "name_time"
+        ? new Date(checkInForm.appointmentTime).toISOString()
+        : undefined
+    });
+  }
+
+  async function handleAppointmentCheckIn(appointment: {
+    id: string;
+    sourceProvider: "bvrb3r" | "booksy" | "square" | "thecut";
+    paymentOwner: string;
+    serviceName: string;
+    barberLabel: string;
+  }) {
+    if (!checkInForm.operationalSmsConsent) {
+      setInteractionError("Choose whether this visit may use operational queue texts before check-in.");
+      return;
+    }
+    const checkInPayload = JSON.stringify({
+      appointmentId: appointment.id,
+      sourceProvider: appointment.sourceProvider,
+      contactPhone: checkInForm.contactPhone.trim(),
+      contactEmail: checkInForm.contactEmail.trim().toLowerCase(),
+      searchKind: checkInForm.kind,
+      searchValue: checkInForm.kind === "phone" || checkInForm.kind === "email"
+        ? checkInForm.value.trim().toLowerCase()
+        : ""
+    });
+    if (checkInRequestRef.current?.payload !== checkInPayload) {
+      checkInRequestRef.current = { payload: checkInPayload, key: newQueueRequestKey() };
+    }
+    setInteractionError(null);
+    const result = await appointmentCheckInMutation.mutateAsync({
+      appointmentId: appointment.id,
+      sourceProvider: appointment.sourceProvider,
+      idempotencyKey: checkInRequestRef.current.key,
+      operationalSmsConsent: true,
+      contactPhone: checkInForm.contactPhone.trim() || (
+        checkInForm.kind === "phone" ? checkInForm.value.trim() : undefined
+      ),
+      contactEmail: checkInForm.contactEmail.trim() || (
+        checkInForm.kind === "email" ? checkInForm.value.trim() : undefined
+      )
+    });
+    setSuccess({
+      kind: "check_in",
+      title: result.duplicate ? "Already checked in" : "Check-in complete",
+      detail: `${sourceBadge(result.sourceProvider)} · ${appointment.serviceName} with ${appointment.barberLabel}`,
+      helper: `${result.queue.position === null ? "Position syncing" : `Position ${result.queue.position}`} · ${result.queue.estimatedWaitMinutes === null ? "wait calculating" : `~${result.queue.estimatedWaitMinutes} min`} · payment ${result.paymentOwner.startsWith("external:") ? `stays with ${sourceBadge(result.sourceProvider)}` : "owner disclosed"}.`,
+      waitlistEntryId: result.queue.id,
+      contactPhone: checkInForm.contactPhone.trim() || (
+        checkInForm.kind === "phone" ? checkInForm.value.trim() : ""
+      ),
+      contactEmail: checkInForm.contactEmail.trim() || (
+        checkInForm.kind === "email" ? checkInForm.value.trim() : ""
+      ),
+      bridgeResolved: result.sourceProvider === "bvrb3r"
+    });
+  }
+
+  async function handleClientBridgeChoice(join: boolean) {
+    if (!success || success.kind !== "check_in") return;
+    if (!join) {
+      setSuccess({ ...success, title: "Guest check-in complete", helper: `${success.helper} No account was created.`, bridgeResolved: true });
+      return;
+    }
+    const contactChannel = success.contactPhone ? "sms" : success.contactEmail ? "email" : null;
+    const contactValue = success.contactPhone || success.contactEmail;
+    if (!contactChannel || !contactValue) {
+      setInteractionError("Add a phone or email before requesting the optional account link.");
+      return;
+    }
+    setInteractionError(null);
+    const invitation = await clientBridgeMutation.mutateAsync({
+      waitlistEntryId: success.waitlistEntryId,
+      contactChannel,
+      contactValue,
+      consentGranted: true
+    });
+    const invitationCopy = invitation.status === "suppressed"
+      ? `Invitation suppressed: ${invitation.suppressionReason?.replaceAll("_", " ") ?? "not eligible"}.`
+      : "Invitation queued for delivery. Check-in was already complete.";
+    setSuccess({
+      ...success,
+      title: invitation.status === "suppressed" ? "Guest check-in complete" : "Invitation queued",
+      helper: `${success.helper} ${invitationCopy}`,
+      bridgeResolved: true
     });
   }
 
@@ -601,17 +760,35 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
 
           {success ? (
             <div className="mt-8 rounded-[30px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-6 text-center">
-              <p className="surface-label text-[#e4f9b8]">{success.kind === "booking" ? "Booking confirmed" : "Walk-in saved"}</p>
+              <p className="surface-label text-[#e4f9b8]">
+                {success.kind === "booking" ? "Booking confirmed" : success.kind === "check_in" ? "Appointment check-in" : "Walk-in saved"}
+              </p>
               <h2 className="mt-3 wrap-safe text-3xl font-semibold text-white">{success.title}</h2>
               <p className="mt-4 wrap-safe text-base leading-8 text-white/70">{success.detail}</p>
               <p className="mt-2 wrap-safe text-sm text-white/54">{success.helper}</p>
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[11px] uppercase tracking-[0.22em] text-white/50">
-                <TimerReset className="h-4 w-4 text-[#e4f9b8]" />
-                Returning to welcome screen {countdown ? `in ${countdown}s` : "now"}
-              </div>
-              <div className="mt-6">
-                <Button variant="secondary" onClick={resetToWelcome}>Done</Button>
-              </div>
+              {success.kind === "check_in" && !success.bridgeResolved ? (
+                <div className="mt-6">
+                  <p className="text-sm leading-7 text-white/62">Joining BVRB3R is optional. Your appointment and queue spot are already confirmed.</p>
+                  <div className="mt-4 flex flex-wrap justify-center gap-2">
+                    <Button disabled={clientBridgeMutation.isPending} onClick={() => void handleClientBridgeChoice(true)}>
+                      {clientBridgeMutation.isPending ? "Queuing invitation…" : "Join BVRB3R"}
+                    </Button>
+                    <Button variant="secondary" disabled={clientBridgeMutation.isPending} onClick={() => void handleClientBridgeChoice(false)}>
+                      Continue as guest
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[11px] uppercase tracking-[0.22em] text-white/50">
+                    <TimerReset className="h-4 w-4 text-[#e4f9b8]" />
+                    Returning to welcome screen {countdown ? `in ${countdown}s` : "now"}
+                  </div>
+                  <div className="mt-6">
+                    <Button variant="secondary" onClick={resetToWelcome}>Done</Button>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <>
@@ -670,6 +847,18 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                       ) : null}
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
+                      {scope === "shop" ? (
+                        <button
+                          type="button"
+                          onClick={() => openStep("check_in")}
+                          className="rounded-[32px] border border-[#D9B461]/24 bg-[linear-gradient(135deg,rgba(217,180,97,0.10),rgba(10,10,10,0.96))] p-6 text-left transition hover:-translate-y-0.5 hover:border-[#D9B461]/40"
+                          style={{ pointerEvents: "auto" }}
+                        >
+                          <p className="surface-label text-[#D9B461]">Appointment check-in</p>
+                          <h2 className="mt-3 wrap-safe text-3xl font-semibold">I already have a booking</h2>
+                          <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Find BVRB3R, Booksy, Square, or theCut. External payment stays private at its provider.</p>
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => {
@@ -710,8 +899,135 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                     <p className="mt-4 wrap-safe text-sm leading-7 text-white/62">
                       Need help? Ask the barber or front desk.
                     </p>
+                    {scope === "shop" ? (
+                      <Button className="mt-5" variant="secondary" onClick={() => openStep("check_in")}>
+                        Check in an existing appointment
+                      </Button>
+                    ) : null}
                   </div>
                 )
+              ) : null}
+
+              {step === "check_in" ? (
+                <div className="mt-8 space-y-5">
+                  <div className="rounded-[26px] border border-[#D9B461]/20 bg-[#D9B461]/8 p-5">
+                    <p className="surface-label text-[#D9B461]">ChairSync check-in</p>
+                    <h2 className="mt-3 wrap-safe text-3xl font-semibold">Find your appointment</h2>
+                    <p className="mt-3 text-sm leading-7 text-white/62">Search across BVRB3R, Booksy, Square, and theCut. Results stay masked until you choose yours; a name is never accepted without the appointment time.</p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-[0.7fr_1.3fr]">
+                    <Select
+                      value={checkInForm.kind}
+                      onChange={(event) => {
+                        appointmentSearchMutation.reset();
+                        setCheckInForm((current) => ({ ...current, kind: event.target.value as CheckInFormState["kind"], value: "" }));
+                      }}
+                    >
+                      <option value="phone">Phone</option>
+                      <option value="email">Email</option>
+                      <option value="code">Confirmation code</option>
+                      <option value="qr">Booking QR value</option>
+                      <option value="name_time">Name + appointment time</option>
+                    </Select>
+                    <Input
+                      value={checkInForm.value}
+                      onChange={(event) => {
+                        appointmentSearchMutation.reset();
+                        setCheckInForm((current) => ({ ...current, value: event.target.value }));
+                      }}
+                      placeholder={checkInForm.kind === "phone"
+                        ? "(813) 555-0101"
+                        : checkInForm.kind === "email"
+                          ? "name@example.com"
+                          : checkInForm.kind === "name_time"
+                            ? "Jordan"
+                            : "Confirmation or QR value"}
+                    />
+                  </div>
+                  {checkInForm.kind === "name_time" ? (
+                    <div>
+                      <label className="mb-3 block surface-label">Approximate appointment time</label>
+                      <Input
+                        type="datetime-local"
+                        value={checkInForm.appointmentTime}
+                        onChange={(event) => {
+                          appointmentSearchMutation.reset();
+                          setCheckInForm((current) => ({ ...current, appointmentTime: event.target.value }));
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button disabled={appointmentSearchMutation.isPending} onClick={() => void handleAppointmentSearch()}>
+                      {appointmentSearchMutation.isPending ? "Searching securely…" : "Find appointment"}
+                    </Button>
+                    <Button variant="secondary" disabled={isSubmitting} onClick={resetToWelcome}>Cancel and privacy reset</Button>
+                  </div>
+
+                  {appointmentSearchMutation.data ? (
+                    appointmentSearchMutation.data.results.length ? (
+                      <div className="space-y-3">
+                        <p className="surface-label">Masked results</p>
+                        {appointmentSearchMutation.data.results.map((appointment) => (
+                          <div key={`${appointment.sourceProvider}-${appointment.id}`} className="rounded-[26px] border border-white/8 bg-black/20 p-5">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-full border border-[#D9B461]/25 px-3 py-1.5 text-[10px] font-black tracking-[0.18em] text-[#D9B461]">{appointment.sourceBadge}</span>
+                                  {appointment.externalFinancialDataPrivate ? <span className="rounded-full border border-white/10 px-3 py-1.5 text-[10px] font-black tracking-[0.14em] text-white/45">READ-ONLY</span> : null}
+                                </div>
+                                <h3 className="mt-3 text-2xl font-semibold">{appointment.clientLabel}</h3>
+                                <p className="mt-2 text-sm text-white/62">{new Date(appointment.startsAt).toLocaleString()} · {appointment.serviceName} · {appointment.barberLabel}</p>
+                                <p className="mt-2 text-xs uppercase tracking-[0.16em] text-white/42">
+                                  {appointment.externalFinancialDataPrivate
+                                    ? `Payment managed by ${appointment.sourceBadge} · no external amount enters BVRB3R`
+                                    : `Payment owner: ${appointment.paymentOwner.replaceAll("_", " ")}`}
+                                </p>
+                              </div>
+                              <span className="status-pill text-[#e4f9b8]">{appointment.checkedIn ? "Already checked in" : appointment.status.replaceAll("_", " ")}</span>
+                            </div>
+
+                            {!appointment.checkedIn && !["canceled", "cancelled"].includes(appointment.status) ? (
+                              <div className="mt-5 space-y-3">
+                                {appointment.providerDataRestricted || checkInForm.kind !== "phone" ? (
+                                  <Input
+                                    inputMode="tel"
+                                    placeholder="Phone for this visit’s queue updates"
+                                    value={checkInForm.contactPhone}
+                                    onChange={(event) => setCheckInForm((current) => ({ ...current, contactPhone: event.target.value }))}
+                                  />
+                                ) : null}
+                                <label className="flex items-start gap-3 rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/62">
+                                  <input
+                                    type="checkbox"
+                                    className="mt-1 h-4 w-4 accent-[#C4F24E]"
+                                    checked={checkInForm.operationalSmsConsent}
+                                    onChange={(event) => setCheckInForm((current) => ({ ...current, operationalSmsConsent: event.target.checked }))}
+                                    aria-label="Consent to operational appointment queue texts"
+                                  />
+                                  <span>OK to text “you’re up” for this visit only. This is operational consent, never marketing consent.</span>
+                                </label>
+                                <Button
+                                  disabled={appointmentCheckInMutation.isPending || !checkInForm.operationalSmsConsent}
+                                  onClick={() => void handleAppointmentCheckIn(appointment)}
+                                >
+                                  {appointmentCheckInMutation.isPending ? "Confirming on the server…" : "Check in"}
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-[26px] border border-amber-300/18 bg-amber-300/8 p-5">
+                        <p className="surface-label text-amber-100/80">Not found</p>
+                        <h3 className="mt-3 text-2xl font-semibold">We couldn’t find that booking.</h3>
+                        <p className="mt-3 text-sm leading-7 text-white/62">Try another verified field, or ask the front desk. No queue entry was created.</p>
+                      </div>
+                    )
+                  ) : null}
+                </div>
               ) : null}
 
               {step === "pick_barber" ? (

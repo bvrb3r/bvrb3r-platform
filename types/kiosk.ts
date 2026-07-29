@@ -87,6 +87,8 @@ export interface KioskWaitlistInput {
   phone: string;
   email?: string;
   serviceId?: string;
+  idempotencyKey: string;
+  operationalSmsConsent?: boolean;
 }
 
 export interface KioskBookingResult {
@@ -122,4 +124,8 @@ export interface KioskWaitlistResult {
   bestBarberName?: string;
   bestBarberStatusLabel?: string;
   shopLabel: string;
+  duplicate: boolean;
+  lastSyncedAt: string;
+  waitReason?: string;
+  queueStatusUrl?: string;
 }

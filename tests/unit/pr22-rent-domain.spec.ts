@@ -133,8 +133,8 @@ describe("PR22 operational and release gates", () => {
     });
   });
 
-  it("defines honest client copy for all eight queue states", () => {
-    expect(Object.keys(PUBLIC_QUEUE_STATE_COPY)).toHaveLength(8);
+  it("defines honest client copy for every canonical queue state", () => {
+    expect(Object.keys(PUBLIC_QUEUE_STATE_COPY)).toHaveLength(11);
     expect(PUBLIC_QUEUE_STATE_COPY.reassigned.detail).toMatch(/price/i);
     expect(PUBLIC_QUEUE_STATE_COPY.canceled.detail).toMatch(/No queue payment/i);
   });

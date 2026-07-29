@@ -10,6 +10,9 @@ const {
   useKioskBookingMutationMock,
   useVerifyKioskPinMutationMock,
   useKioskWaitlistMutationMock,
+  useKioskAppointmentSearchMutationMock,
+  useKioskAppointmentCheckInMutationMock,
+  useKioskClientBridgeMutationMock,
   useKioskDeviceStateMock
 } = vi.hoisted(() => ({
   pushMock: vi.fn(),
@@ -20,6 +23,9 @@ const {
   useKioskBookingMutationMock: vi.fn(),
   useVerifyKioskPinMutationMock: vi.fn(),
   useKioskWaitlistMutationMock: vi.fn(),
+  useKioskAppointmentSearchMutationMock: vi.fn(),
+  useKioskAppointmentCheckInMutationMock: vi.fn(),
+  useKioskClientBridgeMutationMock: vi.fn(),
   useKioskDeviceStateMock: vi.fn()
 }));
 
@@ -37,6 +43,9 @@ vi.mock("@/lib/kiosk/client", () => ({
   useKioskBookingMutation: useKioskBookingMutationMock,
   useVerifyKioskPinMutation: useVerifyKioskPinMutationMock,
   useKioskWaitlistMutation: useKioskWaitlistMutationMock,
+  useKioskAppointmentSearchMutation: useKioskAppointmentSearchMutationMock,
+  useKioskAppointmentCheckInMutation: useKioskAppointmentCheckInMutationMock,
+  useKioskClientBridgeMutation: useKioskClientBridgeMutationMock,
   useKioskDeviceState: useKioskDeviceStateMock
 }));
 
@@ -60,6 +69,9 @@ describe("kiosk mode screen", () => {
     useKioskBookingMutationMock.mockReset();
     useVerifyKioskPinMutationMock.mockReset();
     useKioskWaitlistMutationMock.mockReset();
+    useKioskAppointmentSearchMutationMock.mockReset();
+    useKioskAppointmentCheckInMutationMock.mockReset();
+    useKioskClientBridgeMutationMock.mockReset();
     useKioskDeviceStateMock.mockReset();
 
     useKioskPayloadQueryMock.mockReturnValue({
@@ -113,7 +125,27 @@ describe("kiosk mode screen", () => {
     useKioskWaitlistMutationMock.mockReturnValue({
       isPending: false,
       error: null,
-      mutateAsync: vi.fn()
+      mutateAsync: vi.fn(),
+      reset: vi.fn()
+    });
+    useKioskAppointmentSearchMutationMock.mockReturnValue({
+      isPending: false,
+      error: null,
+      data: undefined,
+      mutateAsync: vi.fn(),
+      reset: vi.fn()
+    });
+    useKioskAppointmentCheckInMutationMock.mockReturnValue({
+      isPending: false,
+      error: null,
+      mutateAsync: vi.fn(),
+      reset: vi.fn()
+    });
+    useKioskClientBridgeMutationMock.mockReturnValue({
+      isPending: false,
+      error: null,
+      mutateAsync: vi.fn(),
+      reset: vi.fn()
     });
     useKioskDeviceStateMock.mockReturnValue({
       state: {},

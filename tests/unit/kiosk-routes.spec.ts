@@ -369,7 +369,8 @@ describe("kiosk routes", () => {
       method: "POST",
       body: JSON.stringify({
         fullName: "Jordan Ellis",
-        phone: "8135550101"
+        phone: "8135550101",
+        idempotencyKey: "kiosk-waitlist-jordan-ellis"
       })
     }), {
       params: Promise.resolve({ shopId: "loc-ybor" })

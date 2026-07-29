@@ -9,7 +9,9 @@ const kioskWaitlistSchema = z.object({
   fullName: z.string().trim().min(2),
   phone: z.string().trim().min(7),
   email: z.string().trim().email().optional().or(z.literal("")),
-  serviceId: z.string().trim().optional()
+  serviceId: z.string().trim().optional(),
+  idempotencyKey: z.string().trim().min(8).max(200),
+  operationalSmsConsent: z.boolean().optional()
 });
 
 function toErrorResponse(error: unknown, fallback: string) {

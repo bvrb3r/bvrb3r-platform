@@ -512,15 +512,21 @@ export async function updateShopSetupGate(input: {
 }
 
 export type PublicQueueStatusView = {
+  queueId: string;
   queueReference: string;
   state: PublicQueueState;
   position: number | null;
   estimatedWaitMinutes: number | null;
+  waitReason: string | null;
+  waitVersion: number;
   readyGraceExpiresAt: string | null;
   shopName: string;
+  sourceProvider: "bvrb3r" | "booksy" | "square" | "thecut";
+  paymentOwner: "bvrb3r_card" | "bvrb3r_cash" | "unpaid_manual" | "external:booksy" | "external:square" | "external:thecut";
+  assignmentLocked: boolean;
   reassignedBarberLabel: string | null;
-  reassignedPrice: number | null;
   activationOffered: boolean;
+  lastSyncedAt: string;
   updatedAt: string;
   copy: (typeof PUBLIC_QUEUE_STATE_COPY)[PublicQueueState];
 };
@@ -533,7 +539,7 @@ export async function getPublicQueueStatus(token: string): Promise<PublicQueueSt
   if (!supabase) {
     throw new RentServiceError("Queue status is temporarily unavailable.", 503);
   }
-  const { data, error } = await supabase.rpc("pr22_get_public_queue_status", {
+  const { data, error } = await supabase.rpc("pr23_get_public_queue_status", {
     p_token: token
   });
   if (error) {
@@ -541,15 +547,21 @@ export async function getPublicQueueStatus(token: string): Promise<PublicQueueSt
     throw new RentServiceError("Unable to load this queue status.", 500, error.code);
   }
   const row = (Array.isArray(data) ? data[0] : data) as {
+    queue_id: string;
     queue_reference: string;
     queue_state: PublicQueueState;
     position: number | null;
     estimated_wait_minutes: number | null;
+    wait_reason: string | null;
+    wait_version: number;
     ready_grace_expires_at: string | null;
     shop_name: string;
+    source_provider: PublicQueueStatusView["sourceProvider"];
+    payment_owner: PublicQueueStatusView["paymentOwner"];
+    assignment_locked: boolean;
     reassigned_barber_label: string | null;
-    reassigned_price: number | null;
     activation_offered: boolean;
+    last_synced_at: string;
     updated_at: string;
   } | null;
   if (!row || !(row.queue_state in PUBLIC_QUEUE_STATE_COPY)) {
@@ -557,17 +569,58 @@ export async function getPublicQueueStatus(token: string): Promise<PublicQueueSt
   }
 
   return {
+    queueId: row.queue_id,
     queueReference: row.queue_reference,
     state: row.queue_state,
     position: row.position,
     estimatedWaitMinutes: row.estimated_wait_minutes,
+    waitReason: row.wait_reason,
+    waitVersion: row.wait_version,
     readyGraceExpiresAt: row.ready_grace_expires_at,
     shopName: row.shop_name,
+    sourceProvider: row.source_provider,
+    paymentOwner: row.payment_owner,
+    assignmentLocked: row.assignment_locked,
     reassignedBarberLabel: row.reassigned_barber_label,
-    reassignedPrice: row.reassigned_price,
     activationOffered: row.activation_offered,
+    lastSyncedAt: row.last_synced_at,
     updatedAt: row.updated_at,
     copy: PUBLIC_QUEUE_STATE_COPY[row.queue_state]
+  };
+}
+
+export async function rejoinPublicQueue(token: string, idempotencyKey: string) {
+  if (!/^[a-f0-9]{32,128}$/i.test(token) || idempotencyKey.length < 8 || idempotencyKey.length > 200) {
+    throw new RentServiceError("This rejoin request is invalid.", 400);
+  }
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new RentServiceError("Queue rejoin is temporarily unavailable.", 503);
+  }
+  const { data, error } = await supabase.rpc("pr23_rejoin_public_queue", {
+    p_token: token,
+    p_idempotency_key: idempotencyKey
+  });
+  if (error) {
+    const status = error.code === "P0002" ? 404 : error.code === "23514" ? 409 : 500;
+    throw new RentServiceError(
+      status === 409 ? "Only a missed or canceled queue visit can rejoin." : "Unable to rejoin the queue.",
+      status,
+      error.code
+    );
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    waitlist_entry_id: string;
+    public_token: string;
+    duplicate: boolean;
+  } | null;
+  if (!row?.public_token) {
+    throw new RentServiceError("The queue rejoin completed without a readable status link.", 500);
+  }
+  return {
+    entryId: row.waitlist_entry_id,
+    token: row.public_token,
+    duplicate: row.duplicate
   };
 }
 

@@ -327,25 +327,6 @@ async function resolveFastestBookableSlot(input: {
   return candidate;
 }
 
-function estimateWaitMinutes(input: {
-  position: number;
-  averageWaitMinutes: number;
-  bestAvailableAt?: string | null;
-}) {
-  if (input.bestAvailableAt) {
-    const delta = Math.round((new Date(input.bestAvailableAt).getTime() - Date.now()) / 60_000);
-    if (delta > 0) {
-      return delta;
-    }
-  }
-
-  if (input.averageWaitMinutes > 0) {
-    return input.averageWaitMinutes;
-  }
-
-  return Math.max(10, input.position * 10);
-}
-
 export async function getKioskPayload(shopId: string): Promise<KioskPayload> {
   const target = await resolveShopKioskTarget(shopId);
   await assertKioskEnabled(target.platformControlReference);
@@ -476,6 +457,8 @@ export async function createKioskWaitlist(input: {
   phone: string;
   email?: string;
   serviceId?: string;
+  idempotencyKey: string;
+  operationalSmsConsent?: boolean;
 }): Promise<KioskWaitlistResult> {
   const target = await resolveShopKioskTarget(input.shopId);
   await assertKioskEnabled(target.platformControlReference);
@@ -486,23 +469,34 @@ export async function createKioskWaitlist(input: {
       clientEmail: input.email,
       shopId: target.queueShopReference,
       serviceId: input.serviceId,
-      queueSource: "kiosk"
+      queueSource: "kiosk",
+      idempotencyKey: input.idempotencyKey,
+      entryType: "walkin",
+      sourceProvider: "bvrb3r",
+      paymentOwner: "bvrb3r_cash",
+      operationalSmsConsent: input.operationalSmsConsent ?? false
     });
-    const payload = await getQueueWorkspacePayloadForShops([target.queueShopReference]);
-    const position = payload.entries.findIndex((entry) => entry.id === result.entry.id) + 1;
+    const position = result.entry.position;
+    const estimatedWaitMinutes = result.entry.estimatedWaitMinutes;
+    if (position === null || estimatedWaitMinutes === null) {
+      throw new KioskServiceError(
+        "Your queue record was saved, but its live position is still syncing. Show the front desk this entry reference.",
+        503
+      );
+    }
 
     return {
       entryId: result.entry.id,
-      queuePosition: Math.max(position, 1),
+      queuePosition: position,
       statusLabel: result.entry.statusLabel,
-      estimatedWaitMinutes: estimateWaitMinutes({
-        position: Math.max(position, 1),
-        averageWaitMinutes: payload.summary.averageWaitMinutes,
-        bestAvailableAt: result.entry.bestAvailableBarber?.nextAvailableAt
-      }),
+      estimatedWaitMinutes,
       bestBarberName: result.entry.bestAvailableBarber?.barberName,
       bestBarberStatusLabel: result.entry.bestAvailableBarber?.liveStatusLabel,
-      shopLabel: result.entry.shopLabel
+      shopLabel: result.entry.shopLabel,
+      duplicate: result.duplicate,
+      lastSyncedAt: result.entry.lastSyncedAt,
+      waitReason: result.entry.waitReason,
+      queueStatusUrl: result.publicQueueToken ? `/queue/${result.publicQueueToken}` : undefined
     };
   } catch (error) {
     if (error instanceof QueueServiceError) {

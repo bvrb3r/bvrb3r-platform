@@ -43,9 +43,12 @@ export const PUBLIC_QUEUE_STATES = [
   "waiting",
   "almost_ready",
   "ready",
+  "grace",
+  "behind",
   "delayed",
   "reassigned",
   "missed",
+  "rejoin",
   "canceled",
   "done"
 ] as const;
@@ -71,6 +74,16 @@ export const PUBLIC_QUEUE_STATE_COPY: Record<
     title: "Your chair is ready.",
     detail: "Head to the shop now. Your ready window has started."
   },
+  grace: {
+    eyebrow: "Chair ready",
+    title: "Come on up.",
+    detail: "Your grace window is counting down. Head to the chair area now."
+  },
+  behind: {
+    eyebrow: "Running behind",
+    title: "Your place is unchanged.",
+    detail: "The floor updated your wait from the real service schedule. The reason is shown below."
+  },
   delayed: {
     eyebrow: "Delay",
     title: "The floor is running behind.",
@@ -85,6 +98,11 @@ export const PUBLIC_QUEUE_STATE_COPY: Record<
     eyebrow: "Missed",
     title: "Your ready window ended.",
     detail: "Contact the shop to ask whether your spot can be restored."
+  },
+  rejoin: {
+    eyebrow: "Back in line",
+    title: "Your new spot is confirmed.",
+    detail: "This is a new queue visit linked to the one you missed or canceled."
   },
   canceled: {
     eyebrow: "Canceled",

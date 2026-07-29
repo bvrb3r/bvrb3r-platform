@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { findCanonicalBookableSlot } from "@/lib/booking/intelligence";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
@@ -14,7 +14,6 @@ import {
 import { formatLiveStatusLabel } from "@/lib/barber/domain";
 import {
   assertQueueStatusTransition,
-  computeQueueWaitMinutes,
   getQueueStatusLabel,
   normalizeQueueCreateInput,
   pickBestQueueBarber,
@@ -26,6 +25,11 @@ import {
 } from "@/lib/queue/domain";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isBarberAccountRole, isShopOwnerRole } from "@/lib/auth/roles";
+import {
+  resolveQueueAssignmentLock,
+  type BookingSourceProvider,
+  type PaymentOwner
+} from "@/lib/clientbridge/domain";
 import type { UserAccount } from "@/types/domain";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -62,6 +66,8 @@ type ServiceRow = {
   category: string;
   /** `numeric(10,2)` — Supabase returns it as a number or a numeric string. */
   price: number | string | null;
+  duration_min: number;
+  buffer_min: number | null;
   location_id: string;
   barber_reference: string | null;
   shop_reference: string | null;
@@ -101,6 +107,23 @@ type QueueRow = {
   preferred_end_time: string | null;
   flexibility_minutes: number | null;
   queue_source: QueueSource | null;
+  idempotency_key: string | null;
+  idempotency_payload_hash: string | null;
+  entry_type: "booked" | "walkin";
+  source_provider: BookingSourceProvider;
+  payment_owner: PaymentOwner;
+  assignment_locked: boolean;
+  canonical_position: number | null;
+  estimated_wait_minutes: number | null;
+  wait_reason: string | null;
+  wait_version: number;
+  public_queue_state: "waiting" | "almost_ready" | "ready" | "grace" | "behind" | "delayed" | "reassigned" | "missed" | "rejoin" | "canceled" | "done";
+  ready_grace_expires_at: string | null;
+  last_synced_at: string;
+  chairsync_appointment_id: string | null;
+  source_service_name: string | null;
+  operational_sms_consent: boolean;
+  rejoin_of_entry_id: string | null;
   notes: string | null;
   status_reason: string | null;
   status: QueueStatus;
@@ -131,6 +154,9 @@ type QueueActorContext = QueueScopeContext & {
   profile: ProfileRow;
 };
 
+const QUEUE_ROW_SELECT = "id, location_id, shop_id, client_id, service_id, barber_id, barber_preference, preferred_date, preferred_start_time, preferred_end_time, flexibility_minutes, queue_source, idempotency_key, idempotency_payload_hash, entry_type, source_provider, payment_owner, assignment_locked, canonical_position, estimated_wait_minutes, wait_reason, wait_version, public_queue_state, ready_grace_expires_at, last_synced_at, chairsync_appointment_id, source_service_name, operational_sms_consent, rejoin_of_entry_id, notes, status_reason, status, created_at, called_at, assigned_at, converted_appointment_id, converted_at, completed_at, cancelled_at, created_by, updated_at";
+const QUEUE_SERVICE_SELECT = "id, reference_code, name, category, price, duration_min, buffer_min, location_id, barber_reference, shop_reference";
+
 export type QueueBarberOptionView = {
   id: string;
   /** Real name — internal operator surfaces only. */
@@ -160,6 +186,8 @@ export type QueueServiceOptionView = {
    * the row carries no price — callers must render the absence, never a zero.
    */
   priceCents: number | null;
+  durationMinutes: number;
+  bufferMinutes: number;
   /** Null for a shop-wide service every chair offers. */
   barberReference: string | null;
 };
@@ -194,6 +222,21 @@ export type QueueEntryView = {
   preferredEndTime?: string;
   flexibilityMinutes: number;
   queueSource: QueueSource;
+  entryType: "booked" | "walkin";
+  sourceProvider: BookingSourceProvider;
+  paymentOwner: PaymentOwner;
+  assignmentLocked: boolean;
+  reassignable: boolean;
+  position: number | null;
+  estimatedWaitMinutes: number | null;
+  waitReason?: string;
+  waitVersion: number;
+  publicState: QueueRow["public_queue_state"];
+  readyGraceExpiresAt?: string;
+  lastSyncedAt: string;
+  chairsyncAppointmentId?: string;
+  operationalSmsConsent: boolean;
+  rejoinOfEntryId?: string;
   status: QueueStatus;
   statusLabel: string;
   statusReason?: string;
@@ -270,6 +313,21 @@ function queueGuestEmail(clientName: string, clientPhone: string, providedEmail?
   const normalizedPhone = normalizePhone(clientPhone) || randomUUID().slice(0, 8);
   const slug = clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "guest";
   return `${slug}-${normalizedPhone}@guest.bvrb3r.local`;
+}
+
+function queueIdempotencyPayloadHash(input: {
+  locationId: string;
+  clientPhone: string;
+  serviceId: string | null;
+  preferredBarberId: string | null;
+  entryType: "booked" | "walkin";
+  sourceProvider: BookingSourceProvider;
+  paymentOwner: PaymentOwner;
+  chairsyncAppointmentId: string | null;
+}) {
+  return createHash("sha256")
+    .update(JSON.stringify(input))
+    .digest("hex");
 }
 
 function toQueueScope(scopedLocations: LocationRow[]): QueueScopeContext {
@@ -381,7 +439,7 @@ async function resolveServiceByReference(supabase: SupabaseClient, serviceRefere
   const serviceUuid = canonicalServiceUuid(serviceReference);
   const result = await supabase
     .from("services")
-    .select("id, reference_code, name, category, price, location_id, barber_reference, shop_reference")
+    .select(QUEUE_SERVICE_SELECT)
     .or(`reference_code.eq.${serviceReference},id.eq.${serviceUuid}`)
     .maybeSingle();
 
@@ -551,13 +609,13 @@ async function loadScopedQueueDependencies(
       ? supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("id", scopedLocationIds)
       : supabase.from("locations").select("id, reference_code, name, neighborhood, city, state"),
     scopedLocationIds.length
-      ? supabase.from("waitlist_entries").select("id, location_id, shop_id, client_id, service_id, barber_id, barber_preference, preferred_date, preferred_start_time, preferred_end_time, flexibility_minutes, queue_source, notes, status_reason, status, created_at, called_at, assigned_at, converted_appointment_id, converted_at, completed_at, cancelled_at, created_by, updated_at").in("shop_id", scopedLocationIds).order("created_at", { ascending: true }).limit(80)
-      : supabase.from("waitlist_entries").select("id, location_id, shop_id, client_id, service_id, barber_id, barber_preference, preferred_date, preferred_start_time, preferred_end_time, flexibility_minutes, queue_source, notes, status_reason, status, created_at, called_at, assigned_at, converted_appointment_id, converted_at, completed_at, cancelled_at, created_by, updated_at").order("created_at", { ascending: true }).limit(80),
+      ? supabase.from("waitlist_entries").select(QUEUE_ROW_SELECT).in("shop_id", scopedLocationIds).order("created_at", { ascending: true }).limit(80)
+      : supabase.from("waitlist_entries").select(QUEUE_ROW_SELECT).order("created_at", { ascending: true }).limit(80),
     supabase.from("barbers").select("id, reference_code, profile_id"),
     supabase.from("profiles").select("id, email, full_name, public_username, phone, role"),
     scopedLocationIds.length
-      ? supabase.from("services").select("id, reference_code, name, category, price, location_id, barber_reference, shop_reference").in("location_id", scopedLocationIds)
-      : supabase.from("services").select("id, reference_code, name, category, price, location_id, barber_reference, shop_reference"),
+      ? supabase.from("services").select(QUEUE_SERVICE_SELECT).in("location_id", scopedLocationIds)
+      : supabase.from("services").select(QUEUE_SERVICE_SELECT),
     scopedLocationIds.length
       ? supabase.from("staff_locations").select("location_id, profile_id").in("location_id", scopedLocationIds)
       : supabase.from("staff_locations").select("location_id, profile_id"),
@@ -660,6 +718,8 @@ async function loadScopedQueueDependencies(
         category: service.category,
         shopId: shopReference,
         priceCents: Number.isFinite(rawPrice) && rawPrice > 0 ? Math.round(rawPrice * 100) : null,
+        durationMinutes: Math.max(1, Math.round(service.duration_min)),
+        bufferMinutes: Math.max(0, Math.round(service.buffer_min ?? 0)),
         barberReference: service.barber_reference ?? null
       } satisfies QueueServiceOptionView;
     })
@@ -726,6 +786,10 @@ function mapQueueRowToView(
   const assignedBarberReference = queueRow.barber_id ? dependencies.barberById.get(queueRow.barber_id)?.reference_code ?? queueRow.barber_id : undefined;
   const preferredBarberReference = queueRow.barber_preference ? dependencies.barberById.get(queueRow.barber_preference)?.reference_code ?? queueRow.barber_preference : undefined;
   const bestAvailableBarber = pickBestQueueBarber(buildQueueBarberCandidates(queueRow, dependencies, shopReference));
+  const ownership = resolveQueueAssignmentLock({
+    entryType: queueRow.entry_type,
+    paymentOwner: queueRow.payment_owner
+  });
 
   return {
     id: queueRow.id,
@@ -736,7 +800,7 @@ function mapQueueRowToView(
     shopId: shopReference,
     shopLabel: shop ? formatShopLabel(shop) : shopReference,
     serviceId: service?.reference_code ?? service?.id ?? undefined,
-    serviceName: service?.name ?? "Service to be selected",
+    serviceName: service?.name ?? queueRow.source_service_name ?? "Service to be selected",
     preferredBarberId: preferredBarberReference,
     preferredBarberName: preferredBarberReference ? dependencies.barberOptions.find((barber) => barber.id === preferredBarberReference)?.name : undefined,
     assignedBarberId: assignedBarberReference,
@@ -752,6 +816,21 @@ function mapQueueRowToView(
     preferredEndTime: queueRow.preferred_end_time ?? undefined,
     flexibilityMinutes: queueRow.flexibility_minutes ?? 0,
     queueSource: queueRow.queue_source ?? "walk_in",
+    entryType: queueRow.entry_type,
+    sourceProvider: queueRow.source_provider,
+    paymentOwner: queueRow.payment_owner,
+    assignmentLocked: queueRow.assignment_locked,
+    reassignable: ownership.reassignable,
+    position: queueRow.canonical_position,
+    estimatedWaitMinutes: queueRow.estimated_wait_minutes,
+    waitReason: queueRow.wait_reason ?? undefined,
+    waitVersion: queueRow.wait_version,
+    publicState: queueRow.public_queue_state,
+    readyGraceExpiresAt: queueRow.ready_grace_expires_at ?? undefined,
+    lastSyncedAt: queueRow.last_synced_at,
+    chairsyncAppointmentId: queueRow.chairsync_appointment_id ?? undefined,
+    operationalSmsConsent: queueRow.operational_sms_consent,
+    rejoinOfEntryId: queueRow.rejoin_of_entry_id ?? undefined,
     status: queueRow.status,
     statusLabel: getQueueStatusLabel(queueRow.status),
     statusReason: queueRow.status_reason ?? undefined,
@@ -760,14 +839,14 @@ function mapQueueRowToView(
     calledAt: queueRow.called_at ?? undefined,
     assignedAt: queueRow.assigned_at ?? undefined,
     convertedAppointmentId: queueRow.converted_appointment_id ? dependencies.appointmentReferenceById.get(queueRow.converted_appointment_id) ?? queueRow.converted_appointment_id : undefined,
-    waitMinutes: computeQueueWaitMinutes(queueRow.created_at)
+    waitMinutes: queueRow.estimated_wait_minutes ?? 0
   };
 }
 
 async function loadQueueRowOrThrow(supabase: SupabaseClient, entryId: string) {
   const result = await supabase
     .from("waitlist_entries")
-    .select("id, location_id, shop_id, client_id, service_id, barber_id, barber_preference, preferred_date, preferred_start_time, preferred_end_time, flexibility_minutes, queue_source, notes, status_reason, status, created_at, called_at, assigned_at, converted_appointment_id, converted_at, completed_at, cancelled_at, created_by, updated_at")
+    .select(QUEUE_ROW_SELECT)
     .eq("id", entryId)
     .maybeSingle();
 
@@ -816,7 +895,7 @@ async function getQueuePayloadInternal(scope: QueueScopeContext, supabase: Supab
       activeCount: entries.filter((entry) => entry.status === "active").length,
       calledCount: entries.filter((entry) => entry.status === "called").length,
       assignedCount: entries.filter((entry) => entry.status === "assigned").length,
-      averageWaitMinutes: entries.length ? Math.round(entries.reduce((sum, entry) => sum + entry.waitMinutes, 0) / entries.length) : 0
+      averageWaitMinutes: entries.length ? Math.round(entries.reduce((sum, entry) => sum + (entry.estimatedWaitMinutes ?? 0), 0) / entries.length) : 0
     },
     shops: scope.scopedLocations.map((location) => ({
       id: location.reference_code ?? location.id,
@@ -860,12 +939,76 @@ async function createQueueEntryInternal(
     }
   }
 
+  const idempotencyPayloadHash = normalized.idempotencyKey
+    ? queueIdempotencyPayloadHash({
+      locationId: location.id,
+      clientPhone: normalized.clientPhone,
+      serviceId: service?.id ?? null,
+      preferredBarberId: preferredBarber?.id ?? null,
+      entryType: normalized.entryType,
+      sourceProvider: normalized.sourceProvider,
+      paymentOwner: normalized.paymentOwner,
+      chairsyncAppointmentId: normalized.chairsyncAppointmentId ?? null
+    })
+    : null;
+  const publicQueueToken = normalized.idempotencyKey
+    ? createHash("sha256").update(`${normalized.idempotencyKey}:public-queue-token`).digest("hex")
+    : createHash("sha256").update(`${randomUUID()}:${Date.now()}`).digest("hex");
+  const publicQueueTokenHash = createHash("sha256").update(publicQueueToken).digest("hex");
+
+  if (normalized.idempotencyKey) {
+    const existingIdempotencyResult = await supabase
+      .from("waitlist_entries")
+      .select("id, idempotency_payload_hash")
+      .eq("location_id", location.id)
+      .eq("idempotency_key", normalized.idempotencyKey)
+      .maybeSingle();
+
+    if (existingIdempotencyResult.error) {
+      throw new QueueServiceError("Unable to verify this queue request safely.", 500);
+    }
+    if (existingIdempotencyResult.data) {
+      if (existingIdempotencyResult.data.idempotency_payload_hash !== idempotencyPayloadHash) {
+        throw new QueueServiceError("This queue request key was already used for a different entry.", 422);
+      }
+      const existingEntryId = existingIdempotencyResult.data.id;
+      const payload = await getQueuePayloadInternal(scope, supabase);
+      const entry = [...payload.entries, ...payload.recentResolvedEntries]
+        .find((candidate) => candidate.id === existingEntryId);
+      if (!entry) {
+        throw new QueueServiceError("The existing queue entry could not be read back.", 500);
+      }
+      return { entry, duplicate: true, publicQueueToken };
+    }
+  }
+
   const client = await resolveOrCreateQueueClient(supabase, {
     clientName: normalized.clientName,
     clientPhone: normalized.clientPhone,
     clientEmail: normalized.clientEmail,
     preferredBarberId: preferredBarber?.reference_code ?? preferredBarber?.id
   });
+
+  const existingLiveResult = await supabase
+    .from("waitlist_entries")
+    .select("id")
+    .eq("location_id", location.id)
+    .eq("client_id", client.clientId)
+    .in("status", ["active", "called", "assigned"])
+    .limit(1)
+    .maybeSingle();
+  if (existingLiveResult.error) {
+    throw new QueueServiceError("Unable to verify whether this client is already in line.", 500);
+  }
+  if (existingLiveResult.data) {
+    const existingEntryId = existingLiveResult.data.id;
+    const payload = await getQueuePayloadInternal(scope, supabase);
+    const entry = payload.entries.find((candidate) => candidate.id === existingEntryId);
+    if (!entry) {
+      throw new QueueServiceError("The existing live queue entry could not be read back.", 500);
+    }
+    return { entry, duplicate: true, publicQueueToken: null };
+  }
 
   const now = new Date().toISOString();
   const insertResult = await supabase
@@ -875,17 +1018,35 @@ async function createQueueEntryInternal(
       shop_id: location.id,
       client_id: client.clientId,
       service_id: service?.id ?? null,
-      barber_id: null,
+      barber_id: normalized.entryType === "booked" ? preferredBarber?.id ?? null : null,
       barber_preference: preferredBarber?.id ?? null,
+      requested_date: normalized.preferredDate ?? now.slice(0, 10),
       preferred_date: normalized.preferredDate ?? now.slice(0, 10),
       preferred_start_time: normalized.preferredStartTime ?? null,
       preferred_end_time: normalized.preferredEndTime ?? null,
       flexibility_minutes: normalized.flexibilityMinutes,
       queue_source: normalized.queueSource,
+      idempotency_key: normalized.idempotencyKey ?? null,
+      idempotency_payload_hash: idempotencyPayloadHash,
+      entry_type: normalized.entryType,
+      source_provider: normalized.sourceProvider,
+      payment_owner: normalized.paymentOwner,
+      public_token_hash: publicQueueTokenHash,
+      chairsync_appointment_id: normalized.chairsyncAppointmentId
+        ? normalized.chairsyncAppointmentId
+        : null,
+      source_service_name: normalized.sourceServiceName ?? null,
+      operational_sms_consent: normalized.operationalSmsConsent ?? false,
+      rejoin_of_entry_id: normalized.rejoinOfEntryId ?? null,
       notes: normalized.notes ?? null,
       status_reason: null,
-      status: "active",
+      status: normalized.entryType === "booked" && preferredBarber ? "assigned" : "active",
+      assigned_at: normalized.entryType === "booked" && preferredBarber ? now : null,
       created_by: options.createdByProfileId ?? null,
+      last_mutated_by: options.createdByProfileId ?? null,
+      last_mutation_reason: normalized.rejoinOfEntryId
+        ? "Client rejoined after a missed or canceled queue visit"
+        : "Queue entry created after server confirmation",
       created_at: now,
       updated_at: now
     })
@@ -902,7 +1063,7 @@ async function createQueueEntryInternal(
     throw new QueueServiceError("The queue entry was created but could not be read back.", 500);
   }
 
-  return { entry };
+  return { entry, duplicate: false, publicQueueToken };
 }
 
 export async function getQueueWorkspacePayload(user: UserAccount) {
@@ -976,7 +1137,10 @@ export async function callQueueEntry(user: UserAccount, entryId: string) {
     .from("waitlist_entries")
     .update({
       status: "called",
+      public_queue_state: "almost_ready",
       called_at: now,
+      last_mutated_by: actor.profile.id,
+      last_mutation_reason: "Client marked almost ready by the shop floor",
       updated_at: now
     })
     .eq("id", entryId);
@@ -1034,7 +1198,11 @@ export async function assignQueueEntry(
     .update({
       barber_id: barber.id,
       status: "assigned",
+      public_queue_state: "ready",
+      ready_grace_expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
       assigned_at: now,
+      last_mutated_by: actor.profile.id,
+      last_mutation_reason: "Chair assigned and client marked ready",
       updated_at: now
     })
     .eq("id", input.entryId);
@@ -1153,9 +1321,12 @@ export async function convertQueueEntry(
       barber_id: barber.id,
       service_id: service.id,
       status: "converted",
+      public_queue_state: "done",
       converted_appointment_id: canonicalAppointmentUuid(bookingResult.appointment.id),
       converted_at: now,
       completed_at: now,
+      last_mutated_by: actor.profile.id,
+      last_mutation_reason: "Queue visit converted into a canonical appointment",
       updated_at: now
     })
     .eq("id", input.entryId);
@@ -1198,8 +1369,11 @@ export async function cancelQueueEntry(
     .from("waitlist_entries")
     .update({
       status: "cancelled",
+      public_queue_state: "canceled",
       status_reason: input.reason?.trim() || null,
       cancelled_at: now,
+      last_mutated_by: actor.profile.id,
+      last_mutation_reason: input.reason?.trim() || "Queue visit canceled by the shop floor",
       updated_at: now
     })
     .eq("id", input.entryId);
@@ -1214,5 +1388,72 @@ export async function cancelQueueEntry(
     throw new QueueServiceError("The queue cancellation completed but could not be read back.", 500);
   }
 
+  return { entry: updatedEntry };
+}
+
+export async function reassignQueueEntry(
+  user: UserAccount,
+  input: {
+    entryId: string;
+    barberId: string;
+    reason: string;
+  }
+) {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  assertQueueManagerRole(actor.user);
+  const entry = await loadQueueRowOrThrow(supabase, input.entryId);
+  const scopedLocation = actor.scopedLocations.find((location) => location.id === (entry.shop_id ?? entry.location_id));
+  if (scopedLocation) {
+    assertLocationScope(actor, scopedLocation.reference_code ?? scopedLocation.id);
+  }
+  if (entry.status !== "assigned" || !entry.barber_id) {
+    throw new QueueServiceError("Only an assigned live queue entry can be reassigned.", 409);
+  }
+
+  const lock = resolveQueueAssignmentLock({
+    entryType: entry.entry_type,
+    paymentOwner: entry.payment_owner
+  });
+  if (!lock.reassignable) {
+    throw new QueueServiceError(lock.reason ?? "This queue assignment is locked.", 409);
+  }
+  const reason = input.reason.trim();
+  if (reason.length < 3) {
+    throw new QueueServiceError("Cash walk-in reassignment requires an audit reason.", 400);
+  }
+
+  const barber = await resolveBarberByReference(supabase, input.barberId);
+  await assertBarberInShop(supabase, barber, entry.shop_id ?? entry.location_id);
+  if (barber.id === entry.barber_id) {
+    throw new QueueServiceError("Choose a different barber for reassignment.", 409);
+  }
+
+  const now = new Date().toISOString();
+  const updateResult = await supabase
+    .from("waitlist_entries")
+    .update({
+      barber_id: barber.id,
+      reassigned_barber_id: barber.id,
+      public_queue_state: "reassigned",
+      status_reason: reason,
+      last_mutated_by: actor.profile.id,
+      last_mutation_reason: reason,
+      updated_at: now
+    })
+    .eq("id", input.entryId);
+
+  if (updateResult.error) {
+    const message = updateResult.error.message?.toLowerCase().includes("locked")
+      ? "Booked or non-cash queue entries are locked to their barber."
+      : "Unable to reassign this cash walk-in.";
+    throw new QueueServiceError(message, updateResult.error.code === "23514" ? 409 : 500);
+  }
+
+  const payload = await getQueuePayloadInternal(actor, supabase);
+  const updatedEntry = payload.entries.find((candidate) => candidate.id === input.entryId);
+  if (!updatedEntry) {
+    throw new QueueServiceError("The reassignment completed but could not be read back.", 500);
+  }
   return { entry: updatedEntry };
 }
