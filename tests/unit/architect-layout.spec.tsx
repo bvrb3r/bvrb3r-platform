@@ -69,6 +69,7 @@ describe("architect layout", () => {
     expect(screen.getByRole("link", { name: "Marketing" })).toHaveAttribute("href", "/architect/marketing");
     expect(screen.getByRole("link", { name: "Compliance" })).toHaveAttribute("href", "/architect/compliance");
     expect(screen.getByRole("link", { name: "Security" })).toHaveAttribute("href", "/architect/security");
+    expect(screen.getByRole("link", { name: "Role Approval" })).toHaveAttribute("href", "/architect/role-normalization-approval");
     expect(screen.getByRole("link", { name: "Content & Community" })).toHaveAttribute("href", "/architect/content-community");
     expect(screen.queryByRole("link", { name: "Accounts" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
