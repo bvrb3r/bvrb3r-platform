@@ -23,6 +23,10 @@ import {
   type BarberScheduleViewMode,
   type BarberLiveStatus
 } from "@/lib/barber/domain";
+import {
+  normalizeExternalCalendarStatus,
+  resolveExternalCalendarProvider
+} from "@/lib/barber/command-center";
 import type { LiveAppointmentRecord } from "@/lib/operations/live-state";
 import type { BarberMoneyDashboardView } from "@/types/fintech";
 import type { BarberRevenueIntelligenceView } from "@/types/monetization";
@@ -95,6 +99,30 @@ type PaymentRoutingRow = {
   eligible_at: string | null;
   released_at: string | null;
   updated_at: string | null;
+};
+
+type AppointmentOwnershipRow = {
+  id: string;
+  source_provider: "bvrb3r" | "booksy" | "square" | "thecut" | null;
+  payment_owner: "bvrb3r_card" | "bvrb3r_cash" | "unpaid_manual" | `external:${"booksy" | "square" | "thecut"}` | null;
+  external_financial_data_private: boolean | null;
+};
+
+type ChairSyncAppointmentRow = {
+  id: string;
+  provider: "booksy" | "square" | "thecut";
+  provider_appointment_id: string;
+  location_id: string;
+  barber_id: string | null;
+  starts_at: string;
+  ends_at: string;
+  service_name: string;
+  client_display_name: string;
+  status: "booked" | "confirmed" | "checked_in" | "completed" | "canceled" | "no_show";
+  checked_in_at: string | null;
+  checked_in_waitlist_entry_id: string | null;
+  imported_at: string;
+  source_updated_at: string | null;
 };
 
 type TipRow = {
@@ -171,7 +199,29 @@ export type BarberPaymentSummaryView = {
 };
 
 export type BarberOperationalAppointmentView = BaseBarberAppointment & {
+  sourceProvider: "bvrb3r";
+  paymentOwner: "bvrb3r_card" | "bvrb3r_cash" | "unpaid_manual";
+  externalFinancialDataPrivate: false;
   financial: BarberPaymentSummaryView;
+};
+
+export type BarberExternalAppointmentView = {
+  id: string;
+  providerAppointmentId: string;
+  sourceProvider: "booksy" | "square" | "thecut";
+  sourceLabel: "Booksy" | "Square" | "theCut";
+  locationId: string;
+  locationLabel: string;
+  clientName: string;
+  serviceName: string;
+  status: "booked" | "confirmed" | "checked_in" | "completed" | "canceled" | "no_show";
+  statusLabel: string;
+  startsAt: string;
+  endsAt: string;
+  checkedInAt: string | null;
+  queueEntryId: string | null;
+  sourceUpdatedAt: string | null;
+  readOnly: true;
 };
 
 export type BarberStatusView = {
@@ -300,6 +350,7 @@ export type BarberSchedulePayload = {
     rangeEnd: string;
     rangeLabel: string;
     appointments: BarberOperationalAppointmentView[];
+    externalAppointments: BarberExternalAppointmentView[];
   };
   workingHours: BarberWorkingHoursView[];
   blockedTimes: BarberBlockedTimeView[];
@@ -772,6 +823,90 @@ function buildFallbackPaymentSummary(appointment: LiveAppointmentRecord): Barber
   };
 }
 
+async function readAppointmentOwnershipMap(
+  supabase: SupabaseClient | null,
+  appointments: BaseBarberAppointment[]
+) {
+  const ownershipByAppointmentId = new Map<string, AppointmentOwnershipRow>();
+  if (!supabase || !appointments.length) {
+    return ownershipByAppointmentId;
+  }
+
+  const appointmentIds = appointments.map((appointment) => canonicalAppointmentUuid(appointment.id));
+  const result = await supabase
+    .from("appointments")
+    .select("id, source_provider, payment_owner, external_financial_data_private")
+    .in("id", appointmentIds);
+
+  if (result.error) {
+    throw new BarberToolsServiceError("Unable to verify appointment source ownership.", 500);
+  }
+
+  for (const row of (result.data ?? []) as AppointmentOwnershipRow[]) {
+    ownershipByAppointmentId.set(row.id, row);
+  }
+  return ownershipByAppointmentId;
+}
+
+function resolveAppointmentOwnership(
+  appointment: BaseBarberAppointment,
+  ownershipMap: Map<string, AppointmentOwnershipRow>
+) {
+  const ownership = ownershipMap.get(canonicalAppointmentUuid(appointment.id));
+  return {
+    sourceProvider: ownership?.source_provider ?? "bvrb3r",
+    paymentOwner: ownership?.payment_owner ?? "unpaid_manual",
+    externalFinancialDataPrivate: ownership?.external_financial_data_private ?? false
+  };
+}
+
+function isBvrb3rOwnedBaseAppointment(
+  appointment: BaseBarberAppointment,
+  ownershipMap: Map<string, AppointmentOwnershipRow>
+) {
+  const ownership = resolveAppointmentOwnership(appointment, ownershipMap);
+  return ownership.sourceProvider === "bvrb3r"
+    && !ownership.paymentOwner.startsWith("external:")
+    && ownership.externalFinancialDataPrivate === false;
+}
+
+function getExternalSourceLabel(provider: BarberExternalAppointmentView["sourceProvider"]) {
+  if (provider === "booksy") return "Booksy";
+  if (provider === "square") return "Square";
+  return "theCut";
+}
+
+function getExternalStatusLabel(status: BarberExternalAppointmentView["status"]) {
+  if (status === "checked_in") return "Checked in";
+  if (status === "no_show") return "No-show";
+  if (status === "canceled") return "Canceled";
+  return status.slice(0, 1).toUpperCase() + status.slice(1);
+}
+
+async function readChairSyncAppointments(
+  supabase: SupabaseClient | null,
+  context: BarberContext | null,
+  range: { rangeStart: string; rangeEnd: string }
+) {
+  if (!supabase || !context?.barber.id) {
+    return [] as ChairSyncAppointmentRow[];
+  }
+
+  const result = await supabase
+    .from("chairsync_appointments")
+    .select("id, provider, provider_appointment_id, location_id, barber_id, starts_at, ends_at, service_name, client_display_name, status, checked_in_at, checked_in_waitlist_entry_id, imported_at, source_updated_at")
+    .eq("barber_id", context.barber.id)
+    .lt("starts_at", range.rangeEnd)
+    .gt("ends_at", range.rangeStart)
+    .order("starts_at", { ascending: true });
+
+  if (result.error) {
+    throw new BarberToolsServiceError("Unable to load source-isolated external calendar entries.", 500);
+  }
+
+  return (result.data ?? []) as ChairSyncAppointmentRow[];
+}
+
 async function readPaymentSummaryMap(
   supabase: SupabaseClient | null,
   appointments: BaseBarberAppointment[]
@@ -881,6 +1016,8 @@ async function readPaymentSummaryMap(
       .reduce((sum, row) => sum + toNumber(row.amount), 0);
     const tipAmount = tipRows.reduce((sum, row) => sum + toNumber(row.amount), 0);
     const routingRow = routingRowsByAppointmentId.get(appointmentId) ?? null;
+    const netCapturedAmount = Math.max(capturedAmount - refundedAmount, 0);
+    const outstandingBalance = Math.max(appointment.totalAmount - netCapturedAmount, 0);
 
     map.set(appointmentIdToReference.get(appointmentId) ?? appointment.id, {
       latestStatus: latestBooking?.payment_status ?? null,
@@ -889,7 +1026,7 @@ async function readPaymentSummaryMap(
       capturedAmount,
       refundedAmount,
       tipAmount,
-      outstandingBalance: appointment.balanceDue,
+      outstandingBalance,
       paymentMethodBrand: latestBooking?.payment_method_id ? paymentMethodsById.get(latestBooking.payment_method_id)?.brand ?? null : null,
       paymentMethodLast4: latestBooking?.payment_method_id ? paymentMethodsById.get(latestBooking.payment_method_id)?.last4 ?? null : null,
       receiptNumber: latestBooking ? `Receipt ${appointment.id.slice(-6).toUpperCase()}` : null,
@@ -909,12 +1046,74 @@ async function readPaymentSummaryMap(
 
 function hydrateAppointmentsWithFinancials(
   appointments: BaseBarberAppointment[],
-  financialMap: Map<string, BarberPaymentSummaryView>
+  financialMap: Map<string, BarberPaymentSummaryView>,
+  ownershipMap: Map<string, AppointmentOwnershipRow>
 ) {
   return appointments.map((appointment) => ({
     ...appointment,
+    sourceProvider: ownershipMap.get(canonicalAppointmentUuid(appointment.id))?.source_provider ?? "bvrb3r",
+    paymentOwner: ownershipMap.get(canonicalAppointmentUuid(appointment.id))?.payment_owner ?? "unpaid_manual",
+    externalFinancialDataPrivate: ownershipMap.get(canonicalAppointmentUuid(appointment.id))?.external_financial_data_private ?? false,
     financial: financialMap.get(appointment.id) ?? buildFallbackPaymentSummary(appointment)
   }));
+}
+
+async function readBvrb3rAppointmentsWithFinancials(
+  supabase: SupabaseClient | null,
+  appointments: BaseBarberAppointment[]
+) {
+  const ownershipMap = await readAppointmentOwnershipMap(supabase, appointments);
+  const bvrb3rAppointments = appointments.filter((appointment) =>
+    isBvrb3rOwnedBaseAppointment(appointment, ownershipMap)
+  );
+  const financialMap = await readPaymentSummaryMap(supabase, bvrb3rAppointments);
+  return hydrateAppointmentsWithFinancials(bvrb3rAppointments, financialMap, ownershipMap)
+    .filter(isBvrb3rOperationalAppointment);
+}
+
+function isBvrb3rOperationalAppointment(
+  appointment: ReturnType<typeof hydrateAppointmentsWithFinancials>[number]
+): appointment is BarberOperationalAppointmentView {
+  return appointment.sourceProvider === "bvrb3r"
+    && !appointment.paymentOwner.startsWith("external:")
+    && appointment.externalFinancialDataPrivate === false;
+}
+
+function buildExternalAppointmentView(
+  input: {
+    id: string;
+    providerAppointmentId: string;
+    provider: BarberExternalAppointmentView["sourceProvider"];
+    locationId: string;
+    locationLabel: string;
+    clientName: string;
+    serviceName: string;
+    status: BarberExternalAppointmentView["status"];
+    startsAt: string;
+    endsAt: string;
+    checkedInAt?: string | null;
+    queueEntryId?: string | null;
+    sourceUpdatedAt?: string | null;
+  }
+): BarberExternalAppointmentView {
+  return {
+    id: input.id,
+    providerAppointmentId: input.providerAppointmentId,
+    sourceProvider: input.provider,
+    sourceLabel: getExternalSourceLabel(input.provider),
+    locationId: input.locationId,
+    locationLabel: input.locationLabel,
+    clientName: input.clientName,
+    serviceName: input.serviceName,
+    status: input.status,
+    statusLabel: getExternalStatusLabel(input.status),
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    checkedInAt: input.checkedInAt ?? null,
+    queueEntryId: input.queueEntryId ?? null,
+    sourceUpdatedAt: input.sourceUpdatedAt ?? null,
+    readOnly: true
+  };
 }
 
 function enrichBarberAppointmentDisplayLabels(
@@ -1395,8 +1594,7 @@ export async function getBarberOverviewPayload(user: UserAccount): Promise<Barbe
     calendarMode: isFreelanceBarberContext(context) ? "freelance" : "shop_assigned",
     statusFilter: ["confirmed", "pending", "pending_payment", "checked_in", "in_service", "booked", "paid"]
   });
-  const financialMap = await readPaymentSummaryMap(supabase, dashboard.appointments);
-  const appointments = hydrateAppointmentsWithFinancials(dashboard.appointments, financialMap);
+  const appointments = await readBvrb3rAppointmentsWithFinancials(supabase, dashboard.appointments);
   const locationReferences = Array.from(new Set(appointments.map((appointment) => appointment.locationId)));
   const locationMap = supabase ? await readLocationMapForBarberCalendar(supabase, locationReferences, context) : new Map<string, { id: string; label: string }>();
   const displayAppointments = enrichBarberAppointmentDisplayLabels(appointments, dashboard.clients, locationMap);
@@ -1444,12 +1642,39 @@ export async function getBarberSchedulePayload(
   const supabase = getSupabase();
   const dashboard = await getBarberDashboardPayload(viewer);
   const context = supabase ? await resolveBarberContext(user, supabase) : null;
-  const financialMap = await readPaymentSummaryMap(supabase, dashboard.appointments);
-  const appointments = hydrateAppointmentsWithFinancials(dashboard.appointments, financialMap);
   const viewMode = normalizeBarberScheduleViewMode(options?.viewMode);
   const anchorDate = resolveBarberScheduleAnchorDate(options?.anchorDate, dashboard.summary.businessDate);
   const timelineRange = buildBarberScheduleRange(viewMode, anchorDate);
-  const locationReferences = Array.from(new Set(appointments.map((appointment) => appointment.locationId)));
+  const [ownershipMap, chairSyncAppointments] = await Promise.all([
+    readAppointmentOwnershipMap(supabase, dashboard.appointments),
+    readChairSyncAppointments(supabase, context, timelineRange)
+  ]);
+  const bvrb3rBaseAppointments = dashboard.appointments.filter((appointment) =>
+    isBvrb3rOwnedBaseAppointment(appointment, ownershipMap)
+  );
+  const financialMap = await readPaymentSummaryMap(supabase, bvrb3rBaseAppointments);
+  const appointments = hydrateAppointmentsWithFinancials(
+    bvrb3rBaseAppointments,
+    financialMap,
+    ownershipMap
+  ).filter(isBvrb3rOperationalAppointment);
+  const legacyExternalAppointments = dashboard.appointments.flatMap((appointment) => {
+    if (isBvrb3rOwnedBaseAppointment(appointment, ownershipMap)) {
+      return [];
+    }
+
+    const ownership = resolveAppointmentOwnership(appointment, ownershipMap);
+    const provider = resolveExternalCalendarProvider({
+      sourceProvider: ownership.sourceProvider,
+      paymentOwner: ownership.paymentOwner
+    });
+    return provider ? [{ appointment, provider }] : [];
+  });
+  const locationReferences = Array.from(new Set([
+    ...appointments.map((appointment) => appointment.locationId),
+    ...legacyExternalAppointments.map(({ appointment }) => appointment.locationId),
+    ...chairSyncAppointments.map((appointment) => appointment.location_id)
+  ]));
   const locationMap = supabase ? await readLocationMapForBarberCalendar(supabase, locationReferences, context) : new Map<string, { id: string; label: string }>();
   const displayAppointments = enrichBarberAppointmentDisplayLabels(appointments, dashboard.clients, locationMap);
   const calendarActionAppointments = displayAppointments.map((appointment) => ({
@@ -1457,6 +1682,36 @@ export async function getBarberSchedulePayload(
     id: canonicalAppointmentUuid(appointment.id)
   }));
   const canonicalBarberId = context?.barber.reference_code ?? context?.barber.id ?? viewer.barberId!;
+  const externalAppointments = [
+    ...legacyExternalAppointments.map(({ appointment, provider }) => buildExternalAppointmentView({
+      id: `legacy-${appointment.id}`,
+      providerAppointmentId: appointment.id,
+      provider,
+      locationId: appointment.locationId,
+      locationLabel: locationMap.get(appointment.locationId)?.label ?? appointment.display.locationLabel,
+      clientName: appointment.display.clientName,
+      serviceName: appointment.display.serviceName,
+      status: normalizeExternalCalendarStatus(appointment.status),
+      startsAt: appointment.start,
+      endsAt: appointment.end,
+      sourceUpdatedAt: appointment.updatedAt
+    })),
+    ...chairSyncAppointments.map((appointment) => buildExternalAppointmentView({
+      id: appointment.id,
+      providerAppointmentId: appointment.provider_appointment_id,
+      provider: appointment.provider,
+      locationId: locationMap.get(appointment.location_id)?.id ?? appointment.location_id,
+      locationLabel: locationMap.get(appointment.location_id)?.label ?? "External appointment",
+      clientName: appointment.client_display_name,
+      serviceName: appointment.service_name,
+      status: appointment.status,
+      startsAt: appointment.starts_at,
+      endsAt: appointment.ends_at,
+      checkedInAt: appointment.checked_in_at,
+      queueEntryId: appointment.checked_in_waitlist_entry_id,
+      sourceUpdatedAt: appointment.source_updated_at ?? appointment.imported_at
+    }))
+  ].sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
   const [status, workingHours, blockedTimes] = await Promise.all([
     buildStatusView(user, displayAppointments, supabase, context),
     readWorkingHoursView(supabase, canonicalBarberId, locationMap),
@@ -1485,7 +1740,8 @@ export async function getBarberSchedulePayload(
       .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
     timeline: {
       ...timelineRange,
-      appointments: filterAppointmentsForBarberScheduleRange(calendarActionAppointments, timelineRange)
+      appointments: filterAppointmentsForBarberScheduleRange(calendarActionAppointments, timelineRange),
+      externalAppointments
     },
     workingHours,
     blockedTimes
@@ -1496,8 +1752,7 @@ export async function getBarberClientsPayload(user: UserAccount): Promise<Barber
   const viewer = assertBarberUser(user);
   const supabase = getSupabase();
   const dashboard = await getBarberDashboardPayload(viewer);
-  const financialMap = await readPaymentSummaryMap(supabase, dashboard.appointments);
-  const appointments = hydrateAppointmentsWithFinancials(dashboard.appointments, financialMap);
+  const appointments = await readBvrb3rAppointmentsWithFinancials(supabase, dashboard.appointments);
 
   return {
     barberId: viewer.barberId!,
@@ -1510,8 +1765,7 @@ export async function getBarberEarningsPayload(user: UserAccount): Promise<Barbe
   const viewer = assertBarberUser(user);
   const supabase = getSupabase();
   const dashboard = await getBarberDashboardPayload(viewer);
-  const financialMap = await readPaymentSummaryMap(supabase, dashboard.appointments);
-  const appointments = hydrateAppointmentsWithFinancials(dashboard.appointments, financialMap);
+  const appointments = await readBvrb3rAppointmentsWithFinancials(supabase, dashboard.appointments);
   const businessDate = dashboard.summary.businessDate;
   const summary = buildEarningsSummary(businessDate, appointments);
   const recentAppointments = appointments
@@ -1545,8 +1799,7 @@ export async function getBarberStatusPayload(user: UserAccount) {
   const viewer = assertBarberUser(user);
   const supabase = getSupabase();
   const dashboard = await getBarberDashboardPayload(viewer);
-  const financialMap = await readPaymentSummaryMap(supabase, dashboard.appointments);
-  const appointments = hydrateAppointmentsWithFinancials(dashboard.appointments, financialMap);
+  const appointments = await readBvrb3rAppointmentsWithFinancials(supabase, dashboard.appointments);
   const context = supabase ? await resolveBarberContext(user, supabase) : null;
   return buildStatusView(user, appointments, supabase, context);
 }

@@ -262,6 +262,23 @@ export type QueueWorkspacePayload = {
   recentResolvedEntries: QueueEntryView[];
 };
 
+export type BarberQueueEntryView = Omit<
+  QueueEntryView,
+  "clientPhone" | "clientEmail" | "bestAvailableBarber"
+>;
+
+export type BarberQueuePayload = {
+  summary: {
+    activeCount: number;
+    calledCount: number;
+    assignedCount: number;
+    averageWaitMinutes: number;
+    sourceCounts: Record<BookingSourceProvider, number>;
+  };
+  entries: BarberQueueEntryView[];
+  recentResolvedEntries: BarberQueueEntryView[];
+};
+
 export class QueueServiceError extends Error {
   status: number;
 
@@ -1071,6 +1088,83 @@ export async function getQueueWorkspacePayload(user: UserAccount) {
   const actor = await resolveActor(user, supabase);
   assertQueueManagerRole(actor.user);
   return getQueuePayloadInternal(actor, supabase);
+}
+
+export function toBarberQueueEntry(entry: QueueEntryView): BarberQueueEntryView {
+  const safeEntry: Partial<QueueEntryView> = { ...entry };
+  delete safeEntry.clientPhone;
+  delete safeEntry.clientEmail;
+  delete safeEntry.bestAvailableBarber;
+  return safeEntry as BarberQueueEntryView;
+}
+
+export function isQueueEntryOwnedByBarber(
+  entry: Pick<QueueEntryView, "assignedBarberId" | "preferredBarberId">,
+  barberIds: ReadonlySet<string>
+) {
+  return entry.assignedBarberId
+    ? barberIds.has(entry.assignedBarberId)
+    : Boolean(entry.preferredBarberId && barberIds.has(entry.preferredBarberId));
+}
+
+export async function getBarberQueuePayload(user: UserAccount): Promise<BarberQueuePayload> {
+  if (!isBarberQueueOperator(user.role)) {
+    throw new QueueServiceError("Only barbers can open the barber command queue.", 403);
+  }
+
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  const barberResult = await supabase
+    .from("barbers")
+    .select("id, reference_code")
+    .eq("profile_id", actor.profile.id)
+    .maybeSingle();
+
+  if (barberResult.error) {
+    throw new QueueServiceError("Unable to resolve the barber command queue identity.", 500);
+  }
+  if (!barberResult.data) {
+    throw new QueueServiceError("No barber identity is available for this command queue.", 404);
+  }
+
+  const barberIds = new Set(
+    [
+      user.barberId,
+      barberResult.data.id as string,
+      barberResult.data.reference_code as string | null
+    ].filter((value): value is string => Boolean(value))
+  );
+  const payload = await getQueuePayloadInternal(actor, supabase);
+  const belongsToBarber = (entry: QueueEntryView) =>
+    isQueueEntryOwnedByBarber(entry, barberIds);
+  const entries = payload.entries.filter(belongsToBarber).map(toBarberQueueEntry);
+  const recentResolvedEntries = payload.recentResolvedEntries
+    .filter(belongsToBarber)
+    .map(toBarberQueueEntry);
+  const sourceCounts: Record<BookingSourceProvider, number> = {
+    bvrb3r: 0,
+    booksy: 0,
+    square: 0,
+    thecut: 0
+  };
+
+  for (const entry of entries) {
+    sourceCounts[entry.sourceProvider] += 1;
+  }
+
+  return {
+    summary: {
+      activeCount: entries.filter((entry) => entry.status === "active").length,
+      calledCount: entries.filter((entry) => entry.status === "called").length,
+      assignedCount: entries.filter((entry) => entry.status === "assigned").length,
+      averageWaitMinutes: entries.length
+        ? Math.round(entries.reduce((sum, entry) => sum + (entry.estimatedWaitMinutes ?? 0), 0) / entries.length)
+        : 0,
+      sourceCounts
+    },
+    entries,
+    recentResolvedEntries
+  };
 }
 
 export async function getQueueWorkspacePayloadForShops(shopIds: string[]) {

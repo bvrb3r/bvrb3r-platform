@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BarberCheckoutScreen } from "@/components/barber-experience/barber-checkout-screen";
 
@@ -556,5 +556,78 @@ describe("BarberCheckoutScreen", () => {
     expect(screen.queryByText("Paid appointments")).not.toBeInTheDocument();
     expect(screen.queryByText("Money posture")).not.toBeInTheDocument();
     expect(screen.queryByText("Paid today")).not.toBeInTheDocument();
+  });
+
+  it("requires review before charging a targeted BVRB3R appointment", async () => {
+    useBarberOverviewQueryMock.mockReturnValue({
+      data: {
+        todayAppointments: [{
+          id: "appointment-24",
+          status: "completed",
+          start: "2026-07-29T15:00:00.000Z",
+          sourceProvider: "bvrb3r",
+          paymentOwner: "bvrb3r_card",
+          externalFinancialDataPrivate: false,
+          display: {
+            clientName: "Target Client",
+            serviceName: "Command Cut",
+            statusLabel: "Completed"
+          },
+          financial: {
+            outstandingBalance: 35
+          }
+        }],
+        upcomingAppointments: [],
+        quickClients: [],
+        earnings: { grossSales: 35 }
+      },
+      isLoading: false,
+      error: null,
+      refetch: overviewRefetchMock
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      payment: { id: "payment-24" },
+      summary: { outstandingBalance: 0 }
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <BarberCheckoutScreen
+        barberName="Blaze King"
+        appointmentId="appointment-24"
+      />
+    );
+
+    const targetedCheckout = screen.getByTestId("targeted-appointment-checkout");
+    expect(within(targetedCheckout).getByText("Target Client")).toBeInTheDocument();
+    expect(within(targetedCheckout).getByText("$35.00 due")).toBeInTheDocument();
+
+    fireEvent.click(within(targetedCheckout).getByRole("button", { name: /Review appointment charge/i }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(within(targetedCheckout).getByRole("button", { name: "Charge $35.00" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/payments/appointments/appointment-24/create",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ provider: "stripe" })
+      })
+    ));
+    expect(await within(targetedCheckout).findByText(/Appointment payment captured/i)).toBeInTheDocument();
+    expect(overviewRefetchMock).toHaveBeenCalled();
+  });
+
+  it("keeps unknown or external targeted appointments out of BVRB3R checkout", () => {
+    render(
+      <BarberCheckoutScreen
+        barberName="Blaze King"
+        appointmentId="external-appointment"
+      />
+    );
+
+    const targetedCheckout = screen.getByTestId("targeted-appointment-checkout");
+    expect(within(targetedCheckout).getByText(/not available in your BVRB3R chair schedule/i)).toBeInTheDocument();
+    expect(within(targetedCheckout).getByText(/External source appointments cannot enter BVRB3R checkout/i)).toBeInTheDocument();
+    expect(within(targetedCheckout).queryByRole("button", { name: /Charge/i })).not.toBeInTheDocument();
   });
 });

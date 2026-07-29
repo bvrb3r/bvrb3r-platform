@@ -114,17 +114,22 @@ function formatDateTime(iso: string) {
 }
 
 export function BarberCheckoutScreen({
-  initialSection
+  initialSection,
+  appointmentId
 }: {
   barberName: string;
   initialSection?: string;
+  appointmentId?: string;
 }) {
   const overviewQuery = useBarberOverviewQuery();
   const serviceCatalogQuery = useMarketplaceServiceCatalog();
   const payload = overviewQuery.data;
   const todayAppointments = payload?.todayAppointments ?? [];
+  const upcomingAppointments = payload?.upcomingAppointments ?? [];
   const quickClients = useMemo(() => payload?.quickClients ?? [], [payload?.quickClients]);
   const readyForCheckout = todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0);
+  const targetedAppointment = [...todayAppointments, ...upcomingAppointments]
+    .find((appointment) => appointment.id === appointmentId) ?? null;
   const selectedSection = normalizeCheckoutSection(initialSection);
   const [activePanel, setActivePanel] = useState<CheckoutPanelKey>(() => normalizeCheckoutPanel(initialSection));
   const [chargeDigits, setChargeDigits] = useState("0");
@@ -145,6 +150,9 @@ export function BarberCheckoutScreen({
   const [cashCustomerPhone, setCashCustomerPhone] = useState("");
   const [cashCustomerEmail, setCashCustomerEmail] = useState("");
   const [pendingRequestRetry, setPendingRequestRetry] = useState<{ saleId: string } | null>(null);
+  const [targetedChargeReviewOpen, setTargetedChargeReviewOpen] = useState(false);
+  const [targetedChargeLoading, setTargetedChargeLoading] = useState(false);
+  const [targetedChargeFeedback, setTargetedChargeFeedback] = useState<string | null>(null);
   const keypadAmount = digitsToAmount(chargeDigits);
   const serviceShortcuts = useMemo(
     () => [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])]
@@ -164,6 +172,12 @@ export function BarberCheckoutScreen({
   useEffect(() => {
     setActivePanel(normalizeCheckoutPanel(initialSection));
   }, [initialSection]);
+
+  useEffect(() => {
+    if (appointmentId) {
+      setActivePanel("appointments");
+    }
+  }, [appointmentId]);
 
   useEffect(() => {
     const query = clientSearch.trim().toLowerCase();
@@ -485,10 +499,121 @@ export function BarberCheckoutScreen({
     setPaymentFeedback("Tap to Pay is not connected yet. Use Cash or Card on File.");
   }
 
+  async function handleTargetedAppointmentCharge() {
+    if (!targetedAppointment || targetedChargeLoading) {
+      return;
+    }
+
+    setTargetedChargeLoading(true);
+    setTargetedChargeFeedback(null);
+    try {
+      const response = await fetch(`/api/payments/appointments/${encodeURIComponent(targetedAppointment.id)}/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "stripe" })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof body?.error === "string" ? body.error : "Unable to charge this appointment.");
+      }
+
+      setTargetedChargeReviewOpen(false);
+      setTargetedChargeFeedback("Appointment payment captured. Refreshing the command center balance.");
+      await overviewQuery.refetch();
+    } catch (error) {
+      setTargetedChargeFeedback(error instanceof Error ? error.message : "Unable to charge this appointment.");
+    } finally {
+      setTargetedChargeLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-6" data-testid="barber-checkout-screen">
       {panelFeedback ? <FeedbackBanner tone={panelFeedback.tone} message={panelFeedback.message} /> : null}
       {overviewQuery.error ? <FeedbackBanner tone="error" message={getReadableActionError(overviewQuery.error)} /> : null}
+
+      {appointmentId ? (
+        <GlassCard className="rounded-[28px] border-[#c4f24e]/24 p-5 sm:p-6" data-testid="targeted-appointment-checkout">
+          {targetedAppointment ? (
+            <div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="bvr-section-label">BVRB3R appointment checkout</p>
+                  <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">
+                    {targetedAppointment.display.clientName}
+                  </h2>
+                  <p className="mt-2 text-sm text-white/60">
+                    {targetedAppointment.display.serviceName} · {formatDateTime(targetedAppointment.start)}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <StatusBadge>BVRB3R</StatusBadge>
+                    <StatusBadge>{targetedAppointment.display.statusLabel}</StatusBadge>
+                    <StatusBadge>{formatCheckoutAmount(targetedAppointment.financial.outstandingBalance)} due</StatusBadge>
+                  </div>
+                </div>
+                <CreditCard className="h-6 w-6 text-[#c4f24e]" />
+              </div>
+
+              {targetedChargeFeedback ? (
+                <div className="mt-4">
+                  <FeedbackBanner
+                    tone={targetedChargeFeedback.startsWith("Appointment payment captured") ? "info" : "error"}
+                    message={targetedChargeFeedback}
+                  />
+                </div>
+              ) : null}
+
+              {targetedAppointment.financial.outstandingBalance <= 0 ? (
+                <div className="mt-5 rounded-[18px] border border-emerald-300/16 bg-emerald-300/[0.06] px-4 py-3 text-sm text-emerald-100">
+                  This BVRB3R appointment is settled. Return to the command center to complete the service.
+                </div>
+              ) : targetedChargeReviewOpen ? (
+                <div className="mt-5 rounded-[20px] border border-[#c4f24e]/20 bg-[#c4f24e]/[0.05] p-4">
+                  <p className="font-extrabold text-white">Confirm card-on-file charge</p>
+                  <p className="mt-2 text-sm leading-6 text-white/60">
+                    Charge {formatCheckoutAmount(targetedAppointment.financial.outstandingBalance)} to this client&apos;s default saved Stripe card. The server rechecks appointment ownership, source and balance before capture.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <ActionButton
+                      type="button"
+                      variant="secondary"
+                      disabled={targetedChargeLoading}
+                      onClick={() => setTargetedChargeReviewOpen(false)}
+                    >
+                      Cancel
+                    </ActionButton>
+                    <ActionButton
+                      type="button"
+                      disabled={targetedChargeLoading}
+                      onClick={() => void handleTargetedAppointmentCharge()}
+                    >
+                      {targetedChargeLoading
+                        ? "Charging..."
+                        : `Charge ${formatCheckoutAmount(targetedAppointment.financial.outstandingBalance)}`}
+                    </ActionButton>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <ActionButton type="button" onClick={() => setTargetedChargeReviewOpen(true)}>
+                    Review appointment charge
+                  </ActionButton>
+                  <ActionButton type="button" variant="secondary" onClick={() => setActivePanel("keypad")}>
+                    Open standalone POS
+                  </ActionButton>
+                </div>
+              )}
+            </div>
+          ) : overviewQuery.isLoading ? (
+            <p className="text-sm text-white/58">Loading the appointment checkout…</p>
+          ) : (
+            <FeedbackBanner
+              tone="error"
+              message="This appointment is not available in your BVRB3R chair schedule. External source appointments cannot enter BVRB3R checkout."
+            />
+          )}
+        </GlassCard>
+      ) : null}
 
       <GlassCard className="relative overflow-hidden rounded-[28px] p-5 sm:p-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(196, 242, 78,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(196, 242, 78,0.06),transparent_28%)]" />

@@ -1,7 +1,10 @@
 ﻿"use client";
 
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { BarberSubtype, Client, WalkInEntry } from "@/types/domain";
 import type { BarberMoneyDashboardView } from "@/types/fintech";
 import type { LiveAppointmentRecord } from "@/lib/operations/live-state";
@@ -16,6 +19,7 @@ import type {
   ShopTeamInviteDirectoryPayload,
   ShopTeamInviteView
 } from "@/lib/operations/shop-team-invites";
+import type { BarberQueuePayload } from "@/lib/queue/service";
 
 export interface BarberApiError extends Error {
   status?: number;
@@ -51,6 +55,9 @@ export type BarberDashboardAppointment = LiveAppointmentRecord & {
 };
 
 export type BarberOperationalAppointment = BarberDashboardAppointment & {
+  sourceProvider: "bvrb3r";
+  paymentOwner: "bvrb3r_card" | "bvrb3r_cash" | "unpaid_manual";
+  externalFinancialDataPrivate: false;
   financial: {
     latestStatus: string | null;
     latestStatusLabel: string;
@@ -72,6 +79,25 @@ export type BarberOperationalAppointment = BarberDashboardAppointment & {
     shopSplitAmount?: number | null;
   };
 };
+
+export interface BarberExternalAppointmentView {
+  id: string;
+  providerAppointmentId: string;
+  sourceProvider: "booksy" | "square" | "thecut";
+  sourceLabel: "Booksy" | "Square" | "theCut";
+  locationId: string;
+  locationLabel: string;
+  clientName: string;
+  serviceName: string;
+  status: "booked" | "confirmed" | "checked_in" | "completed" | "canceled" | "no_show";
+  statusLabel: string;
+  startsAt: string;
+  endsAt: string;
+  checkedInAt: string | null;
+  queueEntryId: string | null;
+  sourceUpdatedAt: string | null;
+  readOnly: true;
+}
 
 export interface BarberStatusView {
   barberId: string;
@@ -206,6 +232,7 @@ export interface BarberScheduleResponse {
     rangeEnd: string;
     rangeLabel: string;
     appointments: BarberOperationalAppointment[];
+    externalAppointments: BarberExternalAppointmentView[];
   };
   workingHours: BarberWorkingHoursView[];
   blockedTimes: BarberBlockedTimeView[];
@@ -539,6 +566,41 @@ export function useBarberOverviewQuery() {
   });
 }
 
+function useBarberCommandRealtimeSubscription() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!isSupabaseEnabled()) {
+      return undefined;
+    }
+
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) {
+      return undefined;
+    }
+
+    const channel = supabase.channel("product-pr24-barber-command");
+    for (const table of ["appointments", "chairsync_appointments", "waitlist_entries", "barber_status"]) {
+      channel.on(
+        "postgres_changes",
+        { event: "*", schema: "public", table },
+        () => {
+          void Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["barber-schedule"] }),
+            queryClient.invalidateQueries({ queryKey: ["barber-command-queue"] }),
+            queryClient.invalidateQueries({ queryKey: ["barber-overview"] })
+          ]);
+        }
+      );
+    }
+    channel.subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+}
+
 export function useBarberStatusQuery() {
   return useQuery({
     queryKey: ["barber-status"],
@@ -574,6 +636,7 @@ export function useUpdateBarberStatusMutation() {
 }
 
 export function useBarberScheduleQuery(params: { viewMode?: BarberScheduleViewMode; anchorDate?: string } = {}) {
+  useBarberCommandRealtimeSubscription();
   const queryString = toQueryString({
     view: params.viewMode,
     date: params.anchorDate
@@ -583,6 +646,16 @@ export function useBarberScheduleQuery(params: { viewMode?: BarberScheduleViewMo
     queryKey: ["barber-schedule", params.viewMode ?? "day", params.anchorDate ?? ""],
     queryFn: () => requestJson<BarberScheduleResponse>(`/api/barber/schedule${queryString ? `?${queryString}` : ""}`),
     staleTime: 5_000
+  });
+}
+
+export function useBarberQueueQuery() {
+  return useQuery({
+    queryKey: ["barber-command-queue"],
+    queryFn: () => requestJson<BarberQueuePayload>("/api/barber/queue"),
+    staleTime: 5_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true
   });
 }
 
@@ -1143,10 +1216,6 @@ export function useBarberLifecycleMutation() {
     }
   });
 }
-
-
-
-
 
 
 
