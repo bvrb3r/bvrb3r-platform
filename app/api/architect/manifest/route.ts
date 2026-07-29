@@ -7,7 +7,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
   const access = await requireArchitectDebugAccess();
   if (!access.ok) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
@@ -25,7 +25,7 @@ export async function GET(request?: Request) {
     }
   }
 
-  const ledgerDate = request ? new URL(request.url).searchParams.get("date") ?? undefined : undefined;
+  const ledgerDate = new URL(request.url).searchParams.get("date") ?? undefined;
   return NextResponse.json(await buildArchitectCityManifest({ snapshot, supabase, ledgerDate }), {
     headers: {
       "Cache-Control": "private, no-store, max-age=0"

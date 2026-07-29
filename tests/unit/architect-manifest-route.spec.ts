@@ -10,6 +10,10 @@ vi.mock("@/lib/architect/debug/guards", () => ({
 
 import { GET } from "@/app/api/architect/manifest/route";
 
+type ArchitectManifestRequestCannotBeUndefined =
+  undefined extends Parameters<typeof GET>[0] ? never : true;
+const ARCHITECT_MANIFEST_REQUEST_IS_REQUIRED: ArchitectManifestRequestCannotBeUndefined = true;
+
 describe("Architect manifest route", () => {
   beforeEach(() => {
     accessMock.mockReset();
@@ -21,7 +25,8 @@ describe("Architect manifest route", () => {
       response: new Response(null, { status: 403 })
     });
 
-    const response = await GET();
+    expect(ARCHITECT_MANIFEST_REQUEST_IS_REQUIRED).toBe(true);
+    const response = await GET(new Request("https://example.test/api/architect/manifest"));
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "Not found." });
