@@ -13,6 +13,7 @@ import {
   UsersRound,
   Wifi
 } from "lucide-react";
+import type { Route } from "next";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -235,7 +236,7 @@ export function NotificationCenterScreen({
   async function openNotification(item: NotificationCenterPayload["items"][number]) {
     await markRead(item.id);
     if (item.deepLink) {
-      router.push(item.deepLink);
+      router.push(item.deepLink as Route);
     }
   }
 

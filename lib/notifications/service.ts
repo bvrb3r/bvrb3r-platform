@@ -59,7 +59,7 @@ export type NotificationCenterPayload = {
     operational: boolean;
     readAt: string | null;
     unread: boolean;
-    deepLink: ReturnType<typeof safeNotificationDeepLink>;
+    deepLink: string | null;
   }>;
   deliveries: Array<{
     id: string;
