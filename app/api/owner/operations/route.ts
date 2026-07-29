@@ -4,9 +4,11 @@ import { getShopDashboardPayload } from "@/lib/booking/platform-service";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import {
   buildOwnerOperationsPayload,
+  createDefaultOwnerOperationsControlState,
   findForbiddenOwnerOperationsKeys,
   resolveOwnerOperationsShopId
 } from "@/lib/owner-operations/domain";
+import { isDemoMode } from "@/lib/config/runtime";
 import {
   OwnerOperationsServiceError,
   readOwnerOperationsControlState
@@ -43,7 +45,9 @@ export async function GET(request: Request) {
         locationIds: [shopId],
         email: user.email
       }),
-      readOwnerOperationsControlState(user, shopId)
+      isDemoMode()
+        ? Promise.resolve(createDefaultOwnerOperationsControlState())
+        : readOwnerOperationsControlState(user, shopId)
     ]);
   } catch (error) {
     if (error instanceof OwnerOperationsServiceError) {

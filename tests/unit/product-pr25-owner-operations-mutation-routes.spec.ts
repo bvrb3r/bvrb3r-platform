@@ -4,12 +4,16 @@ const {
   getSessionUserMock,
   updateOwnerFloorControlsMock,
   setOwnerKioskEmergencyStateMock,
+  updateOwnerKioskPolicyMock,
+  pairOwnerKioskDeviceMock,
   createOwnerChairMock,
   retireOwnerChairMock
 } = vi.hoisted(() => ({
   getSessionUserMock: vi.fn(),
   updateOwnerFloorControlsMock: vi.fn(),
   setOwnerKioskEmergencyStateMock: vi.fn(),
+  updateOwnerKioskPolicyMock: vi.fn(),
+  pairOwnerKioskDeviceMock: vi.fn(),
   createOwnerChairMock: vi.fn(),
   retireOwnerChairMock: vi.fn()
 }));
@@ -25,13 +29,18 @@ vi.mock("@/lib/owner-operations/service", async (importOriginal) => {
     ...original,
     updateOwnerFloorControls: updateOwnerFloorControlsMock,
     setOwnerKioskEmergencyState: setOwnerKioskEmergencyStateMock,
+    updateOwnerKioskPolicy: updateOwnerKioskPolicyMock,
+    pairOwnerKioskDevice: pairOwnerKioskDeviceMock,
     createOwnerChair: createOwnerChairMock,
     retireOwnerChair: retireOwnerChairMock
   };
 });
 
 import { PATCH as patchFloor } from "@/app/api/owner/operations/floor/route";
-import { PATCH as patchKiosk } from "@/app/api/owner/operations/kiosk/route";
+import {
+  PATCH as patchKiosk,
+  POST as pairKiosk
+} from "@/app/api/owner/operations/kiosk/route";
 import {
   PATCH as retireChair,
   POST as createChair
@@ -59,6 +68,8 @@ describe("Product PR25 owner mutation routes", () => {
       getSessionUserMock,
       updateOwnerFloorControlsMock,
       setOwnerKioskEmergencyStateMock,
+      updateOwnerKioskPolicyMock,
+      pairOwnerKioskDeviceMock,
       createOwnerChairMock,
       retireOwnerChairMock
     ]) {
@@ -96,6 +107,54 @@ describe("Product PR25 owner mutation routes", () => {
       shopId: "shop-one",
       disabled: true,
       reason: "Front device is unattended."
+    });
+  });
+
+  it("writes complete kiosk policy through the owner-scoped service", async () => {
+    updateOwnerKioskPolicyMock.mockResolvedValue({
+      kiosk: { privacy_mode: true, rotation_policy: "balanced" }
+    });
+    const response = await patchKiosk(request(
+      "https://example.test/api/owner/operations/kiosk",
+      "PATCH",
+      {
+        shopId: "shop-one",
+        action: "policy",
+        privacyMode: true,
+        rotationPolicy: "balanced",
+        reason: "Protect unattended guest sessions."
+      }
+    ));
+    expect(response.status).toBe(200);
+    expect(updateOwnerKioskPolicyMock).toHaveBeenCalledWith(user, {
+      shopId: "shop-one",
+      action: "policy",
+      privacyMode: true,
+      rotationPolicy: "balanced",
+      reason: "Protect unattended guest sessions."
+    });
+  });
+
+  it("returns a one-time pairing code only after server pairing succeeds", async () => {
+    pairOwnerKioskDeviceMock.mockResolvedValue({
+      kiosk: { enabled: true, health_status: "healthy" },
+      pairingCode: "145902",
+      expiresAt: "2026-07-29T16:00:00.000Z"
+    });
+    const response = await pairKiosk(request(
+      "https://example.test/api/owner/operations/kiosk",
+      "POST",
+      {
+        shopId: "shop-one",
+        reason: "Pair the front counter iPad."
+      }
+    ));
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.pairingCode).toBe("145902");
+    expect(pairOwnerKioskDeviceMock).toHaveBeenCalledWith(user, {
+      shopId: "shop-one",
+      reason: "Pair the front counter iPad."
     });
   });
 

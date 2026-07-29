@@ -77,18 +77,30 @@ export interface OwnerOperationsControlState {
   floor: {
     intakeOpen: boolean;
     floorNote: string | null;
+    rotationOverrideBarberId: string | null;
+    rotationOverrideReason: string | null;
+    rotationOverrideExpiresAt: string | null;
     version: number;
   };
   kiosk: {
     paired: boolean;
+    pinSet: boolean;
     enabled: boolean;
     healthStatus: string;
     emergencyDisabledAt: string | null;
     privacyMode: boolean;
     autoResetEnabled: boolean;
+    externalCheckinEnabled: boolean;
+    guestCheckinAllowed: boolean;
     qrEntryEnabled: boolean;
     nfcEntryEnabled: boolean;
     clientBridgePromptEnabled: boolean;
+    clientBridgePromptFrequency: "once_per_visit" | "once_per_30_days" | "never";
+    notificationFailureEscalation: boolean;
+    rotationPolicy: "strict" | "balanced" | "fastest_available";
+    balanceGuardrailMinutes: number;
+    paymentCollectionPolicy: "barber_checkout" | "prepay";
+    sessionTimeoutSeconds: number;
   };
   chairs: Array<{
     chairId: string;
@@ -110,6 +122,53 @@ export interface OwnerOperationsControlState {
     invitations: number;
     claimed: number;
     optedOut: number;
+  };
+}
+
+export function createDefaultOwnerOperationsControlState(): OwnerOperationsControlState {
+  return {
+    floor: {
+      intakeOpen: true,
+      floorNote: null,
+      rotationOverrideBarberId: null,
+      rotationOverrideReason: null,
+      rotationOverrideExpiresAt: null,
+      version: 0
+    },
+    kiosk: {
+      paired: false,
+      pinSet: false,
+      enabled: false,
+      healthStatus: "unpaired",
+      emergencyDisabledAt: null,
+      privacyMode: true,
+      autoResetEnabled: true,
+      externalCheckinEnabled: false,
+      guestCheckinAllowed: true,
+      qrEntryEnabled: true,
+      nfcEntryEnabled: false,
+      clientBridgePromptEnabled: true,
+      clientBridgePromptFrequency: "once_per_visit",
+      notificationFailureEscalation: true,
+      rotationPolicy: "balanced",
+      balanceGuardrailMinutes: 20,
+      paymentCollectionPolicy: "barber_checkout",
+      sessionTimeoutSeconds: 75
+    },
+    chairs: [],
+    boothRent: {
+      billedCents: 0,
+      paidCents: 0,
+      outstandingCents: 0,
+      overdueCount: 0
+    },
+    clientBridge: {
+      offered: 0,
+      consented: 0,
+      invitations: 0,
+      claimed: 0,
+      optedOut: 0
+    }
   };
 }
 
@@ -279,34 +338,7 @@ export function buildOwnerOperationsPayload(input: {
         detail: "Review chair availability and source ownership before changing the floor."
       }] : [])
     ],
-    controls: input.controls ?? {
-      floor: { intakeOpen: true, floorNote: null, version: 0 },
-      kiosk: {
-        paired: false,
-        enabled: false,
-        healthStatus: "unpaired",
-        emergencyDisabledAt: null,
-        privacyMode: true,
-        autoResetEnabled: true,
-        qrEntryEnabled: true,
-        nfcEntryEnabled: false,
-        clientBridgePromptEnabled: true
-      },
-      chairs: [],
-      boothRent: {
-        billedCents: 0,
-        paidCents: 0,
-        outstandingCents: 0,
-        overdueCount: 0
-      },
-      clientBridge: {
-        offered: 0,
-        consented: 0,
-        invitations: 0,
-        claimed: 0,
-        optedOut: 0
-      }
-    },
+    controls: input.controls ?? createDefaultOwnerOperationsControlState(),
     privacyNotice: "Floor volume — barbers’ money, not the shop’s. Shop-owned money is limited to booth rent billed, paid, and outstanding."
   };
 }

@@ -396,6 +396,9 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     if (typeof navigator === "undefined") {
       return;
     }
+    if (process.env.NEXT_PUBLIC_AUTH_MODE === "demo") {
+      return;
+    }
 
     let cancelled = false;
 
@@ -793,6 +796,5 @@ type SyncSubscriptionPayload = {
   appBundleId?: string;
   appVersion?: string;
 };
-
 
 

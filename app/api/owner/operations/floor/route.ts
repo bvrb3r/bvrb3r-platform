@@ -10,10 +10,17 @@ const schema = z.object({
   shopId: z.string().trim().min(1),
   intakeOpen: z.boolean().optional(),
   floorNote: z.string().trim().min(3).max(500).nullable().optional(),
+  rotationOverrideBarberId: z.string().trim().min(1).nullable().optional(),
+  rotationOverrideExpiresAt: z.string().datetime().nullable().optional(),
   reason: z.string().trim().min(3).max(500)
 }).strict().refine(
-  (value) => value.intakeOpen !== undefined || value.floorNote !== undefined,
+  (value) => value.intakeOpen !== undefined
+    || value.floorNote !== undefined
+    || value.rotationOverrideBarberId !== undefined,
   "At least one floor control is required."
+).refine(
+  (value) => !value.rotationOverrideBarberId || Boolean(value.rotationOverrideExpiresAt),
+  "Rotation overrides need an expiration time."
 );
 
 export async function PATCH(request: Request) {

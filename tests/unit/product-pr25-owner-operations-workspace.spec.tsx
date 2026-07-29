@@ -8,13 +8,44 @@ vi.mock("@/lib/owner-operations/client", () => ({
   useUpdateOwnerFloorMutation: () => ({
     mutate: vi.fn(), isPending: false, error: null
   }),
+  useCreateOwnerWalkInMutation: () => ({
+    mutate: vi.fn(), isPending: false, error: null
+  }),
+  useReassignOwnerWalkInMutation: () => ({
+    mutate: vi.fn(), isPending: false, error: null
+  }),
   useSetOwnerKioskEmergencyMutation: () => ({
+    mutate: vi.fn(), isPending: false, error: null
+  }),
+  useUpdateOwnerKioskPolicyMutation: () => ({
+    mutate: vi.fn(), isPending: false, error: null
+  }),
+  usePairOwnerKioskMutation: () => ({
+    mutate: vi.fn(), isPending: false, error: null, data: null
+  }),
+  useSaveOwnerKioskPinMutation: () => ({
     mutate: vi.fn(), isPending: false, error: null
   }),
   useCreateOwnerChairMutation: () => ({
     mutate: vi.fn(), isPending: false, error: null
   }),
   useRetireOwnerChairMutation: () => ({
+    mutate: vi.fn(), isPending: false, error: null
+  }),
+  useOwnerTeamDirectoryQuery: () => ({
+    data: { shop: { id: "shop-one", label: "Shop One" }, barbers: [] },
+    error: null
+  }),
+  useCreateOwnerTeamInviteMutation: () => ({
+    mutate: vi.fn(), isPending: false, error: null
+  }),
+  useRespondOwnerJoinRequestMutation: () => ({
+    mutate: vi.fn(), isPending: false, error: null
+  }),
+  useSetOwnerRelationshipPauseMutation: () => ({
+    mutate: vi.fn(), isPending: false, error: null
+  }),
+  useEndOwnerRelationshipMutation: () => ({
     mutate: vi.fn(), isPending: false, error: null
   })
 }));
@@ -67,17 +98,33 @@ describe("Product PR25 owner operations workspace", () => {
         }],
         alerts: [],
         controls: {
-          floor: { intakeOpen: true, floorNote: null, version: 1 },
+          floor: {
+            intakeOpen: true,
+            floorNote: null,
+            rotationOverrideBarberId: null,
+            rotationOverrideReason: null,
+            rotationOverrideExpiresAt: null,
+            version: 1
+          },
           kiosk: {
             paired: false,
+            pinSet: false,
             enabled: false,
             healthStatus: "unpaired",
             emergencyDisabledAt: null,
             privacyMode: true,
             autoResetEnabled: true,
+            externalCheckinEnabled: false,
+            guestCheckinAllowed: true,
             qrEntryEnabled: true,
             nfcEntryEnabled: false,
-            clientBridgePromptEnabled: true
+            clientBridgePromptEnabled: true,
+            clientBridgePromptFrequency: "once_per_visit",
+            notificationFailureEscalation: true,
+            rotationPolicy: "balanced",
+            balanceGuardrailMinutes: 20,
+            paymentCollectionPolicy: "barber_checkout",
+            sessionTimeoutSeconds: 75
           },
           chairs: [],
           boothRent: { billedCents: 0, paidCents: 0, outstandingCents: 0, overdueCount: 0 },
@@ -90,16 +137,17 @@ describe("Product PR25 owner operations workspace", () => {
 
   it("renders operational counts without a revenue or tip card", () => {
     render(<OwnerOperationsWorkspace shopIds={["shop-one"]} />);
-    expect(screen.getByText("Floor volume")).toBeInTheDocument();
-    expect(screen.getByText("Open chairs")).toBeInTheDocument();
-    expect(screen.getByText("Owner privacy boundary")).toBeInTheDocument();
+    expect(screen.getByText("Today’s book · all sources")).toBeInTheDocument();
+    expect(screen.getByText(/external platform money and barber-private earnings never appear/i)).toBeInTheDocument();
     expect(screen.queryByText(/today revenue/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/tips/i)).not.toBeInTheDocument();
   });
 
   it("shows source and external payment ownership on Floor Day", () => {
     render(<OwnerOperationsWorkspace shopIds={["shop-one"]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Floor Day" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Owner screen" }), {
+      target: { value: "floor" }
+    });
     expect(screen.getByText("Guest A")).toBeInTheDocument();
     expect(screen.getByText("Square")).toBeInTheDocument();
     expect(screen.getByText("External provider owns payment")).toBeInTheDocument();
@@ -107,7 +155,9 @@ describe("Product PR25 owner operations workspace", () => {
 
   it("keeps emergency controls disabled until a kiosk is paired", () => {
     render(<OwnerOperationsWorkspace shopIds={["shop-one"]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Kiosk" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Owner screen" }), {
+      target: { value: "kiosk" }
+    });
     expect(screen.getByText(/pair this kiosk/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Restore kiosk" })).toBeDisabled();
   });

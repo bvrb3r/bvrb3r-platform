@@ -18,6 +18,14 @@ vi.mock("@/lib/booking/route-auth", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/config/runtime", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/config/runtime")>();
+  return {
+    ...original,
+    isDemoMode: () => false
+  };
+});
+
 vi.mock("@/lib/booking/platform-service", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/booking/platform-service")>();
   return {
@@ -76,17 +84,33 @@ describe("Product PR25 owner operations route", () => {
     getSessionUserMock.mockResolvedValue(owner);
     getShopDashboardPayloadMock.mockResolvedValue(emptyDashboard());
     readOwnerOperationsControlStateMock.mockResolvedValue({
-      floor: { intakeOpen: true, floorNote: null, version: 1 },
+      floor: {
+        intakeOpen: true,
+        floorNote: null,
+        rotationOverrideBarberId: null,
+        rotationOverrideReason: null,
+        rotationOverrideExpiresAt: null,
+        version: 1
+      },
       kiosk: {
         paired: false,
+        pinSet: false,
         enabled: false,
         healthStatus: "unpaired",
         emergencyDisabledAt: null,
         privacyMode: true,
         autoResetEnabled: true,
+        externalCheckinEnabled: false,
+        guestCheckinAllowed: true,
         qrEntryEnabled: true,
         nfcEntryEnabled: false,
-        clientBridgePromptEnabled: true
+        clientBridgePromptEnabled: true,
+        clientBridgePromptFrequency: "once_per_visit",
+        notificationFailureEscalation: true,
+        rotationPolicy: "balanced",
+        balanceGuardrailMinutes: 20,
+        paymentCollectionPolicy: "barber_checkout",
+        sessionTimeoutSeconds: 75
       },
       chairs: [],
       boothRent: { billedCents: 0, paidCents: 0, outstandingCents: 0, overdueCount: 0 },

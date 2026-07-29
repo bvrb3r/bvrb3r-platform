@@ -90,6 +90,7 @@ describe("Product PR25 owner-operations migration", () => {
   it("uses scoped access checks and indexed tenant keys", () => {
     expect(flat).toContain("(select private.has_shop_operator_access(");
     expect(flat).toContain("shop_floor_controls_location_idx");
+    expect(flat).toContain("shop_chairs_assigned_barber_idx");
     expect(flat).toContain("shop_chairs_location_idx");
     expect(flat).toContain("owner_clientbridge_location_idx");
   });

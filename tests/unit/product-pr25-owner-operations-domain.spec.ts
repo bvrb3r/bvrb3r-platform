@@ -7,7 +7,15 @@ import {
 
 function dashboardFixture() {
   return {
-    summary: { businessDate: "2026-07-29", revenueToday: 999 },
+    summary: {
+      businessDate: "2026-07-29",
+      revenueToday: 999,
+      tipsToday: 500,
+      outstandingBalance: 80,
+      completedServicesToday: 0,
+      bookedToday: 1,
+      paidAppointmentsToday: 0
+    },
     locations: [
       { id: "shop-one", name: "Shop One", label: "Shop One · Detroit", neighborhood: "", city: "Detroit", state: "MI" },
       { id: "shop-two", name: "Shop Two", label: "Shop Two · Chicago", neighborhood: "", city: "Chicago", state: "IL" }

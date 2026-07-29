@@ -110,6 +110,19 @@ describe("pwa provider", () => {
     expect(screen.getByText(/booking confirmations, marketplace momentum/i)).toBeInTheDocument();
   });
 
+  it("does not emit a failed device-presence write in demo mode", async () => {
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "demo");
+    mockPathname = "/dashboard/owner";
+
+    renderWithProviders();
+
+    await screen.findByText("child");
+    await waitFor(() => {
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+    vi.unstubAllEnvs();
+  });
+
   it("suppresses the install prompt inside a wrapped native runtime", async () => {
     mockPathname = "/dashboard/client";
     (window as Window & { Capacitor?: { isNativePlatform: () => boolean; getPlatform: () => string } }).Capacitor = {

@@ -90,6 +90,9 @@ create index if not exists shop_chairs_scope_idx
 create unique index if not exists shop_chairs_active_barber_uidx
   on public.shop_chairs (shop_id, location_id, assigned_barber_id)
   where active and assigned_barber_id is not null;
+create index if not exists shop_chairs_assigned_barber_idx
+  on public.shop_chairs (assigned_barber_id)
+  where assigned_barber_id is not null;
 create index if not exists shop_chairs_location_idx
   on public.shop_chairs (location_id);
 create index if not exists shop_chairs_retired_by_idx
