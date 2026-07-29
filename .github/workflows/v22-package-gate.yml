@@ -86,6 +86,7 @@ jobs:
           tests/unit/pr24-release-certificate-migration.spec.ts
           tests/unit/pr24-role-evidence-connector.spec.ts
           tests/unit/pr25-role-normalization-plan.spec.ts
+          tests/unit/pr26-role-normalization-dry-run.spec.ts
           tests/unit/public-booking-entry.spec.tsx
           tests/unit/public-home-routing.spec.tsx
           tests/unit/public-site.spec.tsx
@@ -121,6 +122,7 @@ jobs:
           tests/unit/pr24-release-certificate-migration.spec.ts
           tests/unit/pr24-role-evidence-connector.spec.ts
           tests/unit/pr25-role-normalization-plan.spec.ts
+          tests/unit/pr26-role-normalization-dry-run.spec.ts
 
       - name: Production build
         run: npm run build
