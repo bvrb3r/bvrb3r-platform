@@ -272,7 +272,9 @@ describe("BarberScheduleWorkspace", () => {
     expect(barberKioskAction).toHaveClass("w-full");
     expect(screen.getByRole("button", { name: /Open Culture/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Block Time$/i })).toBeInTheDocument();
-    expect(screen.getByText("No chair activity on this day")).toBeInTheDocument();
+    expect(screen.getByText("Your day is open.")).toBeInTheDocument();
+    expect(screen.getByText("No appointments or open slots are scheduled. Update availability to open the chair.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Update availability/ })).toBeInTheDocument();
     expect(screen.queryByLabelText(/No appointments at/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Working hours and blocked time")).not.toBeInTheDocument();
     expect(screen.queryByText("Availability control")).not.toBeInTheDocument();

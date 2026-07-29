@@ -25,6 +25,7 @@ import {
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { KioskLaunchAction } from "@/components/kiosk/kiosk-actions";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GlobalSafetyState } from "@/components/ui/global-safety-state";
 import {
   commandButtonIconAccentClassName,
   commandButtonIconClassName,
@@ -1793,22 +1794,12 @@ export function BarberScheduleWorkspace({
               )}
             </div>
           )) : (
-            <div className="empty-state-panel rounded-[24px] p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xl font-extrabold text-white">No chair activity on this day</p>
-                  <p className="mt-2 text-sm leading-6 text-white/58">No appointments or open slots are scheduled. Add a booking or update availability to open the chair.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <ActionButton type="button" variant="secondary" onClick={openAvailabilityControls}>
-                    Update availability
-                  </ActionButton>
-                  <ActionButton type="button" variant="secondary" onClick={() => router.push("/dashboard/barber/checkout")}>
-                    Quick Charge
-                  </ActionButton>
-                </div>
-              </div>
-            </div>
+            <GlobalSafetyState
+              state="empty_schedule"
+              detail="No appointments or open slots are scheduled. Update availability to open the chair."
+              actionLabel="Update availability"
+              onAction={openAvailabilityControls}
+            />
           )}
 
           <div className="relative grid gap-3 sm:grid-cols-[4.5rem_minmax(0,1fr)] sm:gap-4">

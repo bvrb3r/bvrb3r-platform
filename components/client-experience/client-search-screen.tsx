@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clock3, RefreshCw, ShieldCheck, Star } from "lucide-react";
+import { Clock3, ShieldCheck, Star } from "lucide-react";
 import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
 import { ClientPrimarySearchBar } from "@/components/client-experience/client-primary-search-bar";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
@@ -12,6 +12,7 @@ import { ClientShopDiscoveryCard } from "@/components/client-experience/client-s
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GlobalSafetyState } from "@/components/ui/global-safety-state";
 import { FilterChip, PageHeader } from "@/design/components";
 import { useClientHomeQuery } from "@/lib/booking/client";
 import {
@@ -62,23 +63,15 @@ function SearchEmptyState({
   href?: string;
   onAction?: () => void;
 }) {
-  const actionClassName = "mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#C4F24E]/28 bg-[#C4F24E]/10 px-5 text-sm font-extrabold text-[#C4F24E] transition hover:border-[#C4F24E]/48 hover:bg-[#C4F24E]/15";
-
   return (
-    <div className="rounded-[28px] border border-dashed border-white/10 bg-black/18 p-5">
-      <h3 className="text-2xl font-semibold tracking-[-0.03em] text-white" data-display="true">{title}</h3>
-      <p className="mt-3 max-w-2xl text-sm leading-7 text-white/62">{body}</p>
-      {href ? (
-        <Link href={href as Route} className={actionClassName}>
-          {actionLabel}
-        </Link>
-      ) : (
-        <button type="button" className={actionClassName} onClick={onAction}>
-          <RefreshCw className="h-4 w-4" />
-          {actionLabel}
-        </button>
-      )}
-    </div>
+    <GlobalSafetyState
+      state="no_search_results"
+      headline={title}
+      detail={body}
+      actionLabel={actionLabel}
+      actionHref={href}
+      onAction={onAction}
+    />
   );
 }
 

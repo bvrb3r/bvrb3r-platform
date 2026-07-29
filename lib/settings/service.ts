@@ -2,9 +2,21 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { normalizeAccountRole } from "@/lib/auth/roles";
 import type { Role, UserAccount } from "@/types/domain";
 import { isRetiredRevenueShareAccountRole } from "@/lib/doctrine/legacy-data-aliases";
+import {
+  defaultNotificationChannelPreferences,
+  normalizeNotificationChannelPreferences,
+  type NotificationChannelPreferences
+} from "@/lib/notifications/domain";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
-type SettingValue = string | boolean | number | string[] | null | undefined;
+type SettingValue =
+  | string
+  | boolean
+  | number
+  | string[]
+  | Record<string, unknown>
+  | null
+  | undefined;
 type SettingValues = Record<string, SettingValue>;
 type EngagementEdgeType = "follow" | "save" | "favorite";
 type TargetType = "client" | "barber" | "shop" | "service" | "style" | "culture_post" | "platform_item";
@@ -21,6 +33,11 @@ export type NotificationPreferencesPayload = {
   rewardsAlertsEnabled: boolean;
   quietHoursStart: string | null;
   quietHoursEnd: string | null;
+  quietHoursEnabled: boolean;
+  quietHoursTimezone: string;
+  channelPreferences: NotificationChannelPreferences;
+  marketingBarberEnabled: boolean;
+  marketingPlatformEnabled: boolean;
   preferredContactChannel: string;
 };
 
@@ -144,6 +161,16 @@ function cleanTime(value: SettingValue) {
   return /^\d{2}:\d{2}$/.test(trimmed) ? trimmed : null;
 }
 
+function cleanTimezone(value: SettingValue) {
+  if (typeof value !== "string") {
+    return "America/New_York";
+  }
+  const trimmed = value.trim();
+  return /^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+)+$/.test(trimmed)
+    ? trimmed
+    : "America/New_York";
+}
+
 function boolValue(value: SettingValue, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -158,6 +185,11 @@ function notificationValue(values: SettingValues, snakeKey: string, camelKey: st
 
 function normalizeNotificationPreferences(values: SettingValues = {}, previous?: NotificationPreferencesPayload): NotificationPreferencesPayload {
   const previousChannel = previous?.preferredContactChannel ?? "in_app";
+  const channelPreferences = normalizeNotificationChannelPreferences(
+    values.channel_preferences
+      ?? values.channelPreferences,
+    previous?.channelPreferences ?? defaultNotificationChannelPreferences
+  );
 
   return {
     inAppEnabled: boolValue(notificationValue(values, "in_app_enabled", "inAppEnabled"), previous?.inAppEnabled ?? true),
@@ -171,6 +203,19 @@ function normalizeNotificationPreferences(values: SettingValues = {}, previous?:
     rewardsAlertsEnabled: boolValue(notificationValue(values, "rewards_alerts_enabled", "rewardsAlertsEnabled"), previous?.rewardsAlertsEnabled ?? true),
     quietHoursStart: hasSettingValue(values, "quiet_hours_start", "quietHoursStart") ? cleanTime(notificationValue(values, "quiet_hours_start", "quietHoursStart")) : previous?.quietHoursStart ?? null,
     quietHoursEnd: hasSettingValue(values, "quiet_hours_end", "quietHoursEnd") ? cleanTime(notificationValue(values, "quiet_hours_end", "quietHoursEnd")) : previous?.quietHoursEnd ?? null,
+    quietHoursEnabled: boolValue(notificationValue(values, "quiet_hours_enabled", "quietHoursEnabled"), previous?.quietHoursEnabled ?? true),
+    quietHoursTimezone: hasSettingValue(values, "quiet_hours_timezone", "quietHoursTimezone")
+      ? cleanTimezone(notificationValue(values, "quiet_hours_timezone", "quietHoursTimezone"))
+      : previous?.quietHoursTimezone ?? "America/New_York",
+    channelPreferences,
+    marketingBarberEnabled: boolValue(
+      notificationValue(values, "marketing_barber_enabled", "marketingBarberEnabled"),
+      previous?.marketingBarberEnabled ?? false
+    ),
+    marketingPlatformEnabled: boolValue(
+      notificationValue(values, "marketing_platform_enabled", "marketingPlatformEnabled"),
+      previous?.marketingPlatformEnabled ?? false
+    ),
     preferredContactChannel: hasSettingValue(values, "preferred_contact_channel", "preferredContactChannel") ? cleanChannel(notificationValue(values, "preferred_contact_channel", "preferredContactChannel")) : previousChannel
   };
 }
@@ -251,6 +296,11 @@ function toNotificationRow(user: UserAccount, payload: NotificationPreferencesPa
     rewards_alerts_enabled: payload.rewardsAlertsEnabled,
     quiet_hours_start: payload.quietHoursStart,
     quiet_hours_end: payload.quietHoursEnd,
+    quiet_hours_enabled: payload.quietHoursEnabled,
+    quiet_hours_timezone: payload.quietHoursTimezone,
+    channel_preferences: payload.channelPreferences,
+    marketing_barber_enabled: payload.marketingBarberEnabled,
+    marketing_platform_enabled: payload.marketingPlatformEnabled,
     preferred_contact_channel: payload.preferredContactChannel,
     notification_preferences: payload,
     updated_at: nowIso()
@@ -278,6 +328,11 @@ function notificationPayloadFromRow(row: Record<string, unknown> | null | undefi
     rewards_alerts_enabled: (row.rewards_alerts_enabled as SettingValue) ?? storedPreferences.rewards_alerts_enabled ?? storedPreferences.rewardsAlertsEnabled,
     quiet_hours_start: (row.quiet_hours_start as SettingValue) ?? storedPreferences.quiet_hours_start ?? storedPreferences.quietHoursStart,
     quiet_hours_end: (row.quiet_hours_end as SettingValue) ?? storedPreferences.quiet_hours_end ?? storedPreferences.quietHoursEnd,
+    quiet_hours_enabled: (row.quiet_hours_enabled as SettingValue) ?? storedPreferences.quiet_hours_enabled ?? storedPreferences.quietHoursEnabled,
+    quiet_hours_timezone: (row.quiet_hours_timezone as SettingValue) ?? storedPreferences.quiet_hours_timezone ?? storedPreferences.quietHoursTimezone,
+    channel_preferences: (row.channel_preferences as SettingValue) ?? storedPreferences.channel_preferences ?? storedPreferences.channelPreferences,
+    marketing_barber_enabled: (row.marketing_barber_enabled as SettingValue) ?? storedPreferences.marketing_barber_enabled ?? storedPreferences.marketingBarberEnabled,
+    marketing_platform_enabled: (row.marketing_platform_enabled as SettingValue) ?? storedPreferences.marketing_platform_enabled ?? storedPreferences.marketingPlatformEnabled,
     preferred_contact_channel: (row.preferred_contact_channel as SettingValue) ?? storedPreferences.preferred_contact_channel ?? storedPreferences.preferredContactChannel
   });
 }
@@ -285,7 +340,7 @@ function notificationPayloadFromRow(row: Record<string, unknown> | null | undefi
 async function loadExistingNotificationPreferences(supabase: SupabaseClient, user: UserAccount) {
   const query = supabase
     .from("notification_preferences")
-    .select("in_app_enabled, sms_enabled, email_enabled, push_enabled, message_alerts_enabled, booking_alerts_enabled, payout_alerts_enabled, creator_alerts_enabled, rewards_alerts_enabled, quiet_hours_start, quiet_hours_end, preferred_contact_channel, notification_preferences")
+    .select("in_app_enabled, sms_enabled, email_enabled, push_enabled, message_alerts_enabled, booking_alerts_enabled, payout_alerts_enabled, creator_alerts_enabled, rewards_alerts_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_enabled, quiet_hours_timezone, channel_preferences, marketing_barber_enabled, marketing_platform_enabled, preferred_contact_channel, notification_preferences")
     .eq("role", actorRole(user));
   const scopedQuery = user.email ? query.eq("user_email", user.email) : query.eq("profile_id", user.id);
   const result = await scopedQuery.maybeSingle();
