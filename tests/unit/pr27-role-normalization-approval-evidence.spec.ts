@@ -24,11 +24,11 @@ describe("PR27 production role-normalization approval evidence", () => {
 
   it("requires a certifiable PR26 packet and keeps execution disabled", () => {
     expect(migration).toContain("public.bvrb3r_pr26_role_normalization_dry_run_packet()");
-    expect(migration).toContain("'certifiable': true");
-    expect(migration).toContain("'approvalRequired': true");
-    expect(migration).toContain("'executionEnabled': false");
-    expect(migration).toContain("'rawMutationExecuted': false");
-    expect(migration).toContain("'rowsIncluded': false");
+    expect(migration).toContain('\"certifiable\": true');
+    expect(migration).toContain('\"approvalRequired\": true');
+    expect(migration).toContain('\"executionEnabled\": false');
+    expect(migration).toContain('\"rawMutationExecuted\": false');
+    expect(migration).toContain('\"rowsIncluded\": false');
     expect(migration).toContain("'roleMutationExecuted', false");
     expect(migration).toContain("'actorContentExposed', false");
     expect(migration).not.toMatch(/\b(update|delete\s+from|insert\s+into)\s+public\.profiles\b/i);
