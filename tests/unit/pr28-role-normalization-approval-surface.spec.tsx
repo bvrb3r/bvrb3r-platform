@@ -271,7 +271,7 @@ describe("PR28 authenticated approval surface", () => {
 
     render(<RoleNormalizationApprovalSurface />);
 
-    expect(await screen.findByText("27")).toBeInTheDocument();
+    expect((await screen.findAllByText("27")).length).toBeGreaterThanOrEqual(2);
     fireEvent.click(screen.getByRole("button", { name: /approve plan evidence/i }));
     fireEvent.change(screen.getByRole("textbox", { name: /decision reason/i }), {
       target: { value: "Certified aggregate evidence is ready." }
