@@ -16,6 +16,7 @@ import {
 } from "@/lib/fintech/service";
 import { reversePointsForAppointment } from "@/lib/points/engine";
 import { buildAppointmentLifecycleFields } from "@/lib/appointments/domain";
+import { isBvrb3rFinancialAppointment } from "@/lib/barber/command-center";
 import {
   assertPaymentStatusTransition,
   formatPaymentMethodLabel,
@@ -72,6 +73,9 @@ type AppointmentRow = {
   lifecycle_revision: number;
   completed_at: string | null;
   updated_at: string;
+  source_provider: "bvrb3r" | "booksy" | "square" | "thecut";
+  payment_owner: string;
+  external_financial_data_private: boolean;
 };
 
 type PaymentMethodRow = {
@@ -1426,7 +1430,7 @@ async function resolvePaymentActor(user: UserAccount, supabase: SupabaseClient):
 }
 
 async function loadAppointmentOrThrow(supabase: SupabaseClient, appointmentId: string) {
-  const appointmentSelect = "id, reference_code, client_id, barber_id, shop_id, location_id, service_id, status, deposit_amount, balance_due, grand_total, tip_amount, lifecycle_revision, completed_at, updated_at";
+  const appointmentSelect = "id, reference_code, client_id, barber_id, shop_id, location_id, service_id, status, deposit_amount, balance_due, grand_total, tip_amount, lifecycle_revision, completed_at, updated_at, source_provider, payment_owner, external_financial_data_private";
   let result = await supabase
     .from("appointments")
     .select(appointmentSelect)
@@ -2087,6 +2091,25 @@ async function loadPaymentOrThrow(supabase: SupabaseClient, paymentId: string) {
 function assertClientOwnsAppointment(actor: PaymentActorContext, appointment: AppointmentRow) {
   if (!isPaymentClientRole(actor.role) || !actor.clientId || actor.clientId !== appointment.client_id) {
     throw new PaymentServiceError("Only the owning client can access this appointment payment.", 403);
+  }
+}
+
+function assertBarberOwnsAppointment(actor: PaymentActorContext, appointment: AppointmentRow) {
+  if (!isBarberAccountRole(actor.role) || !actor.barberId || actor.barberId !== appointment.barber_id) {
+    throw new PaymentServiceError("Barbers can only check out appointments assigned to their own chair.", 403);
+  }
+}
+
+function assertBvrb3rOwnsAppointmentPayment(appointment: AppointmentRow) {
+  if (!isBvrb3rFinancialAppointment({
+    sourceProvider: appointment.source_provider,
+    paymentOwner: appointment.payment_owner,
+    externalFinancialDataPrivate: appointment.external_financial_data_private
+  })) {
+    throw new PaymentServiceError(
+      "External appointments remain read-only. Complete payment in the source provider.",
+      409
+    );
   }
 }
 
@@ -3687,9 +3710,12 @@ export async function createAppointmentPayment(user: UserAccount, input: {
   const supabase = getSupabaseOrThrow();
   const actor = await resolvePaymentActor(user, supabase);
   const appointment = await loadAppointmentOrThrow(supabase, input.appointmentId);
+  assertBvrb3rOwnsAppointmentPayment(appointment);
 
   if (isPaymentClientRole(actor.role)) {
     assertClientOwnsAppointment(actor, appointment);
+  } else if (isBarberAccountRole(actor.role)) {
+    assertBarberOwnsAppointment(actor, appointment);
   } else {
     assertShopAccess(actor.role, actor.locationIds, appointment.shop_id, appointment.location_id);
   }
@@ -4029,9 +4055,12 @@ export async function createAppointmentTip(user: UserAccount, input: {
   const supabase = getSupabaseOrThrow();
   const actor = await resolvePaymentActor(user, supabase);
   const appointment = await loadAppointmentOrThrow(supabase, input.appointmentId);
+  assertBvrb3rOwnsAppointmentPayment(appointment);
 
   if (isPaymentClientRole(actor.role)) {
     assertClientOwnsAppointment(actor, appointment);
+  } else if (isBarberAccountRole(actor.role)) {
+    assertBarberOwnsAppointment(actor, appointment);
   } else {
     assertShopAccess(actor.role, actor.locationIds, appointment.shop_id, appointment.location_id);
   }

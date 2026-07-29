@@ -117,6 +117,8 @@ function createSupabaseMock(input?: {
       or: () => query,
       in: () => query,
       gte: () => query,
+      gt: () => query,
+      lt: () => query,
       order: () => query,
       limit: () => query,
       maybeSingle: async () => resultFor(table, true),

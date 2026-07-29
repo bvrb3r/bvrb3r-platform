@@ -5,12 +5,14 @@ import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule
 const {
   pushMock,
   useBarberLifecycleMutationMock,
+  useBarberQueueQueryMock,
   useBarberScheduleQueryMock,
   useCreateMessageThreadMutationMock,
   useUpdateBarberScheduleMutationMock
 } = vi.hoisted(() => ({
   pushMock: vi.fn(),
   useBarberLifecycleMutationMock: vi.fn(),
+  useBarberQueueQueryMock: vi.fn(),
   useBarberScheduleQueryMock: vi.fn(),
   useCreateMessageThreadMutationMock: vi.fn(),
   useUpdateBarberScheduleMutationMock: vi.fn()
@@ -46,6 +48,7 @@ vi.mock("@/lib/operations/barber-client", async (importOriginal) => {
   return {
     ...actual,
     useBarberLifecycleMutation: useBarberLifecycleMutationMock,
+    useBarberQueueQuery: useBarberQueueQueryMock,
     useBarberScheduleQuery: useBarberScheduleQueryMock,
     useUpdateBarberScheduleMutation: useUpdateBarberScheduleMutationMock
   };
@@ -87,7 +90,8 @@ function buildSchedulePayload() {
       rangeStart: `${TEST_DATE_KEY}T00:00:00.000Z`,
       rangeEnd: `${TEST_DATE_KEY}T23:59:59.000Z`,
       rangeLabel: "Today",
-      appointments: []
+      appointments: [],
+      externalAppointments: []
     },
     workingHours: [],
     blockedTimes: []
@@ -198,6 +202,21 @@ function getStatCard(label: string) {
 
 describe("BarberScheduleWorkspace", () => {
   beforeEach(() => {
+    useBarberQueueQueryMock.mockReturnValue({
+      data: {
+        summary: {
+          activeCount: 0,
+          calledCount: 0,
+          assignedCount: 0,
+          averageWaitMinutes: 0,
+          sourceCounts: { bvrb3r: 0, booksy: 0, square: 0, thecut: 0 }
+        },
+        entries: [],
+        recentResolvedEntries: []
+      },
+      isLoading: false,
+      error: null
+    });
     useBarberScheduleQueryMock.mockReturnValue({
       data: buildSchedulePayload(),
       isLoading: false,
@@ -260,6 +279,110 @@ describe("BarberScheduleWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Open Culture/i }));
     expect(pushMock).toHaveBeenCalledWith("/dashboard/barber/culture");
+  });
+
+  it("renders external calendar entries as source-isolated and read-only", () => {
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: {
+        ...buildSchedulePayload(),
+        timeline: {
+          ...buildSchedulePayload().timeline,
+          externalAppointments: [{
+            id: "external-1",
+            providerAppointmentId: "booksy-visit-1",
+            sourceProvider: "booksy",
+            sourceLabel: "Booksy",
+            locationId: "loc-ybor",
+            locationLabel: "The BVRB3R Shop",
+            clientName: "External Guest",
+            serviceName: "Provider Cut",
+            status: "confirmed",
+            statusLabel: "Confirmed",
+            startsAt: `${TEST_DATE_KEY}T15:00:00.000Z`,
+            endsAt: `${TEST_DATE_KEY}T15:45:00.000Z`,
+            checkedInAt: null,
+            queueEntryId: null,
+            sourceUpdatedAt: `${TEST_DATE_KEY}T13:00:00.000Z`,
+            readOnly: true
+          }]
+        }
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    const externalCard = screen.getByTestId("external-calendar-entry-booksy");
+    expect(within(externalCard).getByText("External Guest")).toBeInTheDocument();
+    expect(within(externalCard).getByText("Booksy")).toBeInTheDocument();
+    expect(within(externalCard).getByText(/Read-only source/i)).toBeInTheDocument();
+    expect(within(externalCard).getByText(/Payment, checkout, lifecycle and revenue actions are unavailable/i)).toBeInTheDocument();
+    expect(within(externalCard).queryByText(/\$/)).not.toBeInTheDocument();
+    expect(within(externalCard).queryByRole("button", { name: /Checkout|Complete|View Details/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Square 0$/i }));
+    expect(screen.queryByTestId("external-calendar-entry-booksy")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Booksy 1$/i }));
+    expect(screen.getByTestId("external-calendar-entry-booksy")).toBeInTheDocument();
+  });
+
+  it("shows only privacy-minimized, source-labeled entries in the unified barber queue", () => {
+    useBarberQueueQueryMock.mockReturnValue({
+      data: {
+        summary: {
+          activeCount: 1,
+          calledCount: 0,
+          assignedCount: 0,
+          averageWaitMinutes: 12,
+          sourceCounts: { bvrb3r: 0, booksy: 1, square: 0, thecut: 0 }
+        },
+        entries: [{
+          id: "queue-1",
+          clientId: "client-1",
+          clientName: "Queue Guest",
+          shopId: "loc-ybor",
+          shopLabel: "The BVRB3R Shop",
+          serviceName: "External Fade",
+          preferredBarberId: "barber-1",
+          preferredBarberName: "Blaze King",
+          assignedBarberId: "barber-1",
+          assignedBarberName: "Blaze King",
+          flexibilityMinutes: 0,
+          queueSource: "external_checkin",
+          entryType: "booked",
+          sourceProvider: "booksy",
+          paymentOwner: "external:booksy",
+          assignmentLocked: true,
+          reassignable: false,
+          position: 2,
+          estimatedWaitMinutes: 12,
+          waitVersion: 1,
+          publicState: "waiting",
+          lastSyncedAt: `${TEST_DATE_KEY}T13:00:00.000Z`,
+          operationalSmsConsent: true,
+          status: "active",
+          statusLabel: "Waiting",
+          createdAt: `${TEST_DATE_KEY}T13:00:00.000Z`,
+          waitMinutes: 5
+        }],
+        recentResolvedEntries: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    const queue = screen.getByTestId("barber-unified-queue");
+    expect(within(queue).getByText("Queue Guest")).toBeInTheDocument();
+    expect(within(queue).getByText("Booksy")).toBeInTheDocument();
+    expect(within(queue).getByText(/External payment owner · Barber locked/i)).toBeInTheDocument();
+    expect(within(queue).getByText("Position 2")).toBeInTheDocument();
+    expect(within(queue).getByText("~12 min")).toBeInTheDocument();
+    expect(queue).not.toHaveTextContent("8135550101");
+    expect(queue).not.toHaveTextContent("guest@example.com");
   });
 
   it("opens barber kiosk directly when kiosk PIN is already set", async () => {

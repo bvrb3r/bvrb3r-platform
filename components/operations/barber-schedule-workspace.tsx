@@ -13,6 +13,8 @@ import {
   CreditCard,
   FileText,
   Images,
+  ListOrdered,
+  LockKeyhole,
   MessageSquareText,
   Plus,
   ReceiptText,
@@ -37,10 +39,12 @@ import { shiftBarberScheduleAnchorDate } from "@/lib/barber/domain";
 import { useCreateMessageThreadMutation } from "@/lib/messages/client";
 import {
   useBarberLifecycleMutation,
+  useBarberQueueQuery,
   useBarberScheduleQuery,
   useUpdateBarberScheduleMutation,
   type BarberApiError,
   type BarberBlockedTimeView,
+  type BarberExternalAppointmentView,
   type BarberOperationalAppointment,
   type BarberScheduleViewMode,
   type BarberWorkingHoursView
@@ -75,12 +79,21 @@ type TimelineEntry =
       appointment: BarberOperationalAppointment;
     }
   | {
+      type: "external-appointment";
+      id: string;
+      startsAt: Date;
+      endsAt: Date;
+      appointment: BarberExternalAppointmentView;
+    }
+  | {
       type: "open-slot";
       id: string;
       startsAt: Date;
       endsAt: Date;
       slot: OpenSlotView;
     };
+
+type BarberCalendarSource = "all" | "bvrb3r" | "booksy" | "square" | "thecut";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -269,12 +282,14 @@ function getScheduleTimeZone() {
 function buildOpenSlots({
   anchorDateKey,
   appointments,
+  externalAppointments,
   blockedTimes,
   workingHours,
   selectedLocationId
 }: {
   anchorDateKey: string;
   appointments: BarberOperationalAppointment[];
+  externalAppointments: BarberExternalAppointmentView[];
   blockedTimes: BarberBlockedTimeView[];
   workingHours: BarberWorkingHoursView[];
   selectedLocationId: string | null;
@@ -298,6 +313,12 @@ function buildOpenSlots({
           startsAt: appointment.start,
           endsAt: appointment.end
         })),
+      ...externalAppointments
+        .filter((appointment) => appointment.status !== "canceled" && appointment.status !== "no_show")
+        .map((appointment) => ({
+          startsAt: appointment.startsAt,
+          endsAt: appointment.endsAt
+        })),
       ...blockedTimes
         .map((blockedTime) => ({
           startsAt: blockedTime.startsAt,
@@ -320,12 +341,14 @@ function buildOpenSlots({
 function getUtilization({
   anchorDateKey,
   appointments,
+  externalAppointments,
   blockedTimes,
   workingHours,
   selectedLocationId
 }: {
   anchorDateKey: string;
   appointments: BarberOperationalAppointment[];
+  externalAppointments: BarberExternalAppointmentView[];
   blockedTimes: BarberBlockedTimeView[];
   workingHours: BarberWorkingHoursView[];
   selectedLocationId: string | null;
@@ -341,6 +364,14 @@ function getUtilization({
     .filter((appointment) => getDateKeyFromIso(appointment.start) === anchorDateKey)
     .filter((appointment) => isAvailabilityBlockingAppointmentStatus(appointment.status))
     .reduce((sum, appointment) => sum + getAppointmentMinutes(appointment), 0);
+  const externalAppointmentMinutes = externalAppointments
+    .filter((appointment) => getDateKeyFromIso(appointment.startsAt) === anchorDateKey)
+    .filter((appointment) => appointment.status !== "canceled" && appointment.status !== "no_show")
+    .reduce(
+      (sum, appointment) =>
+        sum + Math.max(0, Math.round((new Date(appointment.endsAt).getTime() - new Date(appointment.startsAt).getTime()) / 60000)),
+      0
+    );
   const blockedMinutes = blockedTimes
     .filter((blockedTime) => getDateKeyFromIso(blockedTime.startsAt) === anchorDateKey)
     .reduce((sum, blockedTime) => {
@@ -361,7 +392,7 @@ function getUtilization({
     return null;
   }
 
-  const usedMinutes = Math.min(workingMinutes, appointmentMinutes + blockedMinutes);
+  const usedMinutes = Math.min(workingMinutes, appointmentMinutes + externalAppointmentMinutes + blockedMinutes);
   const percent = Math.round((usedMinutes / workingMinutes) * 100);
 
   return {
@@ -424,7 +455,7 @@ function canCompleteAppointment(appointment: BarberOperationalAppointment) {
 }
 
 function isAppointmentPaidForCardCompletion(appointment: BarberOperationalAppointment) {
-  return appointment.financial.capturedAmount > 0 || appointment.balanceDue <= 0 || appointment.financial.outstandingBalance <= 0;
+  return appointment.financial.outstandingBalance <= 0;
 }
 
 function canCancelAppointment(appointment: BarberOperationalAppointment) {
@@ -512,6 +543,7 @@ function AppointmentCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 text-sm text-white/58">
+        <span className="status-pill border-[#c4f24e]/24 text-[#e4f9b8]">BVRB3R</span>
         <span className="status-pill text-white/68">{appointment.display.locationLabel}</span>
         <span className="status-pill text-white/68">{appointment.financial.latestStatusLabel}</span>
         {appointment.status === "completed" && isPayoutEligible(appointment) ? <span className="status-pill text-[#e4f9b8]">Payout eligible</span> : null}
@@ -570,6 +602,54 @@ function AppointmentCard({
           <MessageSquareText className="h-4 w-4" />
           {isMessagePending ? "Opening..." : "Message"}
         </ActionButton>
+      </div>
+    </GlassCard>
+  );
+}
+
+function ExternalAppointmentCard({
+  appointment,
+  viewMode
+}: {
+  appointment: BarberExternalAppointmentView;
+  viewMode: BarberScheduleViewMode;
+}) {
+  return (
+    <GlassCard
+      className="border-l-4 border-l-sky-300/60 p-4"
+      data-testid={`external-calendar-entry-${appointment.sourceProvider}`}
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar
+            alt={appointment.clientName}
+            initials={getInitials(appointment.clientName)}
+            className="h-[54px] w-[54px]"
+          />
+          <div className="min-w-0">
+            <p className="truncate text-lg font-extrabold tracking-[-0.02em] text-white">{appointment.clientName}</p>
+            <p className="mt-1 truncate text-base font-semibold text-white/90">{appointment.serviceName}</p>
+            <p className="mt-1 text-sm font-medium text-white/58">
+              {viewMode === "day"
+                ? formatTimeRange(appointment.startsAt, appointment.endsAt)
+                : `${formatShortDate(appointment.startsAt)} - ${formatTimeRange(appointment.startsAt, appointment.endsAt)}`}
+            </p>
+          </div>
+        </div>
+        <StatusBadge tone={getStatusTone(appointment.status)}>{appointment.statusLabel}</StatusBadge>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2 text-sm">
+        <span className="status-pill border-sky-300/24 text-sky-100">{appointment.sourceLabel}</span>
+        <span className="status-pill text-white/68">{appointment.locationLabel}</span>
+        <span className="status-pill text-white/68">
+          <LockKeyhole className="h-3.5 w-3.5" />
+          Read-only source
+        </span>
+      </div>
+
+      <div className="mt-4 rounded-[16px] border border-sky-300/12 bg-sky-300/[0.04] px-4 py-3 text-sm leading-6 text-white/62">
+        Calendar details stay isolated to {appointment.sourceLabel}. Payment, checkout, lifecycle and revenue actions are unavailable in BVRB3R.
       </div>
     </GlassCard>
   );
@@ -711,7 +791,7 @@ function AppointmentDetailsModal({
 }) {
   const [confirmAction, setConfirmAction] = useState<"cancel" | "no_show" | null>(null);
   const [transactionNotice, setTransactionNotice] = useState<string | null>(null);
-  const isPaid = appointment.financial.capturedAmount > 0 || appointment.balanceDue <= 0;
+  const isPaid = appointment.financial.outstandingBalance <= 0;
   const serviceComplete = appointment.status === "completed";
   const cardLabel = formatCardLabel(appointment);
   const payoutEligible = isPayoutEligible(appointment);
@@ -919,6 +999,7 @@ export function BarberScheduleWorkspace({
     viewMode: scheduleView,
     anchorDate: anchorDate || undefined
   });
+  const queueQuery = useBarberQueueQuery();
   const scheduleMutation = useUpdateBarberScheduleMutation();
   const appointmentActionMutation = useBarberLifecycleMutation();
   const createThreadMutation = useCreateMessageThreadMutation();
@@ -933,6 +1014,7 @@ export function BarberScheduleWorkspace({
   const [completeConfirmationAppointmentId, setCompleteConfirmationAppointmentId] = useState<string | null>(null);
   const [appointmentDetailView, setAppointmentDetailView] = useState<"details" | "transaction">("details");
   const [appointmentOverrides, setAppointmentOverrides] = useState<Record<string, AppointmentLocalOverride>>({});
+  const [calendarSource, setCalendarSource] = useState<BarberCalendarSource>("all");
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const showCalendar = surface !== "availability";
   const showAvailability = surface !== "calendar";
@@ -947,41 +1029,73 @@ export function BarberScheduleWorkspace({
       .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
     [appointmentOverrides, payload?.todayAppointments, timeline?.appointments]
   );
+  const timelineExternalAppointments = useMemo(
+    () => [...(timeline?.externalAppointments ?? [])]
+      .sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime()),
+    [timeline?.externalAppointments]
+  );
   const visibleAppointments = useMemo(
-    () => scheduleView === "day"
-      ? timelineAppointments.filter((appointment) => getDateKeyFromIso(appointment.start) === selectedDateKey)
-      : timelineAppointments,
-    [scheduleView, selectedDateKey, timelineAppointments]
+    () => calendarSource !== "all" && calendarSource !== "bvrb3r"
+      ? []
+      : scheduleView === "day"
+        ? timelineAppointments.filter((appointment) => getDateKeyFromIso(appointment.start) === selectedDateKey)
+        : timelineAppointments,
+    [calendarSource, scheduleView, selectedDateKey, timelineAppointments]
+  );
+  const visibleExternalAppointments = useMemo(
+    () => timelineExternalAppointments
+      .filter((appointment) => calendarSource === "all" || appointment.sourceProvider === calendarSource)
+      .filter((appointment) => scheduleView !== "day" || getDateKeyFromIso(appointment.startsAt) === selectedDateKey),
+    [calendarSource, scheduleView, selectedDateKey, timelineExternalAppointments]
   );
   const selectedDayAppointments = useMemo(
     () => timelineAppointments.filter((appointment) => getDateKeyFromIso(appointment.start) === selectedDateKey),
     [selectedDateKey, timelineAppointments]
   );
+  const selectedDayExternalAppointments = useMemo(
+    () => timelineExternalAppointments.filter((appointment) => getDateKeyFromIso(appointment.startsAt) === selectedDateKey),
+    [selectedDateKey, timelineExternalAppointments]
+  );
+  const calendarSourceCounts = useMemo(() => ({
+    all: timelineAppointments.length + timelineExternalAppointments.length,
+    bvrb3r: timelineAppointments.length,
+    booksy: timelineExternalAppointments.filter((appointment) => appointment.sourceProvider === "booksy").length,
+    square: timelineExternalAppointments.filter((appointment) => appointment.sourceProvider === "square").length,
+    thecut: timelineExternalAppointments.filter((appointment) => appointment.sourceProvider === "thecut").length
+  }), [timelineAppointments.length, timelineExternalAppointments]);
   const revenueEligibleDayAppointments = useMemo(
     () => selectedDayAppointments.filter((appointment) => isAppointmentRevenueEligible(appointment.status)),
     [selectedDayAppointments]
+  );
+  const activeExternalDayAppointments = useMemo(
+    () => selectedDayExternalAppointments.filter(
+      (appointment) => appointment.status !== "canceled" && appointment.status !== "no_show"
+    ),
+    [selectedDayExternalAppointments]
   );
   const openSlots = useMemo(
     () => scheduleView === "day"
       ? buildOpenSlots({
           anchorDateKey: selectedDateKey,
           appointments: timelineAppointments,
+          externalAppointments: timelineExternalAppointments,
           blockedTimes: payload?.blockedTimes ?? [],
           workingHours: payload?.workingHours ?? [],
           selectedLocationId
         })
       : [],
-    [payload?.blockedTimes, payload?.workingHours, scheduleView, selectedDateKey, selectedLocationId, timelineAppointments]
+    [payload?.blockedTimes, payload?.workingHours, scheduleView, selectedDateKey, selectedLocationId, timelineAppointments, timelineExternalAppointments]
   );
   const utilization = useMemo(
     () => getUtilization({
       anchorDateKey: selectedDateKey,
       appointments: timelineAppointments,
+      externalAppointments: timelineExternalAppointments,
       blockedTimes: payload?.blockedTimes ?? [],
       workingHours: payload?.workingHours ?? [],
       selectedLocationId
     }),
-    [payload?.blockedTimes, payload?.workingHours, selectedDateKey, selectedLocationId, timelineAppointments]
+    [payload?.blockedTimes, payload?.workingHours, selectedDateKey, selectedLocationId, timelineAppointments, timelineExternalAppointments]
   );
   const timelineEntries = useMemo<TimelineEntry[]>(() => {
     const appointmentEntries = visibleAppointments.map((appointment) => ({
@@ -998,9 +1112,20 @@ export function BarberScheduleWorkspace({
       endsAt: slot.endsAt,
       slot
     }));
+    const externalEntries = visibleExternalAppointments.map((appointment) => ({
+      type: "external-appointment" as const,
+      id: appointment.id,
+      startsAt: new Date(appointment.startsAt),
+      endsAt: new Date(appointment.endsAt),
+      appointment
+    }));
 
-    return [...appointmentEntries, ...slotEntries].sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
-  }, [openSlots, visibleAppointments]);
+    const sourceVisibleSlots = calendarSource === "all" || calendarSource === "bvrb3r"
+      ? slotEntries
+      : [];
+    return [...appointmentEntries, ...externalEntries, ...sourceVisibleSlots]
+      .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
+  }, [calendarSource, openSlots, visibleAppointments, visibleExternalAppointments]);
   const weekStrip = useMemo(() => buildWeekStrip(selectedDateKey), [selectedDateKey]);
   const estimatedEarnings = revenueEligibleDayAppointments.reduce((sum, appointment) => sum + appointment.totalAmount, 0);
   const currentOrNextAppointmentId = visibleAppointments.find((appointment) => appointment.status === "checked_in" || appointment.status === "in_service")?.id
@@ -1014,6 +1139,7 @@ export function BarberScheduleWorkspace({
     ? timelineAppointments.find((appointment) => appointment.id === completeConfirmationAppointmentId) ?? null
     : null;
   const errorMessage = scheduleQuery.error ? getReadableActionError(scheduleQuery.error as BarberApiError) : null;
+  const queueErrorMessage = queueQuery.error ? getReadableActionError(queueQuery.error as BarberApiError) : null;
 
   useEffect(() => {
     if (!payload) {
@@ -1451,8 +1577,8 @@ export function BarberScheduleWorkspace({
             <DataStatCard
               className="min-h-[112px] rounded-[18px]"
               label="Appointments"
-              value={revenueEligibleDayAppointments.length}
-              detail="Today"
+              value={revenueEligibleDayAppointments.length + activeExternalDayAppointments.length}
+              detail="Active across all sources"
               icon={<CalendarCheck2 className="h-4 w-4" />}
             />
             <DataStatCard
@@ -1499,6 +1625,37 @@ export function BarberScheduleWorkspace({
             ))}
           </div>
 
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="surface-label">Calendar source</p>
+              <span className="text-xs text-white/46">External sources are read-only</span>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Calendar source">
+              {([
+                ["all", "All"],
+                ["bvrb3r", "BVRB3R"],
+                ["booksy", "Booksy"],
+                ["square", "Square"],
+                ["thecut", "theCut"]
+              ] as const).map(([source, label]) => (
+                <button
+                  key={source}
+                  type="button"
+                  aria-pressed={calendarSource === source}
+                  className={cn(
+                    "status-pill min-h-10 shrink-0 transition",
+                    calendarSource === source
+                      ? "border-[#c4f24e]/40 bg-[#c4f24e]/12 text-[#e4f9b8]"
+                      : "text-white/62 hover:border-white/18 hover:text-white"
+                  )}
+                  onClick={() => setCalendarSource(source)}
+                >
+                  {label} {calendarSourceCounts[source]}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-white/82">{timeline?.rangeLabel ?? formatShortDate(parseDateKey(selectedDateKey))}</p>
@@ -1525,6 +1682,69 @@ export function BarberScheduleWorkspace({
 
           {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
           {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
+          {queueErrorMessage ? <FeedbackBanner tone="error" message={queueErrorMessage} /> : null}
+        </div>
+      </GlassCard>
+
+      <GlassCard className="rounded-[28px] p-5 sm:p-6" data-testid="barber-unified-queue">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="bvr-section-label">Unified queue</p>
+            <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.03em] text-white">Your chair line, one server truth</h3>
+            <p className="mt-2 text-sm leading-6 text-white/58">
+              Booked guests and walk-ins stay ordered by the canonical queue. Source and payment ownership remain isolated.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <ListOrdered className="h-5 w-5 text-[#c4f24e]" />
+            <span className="status-pill text-[#e4f9b8]">
+              {queueQuery.data?.entries.length ?? 0} live
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {queueQuery.isLoading && !queueQuery.data ? (
+            <>
+              <ScheduleSkeleton />
+              <ScheduleSkeleton />
+            </>
+          ) : queueQuery.data?.entries.length ? queueQuery.data.entries.map((entry) => (
+            <div key={entry.id} className="rounded-[20px] border border-white/8 bg-black/22 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-base font-extrabold text-white">{entry.clientName}</p>
+                    <span className={cn(
+                      "status-pill",
+                      entry.sourceProvider === "bvrb3r" ? "text-[#e4f9b8]" : "border-sky-300/24 text-sky-100"
+                    )}>
+                      {entry.sourceProvider === "thecut"
+                        ? "theCut"
+                        : entry.sourceProvider === "bvrb3r"
+                          ? "BVRB3R"
+                          : entry.sourceProvider.slice(0, 1).toUpperCase() + entry.sourceProvider.slice(1)}
+                    </span>
+                    <span className="status-pill text-white/62">{entry.entryType === "walkin" ? "Walk-in" : "Booked"}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-white/62">{entry.serviceName} · {entry.shopLabel}</p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.14em] text-white/42">
+                    {entry.paymentOwner.startsWith("external:") ? "External payment owner" : entry.paymentOwner.replaceAll("_", " ")}
+                    {entry.assignmentLocked ? " · Barber locked" : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  {entry.position ? <span className="status-pill text-white/72">Position {entry.position}</span> : null}
+                  {entry.estimatedWaitMinutes != null ? <span className="status-pill text-white/72">~{entry.estimatedWaitMinutes} min</span> : null}
+                  <StatusBadge tone={getStatusTone(entry.status)}>{entry.statusLabel}</StatusBadge>
+                </div>
+              </div>
+            </div>
+          )) : (
+            <div className="empty-state-panel rounded-[22px] p-5 text-sm text-white/58">
+              No booked guest or walk-in is waiting for your chair.
+            </div>
+          )}
         </div>
       </GlassCard>
 
@@ -1535,7 +1755,7 @@ export function BarberScheduleWorkspace({
             <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.03em] text-white">Hour-by-hour chair control</h3>
           </div>
           <span className="status-pill text-[#e4f9b8]">
-            {visibleAppointments.length} appointment{visibleAppointments.length === 1 ? "" : "s"}
+            {visibleAppointments.length + visibleExternalAppointments.length} appointment{visibleAppointments.length + visibleExternalAppointments.length === 1 ? "" : "s"}
           </span>
         </div>
 
@@ -1566,6 +1786,8 @@ export function BarberScheduleWorkspace({
                   isCompleting={pendingAppointmentId === entry.appointment.id && pendingDetailAction === "service_complete"}
                   isMessagePending={createThreadMutation.isPending}
                 />
+              ) : entry.type === "external-appointment" ? (
+                <ExternalAppointmentCard appointment={entry.appointment} viewMode={scheduleView} />
               ) : (
                 <OpenSlotCard slot={entry.slot} onBookSlot={handleBookOpenSlot} />
               )}
