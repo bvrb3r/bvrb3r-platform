@@ -38,15 +38,33 @@ function sha256(value: string) {
 
 type SessionRow = Record<string, unknown>;
 
-function createSupabaseStub(options: { settingRow?: typeof SETTING | null; sessionRows?: SessionRow[] } = {}) {
+function createSupabaseStub(options: {
+  settingRow?: typeof SETTING | null;
+  sessionRows?: SessionRow[];
+  controlRows?: SessionRow[];
+} = {}) {
   const sessions: SessionRow[] = options.sessionRows ?? [];
   const updates: SessionRow[] = [];
   const settingRow = options.settingRow === undefined ? SETTING : options.settingRow;
+  const controlRows = options.controlRows ?? [
+    { control_key: "maintenance", active: false, reason: null, version: 1 },
+    { control_key: "kiosks", active: false, reason: null, version: 1 }
+  ];
 
   const stub = {
     sessions,
     updates,
     from(table: string) {
+      if (table === "architect_system_controls") {
+        return {
+          select: () => ({
+            in: async (_column: string, values: string[]) => ({
+              data: controlRows.filter((row) => values.includes(String(row.control_key))),
+              error: null
+            })
+          })
+        };
+      }
       if (table === "kiosk_settings") {
         return {
           select: () => ({
@@ -148,6 +166,22 @@ describe("kiosk device sessions", () => {
       status: "active",
       session_token_hash: sha256(session.token)
     });
+  });
+
+  it("blocks session start when the global kiosk switch is active", async () => {
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseStub({
+      controlRows: [
+        { control_key: "maintenance", active: false, reason: null, version: 1 },
+        { control_key: "kiosks", active: true, reason: "Kiosk incident", version: 2 }
+      ]
+    }));
+    signInAs({ id: SHOP.owner_profile_id });
+
+    await expect(startKioskDeviceSession({ scope: "shop", targetReference: SHOP.id }))
+      .rejects.toMatchObject({
+        status: 503,
+        code: "architect_system_control_active"
+      });
   });
 
   it("lets shop-scoped staff start the shop kiosk session", async () => {

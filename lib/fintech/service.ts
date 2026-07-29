@@ -1,4 +1,8 @@
 import Stripe from "stripe";
+import {
+  ArchitectRuntimeControlError,
+  assertArchitectRuntimeControlAllows
+} from "@/lib/architect/city-map/runtime-controls.server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
@@ -1008,6 +1012,17 @@ function getSupabaseOrThrow() {
   }
 
   return supabase;
+}
+
+async function assertPayoutExecutionEnabled(supabase: SupabaseClient) {
+  try {
+    await assertArchitectRuntimeControlAllows(supabase, "payouts");
+  } catch (error) {
+    if (error instanceof ArchitectRuntimeControlError) {
+      throw new FintechServiceError(error.message, error.status);
+    }
+    throw error;
+  }
 }
 
 async function resolveStripeWebhookPayment(
@@ -6002,6 +6017,7 @@ export async function releaseFreelanceRoutingPayout(input: {
     };
   }
 
+  await assertPayoutExecutionEnabled(supabase);
   const now = new Date().toISOString();
   const { attemptNumber, idempotencyKey } = nextUniqueFreelancePayoutReleaseAttempt({
     routingRecordId: context.routing.id,
@@ -6312,6 +6328,7 @@ export async function releaseReadyFreelancePayoutBatch(input: {
     };
   }
 
+  await assertPayoutExecutionEnabled(getSupabaseOrThrow());
   const preflight = await inspectPlatformBalanceBeforeRelease({
     amount: requiredAmount,
     currency: "usd"
@@ -6527,6 +6544,7 @@ export async function executeFintechPayouts(
   }
 ): Promise<ExecuteFintechPayoutsResult> {
   const supabase = getSupabaseOrThrow();
+  await assertPayoutExecutionEnabled(supabase);
   const actor = await resolveActor(user, supabase);
   assertManagementActor(actor);
 

@@ -1,4 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
+import {
+  ArchitectRuntimeControlError,
+  assertArchitectRuntimeControlAllows
+} from "@/lib/architect/city-map/runtime-controls.server";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -45,6 +49,17 @@ function getSupabaseAdmin() {
 
 function hashSessionToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
+}
+
+async function assertKioskRuntimeEnabled(supabase: SupabaseAdmin) {
+  try {
+    await assertArchitectRuntimeControlAllows(supabase, "kiosks");
+  } catch (error) {
+    if (error instanceof ArchitectRuntimeControlError) {
+      throw new KioskSessionError(error.message, error.status, error.code);
+    }
+    throw error;
+  }
 }
 
 function isUuid(value: string) {
@@ -236,6 +251,7 @@ export async function startKioskDeviceSession(input: {
     return { token: DEMO_SESSION_TOKEN, expiresAt, scope: input.scope, targetReference };
   }
 
+  await assertKioskRuntimeEnabled(supabase);
   const target = await resolveSessionTarget(supabase, input.scope, targetReference, user);
   const token = randomBytes(32).toString("hex");
 
@@ -295,6 +311,7 @@ export async function assertKioskDeviceSession(input: {
     return;
   }
 
+  await assertKioskRuntimeEnabled(supabase);
   if (!input.token) {
     throw new KioskSessionError(
       "This kiosk device has no active session. Relaunch Kiosk Mode from a staff account.",
@@ -342,6 +359,7 @@ export async function assertAnyActiveKioskDeviceSession(token: string | null) {
     return;
   }
 
+  await assertKioskRuntimeEnabled(supabase);
   if (!token) {
     throw new KioskSessionError(
       "This kiosk device has no active session. Relaunch Kiosk Mode from a staff account.",

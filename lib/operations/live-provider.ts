@@ -1,5 +1,6 @@
 ﻿import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createHash } from "node:crypto";
+import { assertArchitectRuntimeControlAllows } from "@/lib/architect/city-map/runtime-controls.server";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { ensureRecurringBooking } from "@/lib/booking/recurring";
 import {
@@ -2797,6 +2798,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       return scopeLiveOperationsSnapshot(fullSnapshot, viewer);
     },
     async createBooking(input) {
+      await assertArchitectRuntimeControlAllows(supabase, "bookings");
       const diagnostics = createBookingTransactionDiagnostics();
       diagnostics.selectedPaymentMethodIdPresent = Boolean(input.paymentMethodId?.trim());
       logBookingTransactionStage("booking_request_received", {
@@ -3618,7 +3620,6 @@ export async function getLiveOperationsProvider(): Promise<LiveOperationsProvide
 
   return createSupabaseProvider(supabase);
 }
-
 
 
 

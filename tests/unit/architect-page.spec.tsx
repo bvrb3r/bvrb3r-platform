@@ -31,16 +31,17 @@ describe("architect page", () => {
     getPlatformAdminUserMock.mockReset();
   });
 
-  it("renders an honest degraded Mission Control home when evidence is unavailable", async () => {
+  it("renders the honest Architect City Map when production evidence is unavailable", async () => {
     getPlatformAdminUserMock.mockResolvedValue(makePlatformAdminUser());
 
     render(await ArchitectPage());
 
     expect(getPlatformAdminUserMock).toHaveBeenCalled();
-    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("Mission Control — Degraded");
-    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("Production evidence could not be collected");
-    expect(screen.getByTestId("architect-mission-control-home")).toHaveTextContent("the cockpit never reports Pass from absent proof");
-    expect(screen.getAllByText("Needs Review").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("architect-city-map")).toHaveTextContent("Architect · the city, mapped");
+    expect(screen.getByTestId("architect-city-map")).toHaveTextContent("Needs review");
+    expect(screen.getByTestId("architect-city-map")).toHaveTextContent("Select a route checkpoint to inspect its production evidence");
+    expect(screen.getByTestId("architect-system-ledger")).toHaveTextContent("No real records match");
+    expect(screen.getAllByText(/Needs review/i).length).toBeGreaterThan(0);
     expect(screen.queryByTestId("architect-mission-control")).not.toBeInTheDocument();
   });
 
@@ -65,17 +66,17 @@ describe("architect page", () => {
     }
   });
 
-  it("keeps the CEO lane separate from the Mission Control home", async () => {
+  it("keeps the CEO lane separate from the City Map home", async () => {
     getPlatformAdminUserMock.mockResolvedValue(makePlatformAdminUser());
 
     const home = render(await ArchitectPage());
-    expect(screen.getByTestId("architect-mission-control-home")).toBeInTheDocument();
+    expect(screen.getByTestId("architect-city-map")).toBeInTheDocument();
     expect(screen.queryByTestId("architect-mission-control")).not.toBeInTheDocument();
     home.unmount();
 
     render(await ArchitectCeoPage());
     expect(screen.getByTestId("architect-mission-control")).toHaveAttribute("data-lane-id", "ceo");
-    expect(screen.queryByTestId("architect-mission-control-home")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("architect-city-map")).not.toBeInTheDocument();
   });
 
   it("keeps public account roles scoped to V1 user roles", () => {

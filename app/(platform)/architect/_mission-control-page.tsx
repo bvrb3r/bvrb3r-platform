@@ -1,5 +1,7 @@
 import { ArchitectMissionControl } from "@/components/architect/mission-control/mission-control";
 import { CockpitHome } from "@/components/architect/mission-control/cockpit-home";
+import { ArchitectCityMap } from "@/components/architect/city-map/architect-city-map";
+import { buildArchitectCityManifest } from "@/lib/architect/city-map/manifest.server";
 import { getPlatformAdminUser } from "@/lib/auth/guards";
 import { readDeploymentRuntimeEvidence } from "@/lib/architect/mission-control/deployment-evidence.server";
 import { buildMissionControlSnapshot } from "@/lib/architect/mission-control/incident-detection";
@@ -25,6 +27,24 @@ export async function renderArchitectMissionControlHome() {
   }
 
   return <CockpitHome snapshot={snapshot} user={{ name: user.name, email: user.email }} />;
+}
+
+export async function renderArchitectCityMapHome(ledgerDate?: string) {
+  const user = await getPlatformAdminUser();
+  const supabase = createSupabaseAdminClient();
+  let snapshot: MissionControlSnapshot | null = null;
+
+  if (supabase) {
+    try {
+      const deploymentRuntimeEvidence = await readDeploymentRuntimeEvidence();
+      snapshot = await buildMissionControlSnapshot(supabase, user, deploymentRuntimeEvidence);
+    } catch {
+      snapshot = null;
+    }
+  }
+
+  const manifest = await buildArchitectCityManifest({ snapshot, supabase, ledgerDate });
+  return <ArchitectCityMap initialManifest={manifest} architect={{ name: user.name, email: user.email }} />;
 }
 
 export async function renderArchitectMissionControlLane(laneId: MissionLaneId) {

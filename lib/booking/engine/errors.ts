@@ -103,7 +103,8 @@ const MESSAGE_BY_REASON: Record<string, string> = {
   missing_required_input: "Some required booking details are missing.",
   key_reused_with_different_payload:
     "This request key was already used for a different booking. Start a new request.",
-  engine_unavailable: "Booking is temporarily unavailable. Try again in a moment."
+  engine_unavailable: "Booking is temporarily unavailable. Try again in a moment.",
+  bookings_paused: "New bookings are temporarily paused."
 };
 
 export function describeBookingFailure(kind: BookingErrorKind, reason: string) {
