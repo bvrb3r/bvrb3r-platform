@@ -1,6 +1,6 @@
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { ShopOwnerPlanAccessCard } from "@/components/owner-experience/shop-owner-plan-access-card";
-import { OwnerScheduleWorkspace } from "@/components/operations/owner-schedule-workspace";
+import { OwnerOperationsWorkspace } from "@/components/operations/owner-operations-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 import { resolveShopOwnerPaywallSummaryForUser } from "@/lib/entitlements/shop-owner-paywall";
 
@@ -17,7 +17,10 @@ export default async function OwnerSchedulePage() {
       hidePageHeader
     >
       <ShopOwnerPlanAccessCard summary={paywallSummary} compact />
-      <OwnerScheduleWorkspace />
+      <OwnerOperationsWorkspace
+        shopIds={[user.ownedShopId ?? "", ...user.locationIds]}
+        initialTab="floor"
+      />
     </DashboardShell>
   );
 }

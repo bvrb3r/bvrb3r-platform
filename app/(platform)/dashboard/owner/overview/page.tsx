@@ -1,5 +1,5 @@
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { OwnerOverview } from "@/components/operations/owner-overview";
+import { OwnerOperationsWorkspace } from "@/components/operations/owner-operations-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function OwnerOverviewPage() {
@@ -13,7 +13,7 @@ export default async function OwnerOverviewPage() {
       subtitle="Shop health, team movement, and next actions."
       hidePageHeader
     >
-      <OwnerOverview />
+      <OwnerOperationsWorkspace shopIds={[user.ownedShopId ?? "", ...user.locationIds]} />
     </DashboardShell>
   );
 }
