@@ -14,7 +14,8 @@ const schema = z.object({
   lateFeeCents: z.number().int().min(0).default(0),
   cashSettlementMethod: z.enum(["provider_transfer", "manual_transfer_with_evidence"]),
   termsSnapshot: z.record(z.unknown()).default({}),
-  effectiveAt: z.string().datetime()
+  effectiveAt: z.string().datetime(),
+  shopId: z.string().min(1).max(200).optional()
 }).superRefine((value, context) => {
   if (value.model === "booth_rent" && value.autoBoothBasisPoints !== 0) {
     context.addIssue({
@@ -35,14 +36,18 @@ const schema = z.object({
 export async function POST(request: Request) {
   try {
     const user = await getSessionUser();
-    const workspace = await getRentWorkspacePayload(user);
+    const input = await request.json().catch(() => null);
+    const parsed = schema.safeParse(input);
+    const workspace = await getRentWorkspacePayload(
+      user,
+      parsed.success ? parsed.data.shopId : null
+    );
     if (workspace.viewer !== "owner") {
       return NextResponse.json(
         { error: "Only the shop owner may create a rent agreement." },
         { status: 403 }
       );
     }
-    const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error.issues[0]?.message ?? "Invalid rent agreement." },

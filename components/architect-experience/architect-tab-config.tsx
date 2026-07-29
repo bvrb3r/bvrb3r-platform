@@ -1,4 +1,4 @@
-import { BadgeCheck, BadgeDollarSign, BrainCircuit, Building2, FileCheck2, Megaphone, Rocket, Scale, ShieldCheck, Siren, UsersRound } from "lucide-react";
+import { Activity, BadgeCheck, BadgeDollarSign, BrainCircuit, Building2, FileCheck2, Megaphone, Rocket, Scale, ShieldCheck, Siren, UsersRound } from "lucide-react";
 
 export const ARCHITECT_PRIMARY_NAV_ITEMS = [
   {
@@ -30,6 +30,12 @@ export const ARCHITECT_PRIMARY_NAV_ITEMS = [
     label: "Finance",
     href: "/architect/finance",
     icon: BadgeDollarSign
+  },
+  {
+    id: "rent_monitors",
+    label: "Rent Integrity",
+    href: "/architect/rent-monitors",
+    icon: Activity
   },
   {
     id: "marketing",

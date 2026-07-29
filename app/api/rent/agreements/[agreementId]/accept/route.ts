@@ -7,12 +7,15 @@ import { acceptRentAgreement, getRentWorkspacePayload } from "@/lib/rent/service
 const idSchema = z.string().uuid();
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ agreementId: string }> }
 ) {
   try {
     const user = await getSessionUser();
-    await getRentWorkspacePayload(user);
+    await getRentWorkspacePayload(
+      user,
+      new URL(request.url).searchParams.get("shopId")
+    );
     const { agreementId } = await context.params;
     const parsed = idSchema.safeParse(agreementId);
     if (!parsed.success) {

@@ -123,6 +123,21 @@ describe("pwa provider", () => {
     vi.unstubAllEnvs();
   });
 
+  it("treats missing browser Supabase configuration as demo mode", async () => {
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "");
+    mockPathname = "/dashboard/barber";
+
+    renderWithProviders();
+
+    await screen.findByText("child");
+    await waitFor(() => {
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+    vi.unstubAllEnvs();
+  });
+
   it("suppresses the install prompt inside a wrapped native runtime", async () => {
     mockPathname = "/dashboard/client";
     (window as Window & { Capacitor?: { isNativePlatform: () => boolean; getPlatform: () => string } }).Capacitor = {

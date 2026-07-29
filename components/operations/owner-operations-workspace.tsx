@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
@@ -1202,6 +1203,12 @@ export function OwnerOperationsWorkspace({
               {query.data?.scope.shopName ?? "Shop"}
             </span>
           )}
+          <Link
+            href="/dashboard/owner/reports"
+            className="inline-flex min-h-9 items-center rounded-full border border-[#C4F24E]/28 px-4 font-mono text-[9px] uppercase tracking-[0.14em] text-[#C4F24E]"
+          >
+            Reports
+          </Link>
         </div>
       </header>
 
