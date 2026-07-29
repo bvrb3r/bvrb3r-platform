@@ -9,6 +9,7 @@ import {
   kioskDoneWhenWalkIn,
   kioskFromPriceChip,
   kioskHowPayTitle,
+  kioskLoyaltyGateCopy,
   kioskPayChip,
   kioskQueueChip,
   kioskServiceRailLabel,
@@ -139,6 +140,21 @@ describe("kiosk composed copy", () => {
     expect(kioskFromPriceChip("en", "$20")).toBe("From $20");
     expect(kioskFromPriceChip("es", "$20")).toBe("Desde $20");
     expect(kioskFromPriceChip("ht", "$20")).toBe("Apati $20");
+  });
+
+  it("translates the staged loyalty door in EN, ES, and KRE", () => {
+    expect(kioskLoyaltyGateCopy("en")).toMatchObject({
+      label: "Loyalty check-in",
+      reason: "Opening soon"
+    });
+    expect(kioskLoyaltyGateCopy("es")).toMatchObject({
+      label: "Registro de lealtad",
+      reason: "Próximamente"
+    });
+    expect(kioskLoyaltyGateCopy("ht")).toMatchObject({
+      label: "Anrejistreman fidelite",
+      reason: "Ap ouvri byento"
+    });
   });
 
   it("addresses the client by name on the payment step in every language", () => {

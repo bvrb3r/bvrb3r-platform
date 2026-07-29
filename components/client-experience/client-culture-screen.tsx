@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, StatusBadge } from "@/design/components";
 import { CulturePostCard } from "@/components/culture/culture-post-card";
+import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import type { CultureFeedItem, CultureFeedModule, CultureFeedResponse } from "@/lib/culture/service";
 import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 
@@ -437,6 +438,16 @@ export function ClientCultureScreen({
         />
 
         <CultureStoryRail items={visibleFeedItems} />
+
+        <div className="mb-4">
+          <FeatureGateTease
+            gateKey="culture.creator_tools"
+            label="Creator tools"
+            eyebrow="Culture studio"
+            detail="Draft sequencing, deeper post tools, and creator performance will open here."
+            scale="row"
+          />
+        </div>
 
         {refreshError ? (
           <p className="mb-3 rounded-[18px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100" role="alert">

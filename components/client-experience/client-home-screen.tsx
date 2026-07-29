@@ -16,6 +16,7 @@ import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/design/components";
 import {
@@ -249,6 +250,14 @@ export function ClientHomeScreen({
       </Card>
 
       {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
+
+      <FeatureGateTease
+        gateKey="client.home.group_booking"
+        label="Group booking"
+        eyebrow="Book together"
+        detail="Choose one shop, line up several services, and keep every guest’s booking truth separate."
+        scale="row"
+      />
 
       <section data-testid="home-favorite-barbers">
         <div className="flex items-end justify-between gap-3">

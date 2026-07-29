@@ -13,6 +13,7 @@ import {
   RefreshCw,
   ShieldCheck
 } from "lucide-react";
+import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import { GlobalSafetyState } from "@/components/ui/global-safety-state";
 import type { RentWorkspacePayload } from "@/lib/rent/service";
 import { cn } from "@/lib/utils";
@@ -1081,6 +1082,14 @@ export function RentOperationsWorkspace({
           </button>
         </div>
       </header>
+
+      <FeatureGateTease
+        gateKey="rent.autopilot"
+        label="Rent autopilot"
+        eyebrow="Booth Rent"
+        detail="Automated rent actions stay closed while every obligation, contribution, dispute, and settlement remains reviewable."
+        scale="row"
+      />
 
       {loading ? <GlobalSafetyState state="loading" /> : null}
       {error ? (

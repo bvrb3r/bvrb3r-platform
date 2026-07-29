@@ -5,6 +5,7 @@ import { BellRing, Clock3, ListOrdered, Sparkles, UserRoundPlus } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -313,6 +314,14 @@ export function QueueWorkspace({
           </div>
         </Card>
       </section>
+
+      <FeatureGateTease
+        gateKey="queue.smart_overbook"
+        label="Smart overbook"
+        eyebrow="Queue Day"
+        detail="Capacity-aware overbooking stays closed while conflict and wait-time safeguards are under review."
+        scale="row"
+      />
 
       <section className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
         <Card className="rounded-[32px] p-6">

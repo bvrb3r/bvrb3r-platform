@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { ActionButton, GlassCard, StatusBadge } from "@/design/components";
+import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import { useMarketplaceServiceCatalog } from "@/lib/marketplace/client";
 import { useBarberOverviewQuery } from "@/lib/operations/barber-client";
 import { cn } from "@/lib/utils";
@@ -796,6 +797,17 @@ export function BarberCheckoutScreen({
                   <ArrowRight className="h-5 w-5" />
                 </button>
               </GlassCard>
+
+              <div className="mt-[22px]">
+                <FeatureGateTease
+                  gateKey="barber.checkout.saved_cards"
+                  label="Saved cards"
+                  eyebrow="Barber checkout"
+                  detail="Choose from provider-backed client payment methods without exposing card details to the barber."
+                  scale="row"
+                  className="rounded-[16px]"
+                />
+              </div>
             </div>
           ) : null}
 
