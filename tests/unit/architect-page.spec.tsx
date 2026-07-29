@@ -26,6 +26,10 @@ import ArchitectCompliancePage from "@/app/(platform)/architect/compliance/page"
 import ArchitectSecurityPage from "@/app/(platform)/architect/security/page";
 import ArchitectContentCommunityPage from "@/app/(platform)/architect/content-community/page";
 
+type ArchitectPagePropsCannotBeUndefined =
+  undefined extends Parameters<typeof ArchitectPage>[0] ? never : true;
+const ARCHITECT_PAGE_PROPS_ARE_REQUIRED: ArchitectPagePropsCannotBeUndefined = true;
+
 describe("architect page", () => {
   beforeEach(() => {
     getPlatformAdminUserMock.mockReset();
@@ -34,7 +38,7 @@ describe("architect page", () => {
   it("renders the honest Architect City Map when production evidence is unavailable", async () => {
     getPlatformAdminUserMock.mockResolvedValue(makePlatformAdminUser());
 
-    render(await ArchitectPage());
+    render(await ArchitectPage({ searchParams: Promise.resolve({}) }));
 
     expect(getPlatformAdminUserMock).toHaveBeenCalled();
     expect(screen.getByTestId("architect-city-map")).toHaveTextContent("Architect · the city, mapped");
@@ -69,7 +73,7 @@ describe("architect page", () => {
   it("keeps the CEO lane separate from the City Map home", async () => {
     getPlatformAdminUserMock.mockResolvedValue(makePlatformAdminUser());
 
-    const home = render(await ArchitectPage());
+    const home = render(await ArchitectPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByTestId("architect-city-map")).toBeInTheDocument();
     expect(screen.queryByTestId("architect-mission-control")).not.toBeInTheDocument();
     home.unmount();
@@ -80,6 +84,7 @@ describe("architect page", () => {
   });
 
   it("keeps public account roles scoped to V1 user roles", () => {
+    expect(ARCHITECT_PAGE_PROPS_ARE_REQUIRED).toBe(true);
     expect([...MASTER_TRUTH_ACCOUNT_ROLES]).toEqual(["client_user", "barber_user", "shop_owner_user"]);
     expect([...MASTER_TRUTH_ACCOUNT_ROLES]).not.toContain("architect_user");
   });
