@@ -1,3 +1,5 @@
+import type { Route } from "next";
+
 export const notificationCategories = [
   "booking",
   "queue",
@@ -63,6 +65,10 @@ function safeId(value: unknown) {
     : null;
 }
 
+function validatedNotificationRoute(value: string): Route {
+  return value as Route;
+}
+
 export function notificationCategory(type: string | null | undefined): NotificationCategory {
   const normalized = (type ?? "system").trim().toLowerCase().replaceAll("-", "_");
   if (categoryAliases[normalized]) {
@@ -114,14 +120,14 @@ export function forceActiveQueueSms(
 export function safeNotificationDeepLink(
   explicitLink: unknown,
   metadataValue: unknown
-): string | null {
+): Route | null {
   if (
     typeof explicitLink === "string"
     && explicitLink.startsWith("/")
     && !explicitLink.startsWith("//")
     && explicitLink.length <= 500
   ) {
-    return explicitLink;
+    return validatedNotificationRoute(explicitLink);
   }
 
   const metadata = recordValue(metadataValue);
@@ -136,20 +142,20 @@ export function safeNotificationDeepLink(
     && !metadataLink.startsWith("//")
     && metadataLink.length <= 500
   ) {
-    return metadataLink;
+    return validatedNotificationRoute(metadataLink);
   }
 
   const appointmentId = safeId(metadata.appointmentId ?? metadata.appointment_id);
   if (appointmentId) {
-    return `/appointments/${appointmentId}`;
+    return validatedNotificationRoute(`/appointments/${appointmentId}`);
   }
   const threadId = safeId(metadata.threadId ?? metadata.thread_id);
   if (threadId) {
-    return `/messages/${threadId}`;
+    return validatedNotificationRoute(`/messages/${threadId}`);
   }
   const payoutId = safeId(metadata.payoutId ?? metadata.payout_id);
   if (payoutId) {
-    return `/payouts/${payoutId}`;
+    return validatedNotificationRoute(`/payouts/${payoutId}`);
   }
   const queueId = safeId(
     metadata.waitlistEntryId
@@ -157,7 +163,7 @@ export function safeNotificationDeepLink(
     ?? metadata.queueId
     ?? metadata.queue_id
   );
-  return queueId ? `/queue/${queueId}` : null;
+  return queueId ? validatedNotificationRoute(`/queue/${queueId}`) : null;
 }
 
 export function groupNotificationDate(
