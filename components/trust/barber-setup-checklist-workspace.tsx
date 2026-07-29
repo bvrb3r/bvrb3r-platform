@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import { useState } from "react";
 import Link from "next/link";
 import {
@@ -23,7 +24,7 @@ type SetupSnapshot = {
   walkInEligible: boolean;
 };
 
-const ITEM_LINKS: Record<Pr27SetupItem["key"], string> = {
+const ITEM_LINKS: Record<Pr27SetupItem["key"], Route> = {
   public_profile: "/dashboard/barber/profile",
   services_prices: "/dashboard/barber/services",
   license_verification: "/dashboard/barber/more?section=verification",
