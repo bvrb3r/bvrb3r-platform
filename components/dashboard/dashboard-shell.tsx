@@ -278,25 +278,8 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
 }
 
 function getNotificationsHref(role: Role): ComponentProps<typeof Link>["href"] {
-  switch (role) {
-    case "shop_owner_user":
-    case "owner":
-      return "/dashboard/owner/money";
-    case "manager":
-    case "front_desk":
-      return "/queue";
-    case "barber_user":
-    case "barber":
-    case "freelance_barber":
-    case RETIRED_REVENUE_SHARE_ACCOUNT_ROLE:
-    case "booth_rent_barber":
-      return "/dashboard/barber";
-    case "client_user":
-    case "client":
-      return CLIENT_PRIMARY_TAB_HREFS.activity;
-    default:
-      return "/dashboard";
-  }
+  void role;
+  return "/notifications";
 }
 
 function getMessagesHref(role: Role): ComponentProps<typeof Link>["href"] {
@@ -731,7 +714,6 @@ export function DashboardShell({
     </div>
   );
 }
-
 
 
 

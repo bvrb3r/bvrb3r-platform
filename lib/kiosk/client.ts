@@ -11,6 +11,10 @@ import type {
   KioskWaitlistInput,
   KioskWaitlistResult
 } from "@/types/kiosk";
+import type {
+  AppointmentLookupKind,
+  AppointmentLookupResult
+} from "@/lib/clientbridge/service";
 
 export interface KioskApiError extends Error {
   status?: number;
@@ -128,6 +132,75 @@ export function useKioskWaitlistMutation(shopId: string) {
       await queryClient.invalidateQueries({ queryKey: ["kiosk", shopId] });
       await queryClient.invalidateQueries({ queryKey: ["operations-queue"] });
     }
+  });
+}
+
+export function useKioskAppointmentSearchMutation(shopId: string) {
+  return useMutation({
+    mutationFn: (payload: {
+      kind: AppointmentLookupKind;
+      value: string;
+      appointmentTime?: string;
+    }) =>
+      requestJson<{ results: AppointmentLookupResult[] }>(`/api/kiosk/${shopId}/appointments/search`, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      })
+  });
+}
+
+export function useKioskAppointmentCheckInMutation(shopId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      appointmentId: string;
+      sourceProvider: "bvrb3r" | "booksy" | "square" | "thecut";
+      idempotencyKey: string;
+      operationalSmsConsent: boolean;
+      contactPhone?: string;
+      contactEmail?: string;
+    }) =>
+      requestJson<{
+        queue: {
+          id: string;
+          position: number | null;
+          estimatedWaitMinutes: number | null;
+          waitReason?: string;
+          sourceProvider: "bvrb3r" | "booksy" | "square" | "thecut";
+          paymentOwner: string;
+        };
+        publicQueueToken: string | null;
+        duplicate: boolean;
+        sourceProvider: "bvrb3r" | "booksy" | "square" | "thecut";
+        paymentOwner: string;
+      }>(`/api/kiosk/${shopId}/appointments/check-in`, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["kiosk", shopId] });
+      await queryClient.invalidateQueries({ queryKey: ["operations-queue"] });
+    }
+  });
+}
+
+export function useKioskClientBridgeMutation(shopId: string) {
+  return useMutation({
+    mutationFn: (payload: {
+      waitlistEntryId: string;
+      contactChannel: "sms" | "email";
+      contactValue: string;
+      consentGranted: true;
+    }) =>
+      requestJson<{
+        invitationId: string;
+        status: string;
+        expiresAt: string | null;
+        suppressionReason: string | null;
+      }>(`/api/kiosk/${shopId}/clientbridge`, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      })
   });
 }
 

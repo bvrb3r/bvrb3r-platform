@@ -9,6 +9,7 @@ const {
   createQueueEntryMock,
   callQueueEntryMock,
   assignQueueEntryMock,
+  reassignQueueEntryMock,
   convertQueueEntryMock,
   cancelQueueEntryMock
 } = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const {
   createQueueEntryMock: vi.fn(),
   callQueueEntryMock: vi.fn(),
   assignQueueEntryMock: vi.fn(),
+  reassignQueueEntryMock: vi.fn(),
   convertQueueEntryMock: vi.fn(),
   cancelQueueEntryMock: vi.fn()
 }));
@@ -33,6 +35,7 @@ vi.mock("@/lib/queue/service", async () => {
     createQueueEntry: createQueueEntryMock,
     callQueueEntry: callQueueEntryMock,
     assignQueueEntry: assignQueueEntryMock,
+    reassignQueueEntry: reassignQueueEntryMock,
     convertQueueEntry: convertQueueEntryMock,
     cancelQueueEntry: cancelQueueEntryMock
   };
@@ -41,6 +44,7 @@ vi.mock("@/lib/queue/service", async () => {
 import { GET as getQueue, POST as postQueue } from "@/app/api/operations/queue/route";
 import { POST as postCall } from "@/app/api/operations/queue/[id]/call/route";
 import { POST as postAssign } from "@/app/api/operations/queue/[id]/assign/route";
+import { POST as postReassign } from "@/app/api/operations/queue/[id]/reassign/route";
 import { POST as postConvert } from "@/app/api/operations/queue/[id]/convert/route";
 import { POST as postCancel } from "@/app/api/operations/queue/[id]/cancel/route";
 
@@ -51,6 +55,7 @@ describe("phase 11 queue routes", () => {
     createQueueEntryMock.mockReset();
     callQueueEntryMock.mockReset();
     assignQueueEntryMock.mockReset();
+    reassignQueueEntryMock.mockReset();
     convertQueueEntryMock.mockReset();
     cancelQueueEntryMock.mockReset();
   });
@@ -146,6 +151,51 @@ describe("phase 11 queue routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.entry.assignedBarberId).toBe("barber-blaze");
+  });
+
+  it("requires and records a cash walk-in reassignment reason", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("manager@bvrb3r.demo"));
+    reassignQueueEntryMock.mockResolvedValue({
+      entry: {
+        id: "queue-1",
+        status: "assigned",
+        publicState: "reassigned",
+        assignedBarberId: "barber-wave",
+        statusReason: "Blaze chair went offline"
+      }
+    });
+
+    const response = await postReassign(new NextRequest("https://bvrb3r.demo/api/operations/queue/queue-1/reassign", {
+      method: "POST",
+      body: JSON.stringify({
+        barberId: "barber-wave",
+        reason: "Blaze chair went offline"
+      })
+    }), { params: Promise.resolve({ id: "queue-1" }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(reassignQueueEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        entryId: "queue-1",
+        barberId: "barber-wave",
+        reason: "Blaze chair went offline"
+      })
+    );
+    expect(body.entry.publicState).toBe("reassigned");
+  });
+
+  it("rejects a reassignment without an audit reason", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("manager@bvrb3r.demo"));
+
+    const response = await postReassign(new NextRequest("https://bvrb3r.demo/api/operations/queue/queue-1/reassign", {
+      method: "POST",
+      body: JSON.stringify({ barberId: "barber-wave", reason: "" })
+    }), { params: Promise.resolve({ id: "queue-1" }) });
+
+    expect(response.status).toBe(400);
+    expect(reassignQueueEntryMock).not.toHaveBeenCalled();
   });
 
   it("converts a queue entry into an appointment", async () => {

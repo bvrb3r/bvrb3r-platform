@@ -89,7 +89,9 @@ export function useQueueOperationsQuery() {
   return useQuery({
     queryKey: ["operations-queue"],
     queryFn: () => requestJson<QueueWorkspacePayload>("/api/operations/queue"),
-    staleTime: 5_000
+    staleTime: 5_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true
   });
 }
 
@@ -110,6 +112,14 @@ export function useCreateQueueEntryMutation() {
       preferredEndTime?: string;
       flexibilityMinutes?: number;
       queueSource?: "walk_in" | "cancellation_fill" | "manual" | "app" | "kiosk";
+      entryType?: "booked" | "walkin";
+      sourceProvider?: "bvrb3r" | "booksy" | "square" | "thecut";
+      paymentOwner?: "bvrb3r_card" | "bvrb3r_cash" | "unpaid_manual" | "external:booksy" | "external:square" | "external:thecut";
+      idempotencyKey?: string;
+      chairsyncAppointmentId?: string;
+      sourceServiceName?: string;
+      operationalSmsConsent?: boolean;
+      rejoinOfEntryId?: string;
       notes?: string;
     }) =>
       requestJson<{ entry: QueueEntryView }>("/api/operations/queue", {
@@ -128,7 +138,7 @@ export function useQueueEntryActionMutation() {
   return useMutation({
     mutationFn: (payload: {
       entryId: string;
-      action: "call" | "assign" | "convert" | "cancel";
+      action: "call" | "assign" | "reassign" | "convert" | "cancel";
       barberId?: string;
       serviceId?: string;
       appointmentTime?: string;
@@ -138,6 +148,8 @@ export function useQueueEntryActionMutation() {
         ? `/api/operations/queue/${payload.entryId}/call`
         : payload.action === "assign"
           ? `/api/operations/queue/${payload.entryId}/assign`
+          : payload.action === "reassign"
+            ? `/api/operations/queue/${payload.entryId}/reassign`
           : payload.action === "convert"
             ? `/api/operations/queue/${payload.entryId}/convert`
             : `/api/operations/queue/${payload.entryId}/cancel`;
@@ -146,6 +158,8 @@ export function useQueueEntryActionMutation() {
         ? {}
         : payload.action === "assign"
           ? { barberId: payload.barberId }
+          : payload.action === "reassign"
+            ? { barberId: payload.barberId, reason: payload.reason }
           : payload.action === "convert"
             ? {
               barberId: payload.barberId,

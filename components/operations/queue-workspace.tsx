@@ -16,6 +16,8 @@ import {
 } from "@/lib/operations/queue-client";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { Role } from "@/types/domain";
+import { sourceBadge } from "@/lib/clientbridge/domain";
+import { getQueueSyncHealth } from "@/lib/queue/domain";
 
 function formatDateTime(iso: string) {
   return new Intl.DateTimeFormat("en-US", {
@@ -91,6 +93,7 @@ export function QueueWorkspace({
   const queueActionMutation = useQueueEntryActionMutation();
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [assignmentSelections, setAssignmentSelections] = useState<Record<string, string>>({});
+  const [reassignmentReasons, setReassignmentReasons] = useState<Record<string, string>>({});
   const [form, setForm] = useState<QueueFormState>({
     clientName: "",
     clientPhone: "",
@@ -130,7 +133,11 @@ export function QueueWorkspace({
         preferredBarberId: form.preferredBarberId || undefined,
         flexibilityMinutes: Number(form.flexibilityMinutes) || 0,
         notes: form.notes || undefined,
-        queueSource: "walk_in"
+        queueSource: "walk_in",
+        entryType: "walkin",
+        sourceProvider: "bvrb3r",
+        paymentOwner: "bvrb3r_cash",
+        idempotencyKey: globalThis.crypto?.randomUUID?.() ?? `queue-${Date.now()}`
       });
       setFeedback({ tone: "success", message: "Walk-in added to the live queue." });
       setForm({
@@ -150,7 +157,7 @@ export function QueueWorkspace({
 
   async function handleQueueAction(
     entryId: string,
-    action: "call" | "assign" | "convert" | "cancel",
+    action: "call" | "assign" | "reassign" | "convert" | "cancel",
     options?: { barberId?: string; serviceId?: string; reason?: string }
   ) {
     setFeedback(null);
@@ -170,6 +177,8 @@ export function QueueWorkspace({
             ? "Queue entry marked as called."
             : action === "assign"
               ? "Barber assignment saved."
+              : action === "reassign"
+                ? "Cash walk-in reassigned with an audit reason."
               : action === "convert"
                 ? "Queue entry converted into a real appointment."
                 : "Queue entry cancelled cleanly."
@@ -320,6 +329,7 @@ export function QueueWorkspace({
               </>
             ) : activeEntries.length ? activeEntries.map((entry) => {
               const selectedBarberId = assignmentSelections[entry.id] || entry.assignedBarberId || entry.bestAvailableBarber?.barberId || "";
+              const syncHealth = getQueueSyncHealth(entry.lastSyncedAt);
               return (
                 <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#C4F24E]/16 hover:bg-black/30">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -327,7 +337,10 @@ export function QueueWorkspace({
                       <p className="font-medium text-white">{entry.clientName}</p>
                       <p className="mt-1 text-sm text-white/58">{entry.serviceName}</p>
                     </div>
-                    <span className={`status-pill ${getStatusClass(entry.status)}`}>{entry.statusLabel}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="status-pill text-[#d9b461]">{sourceBadge(entry.sourceProvider)}</span>
+                      <span className={`status-pill ${getStatusClass(entry.status)}`}>{entry.statusLabel}</span>
+                    </div>
                   </div>
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -335,7 +348,7 @@ export function QueueWorkspace({
                       Joined {formatDateTime(entry.createdAt)}
                     </div>
                     <div className="rounded-[18px] border border-white/8 bg-black/18 p-3 text-sm text-white/72">
-                      Waiting {entry.waitMinutes} min
+                      Position {entry.position ?? "syncing"} · {entry.estimatedWaitMinutes === null ? "wait calculating" : `~${entry.estimatedWaitMinutes} min`}
                     </div>
                     <div className="rounded-[18px] border border-white/8 bg-black/18 p-3 text-sm text-white/72">
                       {entry.preferredBarberName ? `Prefers ${entry.preferredBarberName}` : "Open barber assignment"}
@@ -350,6 +363,18 @@ export function QueueWorkspace({
                   </div>
 
                   <p className="mt-3 text-sm text-white/58">{entry.shopLabel}</p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.18em]">
+                    <span className="rounded-full border border-white/10 px-3 py-2 text-white/55">
+                      Pay: {entry.paymentOwner.replace("external:", "")}
+                    </span>
+                    <span className={`rounded-full border px-3 py-2 ${entry.assignmentLocked ? "border-amber-300/20 text-amber-100/70" : "border-[#C4F24E]/20 text-[#e4f9b8]"}`}>
+                      {entry.assignmentLocked ? "Barber locked" : "Cash walk-in · reassignable"}
+                    </span>
+                    <span className={`rounded-full border px-3 py-2 ${syncHealth.stale ? "border-amber-300/20 text-amber-100/70" : "border-white/10 text-white/50"}`}>
+                      {syncHealth.label}
+                    </span>
+                  </div>
+                  {entry.waitReason ? <p className="mt-2 text-xs text-white/42">{entry.waitReason}</p> : null}
                   {entry.notes ? <p className="mt-2 text-sm text-white/55">{entry.notes}</p> : null}
                   {entry.bestAvailableBarber ? (
                     <p className="mt-2 text-sm text-[#e4f9b8]">
@@ -391,6 +416,27 @@ export function QueueWorkspace({
                         >
                           Assign
                         </Button>
+                      ) : null}
+                      {entry.status === "assigned" && entry.reassignable ? (
+                        <>
+                          <Input
+                            className="h-11 min-w-[220px]"
+                            placeholder="Required reassignment reason"
+                            value={reassignmentReasons[entry.id] ?? ""}
+                            onChange={(event) => setReassignmentReasons((current) => ({ ...current, [entry.id]: event.target.value }))}
+                          />
+                          <Button
+                            className="h-11 px-4"
+                            variant="secondary"
+                            disabled={queueActionMutation.isPending || !selectedBarberId || (reassignmentReasons[entry.id]?.trim().length ?? 0) < 3}
+                            onClick={() => void handleQueueAction(entry.id, "reassign", {
+                              barberId: selectedBarberId,
+                              reason: reassignmentReasons[entry.id]
+                            })}
+                          >
+                            Reassign cash walk-in
+                          </Button>
+                        </>
                       ) : null}
                       <Button
                         className="h-11 px-4"

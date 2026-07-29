@@ -16,6 +16,21 @@ const createQueueSchema = z.object({
   preferredEndTime: z.string().trim().optional(),
   flexibilityMinutes: z.number().int().min(0).max(480).optional(),
   queueSource: z.enum(["walk_in", "cancellation_fill", "manual", "app", "kiosk"]).optional(),
+  entryType: z.enum(["booked", "walkin"]).optional(),
+  sourceProvider: z.enum(["bvrb3r", "booksy", "square", "thecut"]).optional(),
+  paymentOwner: z.enum([
+    "bvrb3r_card",
+    "bvrb3r_cash",
+    "unpaid_manual",
+    "external:booksy",
+    "external:square",
+    "external:thecut"
+  ]).optional(),
+  idempotencyKey: z.string().trim().min(8).max(200).optional(),
+  chairsyncAppointmentId: z.string().uuid().optional(),
+  sourceServiceName: z.string().trim().min(1).max(200).optional(),
+  operationalSmsConsent: z.boolean().optional(),
+  rejoinOfEntryId: z.string().uuid().optional(),
   notes: z.string().trim().max(500).optional()
 });
 

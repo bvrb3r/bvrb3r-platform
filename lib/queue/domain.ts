@@ -1,4 +1,5 @@
 import type { WalkInStatus } from "@/types/domain";
+import type { BookingSourceProvider, PaymentOwner } from "@/lib/clientbridge/domain";
 
 export type QueueStatus = Extract<
   WalkInStatus,
@@ -31,6 +32,14 @@ export type QueueCreateInput = {
   preferredEndTime?: string;
   flexibilityMinutes?: number;
   queueSource?: QueueSource;
+  entryType?: "booked" | "walkin";
+  sourceProvider?: BookingSourceProvider;
+  paymentOwner?: PaymentOwner;
+  idempotencyKey?: string;
+  chairsyncAppointmentId?: string;
+  sourceServiceName?: string;
+  operationalSmsConsent?: boolean;
+  rejoinOfEntryId?: string;
   notes?: string;
 };
 
@@ -70,6 +79,8 @@ export function normalizeQueueCreateInput(input: QueueCreateInput) {
   const notes = input.notes?.trim() || undefined;
   const clientEmail = input.clientEmail?.trim().toLowerCase() || undefined;
   const flexibilityMinutes = Math.max(0, Math.round(input.flexibilityMinutes ?? 0));
+  const idempotencyKey = input.idempotencyKey?.trim() || undefined;
+  const sourceServiceName = input.sourceServiceName?.trim() || undefined;
 
   if (clientName.length < 2) {
     throw new Error("Walk-in queue entries need a real client name.");
@@ -79,6 +90,17 @@ export function normalizeQueueCreateInput(input: QueueCreateInput) {
     throw new Error("Walk-in queue entries need a real client phone number.");
   }
 
+  if (idempotencyKey && (idempotencyKey.length < 8 || idempotencyKey.length > 200)) {
+    throw new Error("Queue idempotency keys must be between 8 and 200 characters.");
+  }
+
+  const sourceProvider = input.sourceProvider ?? "bvrb3r";
+  const entryType = input.entryType ?? (input.chairsyncAppointmentId ? "booked" : "walkin");
+  const paymentOwner = input.paymentOwner
+    ?? (sourceProvider === "bvrb3r"
+      ? entryType === "walkin" ? "bvrb3r_cash" : "unpaid_manual"
+      : `external:${sourceProvider}`);
+
   return {
     ...input,
     clientName,
@@ -86,6 +108,11 @@ export function normalizeQueueCreateInput(input: QueueCreateInput) {
     clientEmail,
     notes,
     flexibilityMinutes,
+    idempotencyKey,
+    sourceServiceName,
+    entryType,
+    sourceProvider,
+    paymentOwner,
     queueSource: input.queueSource ?? "walk_in"
   };
 }
@@ -102,6 +129,53 @@ export function assertQueueStatusTransition(current: QueueStatus, next: QueueSta
 
 export function computeQueueWaitMinutes(createdAt: string, now = new Date()) {
   return Math.max(0, Math.round((now.getTime() - new Date(createdAt).getTime()) / 60_000));
+}
+
+export type CanonicalQueueProjectionInput = {
+  id: string;
+  createdAt: string;
+  serviceDurationMinutes: number | null;
+  serviceBufferMinutes?: number | null;
+};
+
+/**
+ * Mirrors the database projection for deterministic tests and offline
+ * diagnostics. Product surfaces never call this to display queue truth.
+ */
+export function projectCanonicalQueueTruth(
+  entries: readonly CanonicalQueueProjectionInput[],
+  activeChairCount: number
+) {
+  const chairs = Math.max(1, Math.floor(activeChairCount));
+  let minutesAhead = 0;
+  return sortQueueEntries([...entries]).map((entry, index) => {
+    const position = index + 1;
+    const estimatedWaitMinutes = Math.ceil(minutesAhead / chairs);
+    const duration = Math.max(1, Math.round(entry.serviceDurationMinutes ?? 30))
+      + Math.max(0, Math.round(entry.serviceBufferMinutes ?? 0));
+    const projection = {
+      id: entry.id,
+      position,
+      estimatedWaitMinutes,
+      waitReason: `${position - 1} ahead · service-duration schedule across ${chairs} active chair${chairs === 1 ? "" : "s"}`
+    };
+    minutesAhead += duration;
+    return projection;
+  });
+}
+
+export function getQueueSyncHealth(lastSyncedAt: string, now = new Date()) {
+  const syncedAt = new Date(lastSyncedAt);
+  const ageSeconds = Math.max(0, Math.floor((now.getTime() - syncedAt.getTime()) / 1_000));
+  return {
+    ageSeconds,
+    stale: !Number.isFinite(syncedAt.getTime()) || ageSeconds > 45,
+    label: !Number.isFinite(syncedAt.getTime())
+      ? "Sync time unavailable"
+      : ageSeconds > 45
+        ? `Last synced ${ageSeconds}s ago · polling for truth`
+        : `Live truth · synced ${ageSeconds}s ago`
+  };
 }
 
 export function sortQueueEntries<T extends { createdAt: string; id: string }>(entries: T[]) {
