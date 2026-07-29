@@ -88,6 +88,7 @@ jobs:
           tests/unit/pr25-role-normalization-plan.spec.ts
           tests/unit/pr26-role-normalization-dry-run.spec.ts
           tests/unit/pr27-role-normalization-approval-evidence.spec.ts
+          tests/unit/pr28-role-normalization-approval-surface.spec.tsx
           tests/unit/public-booking-entry.spec.tsx
           tests/unit/public-home-routing.spec.tsx
           tests/unit/public-site.spec.tsx
