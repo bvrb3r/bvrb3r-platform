@@ -1,4 +1,4 @@
-import { BadgeCheck, BadgeDollarSign, BrainCircuit, Building2, Megaphone, Rocket, Scale, ShieldCheck, Siren, UsersRound } from "lucide-react";
+import { BadgeCheck, BadgeDollarSign, BrainCircuit, Building2, FileCheck2, Megaphone, Rocket, Scale, ShieldCheck, Siren, UsersRound } from "lucide-react";
 
 export const ARCHITECT_PRIMARY_NAV_ITEMS = [
   {
@@ -48,6 +48,12 @@ export const ARCHITECT_PRIMARY_NAV_ITEMS = [
     label: "Security",
     href: "/architect/security",
     icon: Siren
+  },
+  {
+    id: "role_normalization_approval",
+    label: "Role Approval",
+    href: "/architect/role-normalization-approval",
+    icon: FileCheck2
   },
   {
     id: "release_readiness",
