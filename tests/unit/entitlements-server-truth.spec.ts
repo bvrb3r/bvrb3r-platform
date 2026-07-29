@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  buildFreeEntitlementTruth,
+  buildStandardEntitlementTruth,
   type ServerEntitlementTruth
 } from "@/lib/entitlements/domain";
 import {
@@ -55,7 +55,7 @@ function activeProEntitlement(overrides: Partial<ServerEntitlementTruth> = {}): 
 }
 
 describe("server entitlement truth", () => {
-  it("defaults canonical signed-in accounts to Free without granting paid access", async () => {
+  it("defaults canonical signed-in accounts to Standard without granting paid access", async () => {
     const entitlement = await resolveServerEntitlementForUser({
       user: { id: "profile-client", role: "client_user" },
       supabaseOverride: supabaseEntitlementResult({ data: null, error: null }) as never
@@ -63,9 +63,9 @@ describe("server entitlement truth", () => {
 
     expect(entitlement).toMatchObject({
       accountRole: "client_user",
-      tier: "free",
+      tier: "standard",
       billingInterval: "none",
-      status: "free",
+      status: "standard",
       source: "server_default"
     });
 
@@ -146,7 +146,7 @@ describe("server entitlement truth", () => {
     expect(snapshot).not.toHaveProperty("stripeSubscriptionId");
   });
 
-  it("treats unavailable entitlement persistence as Free plus Needs Review for paid access", async () => {
+  it("treats unavailable entitlement persistence as Standard plus Needs Review for paid access", async () => {
     const entitlement = await resolveServerEntitlementForUser({
       user: { id: "profile-client", role: "client_user" },
       supabaseOverride: supabaseEntitlementResult({
@@ -155,7 +155,7 @@ describe("server entitlement truth", () => {
       }) as never
     });
 
-    expect(entitlement?.tier).toBe("free");
+    expect(entitlement?.tier).toBe("standard");
     expect(entitlement?.verification.persistenceConnected).toBe(false);
 
     const access = checkEntitledFeatureAccess({
@@ -168,8 +168,8 @@ describe("server entitlement truth", () => {
     expect(access.state).toBe("needs_review");
   });
 
-  it("allows free features for canonical roles without paid proof", () => {
-    const entitlement = buildFreeEntitlementTruth({
+  it("allows standard features for canonical roles without paid proof", () => {
+    const entitlement = buildStandardEntitlementTruth({
       profileId: "profile-barber",
       accountRole: "barber_user"
     });
@@ -182,7 +182,7 @@ describe("server entitlement truth", () => {
     expect(access).toMatchObject({
       allowed: true,
       state: "allowed",
-      requiredTier: "free"
+      requiredTier: "standard"
     });
   });
 });

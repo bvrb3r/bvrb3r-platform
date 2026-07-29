@@ -13,7 +13,7 @@ export type ClientPaywallFeatureView = {
   id: string;
   title: string;
   description: string;
-  requiredPlanLabel: "Free" | "Pro" | "Elite";
+  requiredPlanLabel: "Standard" | "Pro" | "Elite";
   state: ClientPaywallFeatureState;
   stateLabel: string;
   reason: string;
@@ -21,12 +21,12 @@ export type ClientPaywallFeatureView = {
 };
 
 export type ClientPaywallSummary = {
-  currentPlanLabel: "Free" | "Pro" | "Elite";
+  currentPlanLabel: "Standard" | "Pro" | "Elite";
   billingLabel: string;
   statusLabel: string;
   statusTone: ClientPaywallTone;
   serverEvidenceLabel: string;
-  freeBookingAvailable: true;
+  standardBookingAvailable: true;
   lockedFeatureCount: number;
   needsReviewCount: number;
   upgradeActionLabel: string;
@@ -34,7 +34,7 @@ export type ClientPaywallSummary = {
   checkoutUrl: null;
   portalUrl: null;
   features: {
-    free: ClientPaywallFeatureView[];
+    standard: ClientPaywallFeatureView[];
     pro: ClientPaywallFeatureView[];
     elite: ClientPaywallFeatureView[];
   };
@@ -54,7 +54,7 @@ const CLIENT_PLAN_FEATURES: ClientPaywallFeatureDefinition[] = [
     id: "client-basic-booking",
     title: "Basic booking, search, and discovery",
     description: "Search barbers, view shops, book eligible services, and manage activity.",
-    requiredTier: "free",
+    requiredTier: "standard",
     featureKey: "client.booking.basic",
     liveInClientV1: true
   },
@@ -62,7 +62,7 @@ const CLIENT_PLAN_FEATURES: ClientPaywallFeatureDefinition[] = [
     id: "client-account-safety",
     title: "Account, wallet, and support access",
     description: "Manage account basics, booking activity, payment methods, and support.",
-    requiredTier: "free",
+    requiredTier: "standard",
     featureKey: "client.booking.basic",
     liveInClientV1: true
   },
@@ -119,7 +119,7 @@ const CLIENT_PLAN_FEATURES: ClientPaywallFeatureDefinition[] = [
 function planLabel(tier: EntitlementTier): ClientPaywallSummary["currentPlanLabel"] {
   if (tier === "elite") return "Elite";
   if (tier === "pro") return "Pro";
-  return "Free";
+  return "Standard";
 }
 
 function billingLabel(snapshot: EntitlementSnapshot | null) {
@@ -169,15 +169,15 @@ function buildFeatureView(input: {
       })
     : null;
 
-  if (definition.requiredTier === "free" && access?.allowed) {
+  if (definition.requiredTier === "standard" && access?.allowed) {
     return {
       id: definition.id,
       title: definition.title,
       description: definition.description,
-      requiredPlanLabel: "Free",
+      requiredPlanLabel: "Standard",
       state: "available",
       stateLabel: "Available",
-      reason: "Free client essentials remain available.",
+      reason: "Standard client essentials remain available at $0.",
       evidenceSource: "Server entitlement registry"
     };
   }
@@ -239,7 +239,7 @@ export function buildClientPaywallSummary(input: {
 }): ClientPaywallSummary {
   const snapshot = input.entitlement ? buildEntitlementSnapshot(input.entitlement) : null;
   const grouped = {
-    free: [] as ClientPaywallFeatureView[],
+    standard: [] as ClientPaywallFeatureView[],
     pro: [] as ClientPaywallFeatureView[],
     elite: [] as ClientPaywallFeatureView[]
   };
@@ -253,15 +253,15 @@ export function buildClientPaywallSummary(input: {
     grouped[definition.requiredTier].push(view);
   }
 
-  const allFeatures = [...grouped.free, ...grouped.pro, ...grouped.elite];
+  const allFeatures = [...grouped.standard, ...grouped.pro, ...grouped.elite];
   const needsReviewCount = allFeatures.filter((feature) => feature.state === "needs_review").length;
   const lockedFeatureCount = allFeatures.filter((feature) => feature.state === "locked").length;
   const statusTone: ClientPaywallTone = needsReviewCount ? "yellow" : snapshot?.paidAccess ? "green" : "neutral";
 
   return {
-    currentPlanLabel: planLabel(snapshot?.tier ?? "free"),
+    currentPlanLabel: planLabel(snapshot?.tier ?? "standard"),
     billingLabel: billingLabel(snapshot),
-    statusLabel: needsReviewCount ? "Needs review" : snapshot?.paidAccess ? "Paid access verified" : "Free access active",
+    statusLabel: needsReviewCount ? "Needs review" : snapshot?.paidAccess ? "Paid access verified" : "Standard access active",
     statusTone,
     serverEvidenceLabel: snapshot?.source === "stripe_webhook"
       ? "Stripe webhook verified"
@@ -270,7 +270,7 @@ export function buildClientPaywallSummary(input: {
         : snapshot?.source === "billing_subscription_legacy"
           ? "Legacy billing record needs review"
           : "Server default",
-    freeBookingAvailable: true,
+    standardBookingAvailable: true,
     lockedFeatureCount,
     needsReviewCount,
     upgradeActionLabel: "Review plan access",

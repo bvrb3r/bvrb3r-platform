@@ -58,12 +58,12 @@ vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => 
 import { ClientHomeScreen } from "@/components/client-experience/client-home-screen";
 
 const freeClientPaywallSummary: ClientPaywallSummary = {
-  currentPlanLabel: "Free",
+  currentPlanLabel: "Standard",
   billingLabel: "No paid billing cycle connected",
-  statusLabel: "Free access active",
+  statusLabel: "Standard access active",
   statusTone: "neutral",
   serverEvidenceLabel: "Server default",
-  freeBookingAvailable: true,
+  standardBookingAvailable: true,
   lockedFeatureCount: 6,
   needsReviewCount: 0,
   upgradeActionLabel: "Review plan access",
@@ -71,7 +71,7 @@ const freeClientPaywallSummary: ClientPaywallSummary = {
   checkoutUrl: null,
   portalUrl: null,
   features: {
-    free: [],
+    standard: [],
     pro: [],
     elite: []
   }
@@ -231,7 +231,7 @@ describe("client home screen", () => {
 
     expect(screen.getByRole("button", { name: "Find the next chair →" })).toBeInTheDocument();
     expect(screen.queryByTestId("client-plan-access-card")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Free client access" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Standard client access" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Checkout/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Find a Barber" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Find a Barber Shop" })).not.toBeInTheDocument();

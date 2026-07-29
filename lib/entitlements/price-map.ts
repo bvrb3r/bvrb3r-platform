@@ -7,7 +7,7 @@ import {
 export type EntitlementPriceCatalogEntry = {
   priceId: string;
   accountRole: EntitlementAccountRole;
-  tier: Exclude<EntitlementTier, "free">;
+  tier: Exclude<EntitlementTier, "standard">;
   billingInterval: Exclude<EntitlementBillingInterval, "none">;
   envKey: string;
 };
@@ -30,7 +30,7 @@ const PRICE_ENV_MATRIX = [
 ] as const satisfies ReadonlyArray<readonly [
   string,
   EntitlementAccountRole,
-  Exclude<EntitlementTier, "free">,
+  Exclude<EntitlementTier, "standard">,
   Exclude<EntitlementBillingInterval, "none">
 ]>;
 

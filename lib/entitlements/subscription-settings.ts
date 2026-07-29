@@ -25,7 +25,7 @@ export type SubscriptionSettingsAction = {
 export type SubscriptionSettingsSummary = {
   role: SubscriptionSettingsRole;
   roleLabel: "Client" | "Barber" | "Shop Owner";
-  currentTierLabel: "Free" | "Pro" | "Elite";
+  currentTierLabel: "Standard" | "Pro" | "Elite";
   accessStateLabel: "Active" | "Needs Review" | "Past Due" | "Canceled" | "Unavailable";
   accessTone: SubscriptionSettingsTone;
   billingLabel: string;
@@ -59,22 +59,22 @@ function roleScope(role: EntitlementAccountRole): SubscriptionSettingsRole {
 function tierLabel(tier: EntitlementTier): SubscriptionSettingsSummary["currentTierLabel"] {
   if (tier === "elite") return "Elite";
   if (tier === "pro") return "Pro";
-  return "Free";
+  return "Standard";
 }
 
 function roleCopy(role: EntitlementAccountRole) {
   switch (role) {
     case "barber_user":
-      return "Free keeps basic profile and booking setup. Pro and Elite unlock business, retention, and growth tools where configured.";
+      return "Standard costs $0 and keeps basic profile and booking setup open. Pro and Elite unlock business, retention, and growth tools where configured.";
     case "shop_owner_user":
-      return "Free keeps shop setup basics. Pro and Elite unlock team, money, kiosk, reports, and scale tools where configured.";
+      return "Standard costs $0 and keeps shop setup basics open. Pro and Elite unlock team, money, kiosk, reports, and scale tools where configured.";
     default:
-      return "Free helps clients book and manage basics. Pro and Elite unlock advanced client benefits where configured.";
+      return "Standard costs $0 and helps clients book and manage basics. Pro and Elite unlock advanced client benefits where configured.";
   }
 }
 
 function includedCopy(role: EntitlementAccountRole, tier: EntitlementTier) {
-  if (tier === "free") {
+  if (tier === "standard") {
     switch (role) {
       case "barber_user":
         return "Basic barber profile, booking setup, schedule visibility, and account settings stay available.";
@@ -128,13 +128,13 @@ function evidenceLabel(entitlement: ServerEntitlementTruth) {
     case "needs_review":
       return "Plan proof needs review";
     default:
-      return "Free access fallback";
+      return "Standard access fallback";
   }
 }
 
 function billingLabel(entitlement: ServerEntitlementTruth) {
   if (!entitlement.stripeCustomerId || entitlement.billingInterval === "none") {
-    return "No billing profile required for Free.";
+    return "No billing profile required for Standard · $0.";
   }
 
   if (entitlement.billingInterval === "yearly") {
@@ -177,7 +177,7 @@ function statusLabel(status: EntitlementStatus, hasPaidProof: boolean, entitleme
     return { accessStateLabel: "Needs Review", accessTone: "yellow" };
   }
 
-  if (status === "free" || hasPaidProof) {
+  if (status === "standard" || hasPaidProof) {
     return { accessStateLabel: "Active", accessTone: "green" };
   }
 
@@ -231,7 +231,7 @@ export function buildSubscriptionSettingsSummary(input: {
     updatedAtLabel: formatUpdatedAt(input.entitlement.updatedAt),
     reviewReasons,
     upgradeAction: {
-      label: input.entitlement.tier === "free" ? "Upgrade plan" : "Review plan options",
+      label: input.entitlement.tier === "standard" ? "Upgrade plan" : "Review plan options",
       href: null,
       state: "unavailable",
       unavailableReason: managementUnavailableReason
