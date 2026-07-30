@@ -103,6 +103,14 @@ describe("auth entry workspace", () => {
     expect(window.sessionStorage.getItem("bvrb3r-marketplace-cta:owner")).toBeNull();
   });
 
+  it("does not clear browser auth storage merely by mounting the login workspace", () => {
+    window.localStorage.setItem("sb-project-auth-token-code-verifier", "pkce-verifier");
+
+    render(<AuthEntryWorkspace mode="login" />);
+
+    expect(window.localStorage.getItem("sb-project-auth-token-code-verifier")).toBe("pkce-verifier");
+  });
+
   it("shows the forgot password entry point on the login screen", () => {
     render(<AuthEntryWorkspace mode="login" />);
 
