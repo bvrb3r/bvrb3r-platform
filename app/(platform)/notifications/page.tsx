@@ -1,7 +1,7 @@
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { NotificationCenterScreen } from "@/components/notifications/notification-center-screen";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 import { getNotificationCenter } from "@/lib/notifications/service";
+import { normalizeAccountRole } from "@/lib/auth/roles";
 import type { Role } from "@/types/domain";
 
 const notificationRoles: Role[] = [
@@ -22,16 +22,16 @@ const notificationRoles: Role[] = [
 export default async function NotificationsPage() {
   const user = await getAuthorizedUser(notificationRoles);
   const payload = await getNotificationCenter(user);
+  const role = normalizeAccountRole(user.role);
+  const roleLabel = role === "client"
+    ? "Client"
+    : role === "barber" || role === "booth_rent_barber" || role === "freelance_barber"
+      ? "Barber"
+      : role === "owner" || role === "shop_owner_user"
+        ? "Owner"
+        : role === "architect" || role === "platform_admin"
+          ? "Architect"
+          : "Team";
 
-  return (
-    <DashboardShell
-      user={user}
-      activeHref="/notifications"
-      title="Notification center and delivery truth"
-      subtitle="Your channel choices, operational alerts, quiet hours, retries, failures, and corrections stay visible here."
-    >
-      <NotificationCenterScreen initial={payload} />
-    </DashboardShell>
-  );
+  return <NotificationCenterScreen initial={payload} roleLabel={roleLabel} />;
 }
-

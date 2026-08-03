@@ -13,6 +13,7 @@ import {
   Users
 } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { GlobalSafetyState } from "@/components/ui/global-safety-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, FilterChip, GlassCard } from "@/design/components";
 import {
@@ -324,24 +325,6 @@ function MetricCard({
   );
 }
 
-function EmptyState({
-  title,
-  detail,
-  children
-}: {
-  title: string;
-  detail: string;
-  children?: ReactNode;
-}) {
-  return (
-    <GlassCard className="p-6">
-      <p className="text-xl font-extrabold text-white">{title}</p>
-      <p className="mt-2 text-sm text-white/58">{detail}</p>
-      {children ? <div className="mt-5 flex flex-wrap gap-3">{children}</div> : null}
-    </GlassCard>
-  );
-}
-
 function StatusLegend() {
   return (
     <div className="flex flex-wrap items-center justify-center gap-5 text-base font-semibold text-white/62">
@@ -640,29 +623,20 @@ export function OwnerScheduleWorkspace() {
             <Skeleton className="h-[32rem] w-full rounded-[24px]" />
           </GlassCard>
         ) : !barberColumns.length ? (
-          <EmptyState
-            title="No chairs or barbers assigned yet."
+          <GlobalSafetyState
+            state="empty_schedule"
+            headline="Build your floor."
             detail="Invite barbers to connect your shop team, then configure shop chairs to build the schedule."
-          >
-            <Link href="/dashboard/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#C4F24E]/40 px-5 text-sm font-extrabold text-[#C4F24E] transition hover:bg-[#C4F24E]/10">
-              Invite Barber
-            </Link>
-            <Link href="/dashboard/owner/more?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#C4F24E]/30 hover:text-[#C4F24E]">
-              Configure Shop Hours
-            </Link>
-          </EmptyState>
+            actionLabel="Invite your first barber"
+            actionHref="/dashboard/owner/team"
+          />
         ) : !hasScheduleData ? (
-          <EmptyState
-            title="No schedule data for this day."
+          <GlobalSafetyState
+            state="empty_schedule"
             detail="Set shop hours and barber availability to track chair usage."
-          >
-            <Link href="/dashboard/owner/more?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#C4F24E]/40 px-5 text-sm font-extrabold text-[#C4F24E] transition hover:bg-[#C4F24E]/10">
-              Set Shop Hours
-            </Link>
-            <Link href="/dashboard/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#C4F24E]/30 hover:text-[#C4F24E]">
-              Review Team
-            </Link>
-          </EmptyState>
+            actionLabel="Set shop hours"
+            actionHref="/dashboard/owner/more?section=shop-hours"
+          />
         ) : (
           <GlassCard className="overflow-hidden p-0">
             <div className="overflow-x-auto">

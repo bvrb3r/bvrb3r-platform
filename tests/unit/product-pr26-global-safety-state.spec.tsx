@@ -6,8 +6,22 @@ import {
 } from "@/components/ui/global-safety-state";
 
 describe("Product PR26 global safety states", () => {
-  it("ships all 13 shared states", () => {
-    expect(GLOBAL_SAFETY_STATE_KEYS).toHaveLength(13);
+  it("preserves every original shared state", () => {
+    expect(GLOBAL_SAFETY_STATE_KEYS).toEqual(expect.arrayContaining([
+      "loading",
+      "empty",
+      "failed",
+      "offline",
+      "reconnecting",
+      "conflict",
+      "permission_changed",
+      "provider_unavailable",
+      "payment_degraded",
+      "notification_degraded",
+      "recovery",
+      "support",
+      "incident"
+    ]));
   });
 
   it("gives every degraded state an incident reference and safety line", () => {

@@ -1,27 +1,23 @@
-import {
-  AlertTriangle,
-  CloudOff,
-  History,
-  LoaderCircle,
-  LockKeyhole,
-  RefreshCw,
-  ShieldCheck,
-  Siren,
-  UserRoundCheck
-} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const GLOBAL_SAFETY_STATE_KEYS = [
   "loading",
   "empty",
+  "no_search_results",
+  "empty_schedule",
+  "empty_culture",
   "failed",
+  "server_error",
   "offline",
   "reconnecting",
   "conflict",
   "permission_changed",
   "provider_unavailable",
   "payment_degraded",
+  "payment_declined",
   "notification_degraded",
+  "queue_closed",
+  "kiosk_disconnected",
   "recovery",
   "support",
   "incident"
@@ -30,185 +26,252 @@ export const GLOBAL_SAFETY_STATE_KEYS = [
 export type GlobalSafetyStateKey = (typeof GLOBAL_SAFETY_STATE_KEYS)[number];
 
 const copy: Record<GlobalSafetyStateKey, {
+  glyph: string;
   headline: string;
   reason: string;
-  safety: string;
+  truth: string;
   action: string;
-  Icon: typeof ShieldCheck;
   tone: "neutral" | "green" | "amber" | "red" | "blue";
 }> = {
   loading: {
+    glyph: "↻",
     headline: "One second.",
     reason: "The latest server truth is loading.",
-    safety: "No action has been submitted.",
+    truth: "No action has been submitted.",
     action: "Wait for the current truth",
-    Icon: LoaderCircle,
     tone: "neutral"
   },
   empty: {
+    glyph: "0",
     headline: "Nothing here yet.",
     reason: "There is no record in this scope.",
-    safety: "Nothing is missing or owed.",
+    truth: "Nothing is missing or owed.",
     action: "Return to the previous view",
-    Icon: History,
     tone: "neutral"
   },
+  no_search_results: {
+    glyph: "?",
+    headline: "No match yet.",
+    reason: "Nothing matches this search in the current scope.",
+    truth: "Your filters and saved records are unchanged.",
+    action: "Clear search",
+    tone: "neutral"
+  },
+  empty_schedule: {
+    glyph: "00",
+    headline: "Your day is open.",
+    reason: "No appointments or open slots are scheduled in this view.",
+    truth: "No booking was removed.",
+    action: "Open availability",
+    tone: "green"
+  },
+  empty_culture: {
+    glyph: "+",
+    headline: "The culture starts here.",
+    reason: "Follow a few barbers and fresh work will appear here.",
+    truth: "Your account is ready; the feed is simply quiet.",
+    action: "Discover barbers",
+    tone: "green"
+  },
   failed: {
+    glyph: "!",
     headline: "Unknown system failure.",
     reason: "The request did not reach a verified result.",
-    safety: "Money and saved records stayed unchanged.",
+    truth: "Money and saved records stayed unchanged.",
     action: "Retry the request",
-    Icon: AlertTriangle,
+    tone: "red"
+  },
+  server_error: {
+    glyph: "500",
+    headline: "We hit a wall.",
+    reason: "The server could not return a verified result.",
+    truth: "No unconfirmed write is presented as complete.",
+    action: "Try again",
     tone: "red"
   },
   offline: {
-    headline: "Showing the last truth.",
-    reason: "This device is offline.",
-    safety: "The last verified record is preserved.",
-    action: "Reconnect to refresh",
-    Icon: CloudOff,
+    glyph: "—",
+    headline: "You’re offline.",
+    reason: "This device cannot reach the live service.",
+    truth: "The last verified record is preserved.",
+    action: "Try again",
     tone: "amber"
   },
   reconnecting: {
+    glyph: "↻",
     headline: "Catching up…",
     reason: "The connection is back and events are reconciling.",
-    safety: "New actions stay closed until the refresh finishes.",
+    truth: "New actions stay closed until the refresh finishes.",
     action: "Wait for reconciliation",
-    Icon: RefreshCw,
     tone: "blue"
   },
   conflict: {
+    glyph: "≠",
     headline: "Someone changed this first.",
     reason: "A newer server version won.",
-    safety: "The newer record is intact and no duplicate was created.",
+    truth: "The newer record is intact and no duplicate was created.",
     action: "Review the newer version",
-    Icon: History,
     tone: "amber"
   },
   permission_changed: {
+    glyph: "×",
     headline: "This door is closed.",
     reason: "Your authority changed while this view was open.",
-    safety: "Private records remain protected.",
+    truth: "Private records remain protected.",
     action: "Return to your home",
-    Icon: LockKeyhole,
     tone: "neutral"
   },
   provider_unavailable: {
+    glyph: "↯",
     headline: "The provider is unavailable.",
     reason: "An external service is not responding.",
-    safety: "BVRB3R records and external money remain separate.",
+    truth: "BVRB3R records and external money remain separate.",
     action: "Check provider status",
-    Icon: CloudOff,
     tone: "amber"
   },
   payment_degraded: {
+    glyph: "$",
     headline: "The processor is slow.",
     reason: "Settlement has not been confirmed.",
-    safety: "The payment remains pending and was not counted twice.",
+    truth: "The payment remains pending and was not counted twice.",
     action: "Review payment status",
-    Icon: ShieldCheck,
     tone: "amber"
   },
+  payment_declined: {
+    glyph: "$",
+    headline: "Card declined.",
+    reason: "The processor refused this card.",
+    truth: "No money moved and your held slot remains visible.",
+    action: "Try again",
+    tone: "red"
+  },
   notification_degraded: {
+    glyph: "N",
     headline: "Delivery is delayed.",
     reason: "One or more notifications need another attempt.",
-    safety: "The booking or money result itself is unchanged.",
+    truth: "The booking or money result itself is unchanged.",
     action: "Review delivery status",
-    Icon: AlertTriangle,
+    tone: "amber"
+  },
+  queue_closed: {
+    glyph: "Q",
+    headline: "The line is closed.",
+    reason: "This shop is not accepting walk-ins right now.",
+    truth: "No queue position or payment was created.",
+    action: "View booking times",
+    tone: "amber"
+  },
+  kiosk_disconnected: {
+    glyph: "K",
+    headline: "Kiosk disconnected.",
+    reason: "The shop device is not reporting a verified connection.",
+    truth: "No check-in, queue position, or payment was lost.",
+    action: "Try another way",
     tone: "amber"
   },
   recovery: {
+    glyph: "✓",
     headline: "Nothing was lost.",
     reason: "The previous action stopped safely.",
-    safety: "Your verified record is ready to continue.",
+    truth: "Your verified record is ready to continue.",
     action: "Continue the recovery",
-    Icon: ShieldCheck,
     tone: "green"
   },
   support: {
+    glyph: "S",
     headline: "A person is on this.",
     reason: "Support has the evidence needed for review.",
-    safety: "The original record remains visible and unchanged.",
+    truth: "The original record remains visible and unchanged.",
     action: "Track the support case",
-    Icon: UserRoundCheck,
     tone: "blue"
   },
   incident: {
+    glyph: "!",
     headline: "Architect review is active.",
     reason: "A production invariant needs human ownership.",
-    safety: "The affected mutation path is closed.",
+    truth: "The affected mutation path is closed.",
     action: "Monitor the incident",
-    Icon: Siren,
     tone: "red"
   }
 };
 
 const tones = {
-  neutral: "border-white/12 bg-white/[0.035] text-white",
-  green: "border-[#9BE15D]/35 bg-[#9BE15D]/8 text-[#E4F9B8]",
-  amber: "border-[#D9B461]/35 bg-[#D9B461]/8 text-[#F8E5B5]",
-  red: "border-[#F0563C]/35 bg-[#F0563C]/8 text-[#FFD0C8]",
-  blue: "border-[#7FB5FF]/35 bg-[#7FB5FF]/8 text-[#D7E8FF]"
+  neutral: "border-white/12 text-white",
+  green: "border-[#9BE15D]/35 text-[#E4F9B8]",
+  amber: "border-[#D9B461]/35 text-[#F8E5B5]",
+  red: "border-[#F0563C]/35 text-[#FFD0C8]",
+  blue: "border-[#7FB5FF]/35 text-[#D7E8FF]"
 };
+
+const nonIncidentStates: GlobalSafetyStateKey[] = [
+  "loading",
+  "empty",
+  "no_search_results",
+  "empty_schedule",
+  "empty_culture",
+  "recovery"
+];
 
 export function GlobalSafetyState({
   state,
   incidentReference,
+  headline,
   detail,
   actionLabel,
+  actionHref,
   onAction,
   className
 }: {
   state: GlobalSafetyStateKey;
   incidentReference?: string | null;
+  headline?: string;
   detail?: string;
   actionLabel?: string;
+  actionHref?: string;
   onAction?: () => void;
   className?: string;
 }) {
   const stateCopy = copy[state];
-  const Icon = stateCopy.Icon;
-  const degraded = !["loading", "empty", "recovery"].includes(state);
+  const degraded = !nonIncidentStates.includes(state);
   const reference = incidentReference
     ?? (degraded ? `BVR-${state.replaceAll("_", "-").toUpperCase()}` : null);
+  const actionClassName = "mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-full border border-[#C4F24E] bg-[#C4F24E] px-5 text-center text-sm font-extrabold text-[#060708] transition hover:bg-[#E4F9B8] sm:w-auto";
 
   return (
     <section
       className={cn(
-        "rounded-[28px] border p-6",
+        "rounded-[22px] border bg-[#0A0A0C] p-6",
         tones[stateCopy.tone],
         className
       )}
       data-safety-state={state}
     >
-      <div className="flex items-start gap-4">
-        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-current/20 bg-black/25">
-          <Icon className={cn("h-5 w-5", state === "loading" && "animate-spin")} />
-        </div>
-        <div>
-          <h2 className="text-3xl font-semibold tracking-[-0.035em]" data-display="true">
-            {stateCopy.headline}
-          </h2>
-          <p className="mt-3 text-sm leading-6 text-white/68">{detail ?? stateCopy.reason}</p>
-          <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
-            {stateCopy.safety}
-          </p>
-          {reference ? (
-            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
-              Incident {reference}
-            </p>
-          ) : null}
-          {onAction ? (
-            <button
-              type="button"
-              onClick={onAction}
-              className="mt-5 min-h-11 rounded-full border border-current/25 bg-black/25 px-5 text-sm font-bold"
-            >
-              {actionLabel ?? stateCopy.action}
-            </button>
-          ) : null}
-        </div>
-      </div>
+      <span className="grid h-14 w-14 place-items-center rounded-full border border-current/25 font-mono text-[11px] font-bold uppercase tracking-[0.08em]">
+        {stateCopy.glyph}
+      </span>
+      <h2 className="mt-5 font-serif text-[32px] font-normal leading-[1.05] tracking-[-0.02em] text-[#F5F1E8]">
+        {headline ?? stateCopy.headline}
+      </h2>
+      <p className="mt-3 max-w-xl text-[13.5px] leading-6 text-white/60">
+        {detail ?? stateCopy.reason}
+      </p>
+      <p className="mt-4 font-mono text-[9px] uppercase leading-5 tracking-[0.12em] text-white/38">
+        {stateCopy.truth}
+      </p>
+      {reference ? (
+        <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.12em] text-white/30">
+          Incident {reference}
+        </p>
+      ) : null}
+      {actionHref ? (
+        <a href={actionHref} className={actionClassName}>
+          {actionLabel ?? stateCopy.action} →
+        </a>
+      ) : onAction ? (
+        <button type="button" onClick={onAction} className={actionClassName}>
+          {actionLabel ?? stateCopy.action} →
+        </button>
+      ) : null}
     </section>
   );
 }

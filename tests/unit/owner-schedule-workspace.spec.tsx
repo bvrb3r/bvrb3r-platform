@@ -101,10 +101,10 @@ describe("owner schedule workspace", () => {
 
     render(<OwnerScheduleWorkspace />);
 
-    expect(screen.getByText("No chairs or barbers assigned yet.")).toBeInTheDocument();
+    expect(screen.getByText("Build your floor.")).toBeInTheDocument();
     expect(screen.getByText("Invite barbers to connect your shop team, then configure shop chairs to build the schedule.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Invite Barber" })).toHaveAttribute("href", "/dashboard/owner/team");
-    expect(screen.getByRole("link", { name: "Configure Shop Hours" })).toHaveAttribute("href", "/dashboard/owner/more?section=shop-hours");
+    expect(screen.getByRole("link", { name: /Invite your first barber/ })).toHaveAttribute("href", "/dashboard/owner/team");
+    expect(screen.queryByRole("link", { name: "Configure Shop Hours" })).not.toBeInTheDocument();
   });
 
   it("routes missing schedule-data actions to existing owner surfaces", () => {
@@ -129,9 +129,9 @@ describe("owner schedule workspace", () => {
 
     render(<OwnerScheduleWorkspace />);
 
-    expect(screen.getByText("No schedule data for this day.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Set Shop Hours" })).toHaveAttribute("href", "/dashboard/owner/more?section=shop-hours");
-    expect(screen.getByRole("link", { name: "Review Team" })).toHaveAttribute("href", "/dashboard/owner/team");
+    expect(screen.getByText("Your day is open.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Set shop hours/ })).toHaveAttribute("href", "/dashboard/owner/more?section=shop-hours");
+    expect(screen.queryByRole("link", { name: "Review Team" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Add Availability" })).not.toBeInTheDocument();
   });
 });

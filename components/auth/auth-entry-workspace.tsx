@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
+import { FormEvent, useMemo, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -110,10 +110,6 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
   const searchFeedback = getSearchFeedback(searchParams);
   const visibleError = errorMessage ?? (searchFeedback?.kind === "error" ? searchFeedback.message : null);
   const visibleSuccess = successMessage ?? (searchFeedback?.kind === "success" ? searchFeedback.message : null);
-
-  useEffect(() => {
-    clearBrowserAccountState();
-  }, []);
 
   async function persistSignupRoleIntent(role: SignupRoleIntent) {
     const response = await fetch("/api/auth/signup-intent", {

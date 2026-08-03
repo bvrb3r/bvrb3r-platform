@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, StatusBadge } from "@/design/components";
 import { CulturePostCard } from "@/components/culture/culture-post-card";
 import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
+import { GlobalSafetyState } from "@/components/ui/global-safety-state";
 import type { CultureFeedItem, CultureFeedModule, CultureFeedResponse } from "@/lib/culture/service";
 import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 
@@ -461,9 +462,12 @@ export function ClientCultureScreen({
           )) : null}
 
           {feedError ? (
-            <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 p-5 text-sm text-red-100">
-              {feedError}
-            </div>
+            <GlobalSafetyState
+              state="failed"
+              detail={feedError}
+              actionLabel="Reload Culture"
+              onAction={() => window.location.reload()}
+            />
           ) : hasPosts ? visibleFeedItems.map((post, index) => (
             <div key={post.id} className="space-y-4">
               <CulturePostCard
@@ -475,9 +479,12 @@ export function ClientCultureScreen({
               />
             </div>
           )) : (
-            <div className="rounded-[24px] border border-dashed border-white/12 bg-black/18 p-5 text-sm text-white/58">
-              {emptyFeedCopy(surface)}
-            </div>
+            <GlobalSafetyState
+              state="empty_culture"
+              detail={emptyFeedCopy(surface)}
+              actionLabel="Discover barbers"
+              actionHref="/discover"
+            />
           )}
 
           {hasPosts && visibleFeedItems.length < 5 ? (

@@ -7,6 +7,7 @@ import { LockKeyhole, Phone, TimerReset, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { GlobalSafetyState } from "@/components/ui/global-safety-state";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -677,9 +678,12 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
   if (!payload) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-        <Card className="rounded-[36px] p-8">
-          <FeedbackBanner tone="error" message={getReadableActionError(kioskQuery.error ?? new Error("Unable to load kiosk mode."))} />
-        </Card>
+        <GlobalSafetyState
+          state="kiosk_disconnected"
+          detail={getReadableActionError(kioskQuery.error ?? new Error("Unable to load kiosk mode."))}
+          actionLabel="Try kiosk again"
+          onAction={() => window.location.reload()}
+        />
       </div>
     );
   }
@@ -887,24 +891,17 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                     </div>
                   </div>
                 ) : (
-                  <div className="mt-8 rounded-[30px] border border-white/8 bg-black/22 p-6">
-                    <p className="surface-label text-[#e4f9b8]">Kiosk unavailable</p>
-                    <h2 className="mt-3 wrap-safe text-3xl font-semibold">
-                      {!hasServiceOptions
-                        ? "No services are available for kiosk booking."
-                        : scope === "shop"
-                          ? "No eligible barber is available for walk-ins right now."
-                          : "This barber does not have a bookable kiosk opening right now."}
-                    </h2>
-                    <p className="mt-4 wrap-safe text-sm leading-7 text-white/62">
-                      Need help? Ask the barber or front desk.
-                    </p>
-                    {scope === "shop" ? (
-                      <Button className="mt-5" variant="secondary" onClick={() => openStep("check_in")}>
-                        Check in an existing appointment
-                      </Button>
-                    ) : null}
-                  </div>
+                  <GlobalSafetyState
+                    state="queue_closed"
+                    detail={!hasServiceOptions
+                      ? "No services are available for kiosk booking right now."
+                      : scope === "shop"
+                        ? "No eligible barber is available for walk-ins right now."
+                        : "This barber does not have a bookable kiosk opening right now."}
+                    actionLabel={scope === "shop" ? "Check in an appointment" : "Return to start"}
+                    onAction={() => scope === "shop" ? openStep("check_in") : resetToWelcome()}
+                    className="mt-8"
+                  />
                 )
               ) : null}
 

@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   getCurrentUserFromServerMock,
   getNotificationCenterMock,
+  markNotificationsReadMock,
   saveNotificationCenterPreferencesMock
 } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
   getNotificationCenterMock: vi.fn(),
+  markNotificationsReadMock: vi.fn(),
   saveNotificationCenterPreferencesMock: vi.fn()
 }));
 
@@ -19,11 +21,12 @@ vi.mock("@/lib/notifications/service", async (importOriginal) => {
   return {
     ...original,
     getNotificationCenter: getNotificationCenterMock,
+    markNotificationsRead: markNotificationsReadMock,
     saveNotificationCenterPreferences: saveNotificationCenterPreferencesMock
   };
 });
 
-import { GET, PATCH } from "@/app/api/notifications/route";
+import { GET, PATCH, POST } from "@/app/api/notifications/route";
 
 const signedInSession = {
   authenticated: true,
@@ -45,6 +48,7 @@ describe("Product PR23 notification routes", () => {
   beforeEach(() => {
     getCurrentUserFromServerMock.mockReset();
     getNotificationCenterMock.mockReset();
+    markNotificationsReadMock.mockReset();
     saveNotificationCenterPreferencesMock.mockReset();
   });
 
@@ -69,6 +73,7 @@ describe("Product PR23 notification routes", () => {
       items: [],
       deliveries: [],
       preferences: null,
+      activeQueueSmsLocked: false,
       generatedAt: "2026-07-28T12:00:00.000Z"
     });
 
@@ -116,6 +121,51 @@ describe("Product PR23 notification routes", () => {
         quiet_hours_start: "21:30",
         quiet_hours_end: "07:00"
       })
+    );
+  });
+
+  it("marks one exact owned notification or every owned notification read", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue(signedInSession);
+    markNotificationsReadMock.mockResolvedValue({ updated: true });
+    const notificationId = "22222222-2222-4222-8222-222222222222";
+
+    const one = await POST(patchRequest({ notificationId }));
+    const all = await POST(patchRequest({}));
+
+    expect(one.status).toBe(200);
+    expect(all.status).toBe(200);
+    expect(markNotificationsReadMock).toHaveBeenNthCalledWith(
+      1,
+      signedInSession.user,
+      notificationId
+    );
+    expect(markNotificationsReadMock).toHaveBeenNthCalledWith(
+      2,
+      signedInSession.user,
+      undefined
+    );
+  });
+
+  it("accepts the complete category-by-channel preference matrix", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue(signedInSession);
+    saveNotificationCenterPreferencesMock.mockResolvedValue({});
+    const matrix = Object.fromEntries(
+      ["booking", "queue", "money", "culture", "team", "system"].map((category) => [
+        category,
+        { push: true, sms: category === "queue", email: true }
+      ])
+    );
+
+    const response = await PATCH(patchRequest({
+      channel_preferences: matrix,
+      quiet_hours_enabled: true,
+      quiet_hours_timezone: "America/New_York"
+    }));
+
+    expect(response.status).toBe(200);
+    expect(saveNotificationCenterPreferencesMock).toHaveBeenCalledWith(
+      signedInSession.user,
+      expect.objectContaining({ channel_preferences: matrix })
     );
   });
 });
