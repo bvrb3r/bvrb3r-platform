@@ -6,8 +6,12 @@ export function parseKioskDeviceCookieValue(value: string | null | undefined) {
     return null;
   }
 
-  const decoded = decodeURIComponent(value).trim();
-  return decoded ? decoded : null;
+  try {
+    const decoded = decodeURIComponent(value).trim();
+    return decoded ? decoded : null;
+  } catch {
+    return null;
+  }
 }
 
 export function serializeKioskDeviceCookieValue(shopId: string) {
