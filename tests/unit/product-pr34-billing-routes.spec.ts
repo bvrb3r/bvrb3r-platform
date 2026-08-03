@@ -18,8 +18,8 @@ vi.mock("@/lib/billing/pr34-service", async () => {
     createPr34BalancePayment: createPaymentMock
   };
 });
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: async () => ({ rpc: adminRpcMock })
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: () => ({ rpc: adminRpcMock })
 }));
 
 import { POST as postBalanceDispute } from "@/app/api/billing/balance/dispute/route";
@@ -93,7 +93,7 @@ describe("Product PR34 billing routes", () => {
     expect(createPaymentMock).not.toHaveBeenCalled();
   });
 
-  it("uses the signed-in database actor for a balance-line dispute", async () => {
+  it("binds a service-role dispute RPC to the authenticated profile", async () => {
     const response = await postBalanceDispute(new Request("https://bvrb3r.app/api/billing/balance/dispute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -106,7 +106,8 @@ describe("Product PR34 billing routes", () => {
     expect(response.status).toBe(200);
     expect(adminRpcMock).toHaveBeenCalledWith("pr34_dispute_balance_line", {
       p_line_id: "00000000-0000-4000-8000-000000000001",
-      p_reason: "This charge does not match the agreed service."
+      p_reason: "This charge does not match the agreed service.",
+      p_profile_id: user.id
     });
   });
 });

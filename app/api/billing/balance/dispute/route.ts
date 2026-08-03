@@ -1,10 +1,10 @@
 import { billingErrorResponse, billingJson, requireBillingSession } from "@/app/api/billing/_shared";
 import { Pr34BillingServiceError } from "@/lib/billing/pr34-service";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
-    await requireBillingSession();
+    const user = await requireBillingSession();
     const body = await request.json().catch(() => ({})) as { lineId?: unknown; reason?: unknown };
     if (typeof body.lineId !== "string" || !/^[0-9a-f-]{36}$/i.test(body.lineId)) {
       throw new Pr34BillingServiceError("Choose a valid balance line to dispute.", 400, "invalid_balance_line");
@@ -12,13 +12,14 @@ export async function POST(request: Request) {
     if (typeof body.reason !== "string" || body.reason.trim().length < 10 || body.reason.trim().length > 1000) {
       throw new Pr34BillingServiceError("Explain the dispute in 10 to 1000 characters.", 400, "invalid_dispute_reason");
     }
-    const supabase = await createSupabaseServerClient();
+    const supabase = createSupabaseAdminClient();
     if (!supabase) {
       throw new Pr34BillingServiceError("Account dispute service is not configured.", 503, "dispute_persistence_missing");
     }
     const result = await supabase.rpc("pr34_dispute_balance_line", {
       p_line_id: body.lineId,
-      p_reason: body.reason.trim()
+      p_reason: body.reason.trim(),
+      p_profile_id: user.id
     });
     if (result.error) {
       throw new Pr34BillingServiceError("That balance line could not be disputed.", 409, "balance_dispute_failed");
