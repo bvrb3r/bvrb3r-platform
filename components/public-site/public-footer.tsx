@@ -9,7 +9,7 @@ export function PublicFooter() {
       </Link>
       <nav aria-label="Footer" className={styles.footerLinks}>
         <Link href="/app">The App</Link>
-        <Link href="/discover?entry=guest">Culture</Link>
+        <Link href="/culture">Culture</Link>
         <Link href="/for-barbers">For Barbers</Link>
         <Link href="/for-shops">For Shops</Link>
         <Link href="/privacy">Privacy</Link>

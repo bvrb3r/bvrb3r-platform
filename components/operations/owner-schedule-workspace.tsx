@@ -576,9 +576,9 @@ export function OwnerScheduleWorkspace() {
             />
             <MetricCard
               icon={<DollarSign className="h-5 w-5" />}
-              label="Revenue"
+              label="Floor Service Volume"
               value={dayRevenue === null ? "-" : currency(dayRevenue)}
-              detail="Today"
+              detail="Barber money · not shop revenue"
               href={`/dashboard/owner/money?date=${selectedDate}`}
             />
             <MetricCard

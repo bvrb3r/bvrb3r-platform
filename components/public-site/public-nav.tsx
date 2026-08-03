@@ -3,13 +3,13 @@ import styles from "./public-site.module.css";
 
 const navigation = [
   { href: "/app", label: "The App" },
-  { href: "/discover?entry=guest", label: "Culture" },
+  { href: "/culture", label: "Culture" },
   { href: "/for-barbers", label: "For Barbers" },
   { href: "/for-shops", label: "For Shops" }
 ] as const;
 
 type PublicNavProps = {
-  active?: "/app" | "/for-barbers" | "/for-shops";
+  active?: "/app" | "/culture" | "/discover" | "/for-barbers" | "/for-shops";
 };
 
 export function PublicNav({ active }: PublicNavProps) {
@@ -35,7 +35,7 @@ export function PublicNav({ active }: PublicNavProps) {
         </div>
 
         <div className={styles.desktopActions}>
-          <Link href="/discover?entry=guest" className={styles.guestLink}>
+          <Link href="/discover?entry=guest" aria-current={active === "/discover" ? "page" : undefined} className={styles.guestLink}>
             Enter as guest
           </Link>
           <Link href="/for-barbers" className={styles.barberLink}>
@@ -53,11 +53,15 @@ export function PublicNav({ active }: PublicNavProps) {
           <summary>Menu</summary>
           <div className={styles.mobileMenuPanel}>
             {navigation.map((item) => (
-              <Link key={item.href} href={item.href}>
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active === item.href ? "page" : undefined}
+              >
                 {item.label}
               </Link>
             ))}
-            <Link href="/discover?entry=guest">Enter as guest</Link>
+            <Link href="/discover?entry=guest" aria-current={active === "/discover" ? "page" : undefined}>Enter as guest</Link>
             <Link href="/login">Sign in</Link>
             <Link href="/signup?lane=client" className={styles.mobilePrimary}>
               Join BVRB3R

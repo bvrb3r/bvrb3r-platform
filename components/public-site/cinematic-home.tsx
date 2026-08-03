@@ -24,7 +24,7 @@ const revealCards = [
 
 export function CinematicHome({ signupEnabled = true }: { signupEnabled?: boolean }) {
   return (
-    <div className={styles.cinematicPage}>
+    <div className={styles.cinematicPage} data-public-site>
       <PublicNav />
       <CinematicEffects />
 
@@ -107,16 +107,16 @@ export function CinematicHome({ signupEnabled = true }: { signupEnabled?: boolea
               Your next cut is already waiting<span>.</span>
             </h2>
             <p className={styles.cinematicLead}>
-              Browse the culture, find the chair, and book the service that fits. Free to explore and built to work in your
-              browser.
+              Browse the culture, find the chair, and book the service that fits. Client Standard is $0, and guest discovery
+              stays open in your browser.
             </p>
             {signupEnabled ? (
               <div className={styles.heroActions}>
-                <Link href="/signup?lane=client" className={styles.largePrimary}>
-                  Join as a client <span aria-hidden="true">→</span>
+                <Link href="/booking/new" className={styles.largePrimary}>
+                  Book a cut <span aria-hidden="true">→</span>
                 </Link>
-                <Link href="/signup?lane=barber" className={styles.largeSecondary}>
-                  Sign up as a barber
+                <Link href="/discover?entry=guest" className={styles.largeSecondary}>
+                  Enter as guest
                 </Link>
               </div>
             ) : (
@@ -128,7 +128,7 @@ export function CinematicHome({ signupEnabled = true }: { signupEnabled?: boolea
             )}
             <p className={styles.cinematicNote}>
               {signupEnabled
-                ? "Free for clients · Nothing to install · Guest browsing stays open"
+                ? "Client Standard $0 · Nothing to install · Guest browsing stays open"
                 : "Private production review · Approved test accounts only"}
             </p>
           </div>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "bvrb3r-app-shell-v3";
+const CACHE_NAME = "bvrb3r-app-shell-v4";
 const APP_SHELL = [
   "/",
   "/offline",
@@ -117,7 +117,15 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname.startsWith("/_next/") || /\.(?:js|css|png|jpg|jpeg|svg|webp|ico|woff2?)$/i.test(url.pathname)) {
+  // Next.js build assets are content-hashed and must stay generation-consistent
+  // with the HTML/RSC response. Browser HTTP caching already handles them;
+  // a service-worker stale response can mix builds and trigger hydration errors.
+  if (url.pathname.startsWith("/_next/") || /\.(?:js|css)$/i.test(url.pathname)) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  if (/\.(?:png|jpg|jpeg|svg|webp|ico|woff2?)$/i.test(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request));
   }
 });

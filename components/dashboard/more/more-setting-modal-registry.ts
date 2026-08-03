@@ -267,7 +267,7 @@ function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSe
     return [
       defaultViewField,
       { key: "shop_operating_view", label: "Shop operating view default", helper: "Controls the default shop operations view when supported.", type: "select", value: "Role default", editable: true, private: true, options: [{ label: "Role default", value: "role_default" }, { label: "Team first", value: "team_first" }, { label: "Schedule first", value: "schedule_first" }] },
-      { key: "owner_report_view", label: "Owner report view default", helper: "Controls the default owner report or shop health view when supported.", type: "select", value: "Role default", editable: true, private: true, options: [{ label: "Role default", value: "role_default" }, { label: "Revenue", value: "revenue" }, { label: "Team activity", value: "team_activity" }] }
+      { key: "owner_report_view", label: "Owner report view default", helper: "Controls the default owner report or shop health view when supported.", type: "select", value: "Role default", editable: true, private: true, options: [{ label: "Role default", value: "role_default" }, { label: "Booth rent", value: "revenue" }, { label: "Team activity", value: "team_activity" }] }
     ];
   }
 

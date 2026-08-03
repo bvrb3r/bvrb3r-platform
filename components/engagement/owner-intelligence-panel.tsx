@@ -327,7 +327,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Revenue in scope</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(summary.network.revenue)}</p><p className="mt-2 text-sm text-white/58">Current business-date revenue from the owner analytics rails</p></div>
+          <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Floor service volume</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(summary.network.revenue)}</p><p className="mt-2 text-sm text-white/58">Operational barber service volume for the current business date · not shop revenue</p></div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Marketplace bookings</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.marketplace.bookingsCreated}</p><p className="mt-2 text-sm text-white/58">Bookings created through discover, profile, or haircut-now flows</p></div>
           <div className="rounded-[24px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Loyalty participants</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.loyaltyParticipants}</p><p className="mt-2 text-sm text-white/62">Clients already inside the BVRB3R Points economy</p></div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Referral conversions</p><p className="mt-3 text-3xl font-semibold" data-display="true">{summary.retention.referralConversions}</p><p className="mt-2 text-sm text-white/58">Completed or credited referral events in owner scope</p></div>
@@ -340,17 +340,17 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="surface-label">Monetization command</p>
-              <p className="mt-2 text-sm text-white/58">Subscriptions, platform fees, repeat-client revenue, and operator-grade revenue-at-risk visibility now sit on the same reporting lane.</p>
+              <p className="mt-2 text-sm text-white/58">Subscriptions, platform fees, repeat-client service volume, and service-volume-at-risk visibility sit on the same reporting lane without treating barber money as shop revenue.</p>
             </div>
             <HandCoins className="h-5 w-5 text-[#d9f985]" />
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Gross revenue</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.grossRevenue)}</p><p className="mt-2 text-sm text-white/62">Completed service revenue in current owner scope.</p></div>
+            <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Gross service volume</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.grossRevenue)}</p><p className="mt-2 text-sm text-white/62">Completed barber service volume in current owner scope · not shop revenue.</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Platform fees</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.platformFeeRevenue)}</p><p className="mt-2 text-sm text-white/58">Canonical fee visibility from payment routing records.</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Subscriptions</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.subscriptionRevenue)}</p><p className="mt-2 text-sm text-white/58">{monetization.subscriptions.active} active or trialing rows across barber and shop scope.</p></div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Repeat-client revenue</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.repeatClientRevenue)}</p><p className="mt-2 text-sm text-white/58">{monetization.revenue.retainedRevenueShare}% retained revenue share from repeat behavior.</p></div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Revenue at risk</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.revenueAtRisk)}</p><p className="mt-2 text-sm text-white/58">Heuristic save opportunity tied to churn-risk and re-engagement signals.</p></div>
+            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Repeat-client service volume</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.repeatClientRevenue)}</p><p className="mt-2 text-sm text-white/58">{monetization.revenue.retainedRevenueShare}% of service volume is associated with repeat behavior.</p></div>
+            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Service volume at risk</p><p className="mt-3 text-3xl font-semibold" data-display="true">{currency(monetization.revenue.revenueAtRisk)}</p><p className="mt-2 text-sm text-white/58">Heuristic booking opportunity tied to churn-risk and re-engagement signals.</p></div>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -358,15 +358,15 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
             <span className="status-pill text-white/72">{monetization.subscriptions.billingAttention} need billing attention</span>
             <span className="status-pill text-white/72">{monetization.subscriptions.entitlementReady} entitlement-ready</span>
             <span className="status-pill text-white/72">Processor fee visibility {currency(monetization.revenue.processorFeeVisibility)}</span>
-            <span className="status-pill text-white/72">Referral revenue {currency(monetization.growth.referralConversionRevenue)}</span>
-            <span className="status-pill text-white/72">Loyalty revenue {currency(monetization.growth.loyaltyRevenue)}</span>
+            <span className="status-pill text-white/72">Referral-attributed volume {currency(monetization.growth.referralConversionRevenue)}</span>
+            <span className="status-pill text-white/72">Loyalty-attributed volume {currency(monetization.growth.loyaltyRevenue)}</span>
           </div>
           {points ? (
             <>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Points issued</p><p className="mt-3 text-2xl font-semibold">{points.issuedPoints}</p><p className="mt-2 text-sm text-white/62">{currency(points.issuedInAppValue)} in app value issued.</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Redeemed / cash-out</p><p className="mt-3 text-2xl font-semibold">{points.redeemedPoints} / {points.cashedOutPoints}</p><p className="mt-2 text-sm text-white/58">{currency(points.redeemedInAppValue)} redeemed | {currency(points.cashedOutValue)} cashed out.</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Reward spend rate</p><p className="mt-3 text-2xl font-semibold">{points.rewardSpendRate}%</p><p className="mt-2 text-sm text-white/58">Share of gross revenue spent on BVR Points rewards.</p></div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Reward spend rate</p><p className="mt-3 text-2xl font-semibold">{points.rewardSpendRate}%</p><p className="mt-2 text-sm text-white/58">Share of gross service volume represented by BVR Points rewards.</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Referral reward rate</p><p className="mt-3 text-2xl font-semibold">{points.referralConversionRate}%</p><p className="mt-2 text-sm text-white/58">{points.referralRewardTransactions} referral reward transactions credited.</p></div>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -385,7 +385,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
               <div className="mt-4 flex flex-wrap gap-2">
                 {points.topCampaigns.length ? points.topCampaigns.map((campaign) => (
                   <span key={campaign.campaignId} className="status-pill text-white/72">
-                    {campaign.name} {campaign.issuedPoints} pts / {currency(campaign.redeemedValue)} redeemed / {campaign.redemptionRate}% redeemed / {campaign.attributedRevenue ? `${currency(campaign.attributedRevenue)} revenue` : `${campaign.rewardCostRate}% cost`}
+                    {campaign.name} {campaign.issuedPoints} pts / {currency(campaign.redeemedValue)} redeemed / {campaign.redemptionRate}% redeemed / {campaign.attributedRevenue ? `${currency(campaign.attributedRevenue)} attributed service volume` : `${campaign.rewardCostRate}% cost`}
                   </span>
                 )) : <span className="status-pill text-white/72">BVR Points campaign impact will appear here as reward issuance builds.</span>}
               </div>
@@ -418,15 +418,15 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
         <Card className="rounded-[32px] p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="surface-label">Offer and revenue performance</p>
-              <p className="mt-2 text-sm text-white/58">Promotion redemptions, discount impact, barber contribution, and rebooking-linked revenue all stay grounded in persisted appointment and payout truth.</p>
+              <p className="surface-label">Offer and service-volume performance</p>
+              <p className="mt-2 text-sm text-white/58">Promotion redemptions, discount impact, barber contribution, and rebooking-linked service volume stay grounded in persisted appointment and payout truth.</p>
             </div>
             <span className="status-pill text-[#e4f9b8]">{monetization.promotions.totalRedemptions} total redemptions</span>
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Discount impact</p><p className="mt-3 text-2xl font-semibold">{currency(monetization.promotions.totalDiscountImpact)}</p></div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Attributed revenue</p><p className="mt-3 text-2xl font-semibold">{currency(monetization.promotions.attributedRevenue)}</p></div>
+            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Attributed service volume</p><p className="mt-3 text-2xl font-semibold">{currency(monetization.promotions.attributedRevenue)}</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Rebooking influenced</p><p className="mt-3 text-2xl font-semibold">{currency(monetization.growth.rebookingInfluencedRevenue)}</p></div>
           </div>
 
@@ -440,7 +440,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                     <span className="status-pill text-[#e4f9b8]">{offer.redemptions} redeems</span>
                   </div>
                   <p className="mt-2 text-sm text-white/58">{offer.shopLabel} | {offer.availabilityState}</p>
-                  <p className="mt-2 text-sm text-white/58">Discount {currency(offer.discountImpact)} | Net {currency(offer.netRevenueAfterDiscount)} | Avg {currency(offer.averageDiscount)}</p>
+                  <p className="mt-2 text-sm text-white/58">Discount {currency(offer.discountImpact)} | Net service volume {currency(offer.netRevenueAfterDiscount)} | Avg {currency(offer.averageDiscount)}</p>
                 </div>
               )) : <div className="empty-state-panel rounded-[22px] p-5 text-sm text-white/58">Promotion performance will appear here after offers are redeemed through live bookings.</div>}
             </div>
@@ -453,7 +453,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                     <p className="font-medium">{row.barberName}</p>
                     <span className="status-pill text-[#e4f9b8]">{currency(row.grossRevenue)}</span>
                   </div>
-                  <p className="mt-2 text-sm text-white/58">Completed services {row.completedServices} | Repeat-client revenue {currency(row.repeatClientRevenue)}</p>
+                  <p className="mt-2 text-sm text-white/58">Completed services {row.completedServices} | Repeat-client service volume {currency(row.repeatClientRevenue)}</p>
                   <p className="mt-2 text-sm text-white/58">Platform fee generated {currency(row.platformFeeGenerated)}</p>
                 </div>
               )) : <div className="empty-state-panel rounded-[22px] p-5 text-sm text-white/58">Barber contribution reporting will populate as completed appointment and routing records accumulate.</div>}
@@ -474,9 +474,9 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4">
-              <p className="surface-label text-[#e4f9b8]">Net revenue</p>
+              <p className="surface-label text-[#e4f9b8]">Net routed service amount</p>
               <p className="mt-3 text-3xl font-semibold" data-display="true">{currency(money.revenueBreakdown.netRevenue)}</p>
-              <p className="mt-2 text-sm text-white/62">Gross less platform and processor fees.</p>
+              <p className="mt-2 text-sm text-white/62">Operational routing context after platform and processor fees · not shop revenue.</p>
             </div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
               <p className="surface-label">Pending payouts</p>
@@ -491,7 +491,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
               <p className="surface-label">Reward cost rate</p>
               <p className="mt-3 text-3xl font-semibold" data-display="true">{money.pointsCostVsRevenue}%</p>
-              <p className="mt-2 text-sm text-white/58">Issued points cost as a share of current gross revenue.</p>
+              <p className="mt-2 text-sm text-white/58">Issued points cost as a share of current gross service volume.</p>
             </div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
               <p className="surface-label">Refund rate</p>
@@ -503,7 +503,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
           <div className="mt-4 grid gap-4 lg:grid-cols-[0.96fr_1.04fr]">
             <div className="space-y-4">
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Revenue breakdown</p>
+                <p className="surface-label">Service-payment breakdown</p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3 text-sm text-white/72">Gross {currency(money.revenueBreakdown.grossRevenue)}</div>
                   <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3 text-sm text-white/72">Platform fees {currency(money.revenueBreakdown.platformFeeRevenue)}</div>
@@ -511,8 +511,8 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                   <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3 text-sm text-white/72">Subscriptions {currency(money.revenueBreakdown.subscriptionRevenue)}</div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="status-pill text-[#e4f9b8]">Revenue per user {currency(money.revenuePerUser)}</span>
-                  <span className="status-pill text-white/72">Barber earnings growth {money.barberEarningsGrowth}%</span>
+                  <span className="status-pill text-[#e4f9b8]">Service volume per user {currency(money.revenuePerUser)}</span>
+                  <span className="status-pill text-white/72">Barber service-volume growth {money.barberEarningsGrowth}%</span>
                   <span className="status-pill text-white/72">Avg payout delay {money.payoutFlow.avgPayoutDelayHours}h</span>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
@@ -523,7 +523,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
                     Export payouts
                   </Button>
                   <Button type="button" variant="secondary" className="h-10 px-4" onClick={() => window.open(money.exports.revenuePath, "_blank", "noopener,noreferrer")}>
-                    Export revenue
+                    Export service-volume report
                   </Button>
                   <Button type="button" variant="secondary" className="h-10 px-4" onClick={() => window.open(money.exports.incentivesPath, "_blank", "noopener,noreferrer")}>
                     Export incentives
@@ -834,7 +834,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
         <div className="grid gap-4">
           <Card className="rounded-[32px] p-6">
             <div className="flex items-center justify-between gap-3"><p className="surface-label">Top barbers in scope</p><Users className="h-5 w-5 text-[#d9f985]" /></div>
-            <div className="mt-4 space-y-3">{summary.topBarbers.map((barber) => <div key={barber.barberId} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{barber.barberName}</p><span className="status-pill text-[#e4f9b8]">{currency(barber.revenue)}</span></div><div className="mt-3 grid gap-3 text-sm text-white/60 sm:grid-cols-3"><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Followers {barber.followerCount}</div><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Reputation {barber.reputationScore.toFixed(1)}</div><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Revenue {currency(barber.revenue)}</div></div></div>)}</div>
+            <div className="mt-4 space-y-3">{summary.topBarbers.map((barber) => <div key={barber.barberId} className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{barber.barberName}</p><span className="status-pill text-[#e4f9b8]">{currency(barber.revenue)} service volume</span></div><div className="mt-3 grid gap-3 text-sm text-white/60 sm:grid-cols-3"><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Followers {barber.followerCount}</div><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Reputation {barber.reputationScore.toFixed(1)}</div><div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">Service volume {currency(barber.revenue)}</div></div></div>)}</div>
           </Card>
 
           <Card className="rounded-[32px] p-6">
@@ -1009,7 +1009,4 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
     </section>
   );
 }
-
-
-
 

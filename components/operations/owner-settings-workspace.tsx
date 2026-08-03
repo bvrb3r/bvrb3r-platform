@@ -571,7 +571,7 @@ export function OwnerSettingsWorkspace({
     },
     {
       title: "Performance",
-      subtitle: "Reports, trends, utilization, bookings, revenue, team activity, and shop health",
+      subtitle: "Reports, trends, utilization, bookings, floor service volume, booth rent, team activity, and shop health",
       href: "/dashboard/owner/overview",
       icon: <BarChart3 className="h-5 w-5" />
     }

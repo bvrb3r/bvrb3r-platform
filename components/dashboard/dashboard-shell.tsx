@@ -241,7 +241,7 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
       return [
         { label: "Owner tabs", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: "Five owner tabs tied to this authenticated shop account.", icon: ShieldCheck },
         { label: "Shop scope", value: user.ownedShopId ? "1" : "0", detail: user.ownedShopId ? "One shop linked to this account" : "Create or attach a shop lane", icon: MapPinned },
-        { label: "Controls", value: "Live", detail: "Revenue, team, schedule, and setup stay separated by tab.", icon: WalletCards }
+        { label: "Controls", value: "Live", detail: "Booth rent, team, schedule, and setup stay separated by tab.", icon: WalletCards }
       ];
     case "manager":
       return [
@@ -714,7 +714,6 @@ export function DashboardShell({
     </div>
   );
 }
-
 
 
 

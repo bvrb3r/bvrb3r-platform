@@ -489,7 +489,7 @@ describe("BarberScheduleWorkspace", () => {
     expect(getStatCard("Day Utilization").getByText("0%")).toBeInTheDocument();
   });
 
-  it("shows zero estimated earnings when every appointment is cancelled", () => {
+  it("shows zero estimated service sales when every appointment is cancelled", () => {
     useBarberScheduleQueryMock.mockReturnValue({
       data: {
         ...buildSchedulePayload(),
@@ -509,7 +509,7 @@ describe("BarberScheduleWorkspace", () => {
     render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
 
     expect(screen.getAllByText("Canceled")).toHaveLength(2);
-    expect(getStatCard("Est. Earnings").getByText("$0")).toBeInTheDocument();
+    expect(getStatCard("Est. Service Sales").getByText("$0")).toBeInTheDocument();
     expect(getStatCard("Appointments").getByText("0")).toBeInTheDocument();
   });
 
@@ -534,7 +534,7 @@ describe("BarberScheduleWorkspace", () => {
 
     expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
     expect(screen.getByText("Canceled")).toBeInTheDocument();
-    expect(getStatCard("Est. Earnings").getByText("$5")).toBeInTheDocument();
+    expect(getStatCard("Est. Service Sales").getByText("$5")).toBeInTheDocument();
     expect(getStatCard("Appointments").getByText("1")).toBeInTheDocument();
   });
 
@@ -559,7 +559,7 @@ describe("BarberScheduleWorkspace", () => {
 
     expect(screen.getByText("Confirmed")).toBeInTheDocument();
     expect(screen.getByText("Canceled")).toBeInTheDocument();
-    expect(getStatCard("Est. Earnings").getByText("$5")).toBeInTheDocument();
+    expect(getStatCard("Est. Service Sales").getByText("$5")).toBeInTheDocument();
     expect(getStatCard("Appointments").getByText("1")).toBeInTheDocument();
   });
 

@@ -5,15 +5,53 @@ import styles from "./public-site.module.css";
 
 type CustomStyle = CSSProperties & Record<`--${string}`, string | number>;
 
-const stars = Array.from({ length: 62 }, (_, index) => ({
-  left: (index * 37 + 3) % 100,
-  top: (index * 61 + 7) % 100,
-  size: 1 + ((index * 13) % 18) / 10,
-  opacity: 0.16 + ((index * 29) % 48) / 100,
-  duration: 2.4 + ((index * 7) % 40) / 10,
-  delay: ((index * 11) % 50) / 10,
-  color: index % 7 === 0 ? "#e4f9b8" : "#f5f1e8"
-}));
+type Star = {
+  left: number;
+  top: number;
+  size: number;
+  opacity: number;
+  duration: number;
+  delay: number;
+  color: string;
+};
+
+/** A fixed-seed generator keeps server and client output identical without
+ * placing stars on the arithmetic rows produced by the previous modulo map. */
+function createSeededRandom(seed: number) {
+  let state = seed >>> 0;
+
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+function createStars(count: number, seed: number, minSize: number, maxSize: number): Star[] {
+  const random = createSeededRandom(seed);
+
+  return Array.from({ length: count }, () => {
+    const colorRoll = random();
+    return {
+      left: random() * 100,
+      top: random() * 100,
+      size: minSize + random() * (maxSize - minSize),
+      opacity: 0.14 + random() * 0.5,
+      duration: 3.2 + random() * 4.8,
+      delay: -random() * 7,
+      color: colorRoll > 0.88 ? "#dfe8ff" : colorRoll < 0.12 ? "#fff6e6" : "#f5f1e8"
+    };
+  });
+}
+
+const starLayers = [
+  { name: "far", stars: createStars(68, 0xb7b3f301, 0.55, 1.25) },
+  { name: "near", stars: createStars(24, 0x3ba2c4e9, 1.15, 2.45) }
+] as const;
+
+const poleStripeRows = Array.from({ length: 13 }, (_, index) => -504 + index * 144);
 
 const debris = Array.from({ length: 18 }, (_, index) => {
   const angle = (index / 18) * Math.PI * 2 + (index % 3) * 0.28;
@@ -49,7 +87,7 @@ export function CinematicEffects() {
       return;
     }
 
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
     if (reducedMotion) {
       stage.dataset.reducedMotion = "true";
       return;
@@ -81,16 +119,20 @@ export function CinematicEffects() {
       const close = ease(segment(p, 0.88, 0.97));
 
       set("--hero-opacity", 1 - segment(p, 0.055, 0.135));
-      set("--stars-y", `${p * -110}px`);
-      set("--stars-scale", 1 + impact * 0.055);
-      set("--pole-left", `${67 - 17 * ease(segment(p, 0.08, 0.4))}%`);
+      set("--stars-far-y", `${p * -42}px`);
+      set("--stars-near-y", `${p * -110}px`);
+      set("--stars-far-scale", 1 + impact * 0.025);
+      set("--stars-near-scale", 1 + impact * 0.055);
+      const poleStart = window.innerWidth <= 720 ? 50 : window.innerWidth <= 1080 ? 73 : 67;
+      const poleEnd = 50;
+      set("--pole-left", `${poleStart - (poleStart - poleEnd) * ease(segment(p, 0.08, 0.4))}%`);
       set("--pole-x", `${Math.sin(p * 96) * segment(p, 0.3, 0.45) * 8}px`);
       set("--pole-y", `${Math.cos(p * 81) * segment(p, 0.3, 0.45) * 5}px`);
       set("--pole-rotate", `${Math.sin(p * 84) * segment(p, 0.3, 0.45) * 2.2}deg`);
       set("--pole-scale", 1 + 0.1 * ease(segment(p, 0.1, 0.43)));
       set("--pole-opacity", 1 - segment(p, 0.455, 0.485));
       set("--pole-glow", 0.38 + segment(p, 0.1, 0.43) * 0.62);
-      set("--stripe-y", `${-((p * p * 4200) % 154)}px`);
+      set("--stripe-y", `${-((p * p * 4200) % 144)}px`);
       set("--crack-opacity", segment(p, 0.36, 0.425));
 
       const flight = ease(segment(p, 0.13, 0.448));
@@ -161,23 +203,29 @@ export function CinematicEffects() {
 
   return (
     <div ref={stageRef} className={styles.filmStage} aria-hidden="true">
-      <div className={styles.starField}>
-        {stars.map((star, index) => (
-          <span
-            key={index}
-            className={styles.star}
-            style={{
-              "--star-left": `${star.left}%`,
-              "--star-top": `${star.top}%`,
-              "--star-size": `${star.size}px`,
-              "--star-opacity": star.opacity,
-              "--star-duration": `${star.duration}s`,
-              "--star-delay": `${star.delay}s`,
-              "--star-color": star.color
-            } as CustomStyle}
-          />
-        ))}
-      </div>
+      {starLayers.map((layer) => (
+        <div
+          key={layer.name}
+          className={`${styles.starField} ${layer.name === "far" ? styles.starFieldFar : styles.starFieldNear}`}
+          data-star-layer={layer.name}
+        >
+          {layer.stars.map((star, index) => (
+            <span
+              key={`${layer.name}-${index}`}
+              className={styles.star}
+              style={{
+                "--star-left": `${star.left}%`,
+                "--star-top": `${star.top}%`,
+                "--star-size": `${star.size}px`,
+                "--star-opacity": star.opacity,
+                "--star-duration": `${star.duration}s`,
+                "--star-delay": `${star.delay}s`,
+                "--star-color": star.color
+              } as CustomStyle}
+            />
+          ))}
+        </div>
+      ))}
       <div className={styles.nebula} />
       <div className={styles.vignette} />
 
@@ -185,16 +233,83 @@ export function CinematicEffects() {
       <div className={styles.cometLabel}>BVRB3R — incoming</div>
 
       <div className={styles.poleScene}>
-        <div className={styles.poleGlow} />
-        <div className={styles.barberPole}>
-          <div className={styles.poleCap} />
-          <div className={styles.poleGlass}>
-            <div className={styles.poleStripes} />
-            <div className={styles.poleCrack} />
-          </div>
-          <div className={styles.poleCap} />
-          <div className={styles.poleLabel}>Est. spinning since 1651</div>
+        <div className={styles.poleGlow}>
+          <span className={`${styles.poleBloom} ${styles.poleBloomCream}`} />
+          <span className={`${styles.poleBloom} ${styles.poleBloomRed}`} />
+          <span className={`${styles.poleBloom} ${styles.poleBloomBlue}`} />
         </div>
+        <svg
+          className={styles.barberPole}
+          viewBox="0 0 240 720"
+          preserveAspectRatio="xMidYMid meet"
+          focusable="false"
+          aria-hidden="true"
+          shapeRendering="geometricPrecision"
+        >
+          <defs>
+            <clipPath id="bvrb3r-public-pole-glass-clip">
+              <rect x="40" y="119" width="160" height="482" rx="43" />
+            </clipPath>
+            <linearGradient id="bvrb3r-public-pole-metal" x1="0" x2="1">
+              <stop offset="0" stopColor="#070808" />
+              <stop offset="0.42" stopColor="#2a2b2b" />
+              <stop offset="0.54" stopColor="#fff6e6" stopOpacity="0.78" />
+              <stop offset="0.64" stopColor="#1d1e1e" />
+              <stop offset="1" stopColor="#050606" />
+            </linearGradient>
+            <linearGradient id="bvrb3r-public-pole-glass" x1="0" x2="1">
+              <stop offset="0" stopColor="#020303" stopOpacity="0.92" />
+              <stop offset="0.22" stopColor="#fff6e6" stopOpacity="0.05" />
+              <stop offset="0.47" stopColor="#fff6e6" stopOpacity="0.16" />
+              <stop offset="0.58" stopColor="#060707" stopOpacity="0.02" />
+              <stop offset="0.82" stopColor="#020303" stopOpacity="0.58" />
+              <stop offset="1" stopColor="#010202" stopOpacity="0.94" />
+            </linearGradient>
+          </defs>
+
+          <circle className={styles.poleMetalCore} cx="120" cy="10" r="10" />
+          <path
+            className={styles.poleMetalCore}
+            d="M62 84V58c0-23 25-38 58-38s58 15 58 38v26H62Z"
+          />
+          <rect className={styles.poleMetalCore} x="10" y="79" width="220" height="42" rx="21" />
+          <rect className={styles.poleCollarLine} x="20" y="98" width="200" height="23" rx="11.5" />
+
+          <rect className={styles.poleGlassBase} x="40" y="113" width="160" height="494" rx="45" />
+          <g clipPath="url(#bvrb3r-public-pole-glass-clip)">
+            <g className={`${styles.poleStripeTrack} ${styles.poleCreamCore}`}>
+              {poleStripeRows.map((row) => (
+                <path key={`cream-${row}`} d={`M-54 ${row} C18 ${row - 42} 80 ${row - 34} 135 ${row - 2} S244 ${row + 42} 296 ${row + 1}`} />
+              ))}
+            </g>
+            <g className={`${styles.poleStripeTrack} ${styles.poleRedCore}`}>
+              {poleStripeRows.map((row) => (
+                <path key={`red-${row}`} d={`M-54 ${row + 48} C18 ${row + 6} 80 ${row + 14} 135 ${row + 46} S244 ${row + 90} 296 ${row + 49}`} />
+              ))}
+            </g>
+            <g className={`${styles.poleStripeTrack} ${styles.poleBlueCore}`}>
+              {poleStripeRows.map((row) => (
+                <path key={`blue-${row}`} d={`M-54 ${row + 96} C18 ${row + 54} 80 ${row + 62} 135 ${row + 94} S244 ${row + 138} 296 ${row + 97}`} />
+              ))}
+            </g>
+            <rect className={styles.poleGlassShine} x="40" y="119" width="160" height="482" rx="43" />
+            <path className={styles.poleCrack} d="m127 252 9 67-14 38 11 82-18 42" />
+            <path className={styles.poleCrack} d="m134 319 22 18-15 25" />
+            <path className={styles.poleCrack} d="m126 404-23 21 17 20" />
+          </g>
+
+          <rect className={styles.poleRail} x="12" y="112" width="10" height="496" rx="5" />
+          <rect className={styles.poleRail} x="218" y="112" width="10" height="496" rx="5" />
+
+          <rect className={styles.poleMetalCore} x="10" y="599" width="220" height="42" rx="21" />
+          <rect className={styles.poleCollarLine} x="20" y="599" width="200" height="23" rx="11.5" />
+          <path
+            className={styles.poleMetalCore}
+            d="M62 636h116v26c0 23-25 38-58 38s-58-15-58-38v-26Z"
+          />
+          <circle className={styles.poleMetalCore} cx="120" cy="710" r="10" />
+        </svg>
+        <div className={styles.poleLabel}>Est. spinning since 1651</div>
       </div>
 
       <div className={styles.impactFlash} />

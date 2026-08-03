@@ -139,6 +139,11 @@ describe("Product PR25 owner operations workspace", () => {
     render(<OwnerOperationsWorkspace shopIds={["shop-one"]} />);
     expect(screen.getByText("Today’s book · all sources")).toBeInTheDocument();
     expect(screen.getByText(/external platform money and barber-private earnings never appear/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Owner screen" }), {
+      target: { value: "chairs" }
+    });
+    expect(screen.getByText(/Full Booth Rent \+ AutoBooth Rent only/i)).toBeInTheDocument();
     expect(screen.queryByText(/today revenue/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/tips/i)).not.toBeInTheDocument();
   });

@@ -571,7 +571,7 @@ export function FintechWorkspace({
                   <p className="mt-2 text-base font-semibold">{currency(row.barberPayoutAmount)}</p>
                 </div>
                 <div className="rounded-[20px] border border-white/8 bg-black/18 p-3">
-                  <p className="surface-label">Shop split</p>
+                  <p className="surface-label">{row.routingModel === "autobooth_rent" ? "AutoBooth rent applied" : "Shop-owned billing only"}</p>
                   <p className="mt-2 text-base font-semibold">{currency(row.shopSplitAmount)}</p>
                 </div>
               </div>
@@ -676,7 +676,7 @@ export function FintechWorkspace({
                     <p className="mt-2 text-base font-semibold">{currency(row.barberPayoutAmount)}</p>
                   </div>
                   <div className="rounded-[20px] border border-white/8 bg-black/18 p-3">
-                    <p className="surface-label">Shop split</p>
+                    <p className="surface-label">{row.routingModel === "autobooth_rent" ? "AutoBooth rent applied" : "Shop-owned billing only"}</p>
                     <p className="mt-2 text-base font-semibold">{currency(row.shopSplitAmount)}</p>
                   </div>
                 </div>

@@ -400,7 +400,7 @@ describe("barber earnings workspace", () => {
     expect(screen.getByText("Tax / fee visibility")).toBeInTheDocument();
     expect(screen.getByText("Quiet motivation")).toBeInTheDocument();
     expect(screen.getByText("Review clients")).toBeInTheDocument();
-    expect(screen.getByText("Instant payout fee")).toBeInTheDocument();
+    expect(screen.getByText("Expedited payout fee")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Request cash-out" })).toBeInTheDocument();
     expect(screen.getByText("Points position")).toBeInTheDocument();
     expect(screen.getByText("Recent point activity")).toBeInTheDocument();

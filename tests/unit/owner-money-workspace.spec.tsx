@@ -161,14 +161,18 @@ describe("owner money workspace", () => {
     });
   });
 
-  it("renders revenue, routing, payout, and anomaly truth from canonical money systems", () => {
+  it("renders operational service volume, routing, payout, and anomaly truth without calling barber money shop revenue", () => {
     render(<OwnerMoneyWorkspace />);
 
     expect(screen.getByText("Money")).toBeInTheDocument();
-    expect(screen.getByText("Revenue & payouts")).toBeInTheDocument();
-    expect(screen.getByText("Total Revenue (This Week)")).toBeInTheDocument();
+    expect(screen.getByText("Operational service volume & rent")).toBeInTheDocument();
+    expect(screen.getByText("Floor Service Volume (This Week)")).toBeInTheDocument();
     expect(screen.getByText("$380")).toBeInTheDocument();
-    expect(screen.getByText("Revenue Breakdown")).toBeInTheDocument();
+    expect(screen.getByText("Payment Routing Ledger")).toBeInTheDocument();
+    expect(screen.getByText("AutoBooth Rent Applied")).toBeInTheDocument();
+    expect(screen.getByText("Barber Proceeds Routed")).toBeInTheDocument();
+    expect(screen.queryByText(/shop-directed|split/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Gross Payment Volume")).toBeInTheDocument();
     expect(screen.getByText("Recent Transactions")).toBeInTheDocument();
     expect(screen.getByText("Maya Cole")).toBeInTheDocument();
     expect(screen.getByText("Signature Cut")).toBeInTheDocument();
@@ -176,7 +180,7 @@ describe("owner money workspace", () => {
     expect(screen.getByText("Needs review")).toBeInTheDocument();
   });
 
-  it("shows clean empty states when no revenue or payouts exist yet", () => {
+  it("shows clean empty states when no service volume or payouts exist yet", () => {
     useShopDashboardQueryMock.mockReturnValue({
       isLoading: false,
       error: null,
@@ -238,9 +242,9 @@ describe("owner money workspace", () => {
     render(<OwnerMoneyWorkspace />);
 
     expect(screen.getByText("Needs Review")).toBeInTheDocument();
-    expect(screen.getByText("Revenue appears after completed paid appointments")).toBeInTheDocument();
-    expect(screen.getByText("Revenue chart unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Split breakdown unavailable.")).toBeInTheDocument();
+    expect(screen.getByText("Service volume appears after completed paid appointments")).toBeInTheDocument();
+    expect(screen.getByText("Service-volume chart unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Routing ledger unavailable.")).toBeInTheDocument();
     expect(screen.getByText("No transactions yet.")).toBeInTheDocument();
     expect(screen.getByText("Setup incomplete")).toBeInTheDocument();
     expect(screen.getByText("Complete setup")).toBeInTheDocument();

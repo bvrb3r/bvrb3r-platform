@@ -170,7 +170,7 @@ function getTimelineRows(input: {
   const payoutRows: MoneyTimelineRow[] = input.recentExecutions.slice(0, 4).map((entry) => ({
     id: `payout-${entry.id}`,
     label: entry.executionStatus === "executed" ? "Payout sent" : `Payout ${formatMoneyStatus(entry.executionStatus)}`,
-    detail: `${entry.payoutSpeed === "instant" ? "Instant" : "Standard"} payout${entry.targetDisplayName ? ` for ${entry.targetDisplayName}` : ""}`,
+    detail: `${entry.payoutSpeed === "instant" ? "Expedited" : "Standard"} payout${entry.targetDisplayName ? ` for ${entry.targetDisplayName}` : ""}`,
     occurredAt: entry.executedAt ?? entry.createdAt,
     amount: entry.netTransferAmount || entry.amount,
     tone: entry.executionStatus === "executed"
@@ -186,8 +186,8 @@ function getTimelineRows(input: {
     .slice(0, 2)
     .map((entry) => ({
       id: `fee-${entry.id}`,
-      label: "Instant payout fee",
-      detail: `Applied when ${entry.payoutSpeed} speed was selected.`,
+      label: "Expedited payout fee",
+      detail: "Applied when expedited payout speed was selected.",
       occurredAt: entry.executedAt ?? entry.createdAt,
       amount: entry.instantPayoutFeeAmount,
       tone: "warning",
@@ -563,14 +563,14 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
               <p className="mt-2 text-sm text-white/58">No speed fee.</p>
             </div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Instant payout</p>
+              <p className="surface-label">Expedited payout estimate</p>
               <p className="mt-3 text-2xl font-semibold">{currency(instantPayoutQuote.netTransferAmount)}</p>
-              <p className="mt-2 text-sm text-white/58">After instant speed fee.</p>
+              <p className="mt-2 text-sm text-white/58">After the estimated expedited-payout fee. Eligibility and arrival timing depend on Stripe and bank conditions.</p>
             </div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Instant fee</p>
+              <p className="surface-label">Expedited fee</p>
               <p className="mt-3 text-2xl font-semibold">{currency(instantPayoutQuote.instantFeeAmount)}</p>
-              <p className="mt-2 text-sm text-white/58">Only when speed matters.</p>
+              <p className="mt-2 text-sm text-white/58">Only when an eligible expedited payout is selected.</p>
             </div>
           </div>
 

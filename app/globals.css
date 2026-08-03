@@ -160,6 +160,51 @@ body::after {
   color: #161513;
 }
 
+/* Public pages opt out of the authenticated shell's ambient decoration. The
+   marker is emitted by every public surface (including guest discovery), so
+   dashboards retain their grid, hatch, and gold orb unchanged. */
+body:has([data-public-site]) {
+  background: #060708;
+}
+
+body:has([data-public-site]) .bvr-screen {
+  background: #060708;
+  transition: none;
+}
+
+body:has([data-public-site])::before,
+body:has([data-public-site])::after {
+  display: none;
+  background: none;
+  content: none;
+  animation: none;
+}
+
+html:has([data-public-site]) {
+  scrollbar-color: rgba(245, 241, 232, 0.24) transparent;
+  scrollbar-width: thin;
+}
+
+html:has([data-public-site])::-webkit-scrollbar {
+  width: 0.55rem;
+}
+
+html:has([data-public-site])::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html:has([data-public-site])::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(245, 241, 232, 0.24);
+  background-clip: padding-box;
+}
+
+html:has([data-public-site])::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 241, 232, 0.38);
+  background-clip: padding-box;
+}
+
 a {
   color: inherit;
   text-decoration: none;

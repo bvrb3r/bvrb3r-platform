@@ -78,18 +78,18 @@ export function BusinessToolkitWorkspace() {
 
   const view = (() => {
     if (tab === "income") return {
-      title: "Weekly income estimator",
+      title: "Weekly gross service estimator",
       subtitle: "Cuts, price, and tips — what one week at the chair could look like.",
-      output: "Estimated weekly take",
+      output: "Estimated service sales + tips",
       big: money.format(result.estimatedWeeklyTake),
-      detail: `${money.format(result.estimatedWeeklyTake * 52)} a year at this pace`,
+      detail: `${money.format(result.estimatedWeeklyTake * 52)} a year before platform and processing charges or booth rent`,
       rows: [
         [`Services (${state.cuts} × ${money.format(state.price)})`, money.format(result.serviceWeek)],
-        ["Tips — 100% yours, always", `+${money.format(result.estimatedTips)}`],
-        ["BVRB3R deduction from service revenue", "$0 · rent-only system"]
+        ["Client-confirmed tips — 100% barber-owned", `+${money.format(result.estimatedTips)}`],
+        ["BVRB3R platform fee", "5% of eligible transactions · excluded from this gross estimate"]
       ],
       cta: ["See your real numbers — Barber Earnings", "/dashboard/barber/earnings"],
-      fine: "Estimate only. Card-processing fees can apply to in-app payments; booth rent is the flat amount agreed by the barber and shop."
+      fine: "Gross estimate only. Real net payout subtracts the 5% BVRB3R platform fee and any separately disclosed processing charges; booth rent remains separate."
     };
     if (tab === "pricing") return {
       title: "Pricing sandbox",
@@ -128,7 +128,7 @@ export function BusinessToolkitWorkspace() {
       rows: [
         [`${state.autoBoothPercent}% of ${money.format(state.transaction)}`, preciseMoney.format(state.transaction * state.autoBoothPercent / 100)],
         ["Capped at remaining", money.format(state.remainingRent)],
-        ["Tip on this service", "untouched — 100% barber-owned"]
+        ["Client-confirmed tip", "100% barber-owned · excluded from rent"]
       ],
       cta: ["Set it up for real — AutoBooth", "/pro/autobooth"],
       fine: "Once the balance reaches $0.00, contributions stop by structure. Every real contribution is itemized on the money screen."

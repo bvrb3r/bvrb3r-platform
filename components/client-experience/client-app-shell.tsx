@@ -18,10 +18,12 @@ export function ClientAppShell({
 }) {
   return (
     <div className="bvr-screen app-screen relative overflow-x-clip text-[var(--text-primary)]">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-64 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.1),transparent_72%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-44 bg-[linear-gradient(0deg,rgba(196, 242, 78,0.06),transparent_76%)]" />
-      </div>
+      {mode === "client" ? (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-64 bg-[linear-gradient(180deg,rgba(196, 242, 78,0.1),transparent_72%)]" />
+          <div className="absolute inset-x-0 bottom-0 h-44 bg-[linear-gradient(0deg,rgba(196, 242, 78,0.06),transparent_76%)]" />
+        </div>
+      ) : null}
       <div className="relative page-shell safe-top-pad app-safe-bottom pb-[calc(env(safe-area-inset-bottom,0px)+6.5rem)] pt-3 sm:pt-4 lg:pt-5">
         <ClientAppHeader mode={mode} />
         <div

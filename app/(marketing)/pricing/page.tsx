@@ -24,7 +24,7 @@ export default function PricingPage() {
           Standard. Pro. Elite.
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-7 text-white/62">
-          Standard is always $0 for Clients, Barbers, and Shop Owners. Pro and Elite prices follow the account role and unlock only after verified billing.
+          Client Standard is $0. Barber Standard and Shop Owner Standard are also $0. Pro and Elite prices follow the account role and unlock only after verified billing.
         </p>
       </div>
 
@@ -78,6 +78,9 @@ export default function PricingPage() {
 
       <p className="mt-10 text-sm leading-6 text-white/46">
         Paid plan checkout remains unavailable until the matching Stripe price and server entitlement are verified. A displayed plan never grants access by itself.
+      </p>
+      <p className="mt-4 text-sm leading-6 text-white/46">
+        Plan prices are separate from transaction charges. The BVRB3R platform fee is 5% of eligible transactions, and 100% of the client-confirmed tip belongs to the barber. Stripe processing charges and other authorized adjustments are disclosed separately when they apply. Payout timing depends on Stripe Connect account eligibility, settlement, payout schedule, risk holds, weekends, and bank timing.
       </p>
     </section>
   );

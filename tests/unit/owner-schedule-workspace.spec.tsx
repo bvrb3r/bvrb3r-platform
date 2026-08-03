@@ -80,6 +80,8 @@ describe("owner schedule workspace", () => {
     expect(screen.getByText("Schedule")).toBeInTheDocument();
     expect(screen.getByText("All chairs & bookings")).toBeInTheDocument();
     expect(screen.getByText("Bookings")).toBeInTheDocument();
+    expect(screen.getByText("Floor Service Volume")).toBeInTheDocument();
+    expect(screen.getByText("Barber money · not shop revenue")).toBeInTheDocument();
     expect(screen.getByText("Open Slots")).toBeInTheDocument();
     expect(screen.getAllByText("Maya").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Jordan Ellis").length).toBeGreaterThan(0);

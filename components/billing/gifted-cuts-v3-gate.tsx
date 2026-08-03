@@ -20,7 +20,7 @@ export function GiftedCutsV3Gate() {
             <p className="font-mono text-[9px] uppercase tracking-[0.24em] text-[#D9B461]">Community layer · V3</p>
             <h2 className="mt-2 font-serif text-3xl text-white">Gifted Cuts</h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/58">
-              The future door will let a community cover services while the barber receives the real service price through Stripe. Tips remain separate and always belong to the barber.
+              The future door will let a community cover services while the eligible service amount follows normal Stripe routing. The 5% BVRB3R platform fee and authorized adjustments still apply; 100% of the client-confirmed tip belongs to the barber.
             </p>
           </div>
         </div>
