@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
+import { ShopAddressMapboxField } from "@/components/marketplace/shop-address-mapbox-field";
 import { KioskSettingsCard } from "@/components/kiosk/kiosk-actions";
 import { ShopOwnerPlanAccessCard, ShopOwnerUpgradePrompt } from "@/components/owner-experience/shop-owner-plan-access-card";
 import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
@@ -824,6 +825,16 @@ export function OwnerSettingsWorkspace({
       <section className="space-y-3">
         <MoreSectionGroup group={ownerMoreSections[0]} />
         <RoadFutureGates role="shop_owner_user" />
+        {primaryShop ? (
+          <ShopAddressMapboxField
+            shopId={primaryShop.shopId}
+            currentAddress={shopPublicLocationLine === "Add shop address" ? null : shopPublicLocationLine}
+            onSaved={() => {
+              setQuickSetupFeedback({ tone: "success", message: "Verified shop address and public map pin saved." });
+              void profileQuery.refetch();
+            }}
+          />
+        ) : null}
         {selectedBrandingManager ? (
           shops.length ? (
             <div className="grid gap-4 pt-1 xl:grid-cols-[0.88fr_1.12fr]">

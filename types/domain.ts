@@ -582,6 +582,9 @@ export interface MapDiscoveryMarker {
   barberId?: string;
   username?: string;
   distanceMiles?: number;
+  availableNow?: boolean;
+  driveTimeMinutes?: number;
+  driveDistanceMiles?: number;
   trustLabel?: string;
   featuredLabel?: string;
   cityLabel?: string;
@@ -629,7 +632,5 @@ export interface MarketplaceConversionEvent {
   metadata: Record<string, string | number | boolean | null>;
   createdAt: string;
 }
-
-
 
 

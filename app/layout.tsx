@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, Instrument_Serif, Inter, Space_Mono } from "next/font/google";
 import "./globals.css";
+import "mapbox-gl/dist/mapbox-gl.css";
 import { AppProviders } from "@/components/providers/app-providers";
 import { NO_FLASH_SCRIPT } from "@/components/providers/theme-provider";
 import { runtimeConfig } from "@/lib/config/runtime";
