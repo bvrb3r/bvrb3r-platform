@@ -46,6 +46,7 @@ import {
   MoreSectionGroup,
   type MoreSectionGroup as MoreSectionGroupConfig
 } from "@/components/dashboard/more/more-components";
+import { RoadFutureGates } from "@/components/road/road-future-gates";
 import { MoreSettingModal } from "@/components/dashboard/more/more-setting-modal";
 import { BarberEarningsWorkspace } from "@/components/operations/barber-earnings-workspace";
 import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
@@ -1146,6 +1147,38 @@ export function BarberSettingsScreen({
     return "green";
   };
   const barberMoreSections: MoreSectionGroupConfig[] = [
+    {
+      id: "barber-settings-progress-reference",
+      title: "Progress & Reference",
+      subtitle: "Follow your journey, then open the complete BVRB3R system map.",
+      roleScope: "barber" as const,
+      rows: [
+        { title: "The Road", subtitle: "Your real progress, badges, referrals, and next milestone.", href: "/road", icon: <MapPin className="h-5 w-5" /> },
+        { title: "System Atlas", subtitle: "The 21 mission chains · every door to its exit.", href: "/atlas", icon: <FileText className="h-5 w-5" /> }
+      ]
+    },
+    {
+      id: "barber-settings-access-tools",
+      title: "Access & Tools",
+      subtitle: "Open the shared cards, identity, and business-planning doors.",
+      roleScope: "barber" as const,
+      rows: [
+        { title: "Gift cards", subtitle: "Buy, claim, redeem, and review real gift-card balance.", href: "/gift-cards", icon: <Gift className="h-5 w-5" /> },
+        { title: "App ID", subtitle: "Your public-safe BVRB3R card and QR.", href: "/id", icon: <Fingerprint className="h-5 w-5" /> },
+        { title: "Business Toolkit", subtitle: "Income, pricing, rent, AutoBooth, utilization, and no-show estimates.", href: "/pro/toolkit", icon: <BarChart3 className="h-5 w-5" /> }
+      ]
+    },
+    {
+      id: "barber-settings-calendar-connections",
+      title: "Calendar Connections",
+      subtitle: "Keep external schedule truth visible without moving external money.",
+      roleScope: "barber" as const,
+      rows: [
+        { title: "Square Appointments", subtitle: "Read-only appointment import · Pays on Square", href: "/dashboard/barber/calendar/square", icon: <CalendarDays className="h-5 w-5" /> },
+        { title: "Apple Calendar", subtitle: "Private feed out · device-minimized busy windows in", href: "/dashboard/barber/calendar/apple", icon: <CalendarDays className="h-5 w-5" /> },
+        { title: "Google Calendar", subtitle: "Dedicated BVRB3R calendar out · free/busy only in", href: "/dashboard/barber/calendar/google", icon: <CalendarDays className="h-5 w-5" /> }
+      ]
+    },
     {
       id: "barber-settings-payments-banking",
       title: "Payments & Banking",
@@ -3170,7 +3203,9 @@ export function BarberSettingsScreen({
             </BusinessToolModal>
           ) : null}
 
-        {barberMoreSections.filter((group) => group.title !== "Business Setup").map((group) => <MoreSectionGroup key={group.title} group={group} />)}
+        <MoreSectionGroup group={barberMoreSections[0]} />
+        <RoadFutureGates role="barber_user" />
+        {barberMoreSections.slice(1).filter((group) => group.title !== "Business Setup").map((group) => <MoreSectionGroup key={group.title} group={group} />)}
 
         <MoreLogoutCard />
       </div>

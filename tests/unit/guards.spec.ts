@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
 
-const { getCurrentUserFromServerMock, redirectMock } = vi.hoisted(() => ({
+const { getCurrentUserFromServerMock, recordIdentityAuditEventMock, redirectMock } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
+  recordIdentityAuditEventMock: vi.fn().mockResolvedValue(true),
   redirectMock: vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);
   })
@@ -17,11 +18,16 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock
 }));
 
+vi.mock("@/lib/auth/identity-audit", () => ({
+  recordIdentityAuditEvent: recordIdentityAuditEventMock
+}));
+
 import { getAuthorizedUser, getPlatformAdminUser } from "@/lib/auth/guards";
 
 describe("authorized user guard", () => {
   beforeEach(() => {
     getCurrentUserFromServerMock.mockReset();
+    recordIdentityAuditEventMock.mockClear();
     redirectMock.mockClear();
   });
 
@@ -38,7 +44,15 @@ describe("authorized user guard", () => {
   it("redirects owner away from the manager workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
-    await expect(getAuthorizedUser(["manager"])).rejects.toThrow("REDIRECT:/dashboard/owner");
+    await expect(getAuthorizedUser(["manager"])).rejects.toThrow("REDIRECT:/access-denied");
+    expect(recordIdentityAuditEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: "wrong_role_access_denied",
+      outcome: "denied",
+      metadata: {
+        allowedRoles: ["manager"],
+        safeDestination: "/dashboard/owner"
+      }
+    }));
   });
 
   it("returns the front desk user for the front desk workspace", async () => {
@@ -54,7 +68,7 @@ describe("authorized user guard", () => {
   it("redirects manager away from the front desk workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("manager@bvrb3r.demo") });
 
-    await expect(getAuthorizedUser(["front_desk"])).rejects.toThrow("REDIRECT:/dashboard/manager");
+    await expect(getAuthorizedUser(["front_desk"])).rejects.toThrow("REDIRECT:/access-denied");
   });
 
   it("returns the freelance barber for the barber workspace", async () => {
@@ -82,13 +96,13 @@ describe("authorized user guard", () => {
   it("redirects owner away from the barber workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
-    await expect(getAuthorizedUser(["barber_user"])).rejects.toThrow("REDIRECT:/dashboard/owner");
+    await expect(getAuthorizedUser(["barber_user"])).rejects.toThrow("REDIRECT:/access-denied");
   });
 
   it("redirects the barber-manager demo account away from the barber-only workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("wave@bvrb3r.demo") });
 
-    await expect(getAuthorizedUser(["barber_user"])).rejects.toThrow("REDIRECT:/dashboard/manager");
+    await expect(getAuthorizedUser(["barber_user"])).rejects.toThrow("REDIRECT:/access-denied");
   });
 
   it("returns the client for the client workspace", async () => {
@@ -123,7 +137,7 @@ describe("authorized user guard", () => {
   it("redirects owner away from the client workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
-    await expect(getAuthorizedUser(["client_user"])).rejects.toThrow("REDIRECT:/dashboard/owner");
+    await expect(getAuthorizedUser(["client_user"])).rejects.toThrow("REDIRECT:/access-denied");
   });
 
   it("returns the founder for the hidden architect route", async () => {

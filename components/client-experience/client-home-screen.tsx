@@ -19,6 +19,7 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/design/components";
+import { RoadHomeWidget } from "@/components/road/road-home-widget";
 import {
   useClientBookingsQuery,
   useClientHomeQuery,
@@ -180,7 +181,9 @@ export function ClientHomeScreen({
     : null;
   const defaultPaymentMethod = payload?.defaultPaymentMethod ?? bookingsPayload?.nextAppointmentPayment?.defaultPaymentMethod ?? null;
 
-  const viewDetailsHref = CLIENT_PRIMARY_TAB_HREFS.activity;
+  const viewDetailsHref = nextAppointment
+    ? { pathname: CLIENT_PRIMARY_TAB_HREFS.activity, query: { appointment: nextAppointment.id } }
+    : CLIENT_PRIMARY_TAB_HREFS.activity;
   const heroTitle = nextAppointment || hasBookingHistory
     ? `Welcome back, ${firstName}.`
     : `Book your first cut, ${firstName}.`;
@@ -248,6 +251,8 @@ export function ClientHomeScreen({
 
         </div>
       </Card>
+
+      <RoadHomeWidget compact={Boolean(nextAppointment)} />
 
       {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
 
@@ -366,7 +371,7 @@ export function ClientHomeScreen({
 
             <div className="mt-5 flex flex-wrap gap-3">
               <ClientActionLink href={viewDetailsHref} size="lg">
-                View Details
+                View details
               </ClientActionLink>
             </div>
           </div>

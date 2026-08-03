@@ -11,6 +11,7 @@ export const GLOBAL_SAFETY_STATE_KEYS = [
   "offline",
   "reconnecting",
   "conflict",
+  "access_denied",
   "permission_changed",
   "provider_unavailable",
   "payment_degraded",
@@ -112,6 +113,14 @@ const copy: Record<GlobalSafetyStateKey, {
     truth: "The newer record is intact and no duplicate was created.",
     action: "Review the newer version",
     tone: "amber"
+  },
+  access_denied: {
+    glyph: "×",
+    headline: "This isn't your door.",
+    reason: "The server role check denied this route, and row-level security remains enforced.",
+    truth: "No private record was returned. The denied attempt was logged.",
+    action: "Return to your home",
+    tone: "neutral"
   },
   permission_changed: {
     glyph: "×",

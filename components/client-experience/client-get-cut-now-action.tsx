@@ -77,7 +77,7 @@ export function ClientGetCutNowAction({
   const locationHref = `${CLIENT_PRIMARY_TAB_HREFS.profile}?section=location` as Route;
   const walletHref = `${CLIENT_PRIMARY_TAB_HREFS.profile}?section=wallet` as Route;
   const barberSearchHref = `${CLIENT_PRIMARY_TAB_HREFS.search}?type=barbers` as Route;
-  const bookingHref = useMemo<Route | null>(() => {
+  const bookingHref = useMemo<string | null>(() => {
     if (!nextAvailableChair) {
       return null;
     }
@@ -107,7 +107,7 @@ export function ClientGetCutNowAction({
     })
     : "";
 
-  let ctaHref: Route | null = bookingHref;
+  let ctaHref: string | null = bookingHref;
   if (state === "location") {
     ctaHref = locationHref;
   } else if (state === "unavailable") {
@@ -217,7 +217,7 @@ export function ClientGetCutNowAction({
               )}
 
               {ctaHref ? (
-                <ClientActionLink href={ctaHref} size="md">
+                <ClientActionLink href={ctaHref as Route} size="md">
                   {state === "payment" ? "Add Payment Method" : "Continue to Booking"}
                 </ClientActionLink>
               ) : null}
