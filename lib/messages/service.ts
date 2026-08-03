@@ -2553,7 +2553,7 @@ async function findSharedParticipantThreadIds(input: {
 }
 
 async function assertProfilesCanMessage(supabase: SupabaseClient, actorProfileId: string, targetProfileId: string) {
-  const [actorBlocksTarget, targetBlocksActor] = await Promise.all([
+  const [actorBlocksTarget, targetBlocksActor, actorCultureBlocksTarget, targetCultureBlocksActor] = await Promise.all([
     supabase
       .from("message_user_blocks")
       .select("id")
@@ -2565,19 +2565,42 @@ async function assertProfilesCanMessage(supabase: SupabaseClient, actorProfileId
       .select("id")
       .eq("blocker_profile_id", targetProfileId)
       .eq("blocked_profile_id", actorProfileId)
+      .maybeSingle(),
+    supabase
+      .from("culture_profile_blocks")
+      .select("id")
+      .eq("blocker_profile_id", actorProfileId)
+      .eq("blocked_profile_id", targetProfileId)
+      .eq("active", true)
+      .maybeSingle(),
+    supabase
+      .from("culture_profile_blocks")
+      .select("id")
+      .eq("blocker_profile_id", targetProfileId)
+      .eq("blocked_profile_id", actorProfileId)
+      .eq("active", true)
       .maybeSingle()
   ]);
 
-  const blockingError = actorBlocksTarget.error ?? targetBlocksActor.error ?? null;
-  if (blockingError) {
-    if (isMissingMessageLifecycleTable(blockingError)) {
-      return;
-    }
-
+  const messageBlockingError = actorBlocksTarget.error ?? targetBlocksActor.error ?? null;
+  if (messageBlockingError && !isMissingMessageLifecycleTable(messageBlockingError)) {
     throw new MessagingServiceError("Unable to verify message block state.", 500);
   }
 
-  if (actorBlocksTarget.data || targetBlocksActor.data) {
+  const cultureBlockingError = actorCultureBlocksTarget.error ?? targetCultureBlocksActor.error ?? null;
+  const cultureBlockTableMissing = cultureBlockingError
+    && /culture_profile_blocks/i.test(cultureBlockingError.message ?? "")
+    && /schema cache|relation|table|could not find/i.test(cultureBlockingError.message ?? "");
+  if (cultureBlockingError && !cultureBlockTableMissing) {
+    throw new MessagingServiceError("Unable to verify Culture block state.", 500);
+  }
+
+  if (
+    actorBlocksTarget.data
+    || targetBlocksActor.data
+    || actorCultureBlocksTarget.data
+    || targetCultureBlocksActor.data
+  ) {
     throw new MessagingServiceError("You cannot message this user.", 403, "message_blocked", "block_check");
   }
 }

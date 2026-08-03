@@ -313,7 +313,7 @@ export function ClientProfileScreen({
         { href: "/dashboard/client/public-profile", title: "Culture Profile", subtitle: "Public creator identity, bio, interests, display style, and Culture profile visibility.", icon: <Camera className="h-5 w-5" /> },
         { href: "/dashboard/client/public-profile", title: "Content Settings", subtitle: "Posting defaults, visibility, content categories, comments, sharing, and moderation preferences.", icon: <SlidersHorizontal className="h-5 w-5" /> },
         { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Performance", subtitle: "Posts, views, followers, engagement, shares, profile clicks, and booking influence.", icon: <ReceiptText className="h-5 w-5" /> },
-        { href: "/contact", title: "Creator Safety", subtitle: "Content rules, strikes, reports, appeal status, and platform standing.", icon: <ShieldCheck className="h-5 w-5" /> }
+        { href: "/dashboard/culture/safety", title: "Creator Safety", subtitle: "Content rules, strikes, reports, appeal status, and platform standing.", icon: <ShieldCheck className="h-5 w-5" /> }
       ]
     },
     {
@@ -337,7 +337,7 @@ export function ClientProfileScreen({
       rows: [
         { title: "Identity Verification", subtitle: "Required when this account becomes eligible to receive payouts, such as creator payouts. Not required for normal booking.", href: "/verify-contact", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Password & Login", subtitle: "Password, sign-in method, email login, phone login, and connected access.", href: "/verify-contact", icon: <KeyRound className="h-5 w-5" /> },
-        { title: "Privacy", subtitle: "Booking data, rewards data, location preference, public culture profile, and communication visibility.", href: "/contact", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Privacy", subtitle: "Export, deactivate, deletion grace, and account visibility.", href: "/dashboard/account/privacy", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Account Security", subtitle: "Email verification, phone verification, device/session protection, and account status.", href: "/verify-contact", status: emailVerified || phoneVerified ? "Verified" : "Needs setup", tone: emailVerified || phoneVerified ? "green" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Legal", subtitle: "Terms, privacy policy, creator terms, rewards terms, payout terms, and account agreements.", href: "/contact", icon: <FileText className="h-5 w-5" /> }
       ]

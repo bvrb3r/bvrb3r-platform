@@ -639,8 +639,14 @@ export function OwnerSettingsWorkspace({
     },
     {
       title: "Privacy",
-      subtitle: "Shop data, team data, client communication, public shop visibility, and owner/private visibility",
-      href: "/verify-contact",
+      subtitle: "Export, deactivate, deletion grace, shop data, and owner/private visibility",
+      href: "/dashboard/account/privacy",
+      icon: <ShieldCheck className="h-5 w-5" />
+    },
+    {
+      title: "Culture Safety",
+      subtitle: "Reports, blocks, mutes, appeals, and Culture standing",
+      href: "/dashboard/culture/safety",
       icon: <ShieldCheck className="h-5 w-5" />
     },
     {
