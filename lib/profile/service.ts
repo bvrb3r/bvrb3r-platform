@@ -362,6 +362,30 @@ export type PublicUsernameAvailability = {
   reason: PublicUsernameAvailabilityReason;
 };
 
+export const CANONICAL_SHOP_ROUTE_USERNAME_RESERVATIONS = [
+  "ai",
+  "analytics",
+  "bridge",
+  "chairfill",
+  "chairs",
+  "floor",
+  "home",
+  "identity",
+  "kiosk",
+  "messages",
+  "money",
+  "more",
+  "policies",
+  "rent",
+  "reports",
+  "schedule",
+  "switch",
+  "sync",
+  "team",
+  "tv",
+  "verify"
+] as const;
+
 const RESERVED_PUBLIC_USERNAMES = new Set([
   "admin",
   "support",
@@ -381,7 +405,8 @@ const RESERVED_PUBLIC_USERNAMES = new Set([
   "architect",
   "settings",
   "profile",
-  "public"
+  "public",
+  ...CANONICAL_SHOP_ROUTE_USERNAME_RESERVATIONS
 ]);
 
 function normalizePublicUsername(value?: string | null) {
@@ -390,16 +415,16 @@ function normalizePublicUsername(value?: string | null) {
 
 function assertPublicUsername(value: string) {
   const username = normalizePublicUsername(value);
+  if (RESERVED_PUBLIC_USERNAMES.has(username)) {
+    throw new ProfileMediaServiceError("This username is reserved.", 400);
+  }
+
   if (username.length < 3) {
     throw new ProfileMediaServiceError("Use at least 3 lowercase letters, numbers, hyphens, or underscores.", 400);
   }
 
   if (!/^[a-z0-9_-]+$/.test(username)) {
     throw new ProfileMediaServiceError("Use lowercase letters, numbers, hyphens, or underscores.", 400);
-  }
-
-  if (RESERVED_PUBLIC_USERNAMES.has(username)) {
-    throw new ProfileMediaServiceError("This username is reserved.", 400);
   }
 
   return username;
@@ -507,12 +532,12 @@ export async function checkPublicUsernameAvailability(
   owner: { type: PublicUsernameOwnerType; id: string }
 ): Promise<PublicUsernameAvailability> {
   const username = normalizePublicUsername(usernameValue);
-  if (username.length < 3 || !/^[a-z0-9_-]+$/.test(username)) {
-    return { available: false, normalizedUsername: username, reason: "invalid" };
-  }
-
   if (RESERVED_PUBLIC_USERNAMES.has(username)) {
     return { available: false, normalizedUsername: username, reason: "reserved" };
+  }
+
+  if (username.length < 3 || !/^[a-z0-9_-]+$/.test(username)) {
+    return { available: false, normalizedUsername: username, reason: "invalid" };
   }
 
   const supabase = getSupabase();

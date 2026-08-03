@@ -8,6 +8,10 @@ vi.mock("@/components/kiosk/kiosk-parity-screen", () => ({
   KioskParityScreen: (props: Record<string, unknown>) => props
 }));
 
+vi.mock("@/components/kiosk/kiosk-mode-screen", () => ({
+  KioskModeScreen: (props: Record<string, unknown>) => ({ type: "check-in", ...props })
+}));
+
 import BarberKioskPage from "@/app/kiosk/barber/[barberId]/page";
 import LegacyKioskPage from "@/app/kiosk/[shopId]/page";
 import ExplicitShopKioskPage from "@/app/kiosk/shop/[shopId]/page";
@@ -38,6 +42,16 @@ describe("kiosk page language routing", () => {
 
     expect(kreyol.props.initialLocale).toBe("ht");
     expect(fallback.props.initialLocale).toBe("en");
+  });
+
+  it("opens the functional appointment check-in flow for ?mode=check-in", async () => {
+    const element = await ExplicitShopKioskPage({
+      params: Promise.resolve({ shopId: "loc-ybor" }),
+      searchParams: Promise.resolve({ mode: "check-in" })
+    });
+
+    expect(element.props).toMatchObject({ shopId: "loc-ybor", scope: "shop" });
+    expect(element.props).not.toHaveProperty("initialLocale");
   });
 
   it("boots the barber kiosk into the requested language", async () => {

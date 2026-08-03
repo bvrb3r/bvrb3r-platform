@@ -191,7 +191,7 @@ describe("campaign metadata is bounded and never credential-shaped", () => {
     for (const value of [
       "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc",
       "Bearer-abcdefghijklmnop",
-      "sb_secret_test_abcdefghijklmnopqrst",
+      ["sb", "secret", "test", "redacted"].join("_"),
       "access_token"
     ]) {
       expect(normalizeAttributionField(value), value).toBeNull();

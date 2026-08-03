@@ -1,4 +1,5 @@
 import { KioskParityScreen } from "@/components/kiosk/kiosk-parity-screen";
+import { KioskModeScreen } from "@/components/kiosk/kiosk-mode-screen";
 import { isKioskFixtureTarget } from "@/lib/kiosk/local-fixture";
 import { resolveKioskLocale } from "@/lib/kiosk/locale";
 
@@ -9,10 +10,14 @@ export default async function ShopKioskPage({
   searchParams
 }: {
   params: Promise<{ shopId: string }>;
-  searchParams: Promise<{ lang?: string | string[] }>;
+  searchParams: Promise<{ lang?: string | string[]; mode?: string | string[] }>;
 }) {
   const { shopId } = await params;
-  const { lang } = await searchParams;
+  const { lang, mode } = await searchParams;
+
+  if (mode === "check-in" || mode === "check_in") {
+    return <KioskModeScreen shopId={shopId} scope="shop" />;
+  }
 
   // Resolved on the server so a `?lang=es` kiosk boots straight into Spanish
   // with no English flash and no hydration mismatch.

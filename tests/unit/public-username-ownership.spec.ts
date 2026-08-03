@@ -18,7 +18,37 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock
 }));
 
-import { checkPublicUsernameAvailability } from "@/lib/profile/service";
+import {
+  CANONICAL_SHOP_ROUTE_USERNAME_RESERVATIONS,
+  checkPublicUsernameAvailability
+} from "@/lib/profile/service";
+
+const canonicalShopRouteReservations = [
+  "ai",
+  "analytics",
+  "bridge",
+  "chairfill",
+  "chairs",
+  "floor",
+  "home",
+  "identity",
+  "kiosk",
+  "messages",
+  "money",
+  "more",
+  "policies",
+  "rent",
+  "reports",
+  "schedule",
+  "switch",
+  "sync",
+  "team",
+  "tv",
+  "verify"
+] as const;
+
+const canonicalReservationMigration =
+  "supabase/migrations/20260803073109_reserve_canonical_shop_route_usernames.sql";
 
 function createRegistrySupabaseMock(row: { owner_type: string; owner_id: string; username: string } | null) {
   return {
@@ -114,5 +144,39 @@ describe("global public username ownership", () => {
       reason: "invalid"
     });
     expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps every canonical shop route segment reserved in application code", async () => {
+    expect(CANONICAL_SHOP_ROUTE_USERNAME_RESERVATIONS).toEqual(canonicalShopRouteReservations);
+    createSupabaseAdminClientMock.mockReturnValue(createRegistrySupabaseMock(null));
+
+    for (const username of canonicalShopRouteReservations) {
+      await expect(
+        checkPublicUsernameAvailability(username, { type: "shop", id: "shop-1" })
+      ).resolves.toEqual({
+        available: false,
+        normalizedUsername: username,
+        reason: "reserved"
+      });
+    }
+
+    expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
+  });
+
+  it("fails the forward migration before replacing the claim function when conflicts exist", () => {
+    const migration = readFileSync(canonicalReservationMigration, "utf8");
+    const preflightIndex = migration.indexOf("canonical_shop_route_username_conflict");
+    const replacementIndex = migration.indexOf("create or replace function public.claim_public_username");
+
+    expect(preflightIndex).toBeGreaterThan(-1);
+    expect(replacementIndex).toBeGreaterThan(preflightIndex);
+    expect(migration).toContain("from public.public_usernames pu");
+    expect(migration).toContain("no username is changed automatically");
+    expect(migration).toContain("security invoker");
+    expect(migration).toContain("set search_path = public, auth, pg_temp");
+
+    for (const username of canonicalShopRouteReservations) {
+      expect(migration.match(new RegExp(`'${username}'`, "g"))?.length).toBe(2);
+    }
   });
 });
