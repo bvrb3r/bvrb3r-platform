@@ -9,6 +9,13 @@ vi.mock("next/link", () => ({
   )
 }));
 
+vi.mock("@/lib/auth/session", () => ({
+  getCurrentUserFromServer: vi.fn(async () => ({
+    authenticated: false,
+    user: { id: "guest-user" }
+  }))
+}));
+
 describe("public client profile page", () => {
   it("renders a read-only Culture profile without private or marketplace controls", async () => {
     render(await PublicClientProfilePage({

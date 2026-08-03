@@ -24,7 +24,7 @@ vi.mock("@/components/pwa/pwa-provider", () => ({
     pushSupported: false,
     pushPermission: "default",
     pushEnabled: false,
-    enablePush: vi.fn(),
+    requestPushPrimer: vi.fn(),
     disablePush: vi.fn()
   })
 }));

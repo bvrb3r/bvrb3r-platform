@@ -4,11 +4,12 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
-import { Bookmark, EyeOff, Flag, Heart, ImageIcon, Info, MessageCircle, MoreHorizontal, Scissors, Share2, ShieldCheck, X } from "lucide-react";
+import { Bookmark, EyeOff, Heart, ImageIcon, Info, MessageCircle, MoreHorizontal, Scissors, Share2, ShieldCheck, X } from "lucide-react";
+import { ReportBlockSheet } from "@/components/trust/report-block-sheet";
 import type { CultureCommentItem, CultureCommentSummary, CultureFeedItem, CultureFeedReasonCode } from "@/lib/culture/service";
 
 type CultureSurface = "client" | "barber" | "shop";
-type CulturePostAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click" | "not_interested";
+type CulturePostAction = "like" | "unlike" | "save" | "unsave" | "share" | "profile_click" | "book_click" | "shop_click" | "not_interested";
 
 const cultureBookingCtaClassName = "inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#C4F24E]/40 bg-[#C4F24E] px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-[#050505] shadow-[0_14px_32px_rgba(196, 242, 78,0.22)] ring-1 ring-black/10 transition hover:bg-[#b3e63a] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e4f9b8]/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
 
@@ -271,7 +272,6 @@ export function CulturePostCard({
   const [following, setFollowing] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [reportOpen, setReportOpen] = useState(false);
   const [whyOpen, setWhyOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
@@ -281,7 +281,6 @@ export function CulturePostCard({
   const [commentBody, setCommentBody] = useState("");
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
-  const [reportReason, setReportReason] = useState("spam");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
@@ -352,10 +351,6 @@ export function CulturePostCard({
       } else if (action === "unsave") {
         setSaved(false);
         showTemporaryMessage("Removed from saved.");
-      } else if (action === "report") {
-        setReportOpen(false);
-        setMoreOpen(false);
-        showTemporaryMessage("Report submitted.");
       } else if (action === "share") {
         showTemporaryMessage("Share recorded.");
       } else if (action === "book_click") {
@@ -823,14 +818,14 @@ export function CulturePostCard({
                   <Share2 className="h-4 w-4" />
                   Copy/share link
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setReportOpen((value) => !value)}
-                  className="inline-flex min-h-10 items-center gap-2 rounded-full border border-red-400/20 px-3 text-xs font-black uppercase tracking-[0.12em] text-red-100"
-                >
-                  <Flag className="h-4 w-4" />
-                  Report
-                </button>
+                <ReportBlockSheet
+                  targetProfileId={post.authorProfileId}
+                  targetLabel={authorPrimaryLabel}
+                  postId={post.id}
+                  source="culture_post"
+                  onBlocked={() => onPostVisibilityChange?.(post.id, true)}
+                  triggerClassName="inline-flex min-h-10 items-center gap-2 rounded-full border border-red-400/20 px-3 text-xs font-black uppercase tracking-[0.12em] text-red-100"
+                />
               </div>
 
               {whyOpen ? (
@@ -844,47 +839,6 @@ export function CulturePostCard({
                 </div>
               ) : null}
 
-              {reportOpen ? (
-                <div className="mt-3 rounded-[16px] border border-red-400/16 bg-red-500/8 p-4">
-                  <label className="block text-xs font-black uppercase tracking-[0.14em] text-red-100" htmlFor={`culture-report-${post.id}`}>
-                    Report post
-                  </label>
-                  <select
-                    id={`culture-report-${post.id}`}
-                    value={reportReason}
-                    onChange={(event) => setReportReason(event.target.value)}
-                    className="mt-3 w-full rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-sm text-white"
-                  >
-                    <option value="spam">Spam or misleading</option>
-                    <option value="harassment">Harassment or hate</option>
-                    <option value="unsafe">Unsafe or harmful</option>
-                    <option value="other">Something else</option>
-                  </select>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setReportOpen(false)}
-                      className="rounded-full border border-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white/58"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      disabled={loadingAction === "report"}
-                      onClick={() => void runPostAction("report", { reason: reportReason }).catch(() => undefined)}
-                      className="rounded-full border border-red-400/25 bg-red-500/12 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-100"
-                    >
-                      {loadingAction === "report" ? "Submitting" : "Submit report"}
-                    </button>
-                    <Link
-                      href={`/dashboard/culture/safety?targetProfileId=${encodeURIComponent(post.authorProfileId)}&postId=${encodeURIComponent(post.id)}&handle=${encodeURIComponent(post.authorUsername ?? post.authorDisplayName)}` as Route}
-                      className="rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/8 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#C4F24E]"
-                    >
-                      Safety controls
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
             </div>
           ) : null}
 
@@ -1023,18 +977,14 @@ export function CulturePostCard({
                     <EyeOff className="h-4 w-4" />
                     Not interested
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDetailOpen(false);
-                      setMoreOpen(true);
-                      setReportOpen(true);
-                    }}
-                    className="inline-flex min-h-10 items-center gap-2 rounded-full border border-red-400/20 px-3 text-xs font-black uppercase tracking-[0.12em] text-red-100"
-                  >
-                    <Flag className="h-4 w-4" />
-                    Report
-                  </button>
+                  <ReportBlockSheet
+                    targetProfileId={post.authorProfileId}
+                    targetLabel={authorPrimaryLabel}
+                    postId={post.id}
+                    source="culture_post"
+                    onBlocked={() => onPostVisibilityChange?.(post.id, true)}
+                    triggerClassName="inline-flex min-h-10 items-center gap-2 rounded-full border border-red-400/20 px-3 text-xs font-black uppercase tracking-[0.12em] text-red-100"
+                  />
                 </div>
               </div>
               {!post.canComment ? <p className="mt-3 text-xs text-white/34">Comments are coming soon.</p> : null}

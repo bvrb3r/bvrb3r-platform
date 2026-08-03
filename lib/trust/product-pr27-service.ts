@@ -2,6 +2,7 @@ import { createHmac, randomBytes, randomInt } from "node:crypto";
 import { buildPr27BarberSetup, resolvePr27DeletionEligibility } from "@/lib/trust/product-pr27-domain";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isDemoMode } from "@/lib/config/runtime";
+import { sendAccountDeletionChallengeEmail } from "@/lib/trust/account-data-export";
 import type { UserAccount } from "@/types/domain";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -306,7 +307,8 @@ function demoPrivacySnapshot(user: UserAccount) {
       deletionGraceEndsAt: null,
       canRestore: false
     },
-    exports: []
+    exports: [],
+    blockedAccounts: []
   };
 }
 
@@ -314,7 +316,7 @@ export async function getPr27PrivacySnapshot(user: UserAccount) {
   requireAuthenticatedUser(user);
   if (isDemoMode()) return demoPrivacySnapshot(user);
   const supabase = requireAdminClient();
-  const [profileResult, lifecycleResult, exportResult, openBookingCount] = await Promise.all([
+  const [profileResult, lifecycleResult, exportResult, blocksResult, openBookingCount] = await Promise.all([
     supabase.from("profiles").select("created_at").eq("id", user.id).maybeSingle(),
     supabase
       .from("account_privacy_lifecycles")
@@ -327,11 +329,38 @@ export async function getPr27PrivacySnapshot(user: UserAccount) {
       .eq("profile_id", user.id)
       .order("requested_at", { ascending: false })
       .limit(10),
+    supabase
+      .from("culture_profile_blocks")
+      .select("blocked_profile_id, created_at")
+      .eq("blocker_profile_id", user.id)
+      .eq("active", true)
+      .order("created_at", { ascending: false }),
     countOpenAppointments(supabase, user)
   ]);
-  if (profileResult.error || lifecycleResult.error || exportResult.error) {
+  if (profileResult.error || lifecycleResult.error || exportResult.error || blocksResult.error) {
     throw new ProductPr27ServiceError("Unable to load account privacy state.", 500, "privacy_snapshot_failed");
   }
+
+  const blockRows = (blocksResult.data ?? []) as Array<{
+    blocked_profile_id: string;
+    created_at: string;
+  }>;
+  const blockedProfilesResult = blockRows.length
+    ? await supabase
+        .from("profiles")
+        .select("id, full_name, public_username")
+        .in("id", blockRows.map((row) => row.blocked_profile_id))
+    : { data: [], error: null };
+  if (blockedProfilesResult.error) {
+    throw new ProductPr27ServiceError("Unable to load blocked accounts.", 500, "privacy_blocks_failed");
+  }
+  const blockedProfilesById = new Map(
+    ((blockedProfilesResult.data ?? []) as Array<{
+      id: string;
+      full_name?: string | null;
+      public_username?: string | null;
+    }>).map((profile) => [profile.id, profile])
+  );
 
   const lifecycle = lifecycleResult.data as {
     status?: string | null;
@@ -351,7 +380,16 @@ export async function getPr27PrivacySnapshot(user: UserAccount) {
       canRestore: lifecycle?.status === "deletion_grace"
         && Boolean(lifecycle.deletion_grace_ends_at && new Date(lifecycle.deletion_grace_ends_at) > new Date())
     },
-    exports: exportResult.data ?? []
+    exports: exportResult.data ?? [],
+    blockedAccounts: blockRows.map((block) => {
+      const profile = blockedProfilesById.get(block.blocked_profile_id);
+      return {
+        profileId: block.blocked_profile_id,
+        displayName: safeText(profile?.full_name) ?? "Blocked account",
+        publicUsername: safeText(profile?.public_username),
+        blockedAt: block.created_at
+      };
+    })
   };
 }
 
@@ -368,18 +406,14 @@ function hashChallenge(profileId: string, challenge: string) {
 export async function requestPr27DeletionChallenge(user: UserAccount) {
   requireAuthenticatedUser(user);
   if (isDemoMode()) {
-    return { challenge: "BVR-2614", expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(), demo: true };
+    return {
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      maskedDestination: "demo inbox",
+      demoChallenge: "BVR-2614",
+      demo: true
+    };
   }
   const supabase = requireAdminClient();
-  const openBookingCount = await countOpenAppointments(supabase, user);
-  if (openBookingCount > 0) {
-    throw new ProductPr27ServiceError(
-      `Open bookings must be canceled or completed first — ${openBookingCount} upcoming ${openBookingCount === 1 ? "appointment" : "appointments"} found.`,
-      409,
-      "open_bookings"
-    );
-  }
-
   const challenge = `BVR-${randomInt(1000, 10000)}`;
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   const result = await supabase
@@ -395,7 +429,27 @@ export async function requestPr27DeletionChallenge(user: UserAccount) {
   if (result.error) {
     throw new ProductPr27ServiceError("Unable to issue a deletion challenge.", 500, "challenge_issue_failed");
   }
-  return { challenge, expiresAt, demo: false };
+  try {
+    await sendAccountDeletionChallengeEmail({
+      destination: user.email,
+      challenge,
+      expiresAt
+    });
+  } catch {
+    await supabase
+      .schema("compliance_private")
+      .from("account_deletion_challenges")
+      .delete()
+      .eq("profile_id", user.id);
+    throw new ProductPr27ServiceError(
+      "We could not deliver the verification code. Try again later.",
+      503,
+      "challenge_delivery_failed"
+    );
+  }
+  const [local, domain] = user.email.split("@");
+  const maskedDestination = local && domain ? `${local.slice(0, 1)}•••@${domain}` : "your verified email";
+  return { expiresAt, maskedDestination, demo: false };
 }
 
 export async function requestPr27AccountExport(user: UserAccount) {
@@ -406,7 +460,7 @@ export async function requestPr27AccountExport(user: UserAccount) {
       status: "requested",
       requestedAt: new Date().toISOString(),
       deliveryWindowHours: 24,
-      linkValidityDays: 7,
+      linkValidityHours: 24,
       demo: true
     };
   }
@@ -424,7 +478,8 @@ export async function requestPr27AccountExport(user: UserAccount) {
         delivery: "email_link",
         formats: ["readable", "json"],
         delivery_window_hours: 24,
-        link_validity_days: 7
+        link_validity_hours: 24,
+        schema_version: 3
       }
     })
     .select("id")
@@ -450,7 +505,7 @@ export async function requestPr27AccountExport(user: UserAccount) {
     status: deliveryResult.data.status,
     requestedAt: deliveryResult.data.requested_at,
     deliveryWindowHours: 24,
-    linkValidityDays: 7,
+    linkValidityHours: 24,
     demo: false
   };
 }
@@ -463,6 +518,23 @@ export async function setPr27AccountDeactivated(user: UserAccount, deactivated: 
   const supabase = requireAdminClient();
   const now = new Date().toISOString();
   const status = deactivated ? "deactivated" : "restored";
+  if (!deactivated) {
+    const lifecycle = await supabase
+      .from("account_privacy_lifecycles")
+      .select("status")
+      .eq("profile_id", user.id)
+      .maybeSingle();
+    if (lifecycle.error) {
+      throw new ProductPr27ServiceError("Unable to read account lifecycle.", 500, "account_lifecycle_read_failed");
+    }
+    if (lifecycle.data?.status === "deletion_grace") {
+      const restored = await supabase.rpc("pr31_restore_account_deletion", { p_profile_id: user.id });
+      if (restored.error) {
+        throw new ProductPr27ServiceError("Unable to cancel account deletion.", 500, "deletion_restore_failed");
+      }
+      return { status: "restored", demo: false };
+    }
+  }
   const result = await supabase.from("account_privacy_lifecycles").upsert({
     profile_id: user.id,
     status,
@@ -498,7 +570,7 @@ export async function schedulePr27AccountDeletion(user: UserAccount, input: {
     }
     return {
       status: "deletion_grace",
-      deletionGraceEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      deletionGraceEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       demo: true
     };
   }
@@ -539,49 +611,23 @@ export async function schedulePr27AccountDeletion(user: UserAccount, input: {
     throw new ProductPr27ServiceError(eligibility.message, eligibility.code === "open_bookings" ? 409 : 400, eligibility.code);
   }
 
-  const requestedAt = new Date();
-  const deletionGraceEndsAt = new Date(requestedAt.getTime() + 30 * 24 * 60 * 60 * 1000);
-  const requestedAtIso = requestedAt.toISOString();
-  const lifecycleResult = await supabase.from("account_privacy_lifecycles").upsert({
-    profile_id: user.id,
-    status: "deletion_grace",
-    deactivated_at: requestedAtIso,
-    deletion_requested_at: requestedAtIso,
-    deletion_grace_ends_at: deletionGraceEndsAt.toISOString(),
-    restored_at: null,
-    deleted_at: null,
-    profile_visible: false,
-    notifications_enabled: false,
-    updated_at: requestedAtIso
-  }, { onConflict: "profile_id" });
-  if (lifecycleResult.error) {
-    throw new ProductPr27ServiceError("Unable to schedule account deletion.", 500, "deletion_schedule_failed");
+  const scheduleResult = await supabase
+    .rpc("pr31_schedule_account_deletion", { p_profile_id: user.id })
+    .single();
+  const deletionSchedule = scheduleResult.data as { deletion_grace_ends_at: string } | null;
+  if (scheduleResult.error || !deletionSchedule?.deletion_grace_ends_at) {
+    const openBookingRace = scheduleResult.error?.message?.includes("Open bookings must be resolved");
+    throw new ProductPr27ServiceError(
+      openBookingRace
+        ? "Open bookings must be canceled or completed first."
+        : "Unable to schedule account deletion.",
+      openBookingRace ? 409 : 500,
+      openBookingRace ? "open_bookings" : "deletion_schedule_failed"
+    );
   }
-
-  const requestResult = await supabase.from("data_rights_requests").insert({
-    profile_id: user.id,
-    request_type: "deletion",
-    status: "processing",
-    requested_at: requestedAtIso,
-    acknowledged_at: requestedAtIso,
-    request_metadata: {
-      source: "product_pr27_account_privacy",
-      grace_ends_at: deletionGraceEndsAt.toISOString(),
-      sealed_finance_retention: true
-    }
-  });
-  if (requestResult.error && requestResult.error.code !== "23505") {
-    throw new ProductPr27ServiceError("Unable to record deletion evidence.", 500, "deletion_evidence_failed");
-  }
-  await supabase
-    .schema("compliance_private")
-    .from("account_deletion_challenges")
-    .delete()
-    .eq("profile_id", user.id);
-
   return {
     status: "deletion_grace",
-    deletionGraceEndsAt: deletionGraceEndsAt.toISOString(),
+    deletionGraceEndsAt: deletionSchedule.deletion_grace_ends_at,
     demo: false
   };
 }

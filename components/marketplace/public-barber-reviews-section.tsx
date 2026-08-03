@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Star, X } from "lucide-react";
+import { ReportBlockSheet } from "@/components/trust/report-block-sheet";
 import type { Review } from "@/types/domain";
 
 const compactPanelClass = "rounded-lg border border-white/8 bg-white/[0.035] shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur-xl";
@@ -48,13 +49,15 @@ export function PublicBarberReviewsSection({
   initialReviews,
   initialAverageRating,
   initialReviewCount,
-  viewerCanReview
+  viewerCanReview,
+  viewerCanReport = viewerCanReview
 }: {
   barberId: string;
   initialReviews: Review[];
   initialAverageRating: number;
   initialReviewCount: number;
   viewerCanReview: boolean;
+  viewerCanReport?: boolean;
 }) {
   const [reviews, setReviews] = useState(initialReviews);
   const [averageRating, setAverageRating] = useState(initialAverageRating);
@@ -179,10 +182,22 @@ export function PublicBarberReviewsSection({
                   <p className="text-sm font-black text-white">{review.reviewerName || "BVRB3R client"}</p>
                   <p className="mt-1 text-xs text-white/40">{formatReviewDate(review.createdAt)}</p>
                 </div>
-                <span className="inline-flex items-center gap-1 rounded-lg border border-[#c4f24e]/15 bg-[#c4f24e]/10 px-2.5 py-1 text-sm font-black text-[#e4f9b8]">
-                  <Star className="h-4 w-4 fill-current" aria-hidden="true" />
-                  {review.rating.toFixed(1)}
-                </span>
+                <div className="flex items-center gap-2">
+                  {viewerCanReport ? (
+                    <ReportBlockSheet
+                      reviewId={review.id}
+                      targetLabel="review"
+                      source="review"
+                      canBlock={false}
+                      triggerLabel="Report"
+                      triggerClassName="inline-flex min-h-8 items-center gap-1 rounded-lg border border-white/10 px-2.5 text-[11px] font-bold text-white/48 transition hover:border-red-400/20 hover:text-red-100"
+                    />
+                  ) : null}
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-[#c4f24e]/15 bg-[#c4f24e]/10 px-2.5 py-1 text-sm font-black text-[#e4f9b8]">
+                    <Star className="h-4 w-4 fill-current" aria-hidden="true" />
+                    {review.rating.toFixed(1)}
+                  </span>
+                </div>
               </div>
               {review.serviceName ? (
                 <p className="mt-3 text-xs font-bold uppercase text-white/42">{review.serviceName}</p>

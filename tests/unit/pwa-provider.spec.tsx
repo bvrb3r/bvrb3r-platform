@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { PwaProvider } from "@/components/pwa/pwa-provider";
+import { PwaProvider, usePwa } from "@/components/pwa/pwa-provider";
 
 let mockPathname = "/";
 
@@ -8,12 +8,22 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname
 }));
 
-function renderWithProviders() {
+function PushIntentTrigger() {
+  const { requestPushPrimer } = usePwa();
+
+  return (
+    <button type="button" onClick={() => requestPushPrimer("booking")}>
+      Enable booking alerts
+    </button>
+  );
+}
+
+function renderWithProviders(children: React.ReactNode = <div>child</div>) {
   const queryClient = new QueryClient();
   return render(
     <QueryClientProvider client={queryClient}>
       <PwaProvider>
-        <div>child</div>
+        {children}
       </PwaProvider>
     </QueryClientProvider>
   );
@@ -23,6 +33,7 @@ describe("pwa provider", () => {
   beforeEach(() => {
     mockPathname = "/";
     window.localStorage.clear();
+    window.sessionStorage.clear();
     delete (window as Window & { Capacitor?: unknown }).Capacitor;
     Object.defineProperty(navigator, "userAgent", {
       configurable: true,
@@ -102,12 +113,85 @@ describe("pwa provider", () => {
     });
   });
 
-  it("shows a mobile alerts prompt on role surfaces when push is not enabled", async () => {
+  it("never opens push permission or a primer on first dashboard load", async () => {
     mockPathname = "/dashboard/client";
     renderWithProviders();
 
-    expect(await screen.findByText(/Activate mobile alerts/i)).toBeInTheDocument();
-    expect(screen.getByText(/booking confirmations, marketplace momentum/i)).toBeInTheDocument();
+    expect(await screen.findByText("child")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /booking|alerts/i })).not.toBeInTheDocument();
+    expect(Notification.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it("shows the shared value primer before requesting browser permission", async () => {
+    vi.mocked(Notification.requestPermission).mockResolvedValue("granted");
+    renderWithProviders(<PushIntentTrigger />);
+
+    act(() => {
+      screen.getByRole("button", { name: "Enable booking alerts" }).click();
+    });
+
+    expect(await screen.findByRole("dialog", { name: "Keep every booking on time." })).toBeInTheDocument();
+    expect(screen.getByText("Appointment reminders")).toBeInTheDocument();
+    expect(screen.getByText("Your barber says you’re up")).toBeInTheDocument();
+    expect(screen.getByText("Payout landed")).toBeInTheDocument();
+    expect(Notification.requestPermission).not.toHaveBeenCalled();
+
+    act(() => {
+      screen.getByRole("button", { name: "Enable" }).click();
+    });
+
+    await waitFor(() => {
+      expect(Notification.requestPermission).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("honors Not now for the rest of the browser session", async () => {
+    renderWithProviders(<PushIntentTrigger />);
+
+    act(() => {
+      screen.getByRole("button", { name: "Enable booking alerts" }).click();
+    });
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    act(() => {
+      screen.getByRole("button", { name: "Not now" }).click();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(window.sessionStorage.getItem("bvrb3r-push-primer-session-decision")).toBe("deferred");
+
+    act(() => {
+      screen.getByRole("button", { name: "Enable booking alerts" }).click();
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(Notification.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it("shows platform-specific recovery after browser permission is denied", async () => {
+    vi.mocked(Notification.requestPermission).mockResolvedValue("denied");
+    renderWithProviders(<PushIntentTrigger />);
+
+    act(() => {
+      screen.getByRole("button", { name: "Enable booking alerts" }).click();
+    });
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    act(() => {
+      screen.getByRole("button", { name: "Enable" }).click();
+    });
+
+    expect(await screen.findByText("Permission is blocked in device settings")).toBeInTheDocument();
+    expect(screen.getByText(/In Chrome or Edge, select the site controls beside the address/i)).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("bvrb3r-push-primer-session-decision")).toBe("denied");
+
+    act(() => {
+      screen.getByRole("button", { name: "Not now" }).click();
+      screen.getByRole("button", { name: "Enable booking alerts" }).click();
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(Notification.requestPermission).toHaveBeenCalledTimes(1);
   });
 
   it("does not emit a failed device-presence write in demo mode", async () => {
@@ -157,8 +241,10 @@ describe("pwa provider", () => {
       window.dispatchEvent(event);
     });
 
+    expect(await screen.findByText("child")).toBeInTheDocument();
     expect(screen.queryByText(/Install the BVRB3R app/i)).not.toBeInTheDocument();
-    expect(await screen.findByText(/Activate mobile alerts/i)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(Notification.requestPermission).not.toHaveBeenCalled();
   });
 
   it("keeps unsupported desktop browsers free of fake install or push CTAs", async () => {
@@ -171,7 +257,7 @@ describe("pwa provider", () => {
     expect(await screen.findByText("child")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.queryByText(/Install the BVRB3R app/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/Activate mobile alerts/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
@@ -188,7 +274,7 @@ describe("pwa provider", () => {
     expect(screen.queryByRole("button", { name: /Install app/i })).not.toBeInTheDocument();
   });
 
-  it("does not stack push and install prompts over the mobile dock", async () => {
+  it("does not add an unsolicited push primer behind the install prompt", async () => {
     mockPathname = "/dashboard/client";
     const event = new Event("beforeinstallprompt");
     Object.assign(event, {
@@ -204,7 +290,8 @@ describe("pwa provider", () => {
 
     expect(await screen.findByText(/Install the BVRB3R app/i)).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByText(/Activate mobile alerts/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(Notification.requestPermission).not.toHaveBeenCalled();
     });
   });
 });

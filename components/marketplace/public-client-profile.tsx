@@ -5,6 +5,7 @@ import { MessageCircle, Share2, Sparkles, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { ReportBlockSheet } from "@/components/trust/report-block-sheet";
 
 export type PublicClientProfile = {
   id: string;
@@ -131,12 +132,14 @@ export function PublicClientProfileContent({
   profile,
   username,
   backHref = "/",
-  backLabel = "BVRB3R"
+  backLabel = "BVRB3R",
+  viewerCanReport = false
 }: {
   profile: PublicClientProfile | null;
   username: string;
   backHref?: Route | string;
   backLabel?: string;
+  viewerCanReport?: boolean;
 }) {
   const displayName = getPublicClientDisplayName(profile, username);
   const publicUsername = profile?.username ?? username;
@@ -189,6 +192,15 @@ export function PublicClientProfileContent({
                 <Share2 className="h-4 w-4" />
                 Share
               </button>
+              {viewerCanReport && profile ? (
+                <ReportBlockSheet
+                  targetProfileId={profile.id}
+                  targetLabel={displayName}
+                  source="public_profile"
+                  triggerLabel="Safety"
+                  triggerClassName="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-red-400/20 bg-red-500/8 px-5 text-sm font-extrabold text-red-100"
+                />
+              ) : null}
             </div>
           </div>
         </Card>
