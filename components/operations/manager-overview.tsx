@@ -191,7 +191,7 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
             <>
               <StatCard label="Appointments today" value={String(dayAppointments.length)} detail={`${summary?.checkedInCount ?? 0} checked in and ${summary?.inServiceCount ?? 0} in service right now`} />
               <StatCard label="Barbers on shift" value={String(floorBarbers.length)} detail={`${floorBarbers.filter((entry) => entry.liveAppointmentCount > 0).length} chairs currently active on the floor`} />
-              <StatCard label="Revenue pulse" value={currency(summary?.revenueToday ?? 0)} detail={`${summary?.readyForCheckoutCount ?? 0} tickets still waiting on checkout capture`} />
+              <StatCard label="Floor service volume" value={currency(summary?.revenueToday ?? 0)} detail={`Barber money · not shop revenue · ${summary?.readyForCheckoutCount ?? 0} tickets waiting on checkout`} />
             </>
           )}
         </div>
@@ -378,4 +378,3 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
     </div>
   );
 }
-

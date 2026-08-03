@@ -87,7 +87,7 @@ export function OwnerGrowthWorkspace() {
   const growthInsight = useMemo(() => {
     const weekDelta = (summary?.monetization.revenue.repeatClientRevenue ?? 0) - ((summary?.monetization.growth.rebookingInfluencedRevenue ?? 0) / 2);
     if (weekDelta > 0) {
-      return `Repeat-client revenue is carrying ${currency(weekDelta)} more than your rebooking-influenced baseline.`;
+      return `Repeat-client service volume is ${currency(weekDelta)} above the rebooking-influenced baseline. This is barber service money, not shop revenue.`;
     }
 
     if ((summary?.retention.rebookingOpportunities ?? 0) > 0) {
@@ -267,7 +267,7 @@ export function OwnerGrowthWorkspace() {
                     <p className="font-medium text-white">Low coverage window</p>
                     <span className="status-pill text-[#e4f9b8]">{formatHour(window)}</span>
                   </div>
-                  <p className="mt-2 text-sm text-white/58">A lighter appointment hour where a targeted promotion or walk-in push could lift same-day revenue.</p>
+                  <p className="mt-2 text-sm text-white/58">A lighter appointment hour where a targeted promotion or walk-in push could lift same-day bookings.</p>
                 </div>
               ))
             ) : null}
@@ -275,7 +275,7 @@ export function OwnerGrowthWorkspace() {
               <div key={barber.barberId} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="font-medium text-white">Promote {barber.barberName}</p>
-                  <span className="status-pill text-[#e4f9b8]">{currency(barber.revenue)}</span>
+                  <span className="status-pill text-[#e4f9b8]">{currency(barber.revenue)} service volume</span>
                 </div>
                 <p className="mt-2 text-sm text-white/58">{barber.followerCount} follows • reputation {barber.reputationScore.toFixed(1)} • best candidate for featured placement.</p>
               </div>

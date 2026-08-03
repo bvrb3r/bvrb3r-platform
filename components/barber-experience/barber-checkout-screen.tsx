@@ -922,7 +922,7 @@ export function BarberCheckoutScreen({
               </div>
               {reviewQuote.shopSplitCents > 0 ? (
                 <div className="flex justify-between gap-4 text-sm font-semibold text-white/62">
-                  <span>Shop split</span>
+                  <span>{reviewQuote.relationshipType === "autobooth_rent" ? "AutoBooth rent applied" : "Shop-owned billing only"}</span>
                   <span>{formatCheckoutCents(reviewQuote.shopSplitCents)}</span>
                 </div>
               ) : null}

@@ -332,7 +332,7 @@ function QueueRow({
             ["Gross", payoutCurrency(item.providerGrossAmount)],
             ["BVRB3R fee", payoutCurrency(item.platformFeeAmount)],
             ["Barber payout", payoutCurrency(item.barberPayoutAmount)],
-            ["Shop split", payoutCurrency(item.shopSplitAmount)]
+            ["AutoBooth rent / shop-owned billing", payoutCurrency(item.shopSplitAmount)]
           ].map(([label, value]) => (
             <div key={label} className="rounded-[20px] border border-white/8 bg-black/28 p-3">
               <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/36">{label}</p>
@@ -554,7 +554,7 @@ export function ArchitectFreelancePayoutQueue() {
           <p className="surface-label">Freelance payout release</p>
           <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Manual Phase 1 release queue</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
-            Only freelance barber payouts with ready routing, no shop split, and a live Stripe Connect account can move here.
+            Only standalone barber payouts with ready routing, no AutoBooth rent or separately substantiated shop-owned billing amount, and a live Stripe Connect account can move here.
           </p>
         </div>
         <WalletCards className="h-5 w-5 text-[#d9f985]" />

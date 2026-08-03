@@ -324,8 +324,8 @@ function ChartLine({ points }: { points: ChartPoint[] }) {
   if (!points.length) {
     return (
       <EmptyPanel
-        title="Revenue chart unavailable"
-        detail="Completed payments will appear here."
+        title="Service-volume chart unavailable"
+        detail="Completed service-payment volume will appear here as operational context, not shop revenue."
       />
     );
   }
@@ -353,7 +353,7 @@ function ChartLine({ points }: { points: ChartPoint[] }) {
   return (
     <div className="mt-7 grid gap-5 lg:grid-cols-[1fr_auto]">
       <div className="min-w-0">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Revenue trend chart" className="h-56 w-full overflow-visible">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Floor service-volume trend chart" className="h-56 w-full overflow-visible">
           <defs>
             <linearGradient id="owner-money-chart-fill" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="#C4F24E" stopOpacity="0.24" />
@@ -513,7 +513,7 @@ export function OwnerMoneyWorkspace() {
     ? {
         available: false,
         positive: null as boolean | null,
-        text: "Revenue appears after completed paid appointments"
+        text: "Service volume appears after completed paid appointments"
       }
     : getTrendCopy(totalRevenue, previousRevenue, previousLabel);
 
@@ -533,38 +533,40 @@ export function OwnerMoneyWorkspace() {
   }, [analyticsInRange, selectedRange]);
 
   const routingRows = useMemo(() => [...blockedPayments, ...readyRouting], [blockedPayments, readyRouting]);
-  const splitTotals = useMemo(() => {
+  const routingTotals = useMemo(() => {
     const total = routingRows.reduce((sum, row) => sum + row.providerGrossAmount, 0);
-    const shop = routingRows.reduce((sum, row) => sum + row.shopSplitAmount, 0);
+    const autoBoothRent = routingRows
+      .filter((row) => row.routingModel === "autobooth_rent")
+      .reduce((sum, row) => sum + row.shopSplitAmount, 0);
     const barber = routingRows.reduce((sum, row) => sum + row.barberPayoutAmount, 0);
     const platform = routingRows.reduce((sum, row) => sum + row.platformFeeAmount, 0);
 
-    return { total, shop, barber, platform };
+    return { total, autoBoothRent, barber, platform };
   }, [routingRows]);
-  const hasSplitData = routingRows.length > 0 && splitTotals.total > 0;
+  const hasRoutingData = routingRows.length > 0 && routingTotals.total > 0;
   const breakdownItems: BreakdownItem[] = [
     {
-      label: "Shop Earnings",
-      amount: hasSplitData ? splitTotals.shop : null,
-      percent: hasSplitData ? (splitTotals.shop / splitTotals.total) * 100 : null,
+      label: "AutoBooth Rent Applied",
+      amount: hasRoutingData ? routingTotals.autoBoothRent : null,
+      percent: hasRoutingData ? (routingTotals.autoBoothRent / routingTotals.total) * 100 : null,
       tone: "green"
     },
     {
-      label: "Barber Payouts",
-      amount: hasSplitData ? splitTotals.barber : null,
-      percent: hasSplitData ? (splitTotals.barber / splitTotals.total) * 100 : null,
+      label: "Barber Proceeds Routed",
+      amount: hasRoutingData ? routingTotals.barber : null,
+      percent: hasRoutingData ? (routingTotals.barber / routingTotals.total) * 100 : null,
       tone: "blue"
     },
     {
       label: "Platform Fees",
-      amount: hasSplitData ? splitTotals.platform : null,
-      percent: hasSplitData ? (splitTotals.platform / splitTotals.total) * 100 : null,
+      amount: hasRoutingData ? routingTotals.platform : null,
+      percent: hasRoutingData ? (routingTotals.platform / routingTotals.total) * 100 : null,
       tone: "amber"
     },
     {
-      label: "Total Revenue",
-      amount: hasSplitData ? splitTotals.total : null,
-      percent: hasSplitData ? 100 : null,
+      label: "Gross Payment Volume",
+      amount: hasRoutingData ? routingTotals.total : null,
+      percent: hasRoutingData ? 100 : null,
       tone: "neutral"
     }
   ];
@@ -615,9 +617,9 @@ export function OwnerMoneyWorkspace() {
           <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl" data-display="true">
             Money
           </h1>
-          <p className="mt-3 text-lg font-medium text-white/68">Revenue & payouts</p>
+          <p className="mt-3 text-lg font-medium text-white/68">Operational service volume & rent</p>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
-            Platform-collected revenue, payout readiness, and booth-rent lanes stay separated from Architect payout execution.
+            Completed service payments are floor volume, not shop revenue. Shop money remains limited to booth rent and separately substantiated shop-owned payments.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -650,7 +652,7 @@ export function OwnerMoneyWorkspace() {
               <div className="mt-3 grid gap-2">
                 <Link href="/dashboard/owner/money?section=transactions" className="rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white">Transactions</Link>
                 <Link href="/dashboard/owner/money?view=fintech&section=payouts" className="rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white">Payout operations</Link>
-                <Link href="/dashboard/owner/money?section=breakdown" className="rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white">Revenue breakdown</Link>
+                <Link href="/dashboard/owner/money?section=breakdown" className="rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white">Payment-volume breakdown</Link>
                 {anomalies.length ? (
                   <Link href="/dashboard/owner/money?section=anomalies" className="rounded-[14px] px-3 py-3 text-sm font-bold text-amber-200 transition hover:bg-white/[0.05] hover:text-white">Refunds, disputes, and anomalies</Link>
                 ) : null}
@@ -665,9 +667,9 @@ export function OwnerMoneyWorkspace() {
       <GlassCard className="grid gap-4 p-5 md:grid-cols-4">
         <div className="md:col-span-2">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Owner money control</p>
-          <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">Revenue now. Splits later.</p>
+          <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">Floor volume now. Rent stays separate.</p>
           <p className="mt-2 text-sm leading-6 text-white/56">
-            This tab reads owner-facing money posture only. Architect remains the release authority for Phase 1 payouts.
+            Service totals are operational context and remain barber money. Architect remains the release authority for Phase 1 payouts.
           </p>
         </div>
         <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
@@ -685,7 +687,7 @@ export function OwnerMoneyWorkspace() {
       <GlassCard className="p-6 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xl font-extrabold tracking-[-0.035em] text-white">Total Revenue ({selectedRangeOption.label})</p>
+            <p className="text-xl font-extrabold tracking-[-0.035em] text-white">Floor Service Volume ({selectedRangeOption.label})</p>
             {isInitialLoading ? (
               <Skeleton className="mt-6 h-16 w-72" />
             ) : (
@@ -701,7 +703,7 @@ export function OwnerMoneyWorkspace() {
             </p>
           </div>
           <Link href="/dashboard/owner/money?section=revenue" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#C4F24E]/35 hover:text-[#C4F24E]">
-            Revenue detail
+            Service volume detail
             <ChevronRight className="h-4 w-4" />
           </Link>
         </div>
@@ -710,7 +712,7 @@ export function OwnerMoneyWorkspace() {
 
       <GlassCard className="p-6">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">Revenue Breakdown</h2>
+          <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">Payment Routing Ledger</h2>
           <Link href="/dashboard/owner/money?section=breakdown" className="inline-flex items-center gap-2 text-base font-extrabold text-[#C4F24E]">
             View details
             <ChevronRight className="h-5 w-5" />
@@ -723,7 +725,7 @@ export function OwnerMoneyWorkspace() {
             <MetricSkeleton />
             <MetricSkeleton />
           </div>
-        ) : hasSplitData ? (
+        ) : hasRoutingData ? (
           <div className="mt-5 grid gap-0 overflow-hidden rounded-[22px] border border-white/8 sm:grid-cols-2 xl:grid-cols-4">
             {breakdownItems.map((item, index) => (
               <div key={item.label} className={cn("p-5", index > 0 && "border-white/8 sm:border-l")}>
@@ -739,8 +741,8 @@ export function OwnerMoneyWorkspace() {
         ) : (
           <div className="mt-5">
             <EmptyPanel
-              title="Split breakdown unavailable."
-              detail="Canonical split records will appear here once payments are processed."
+              title="Routing ledger unavailable."
+              detail="Canonical routing records will appear here once payments are processed."
             />
           </div>
         )}
@@ -897,9 +899,9 @@ export function OwnerMoneyWorkspace() {
 
       <section className="grid gap-4 md:grid-cols-2">
         <GlassCard className="p-5">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Platform-collected revenue</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Platform-collected service volume</p>
           <p className="mt-3 text-sm leading-6 text-white/58">
-            Card/app payments flow through BVRB3R records. Cash collected outside the platform should stay separate from payout readiness.
+            Card/app service payments remain barber money and appear only as operational volume. Cash collected outside the platform stays separate from payout readiness.
           </p>
         </GlassCard>
         <GlassCard className="p-5">

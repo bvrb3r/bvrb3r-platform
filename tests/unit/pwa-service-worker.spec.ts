@@ -32,4 +32,10 @@ describe("pwa service worker compatibility guard", () => {
     expect(serviceWorkerSource).not.toContain('"/dashboard/client"');
     expect(serviceWorkerSource).not.toContain('"/architect/finance"');
   });
+
+  it("keeps versioned Next.js JavaScript and CSS network-only to prevent mixed-build hydration", () => {
+    expect(serviceWorkerSource).toContain('url.pathname.startsWith("/_next/")');
+    expect(serviceWorkerSource).toContain('/\\.(?:js|css)$/i.test(url.pathname)');
+    expect(serviceWorkerSource).toMatch(/url\.pathname\.startsWith\("\/_next\/"\)[\s\S]*?event\.respondWith\(fetch\(request\)\)/);
+  });
 });

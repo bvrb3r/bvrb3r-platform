@@ -1187,7 +1187,7 @@ function ChairsPanel({ data }: { data: OwnerOperationsResponse }) {
         <div>
           <h2 className="font-serif text-4xl text-white">Chairs & booths</h2>
           <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-white/42">
-            {activeChairs.length} chairs · booth rent only · no commission {/* doctrine-allow: approved redesign copy states the permanent exclusion */}
+            {activeChairs.length} chairs · Full Booth Rent + AutoBooth Rent only
           </p>
         </div>
         <span className="rounded-full border border-[var(--bvr-green-border)] bg-[var(--bvr-green-soft)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--bvr-green)]">

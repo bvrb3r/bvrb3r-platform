@@ -487,12 +487,28 @@ describe("client search screen", () => {
   it("hides internal discovery debug details in guest discovery mode", () => {
     render(<ClientSearchScreen mode="guest" routeBase="/discover" />);
 
-    expect(screen.getByText("Guest Culture Feed")).toBeInTheDocument();
-    expect(screen.getByText("Discover barbers. See the culture. Book what you like.")).toBeInTheDocument();
+    expect(screen.getByText("Guest Discovery")).toBeInTheDocument();
+    expect(screen.getByText("Discover barbers and shops. Compare their work. Book what fits.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Join BVRB3R" })).toHaveAttribute("href", "/signup?lane=client");
     expect(screen.queryByTestId("client-search-debug")).not.toBeInTheDocument();
+    expect(screen.getByTestId("discovery-hero-ambient").className).not.toContain("196,242,78");
+    expect(screen.getByTestId("discovery-hero-ambient").className).toContain("255,246,230");
     expect(screen.getByRole("link", { name: /View Shop/i })).toHaveAttribute("href", "/shop/loc-ybor");
     expect(useMarketplaceDiscoveryMock).toHaveBeenLastCalledWith(expect.any(Object), undefined);
+  });
+
+  it("keeps explicit guest entry sticky after search submission", async () => {
+    render(<ClientSearchScreen mode="guest" routeBase="/discover" />);
+
+    fireEvent.change(screen.getByPlaceholderText("Search barber or shop name"), {
+      target: { value: "phillip" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Search$/i }));
+
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("entry=guest"));
+      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("q=phillip"));
+    });
   });
 
   it("shows a specific discovery failure instead of the generic action error", () => {

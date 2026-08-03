@@ -117,7 +117,10 @@ describe("public home routing", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "Every great cut starts with a spin."
     );
-    expect(screen.getByRole("link", { name: "Book a cut" })).toHaveAttribute("href", "/booking/new");
+    expect(screen.getAllByRole("link", { name: "Book a cut" })).toHaveLength(2);
+    for (const link of screen.getAllByRole("link", { name: "Book a cut" })) {
+      expect(link).toHaveAttribute("href", "/booking/new");
+    }
     expect(screen.getAllByRole("link", { name: "Enter as guest" })[0]).toHaveAttribute("href", "/discover?entry=guest");
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
   });

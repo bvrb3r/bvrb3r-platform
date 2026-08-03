@@ -21,7 +21,7 @@ type MarketingFaq = {
 };
 
 export type MarketingPageContent = {
-  active: "/app" | "/for-barbers" | "/for-shops";
+  active: "/app" | "/culture" | "/for-barbers" | "/for-shops";
   eyebrow: string;
   title: string;
   description: string;
@@ -46,7 +46,7 @@ export type MarketingPageContent = {
 
 export function MarketingPage({ content }: { content: MarketingPageContent }) {
   return (
-    <div className={styles.marketingPage}>
+    <div className={styles.marketingPage} data-public-site>
       <PublicNav active={content.active} />
       <main>
         <section className={styles.marketingHero}>

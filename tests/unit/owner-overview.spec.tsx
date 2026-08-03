@@ -195,15 +195,16 @@ describe("owner overview", () => {
     mockCanonicalOwnerData();
   });
 
-  it("renders the owner overview from canonical revenue, booking, and team truth", () => {
+  it("renders the owner overview from canonical service-volume, booking, and team truth", () => {
     render(<OwnerOverview />);
 
     expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
     expect(screen.getByText("Shop health, team movement, and next actions.")).toBeInTheDocument();
-    expect(screen.getByText("Today Revenue")).toBeInTheDocument();
+    expect(screen.getByText("Today Floor Service Volume")).toBeInTheDocument();
     expect(screen.getAllByText("$180").length).toBeGreaterThan(0);
     expect(screen.getByText("Projected unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Shop Share")).toBeInTheDocument();
+    expect(screen.getByText("Booth Rent")).toBeInTheDocument();
+    expect(screen.getByText("Barber Service Proceeds")).toBeInTheDocument();
     expect(screen.getAllByText("Utilization").length).toBeGreaterThan(0);
     expect(screen.getByText("Chairs Used")).toBeInTheDocument();
     expect(screen.getByText("Team Snapshot")).toBeInTheDocument();

@@ -32,7 +32,7 @@ describe("team workspace", () => {
     useShopDashboardQueryMock.mockReset();
   });
 
-  it("renders canonical barber coverage and revenue from the live shop dashboard", () => {
+  it("renders canonical barber coverage and operational service volume from the live shop dashboard", () => {
     useShopDashboardQueryMock.mockReturnValue({
       data: {
         summary: {
@@ -98,6 +98,8 @@ describe("team workspace", () => {
     render(<TeamWorkspace viewerRole="manager" locationIds={["loc-ybor"]} />);
 
     expect(screen.getByText("Barbers, coverage, and floor pressure in one lane.")).toBeInTheDocument();
+    expect(screen.getByText("Floor service volume")).toBeInTheDocument();
+    expect(screen.getByText(/Completed barber service volume · operational context, not shop revenue/)).toBeInTheDocument();
     expect(screen.getByText(/\$55(?:\.00)?/)).toBeInTheDocument();
     expect(screen.getByText("Wave Carter")).toBeInTheDocument();
     expect(screen.getByText("Blaze King")).toBeInTheDocument();

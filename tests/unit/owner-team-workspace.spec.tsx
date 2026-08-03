@@ -407,7 +407,8 @@ describe("owner team workspace", () => {
     expect(screen.getByTestId("shop-command-calendar")).toBeInTheDocument();
     expect(screen.getAllByText("Shop Command Calendar").length).toBeGreaterThan(0);
     expect(commandCalendar.getByText("Appointments Today")).toBeInTheDocument();
-    expect(commandCalendar.getByText("Shop Production")).toBeInTheDocument();
+    expect(commandCalendar.getByText("Floor Service Volume")).toBeInTheDocument();
+    expect(commandCalendar.getByText("Barber money · not shop revenue")).toBeInTheDocument();
     expect(commandCalendar.getByText("Open Slots")).toBeInTheDocument();
     expect(commandCalendar.getByText("Day Utilization")).toBeInTheDocument();
     expect(commandCalendar.getByText(TEST_MONTH_LABEL)).toBeInTheDocument();
@@ -732,7 +733,7 @@ describe("owner team workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Invite" }));
     expect(screen.getByRole("dialog", { name: /Invite @jordanfade to your team/i })).toBeInTheDocument();
     expect(screen.getByText(/Choose the complete money agreement/i)).toBeInTheDocument();
-    expect(screen.getByText(/Tips remain 100% barber/i)).toBeInTheDocument();
+    expect(screen.getByText(/100% of the client-confirmed tip belongs to the barber/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "No, cancel" }));
     expect(createOwnerTeamInviteMock).not.toHaveBeenCalled();
@@ -869,7 +870,7 @@ describe("owner team workspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Maya Cole/i }));
     expect(screen.queryByRole("button", { name: "Booth rent" })).not.toBeInTheDocument();
-    expect(screen.getByText(/Accepted money terms are immutable/i)).toBeInTheDocument();
+    expect(screen.getByText(/Accepted rent terms are immutable/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Hide publicly" }));
     await waitFor(() => {

@@ -116,6 +116,7 @@ describe("owner dashboard tab pages", () => {
     );
 
     expect(screen.getByRole("link", { name: "Open booth rent" })).toHaveAttribute("href", "/dashboard/owner/rent");
+    expect(screen.getByText("Booth rent + AutoBooth rent only")).toBeInTheDocument();
     expect(screen.queryByTestId("owner-operations-workspace-stub")).not.toBeInTheDocument();
     expect(screen.queryByTestId("fintech-workspace-stub")).not.toBeInTheDocument();
   });

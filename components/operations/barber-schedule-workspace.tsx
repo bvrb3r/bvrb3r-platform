@@ -1587,9 +1587,9 @@ export function BarberScheduleWorkspace({
             />
             <DataStatCard
               className="min-h-[112px] rounded-[18px]"
-              label="Est. Earnings"
+              label="Est. Service Sales"
               value={formatMoney(estimatedEarnings)}
-              detail="Today"
+              detail="Before platform fee and booth rent"
               icon={<CircleDollarSign className="h-4 w-4" />}
             />
             <DataStatCard

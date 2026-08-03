@@ -3,7 +3,7 @@ import { MarketingPage, type MarketingPageContent } from "@/components/public-si
 
 export const metadata: Metadata = {
   title: "For Shops | BVRB3R",
-  description: "Run the live floor, kiosk, team, chair pricing, booth rent, and owner controls from one BVRB3R shop lane.",
+  description: "Run the live floor, kiosk, team, per-barber service visibility, booth rent, and owner controls from one BVRB3R shop lane.",
   alternates: {
     canonical: "/for-shops"
   }
@@ -39,7 +39,7 @@ const content: MarketingPageContent = {
     {
       eyebrow: "Money truth",
       title: "Keep rent separate.",
-      body: "Full Booth Rent and AutoBooth Rent stay distinct from barber service revenue, with an auditable ledger for the shop."
+      body: "Track Full Booth Rent and AutoBooth Rent as booth-rent receivables. Barber service proceeds and tips stay outside shop revenue."
     }
   ],
   flowEyebrow: "Owner command",
@@ -59,18 +59,19 @@ const content: MarketingPageContent = {
     },
     {
       title: "Run the rent model",
-      body: "Use Full Booth Rent or AutoBooth Rent with caps and cadence recorded separately from the barber’s service and tip money."
+      body: "Use Full Booth Rent for separately billed fixed rent, or AutoBooth Rent to apply an owner-approved portion of eligible proceeds toward outstanding rent. Both remain separate from barber service and tip money."
     }
   ],
   proofEyebrow: "One floor, clear ownership",
   proofTitle: "The shop controls the floor without owning the barber’s service price.",
   proofBody:
-    "Each barber keeps their service menu and price. The owner controls shop eligibility, public team presence, kiosk access, and the chosen booth-rent relationship.",
+    "Each barber keeps their service menu and price. The owner controls shop eligibility, public team presence, kiosk access, and the chosen booth-rent relationship. Owner money reports show booth rent billed, paid, and outstanding; barber service proceeds and tips are excluded.",
   proofPoints: [
     "Kiosk shows each eligible barber’s active services and prices",
     "Next Available routes across eligible live chairs",
     "Team invites and approvals are auditable",
-    "Full Booth Rent and AutoBooth Rent are the only financial models"
+    "Full Booth Rent and AutoBooth Rent are the only financial models",
+    "Owner money reports exclude barber service proceeds and tips"
   ],
   faqTitle: "Before you open the floor.",
   faqs: [
@@ -87,7 +88,7 @@ const content: MarketingPageContent = {
     {
       question: "Which shop–barber money models are supported?",
       answer:
-        "Shop–barber money uses Full Booth Rent or AutoBooth Rent, while the barber’s service price and tips stay barber money."
+        "Shop–barber relationships use Full Booth Rent or AutoBooth Rent only. The shop may report booth-rent receivables and shop-owned sales, but barber service proceeds and tips remain barber money."
     },
     {
       question: "What happens when a barber leaves?",

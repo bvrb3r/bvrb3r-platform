@@ -9,6 +9,8 @@
   --site-green-soft: #e4f9b8;
   --site-warm: #c9a87c;
   min-height: 100svh;
+  position: relative;
+  isolation: isolate;
   overflow-x: clip;
   background:
     radial-gradient(900px 520px at 50% -12%, rgba(245, 241, 232, 0.045), transparent 62%),
@@ -191,6 +193,11 @@
   color: var(--site-text);
 }
 
+.mobileMenuPanel a[aria-current="page"] {
+  background: rgba(245, 241, 232, 0.06);
+  color: var(--site-text);
+}
+
 .mobileMenuPanel .mobilePrimary {
   background: var(--site-green);
   color: #050505;
@@ -209,6 +216,12 @@
 .cinematicMain {
   position: relative;
   z-index: 20;
+}
+
+.guestDiscoveryMain {
+  width: min(100% - 2rem, 88rem);
+  margin: 0 auto;
+  padding: 8.75rem 0 4rem;
 }
 
 .cinematicSection {
@@ -377,6 +390,10 @@
 
 .filmStage {
   --hero-opacity: 1;
+  --stars-far-y: 0px;
+  --stars-near-y: 0px;
+  --stars-far-scale: 1;
+  --stars-near-scale: 1;
   --pole-x: 0px;
   --pole-y: 0px;
   --pole-scale: 1;
@@ -396,14 +413,23 @@
   overflow: hidden;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 72rem 46rem at 50% 46%, rgba(196, 242, 78, 0.035), transparent 65%),
+    radial-gradient(ellipse 64rem 30rem at 50% -8%, rgba(245, 241, 232, 0.035), transparent 68%),
     linear-gradient(180deg, #060708 0%, #050606 100%);
 }
 
 .starField {
   position: absolute;
   inset: -8%;
-  transform: translateY(var(--stars-y, 0px)) scale(var(--stars-scale, 1));
+  will-change: transform;
+}
+
+.starFieldFar {
+  opacity: 0.68;
+  transform: translateY(var(--stars-far-y)) scale(var(--stars-far-scale));
+}
+
+.starFieldNear {
+  transform: translateY(var(--stars-near-y)) scale(var(--stars-near-scale));
 }
 
 .star {
@@ -427,9 +453,9 @@
   aspect-ratio: 1;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 46% 48%, rgba(196, 242, 78, 0.18), transparent 34%),
-    radial-gradient(circle at 38% 40%, rgba(226, 59, 59, 0.12), transparent 46%),
-    radial-gradient(circle at 62% 58%, rgba(42, 111, 219, 0.13), transparent 48%);
+    radial-gradient(circle at 46% 48%, rgba(255, 246, 230, 0.055), transparent 34%),
+    radial-gradient(circle at 38% 40%, rgba(255, 77, 77, 0.08), transparent 46%),
+    radial-gradient(circle at 62% 58%, rgba(77, 125, 255, 0.09), transparent 48%);
   filter: blur(2rem);
   opacity: var(--reveal-opacity);
   transform: translate(-50%, -50%) scale(var(--nebula-scale, 0.5)) rotate(var(--nebula-rotate, 0deg));
@@ -442,9 +468,13 @@
 }
 
 .poleScene {
+  --pole-height: clamp(40rem, 66svh, 45.5rem);
+  --pole-width: calc(var(--pole-height) / 3);
   position: absolute;
   left: var(--pole-left, 67%);
   top: 50%;
+  display: grid;
+  justify-items: center;
   opacity: var(--pole-opacity);
   transform:
     translate(calc(-50% + var(--pole-x)), calc(-50% + var(--pole-y)))
@@ -457,108 +487,122 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 30rem;
-  height: 40rem;
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse at 50% 28%, rgba(255, 250, 235, 0.18), transparent 42%),
-    radial-gradient(ellipse at 38% 55%, rgba(255, 70, 90, 0.18), transparent 58%),
-    radial-gradient(ellipse at 62% 55%, rgba(80, 110, 255, 0.18), transparent 58%);
-  filter: blur(1.8rem);
+  width: calc(var(--pole-width) * 2.45);
+  height: calc(var(--pole-height) * 1.14);
   opacity: var(--pole-glow, 0.4);
   transform: translate(-50%, -50%);
 }
 
+.poleBloom {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(clamp(1.25rem, 2.2vw, 2.5rem));
+  mix-blend-mode: screen;
+}
+
+.poleBloomCream {
+  inset: 7% 28%;
+  background: radial-gradient(ellipse, rgba(255, 246, 230, 0.2), transparent 70%);
+}
+
+.poleBloomRed {
+  left: 5%;
+  top: 20%;
+  width: 48%;
+  height: 66%;
+  background: radial-gradient(ellipse, rgba(255, 77, 77, 0.25), transparent 68%);
+}
+
+.poleBloomBlue {
+  right: 5%;
+  top: 20%;
+  width: 48%;
+  height: 66%;
+  background: radial-gradient(ellipse, rgba(77, 125, 255, 0.25), transparent 68%);
+}
+
 .barberPole {
   position: relative;
-  width: 8.25rem;
+  width: var(--pole-width);
+  height: var(--pole-height);
+  overflow: visible;
   filter:
-    drop-shadow(0 0 0.3rem rgba(255, 250, 235, 0.9))
-    drop-shadow(0 0 1.6rem rgba(245, 241, 232, 0.25));
+    drop-shadow(0 0 2px rgba(255, 246, 230, 0.72))
+    drop-shadow(0 0 14px rgba(255, 246, 230, 0.12));
 }
 
-.poleCap {
-  position: relative;
-  z-index: 2;
-  width: 100%;
-  height: 3rem;
-  border: 0.18rem solid #fff9ee;
-  border-radius: 50% 50% 35% 35%;
-  background: rgba(7, 8, 8, 0.85);
-  box-shadow: 0 0 1rem rgba(255, 249, 238, 0.38);
+.poleMetalCore,
+.poleRail {
+  fill: url("#bvrb3r-public-pole-metal");
+  stroke: #fff6e6;
+  stroke-width: 2.1;
+  vector-effect: non-scaling-stroke;
 }
 
-.poleCap:last-child {
-  border-radius: 35% 35% 50% 50%;
+.poleCollarLine {
+  fill: rgba(4, 5, 5, 0.88);
+  stroke: rgba(255, 246, 230, 0.82);
+  stroke-width: 1.35;
+  vector-effect: non-scaling-stroke;
 }
 
-.poleGlass {
-  position: relative;
-  width: 6.3rem;
-  height: 20rem;
-  margin: -0.2rem auto;
-  overflow: hidden;
-  border-inline: 0.18rem solid #fff9ee;
-  background: rgba(245, 241, 232, 0.02);
-  box-shadow: inset 0 0 1.25rem rgba(245, 241, 232, 0.1);
+.poleGlassBase {
+  fill: #030404;
+  stroke: #fff6e6;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
 }
 
-.poleStripes {
-  position: absolute;
-  inset: -9rem -5rem;
-  background: repeating-linear-gradient(
-    -32deg,
-    transparent 0 2.2rem,
-    #fff6e6 2.2rem 2.48rem,
-    transparent 2.48rem 4.6rem,
-    #ff4d4d 4.6rem 4.94rem,
-    transparent 4.94rem 7.1rem,
-    #4d7dff 7.1rem 7.44rem,
-    transparent 7.44rem 9.6rem
-  );
-  filter: drop-shadow(0 0 0.35rem rgba(245, 241, 232, 0.7));
+.poleGlassShine {
+  fill: url("#bvrb3r-public-pole-glass");
+  stroke: rgba(255, 246, 230, 0.38);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.poleStripeTrack {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 7;
   transform: translateY(var(--stripe-y));
+  transform-box: view-box;
+  transform-origin: center;
+}
+
+.poleCreamCore {
+  stroke: #fff6e6;
+  filter: drop-shadow(0 0 3px rgba(255, 246, 230, 0.74));
+}
+
+.poleRedCore {
+  stroke: #ff4d4d;
+  filter: drop-shadow(0 0 3px rgba(255, 77, 77, 0.78));
+}
+
+.poleBlueCore {
+  stroke: #4d7dff;
+  filter: drop-shadow(0 0 3px rgba(77, 125, 255, 0.82));
 }
 
 .poleCrack {
-  position: absolute;
-  left: 50%;
-  top: 24%;
-  z-index: 3;
-  width: 0.12rem;
-  height: 9rem;
-  background: #fff;
-  box-shadow: 0 0 0.6rem #fff;
+  fill: none;
+  stroke: #fff6e6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
   opacity: var(--crack-opacity, 0);
-  transform: rotate(12deg);
-}
-
-.poleCrack::before,
-.poleCrack::after {
-  position: absolute;
-  width: 2.2rem;
-  height: 0.1rem;
-  background: #fff;
-  content: "";
-  transform-origin: left center;
-}
-
-.poleCrack::before {
-  top: 2.1rem;
-  transform: rotate(145deg);
-}
-
-.poleCrack::after {
-  top: 5.4rem;
-  transform: rotate(28deg);
+  filter: drop-shadow(0 0 3px rgba(255, 246, 230, 0.88));
+  vector-effect: non-scaling-stroke;
 }
 
 .poleLabel {
-  margin-top: 1rem;
-  color: rgba(245, 241, 232, 0.4);
+  width: max-content;
+  margin-top: 1.0625rem;
+  color: rgba(245, 241, 232, 0.54);
   font-family: var(--font-kicker);
-  font-size: 0.56rem;
+  font-size: clamp(0.54rem, 0.65vw, 0.68rem);
   letter-spacing: 0.23em;
+  line-height: 1;
   text-align: center;
   text-transform: uppercase;
 }
@@ -675,7 +719,7 @@
   border: 1px solid rgba(245, 241, 232, 0.16);
   border-radius: 2.6rem;
   background: #0a0a0c;
-  box-shadow: 0 3rem 8rem rgba(0, 0, 0, 0.7), 0 0 7rem rgba(196, 242, 78, 0.1);
+  box-shadow: 0 3rem 8rem rgba(0, 0, 0, 0.7), 0 0 7rem rgba(255, 246, 230, 0.055);
   animation: siteBob 5.8s ease-in-out infinite;
 }
 
@@ -813,7 +857,7 @@
   width: min(52rem, 94vw);
   height: 30rem;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(196, 242, 78, 0.12), transparent 68%);
+  background: radial-gradient(circle, rgba(245, 241, 232, 0.035), transparent 68%);
   filter: blur(2rem);
   transform: translateX(-50%);
 }
@@ -1054,12 +1098,27 @@
 }
 
 .publicFooter {
+  position: relative;
+  z-index: 20;
   display: grid;
   padding: 2rem 0 3rem;
   align-items: center;
   border-top: 1px solid rgba(245, 241, 232, 0.08);
   gap: 1rem;
   grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.cultureKicker {
+  font-family: var(--font-kicker);
+}
+
+.cultureTitle {
+  font-family: var(--font-serif);
+}
+
+.cultureCard {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 54rem;
 }
 
 .footerLinks {
@@ -1144,6 +1203,8 @@
 
   .poleScene {
     --pole-left: 73%;
+    --pole-height: clamp(34rem, 62svh, 40rem);
+    --pole-width: calc(var(--pole-height) / 3);
   }
 }
 
@@ -1175,9 +1236,31 @@
     align-items: flex-end;
   }
 
+  .cinematicSection > div {
+    position: relative;
+    z-index: 1;
+  }
+
+  .cinematicSection > div::before {
+    position: absolute;
+    inset: -2.25rem -1rem;
+    z-index: -1;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(6, 7, 8, 0.94) 14%,
+      #060708 28%,
+      #060708 76%,
+      rgba(6, 7, 8, 0.92) 90%,
+      transparent 100%
+    );
+    content: "";
+    pointer-events: none;
+  }
+
   .cinematicHero {
-    min-height: 120svh;
-    padding-bottom: 10rem;
+    min-height: 131svh;
+    padding-bottom: 6.5rem;
   }
 
   .cinematicSection h1 {
@@ -1204,12 +1287,10 @@
 
   .poleScene {
     --pole-left: 50%;
-    top: 41%;
-    opacity: calc(var(--pole-opacity) * 0.78);
-    transform:
-      translate(calc(-50% + var(--pole-x)), calc(-50% + var(--pole-y)))
-      scale(calc(var(--pole-scale) * 0.78))
-      rotate(var(--pole-rotate, 0deg));
+    --pole-height: min(46svh, 24.5rem);
+    --pole-width: calc(var(--pole-height) / 3);
+    top: 34%;
+    opacity: calc(var(--pole-opacity) * 0.84);
   }
 
   .phoneScene {
@@ -1263,12 +1344,6 @@
     animation: none !important;
   }
 
-  .poleScene {
-    --pole-left: 70%;
-    --pole-opacity: 0.76;
-    --pole-scale: 0.9;
-  }
-
   .comet,
   .cometLabel,
   .impactFlash,
@@ -1288,5 +1363,11 @@
 
   .cinematicHero {
     min-height: 100svh;
+  }
+}
+
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  .cinematicHero {
+    min-height: 131svh;
   }
 }

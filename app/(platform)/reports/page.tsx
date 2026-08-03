@@ -24,7 +24,7 @@ export default async function ReportsPage({
 
   const activeHref = "/reports?view=money";
   const title = "Money";
-  const subtitle = "Revenue, payouts, breakdowns, and financial exceptions stay visible for operator review without stepping outside the canonical money system.";
+  const subtitle = "Booth rent, shop-owned payments, operational service volume, and financial exceptions stay visible without treating barber money as shop revenue.";
 
   return (
     <DashboardShell user={user} activeHref={activeHref} title={title} subtitle={subtitle}>
@@ -33,7 +33,7 @@ export default async function ReportsPage({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="surface-label">Money visibility</p>
-              <p className="mt-2 text-sm text-white/58">Money stays live here because it runs on canonical payment, routing, payout, and anomaly systems.</p>
+              <p className="mt-2 text-sm text-white/58">Booth rent and shop-owned money stay distinct from operational service volume. Barber service proceeds and tips are not shop revenue.</p>
             </div>
             <span className="status-pill text-[#e4f9b8]">Canonical money tab</span>
           </div>

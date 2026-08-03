@@ -592,7 +592,7 @@ export function ArchitectConsole({
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <MetricCard label="Active barbers" value={String(shop.activeBarbers)} detail="Barbers still active." />
-              <MetricCard label="Revenue today" value={currency(shop.revenueToday)} detail="Canonical revenue in scope today." />
+              <MetricCard label="Floor service volume today" value={currency(shop.revenueToday)} detail="Operational barber service volume · not shop revenue." />
               <MetricCard label="Kiosk" value={shop.kioskEnabled ? "Enabled" : "Disabled"} detail="Front-desk kiosk posture." />
               <MetricCard label="AI manager" value={shop.aiManagerEnabled ? "Enabled" : "Disabled"} detail="Assistive AI posture." />
             </div>
@@ -980,7 +980,7 @@ export function ArchitectConsole({
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Bookings today" value={String(data.overview.bookingsToday)} detail="Canonical bookings for the current business date." />
-        <MetricCard label="Revenue today" value={currency(data.overview.revenueToday)} detail="Canonical platform analytics revenue." />
+        <MetricCard label="Service volume today" value={currency(data.overview.revenueToday)} detail="Canonical platform service-payment volume, not owner income." />
         <MetricCard label="Payout issues" value={String(data.overview.payoutIssues)} detail="Payout blockers needing review." />
         <MetricCard label="Billing issues" value={String(data.overview.billingIssues)} detail="Subscriptions or billing rows needing attention." />
       </section>

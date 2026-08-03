@@ -256,9 +256,9 @@ export function TeamWorkspace({
                   <p className="mt-2 text-sm text-white/58">Real barber roster currently in this shop scope.</p>
                 </div>
                 <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Revenue pulse</p>
+                  <p className="surface-label">Floor service volume</p>
                   <p className="mt-3 text-3xl font-semibold" data-display="true">{currency(totalTodayRevenue)}</p>
-                  <p className="mt-2 text-sm text-white/58">Completed same-day revenue already posted to canonical shop truth.</p>
+                  <p className="mt-2 text-sm text-white/58">Completed barber service volume · operational context, not shop revenue.</p>
                 </div>
                 <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                   <p className="surface-label">Open chairs</p>

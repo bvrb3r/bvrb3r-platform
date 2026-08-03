@@ -888,9 +888,9 @@ export function OwnerTeamWorkspace() {
             />
             <DataStatCard
               className="min-h-[112px] rounded-[18px]"
-              label="Shop Production"
+              label="Floor Service Volume"
               value={currency(todayRevenue)}
-              detail="Est. earnings"
+              detail="Barber money · not shop revenue"
               icon={<CircleDollarSign className="h-4 w-4" />}
             />
             <DataStatCard
@@ -1091,7 +1091,7 @@ export function OwnerTeamWorkspace() {
                             {barber.roleLabel}
                           </div>
                           <p className="mt-3 text-xs leading-5 text-white/48">
-                            Accepted money terms are immutable. End this agreement and send a new bilateral proposal to change the model or split.
+                            Accepted rent terms are immutable. End this agreement and send a new bilateral proposal to change the rent model or AutoBooth percentage.
                           </p>
                         </div>
                         <div>
@@ -1545,7 +1545,7 @@ export function OwnerTeamWorkspace() {
                     className="mt-2 min-h-12 w-full rounded-[14px] border border-white/10 bg-black/30 px-4 text-white outline-none focus:border-[#C4F24E]/55"
                   />
                   <span className="mt-2 block text-xs font-medium text-white/46">
-                    Applied only against rent still owed, never more. Tips remain 100% barber.
+                    Applied only against rent still owed, never more. 100% of the client-confirmed tip belongs to the barber.
                   </span>
                 </label>
               ) : null}

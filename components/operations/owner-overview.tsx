@@ -354,7 +354,7 @@ export function OwnerOverview() {
               Run the shop from health, capacity, and money signals.
             </h2>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
-              Owner Home stays focused on what needs action today: revenue, team coverage, open chair time, and payment setup gaps.
+              Owner Home stays focused on what needs action today: floor service volume, team coverage, open chair time, and booth-rent setup gaps.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -381,13 +381,13 @@ export function OwnerOverview() {
         <div className="grid gap-6 lg:grid-cols-[1.25fr_0.85fr] lg:items-stretch">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">Today Revenue</h2>
+              <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">Today Floor Service Volume</h2>
               <details className="relative">
-                <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full text-white/42 transition hover:text-[#C4F24E]" aria-label="Explain today revenue">
+                <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full text-white/42 transition hover:text-[#C4F24E]" aria-label="Explain today floor service volume">
                   <Info className="h-5 w-5" />
                 </summary>
                 <div className="absolute left-0 z-10 mt-3 w-80 rounded-[18px] border border-white/10 bg-[#090909] p-4 text-sm leading-6 text-white/68 shadow-[0_18px_50px_rgba(0,0,0,0.5)]">
-                  Today Revenue includes completed/captured payments for this shop during the selected time range. Splits are based on canonical payment records.
+                  Floor service volume includes completed or captured service payments during the selected time range. It is operational context; barber service proceeds and tips are not shop revenue.
                 </div>
               </details>
             </div>
@@ -429,11 +429,11 @@ export function OwnerOverview() {
             </details>
             <dl className="mt-7 space-y-7">
               <div>
-                <dt className="text-lg font-semibold text-white/58">Shop Share</dt>
+                <dt className="text-lg font-semibold text-white/58">Booth Rent</dt>
                 <dd className="mt-2 text-xl font-black text-white/52">Unavailable</dd>
               </div>
               <div>
-                <dt className="text-lg font-semibold text-white/58">Barber Earnings</dt>
+                <dt className="text-lg font-semibold text-white/58">Barber Service Proceeds</dt>
                 <dd className="mt-2 text-xl font-black text-white/52">Unavailable</dd>
               </div>
               <div>
@@ -538,7 +538,7 @@ export function OwnerOverview() {
                 </div>
                 <p className="mt-4 text-xl font-black tracking-[-0.04em] text-white">{barber.name}</p>
                 <p className="mt-2 text-2xl font-black text-white">{currency(barber.revenue)}</p>
-                <p className="text-sm font-semibold text-white/58">Revenue</p>
+                <p className="text-sm font-semibold text-white/58">Service volume</p>
                 <p className="mt-3 text-xl font-extrabold text-white">{barber.bookings}</p>
                 <p className="text-sm font-semibold text-white/58">Bookings</p>
                 <p className="mt-3 text-xl font-extrabold text-white">{barber.utilization}%</p>

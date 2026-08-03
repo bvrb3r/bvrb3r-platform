@@ -21,7 +21,7 @@ export default async function OwnerMoneyPage({
       user={user}
       activeHref="/dashboard/owner/money"
       title="Money"
-      subtitle="Revenue & payouts"
+      subtitle="Booth rent billed, paid, and outstanding"
       hidePageHeader
     >
       <ShopOwnerPlanAccessCard summary={paywallSummary} compact />

@@ -23,7 +23,7 @@ const barberSubtypeCards: Array<{
   {
     subtype: "booth_rent",
     title: "Full Booth Rent Barber",
-    copy: "Independent booth-rent barber operating inside a shop with location approval and verification controls. You keep your service proceeds and rent is billed separately.",
+    copy: "Independent booth-rent barber operating inside a shop with location approval and verification controls. Eligible service proceeds remain barber money after the 5% BVRB3R platform fee and separately disclosed authorized adjustments; rent is billed separately.",
     approvalCopy: "Requires BVRB3R app approval and shop approval."
   },
   {

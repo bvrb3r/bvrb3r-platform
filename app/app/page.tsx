@@ -71,8 +71,8 @@ const content: MarketingPageContent = {
   faqTitle: "Before your first cut.",
   faqs: [
     {
-      question: "Does it cost anything to browse?",
-      answer: "No. Clients can explore barbers, shops, and Culture as a guest. Create an account when you want a saved client lane."
+      question: "What does Client Standard cost?",
+      answer: "Client Standard is $0. Guests can also explore barbers, shops, and Culture before creating a saved client lane."
     },
     {
       question: "Do I need an account to book?",
@@ -92,7 +92,7 @@ const content: MarketingPageContent = {
   ],
   closingEyebrow: "The chair is closer than it looks",
   closingTitle: "Your next cut starts here",
-  closingNote: "Free to browse · Guest entry available · Built for mobile and web"
+  closingNote: "Client Standard $0 · Guest entry available · Built for mobile and web"
 };
 
 export default function AppMarketingPage() {

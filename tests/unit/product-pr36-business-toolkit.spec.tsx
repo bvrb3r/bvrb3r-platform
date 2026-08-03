@@ -23,7 +23,7 @@ describe("Product PR36 business toolkit", () => {
     render(<BusinessToolkitWorkspace />);
     fireEvent.click(screen.getByRole("button", { name: "AutoBooth" }));
     expect(screen.getByText(/contribution = min\(transaction × rate, remaining_balance\)/i)).toBeInTheDocument();
-    expect(screen.getByText("untouched — 100% barber-owned")).toBeInTheDocument();
+    expect(screen.getByText("100% barber-owned · excluded from rent")).toBeInTheDocument();
     expect(screen.getByText(/contributions stop by structure/i)).toBeInTheDocument();
   });
 });

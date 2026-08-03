@@ -63,13 +63,15 @@ const content: MarketingPageContent = {
     }
   ],
   proofEyebrow: "Your chair stays yours",
-  proofTitle: "Your prices. Your schedule. One hundred percent of your tips.",
+  proofTitle: "Your prices. Your schedule. 100% of your tips.",
   proofBody:
-    "BVRB3R keeps the barber’s service price and tip truth attached to the barber. When a shop relationship exists, Full Booth Rent and AutoBooth Rent are the complete supported model set.",
+    "The BVRB3R platform fee is 5% of eligible transactions. 100% of the client-confirmed tip belongs to the barber. Stripe processing charges and other authorized adjustments are disclosed separately, and payout timing depends on Stripe Connect eligibility and settlement conditions. When a shop relationship exists, Full Booth Rent and AutoBooth Rent are the only supported models.",
   proofPoints: [
     "You set active services, duration, and pricing",
     "You control availability, buffers, and booking policy",
-    "Tips remain assigned to the barber",
+    "BVRB3R platform fee: 5% of eligible transactions",
+    "100% of the client-confirmed tip belongs to the barber",
+    "Payout timing follows Stripe Connect eligibility and settlement conditions",
     "Shop relationships use Full Booth Rent or AutoBooth Rent only"
   ],
   faqTitle: "Before you move your chair.",
@@ -87,7 +89,12 @@ const content: MarketingPageContent = {
     {
       question: "How does the shop relationship work?",
       answer:
-        "BVRB3R supports Full Booth Rent and AutoBooth Rent. The barber’s service price and tips remain barber money."
+        "Full Booth Rent bills the agreed rent separately. AutoBooth Rent applies an owner-approved portion of eligible proceeds toward outstanding booth rent and stops when that rent is settled. Barber service proceeds and tips are never shop revenue."
+    },
+    {
+      question: "What does BVRB3R charge, and when do payouts arrive?",
+      answer:
+        "BVRB3R charges a 5% platform fee on eligible transactions. Stripe processing charges, taxes, refunds, disputes, and other authorized adjustments are shown separately when they apply. Payout timing depends on Stripe Connect account eligibility, settlement, payout schedule, risk holds, weekends, and bank timing."
     },
     {
       question: "What happens to my regulars?",

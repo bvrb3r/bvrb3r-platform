@@ -77,7 +77,12 @@ describe("marketing layout", () => {
       children: <div>Marketing content</div>
     }));
 
-    expect(screen.getByText("BVRB3R Platform")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("BVRB3R home")[0]).toHaveTextContent("BVRB3R");
+    expect(screen.getAllByRole("link", { name: "Culture" })[0]).toHaveAttribute("href", "/culture");
+    expect(screen.getAllByRole("link", { name: "Enter as guest" })[0]).toHaveAttribute(
+      "href",
+      "/discover?entry=guest"
+    );
     expect(screen.getByText("Marketing content")).toBeInTheDocument();
   });
 });

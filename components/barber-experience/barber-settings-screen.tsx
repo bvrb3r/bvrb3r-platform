@@ -98,7 +98,7 @@ import type { BarberSubtype, UserAccount } from "@/types/domain";
 
 const subtypeOptions: Array<{ subtype: BarberSubtype; label: string; description: string }> = [
   { subtype: "freelance", label: "Freelance", description: "Independent chair posture with self-managed availability." },
-  { subtype: "booth_rent", label: "Full Booth Rent", description: "You rent the booth and keep your service proceeds. Rent is billed on its own schedule." },
+  { subtype: "booth_rent", label: "Full Booth Rent", description: "You rent the booth. Eligible service proceeds remain barber money after the 5% BVRB3R platform fee and separately disclosed authorized adjustments. Rent is billed on its own schedule." },
   { subtype: "autobooth_rent", label: "AutoBooth Rent", description: "Full Booth Rent plus an owner-approved portion of eligible proceeds that pays down your outstanding rent automatically. It never exceeds what you owe." }
 ];
 
@@ -589,7 +589,7 @@ function TransactionReceiptModal({
                 ["Gross amount", payoutCurrency(transaction.grossAmount)],
                 ["Platform fee", payoutCurrency(transaction.platformFeeAmount)],
                 ["Barber payout", barberPayout],
-                ["Shop split", payoutCurrency(transaction.shopSplitAmount ?? 0)],
+                [transaction.routingModel === "autobooth_rent" ? "AutoBooth rent applied" : "Shop-owned billing only", payoutCurrency(transaction.shopSplitAmount ?? 0)],
                 ["Payment status", isCash ? "Cash recorded" : transaction.statusLabel],
                 ["Payout readiness", isCash ? "No platform payout" : formatStatusLabel(transaction.payoutReadinessStatus ?? "pending")],
                 ["Money routing", isCash ? "No routing required" : formatStatusLabel(transaction.moneyRoutingStatus ?? "pending")],
