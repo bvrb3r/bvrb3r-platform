@@ -37,7 +37,7 @@ export function ClientPlanAccessCard({
   showFeatureGroups?: boolean;
 }) {
   const featureGroups = [
-    { label: "Free", items: summary.features.free },
+    { label: "Standard · $0", items: summary.features.standard },
     { label: "Pro", items: summary.features.pro },
     { label: "Elite", items: summary.features.elite }
   ];
@@ -55,7 +55,7 @@ export function ClientPlanAccessCard({
             {summary.currentPlanLabel} client access
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">
-            Free booking, search, discovery, account, and activity stay open. Pro and Elite tools unlock only from server entitlement proof.
+            Standard is $0 and keeps booking, search, discovery, account, and activity open. Pro and Elite tools unlock only from server entitlement proof.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

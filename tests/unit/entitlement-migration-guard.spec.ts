@@ -6,7 +6,7 @@ const migrationPath = path.join(
   process.cwd(),
   "supabase",
   "migrations",
-  "20260628120000_entitlement_paywall_server_truth.sql"
+  "20260729043000_standard_plan_entitlement_truth.sql"
 );
 
 function migrationSql() {
@@ -14,23 +14,34 @@ function migrationSql() {
 }
 
 describe("entitlement migration guard", () => {
-  it("creates only the server-owned account_entitlements table candidate", () => {
+  it("creates the server-owned account_entitlements truth whether the legacy candidate exists or not", () => {
     const sql = migrationSql();
 
     expect(sql).toContain("create table if not exists public.account_entitlements");
     expect(sql).toContain("profile_id uuid not null references public.profiles(id)");
     expect(sql).toContain("account_role in ('client_user', 'barber_user', 'shop_owner_user')");
-    expect(sql).not.toContain("'standard'");
+    expect(sql).toContain("tier text not null default 'standard'");
     expect(sql).not.toContain("'weekly'");
   });
 
   it("uses canonical tier and billing interval constraints", () => {
     const sql = migrationSql();
 
-    expect(sql).toContain("tier in ('free', 'pro', 'elite')");
+    expect(sql).toContain("tier in ('standard', 'pro', 'elite')");
     expect(sql).toContain("billing_interval in ('none', 'monthly', 'yearly')");
-    expect(sql).toContain("(tier = 'free' and billing_interval = 'none')");
+    expect(sql).toContain("(tier = 'standard' and billing_interval = 'none')");
     expect(sql).toContain("(tier in ('pro', 'elite') and billing_interval in ('monthly', 'yearly'))");
+  });
+
+  it("makes Standard non-billable and normalizes legacy free rows", () => {
+    const sql = migrationSql();
+
+    expect(sql).toContain("where tier = 'free'");
+    expect(sql).toContain("where entitlement_status = 'free'");
+    expect(sql).toContain("account_entitlements_standard_zero_check");
+    expect(sql).toContain("stripe_subscription_id is null");
+    expect(sql).toContain("stripe_price_id is null");
+    expect(sql).toContain("Standard is $0 and is never billed");
   });
 
   it("enables RLS and does not expose raw entitlement rows to anon", () => {

@@ -69,12 +69,12 @@ vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => 
 import { ClientSearchScreen } from "@/components/client-experience/client-search-screen";
 
 const freeClientPaywallSummary: ClientPaywallSummary = {
-  currentPlanLabel: "Free",
+  currentPlanLabel: "Standard",
   billingLabel: "No paid billing cycle connected",
-  statusLabel: "Free access active",
+  statusLabel: "Standard access active",
   statusTone: "neutral",
   serverEvidenceLabel: "Server default",
-  freeBookingAvailable: true,
+  standardBookingAvailable: true,
   lockedFeatureCount: 6,
   needsReviewCount: 0,
   upgradeActionLabel: "Review plan access",
@@ -82,7 +82,7 @@ const freeClientPaywallSummary: ClientPaywallSummary = {
   checkoutUrl: null,
   portalUrl: null,
   features: {
-    free: [],
+    standard: [],
     pro: [],
     elite: []
   }

@@ -125,7 +125,7 @@ export function buildStripeEntitlementWebhookUpdate(input: {
     return {
       handled: true,
       blocked: true,
-      reason: "Stripe price is not mapped to a canonical Free/Pro/Elite entitlement.",
+      reason: "Stripe price is not mapped to a canonical Standard/Pro/Elite entitlement.",
       profileId: metadataProfileId,
       accountRole: isEntitlementAccountRole(metadataRole) ? metadataRole : null,
       price: null,

@@ -1074,6 +1074,7 @@ describe("core booking loop regression", () => {
   });
 
   it("refuses completion when no captured booking payment exists", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const tables = createTables();
     const appointmentReference = "appt-unpaid-tier1";
     tables.appointments.push(buildConfirmedAppointmentRow(appointmentReference));
@@ -1096,5 +1097,13 @@ describe("core booking loop regression", () => {
       status: "confirmed",
       completed_at: null
     });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[barber-appointment] complete_failed",
+      expect.objectContaining({
+        appointmentId: canonicalAppointmentUuid(appointmentReference),
+        errorName: "PaymentNotCaptured"
+      })
+    );
+    warnSpy.mockRestore();
   });
 });

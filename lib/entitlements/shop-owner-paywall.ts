@@ -20,7 +20,7 @@ export type ShopOwnerPaywallFeatureView = {
   id: string;
   title: string;
   description: string;
-  requiredPlanLabel: "Free" | "Pro" | "Elite";
+  requiredPlanLabel: "Standard" | "Pro" | "Elite";
   state: ShopOwnerPaywallFeatureState;
   stateLabel: string;
   reason: string;
@@ -34,12 +34,12 @@ export type ShopOwnerPaywallGuardrail = {
 
 export type ShopOwnerPaywallSummary = {
   activeOwnerPaywall: boolean;
-  currentPlanLabel: "Free" | "Pro" | "Elite";
+  currentPlanLabel: "Standard" | "Pro" | "Elite";
   billingLabel: string;
   statusLabel: string;
   statusTone: ShopOwnerPaywallTone;
   serverEvidenceLabel: string;
-  freeShopSetupAvailable: true;
+  standardShopSetupAvailable: true;
   lockedFeatureCount: number;
   needsReviewCount: number;
   comingSoonCount: number;
@@ -51,7 +51,7 @@ export type ShopOwnerPaywallSummary = {
   portalUrl: null;
   guardrails: ShopOwnerPaywallGuardrail[];
   features: {
-    free: ShopOwnerPaywallFeatureView[];
+    standard: ShopOwnerPaywallFeatureView[];
     pro: ShopOwnerPaywallFeatureView[];
     elite: ShopOwnerPaywallFeatureView[];
   };
@@ -71,7 +71,7 @@ const SHOP_OWNER_PLAN_FEATURES: ShopOwnerPaywallFeatureDefinition[] = [
     id: "owner-shop-profile-setup",
     title: "Shop profile, location, hours, and chairs",
     description: "Set up the shop identity, address, hours, chair basics, and public readiness inputs.",
-    requiredTier: "free",
+    requiredTier: "standard",
     featureKey: "shop_owner.shop.basic",
     liveInOwnerV1: true
   },
@@ -79,7 +79,7 @@ const SHOP_OWNER_PLAN_FEATURES: ShopOwnerPaywallFeatureDefinition[] = [
     id: "owner-first-barber-invite",
     title: "First barber invite and setup checklist",
     description: "Invite the first barber and keep the basic setup checklist moving.",
-    requiredTier: "free",
+    requiredTier: "standard",
     featureKey: "shop_owner.shop.basic",
     liveInOwnerV1: true
   },
@@ -87,7 +87,7 @@ const SHOP_OWNER_PLAN_FEATURES: ShopOwnerPaywallFeatureDefinition[] = [
     id: "owner-basic-home-settings",
     title: "Owner Home, More, and basic schedule visibility",
     description: "Use the Owner Home, More/settings, support, compliance, and baseline schedule views.",
-    requiredTier: "free",
+    requiredTier: "standard",
     featureKey: "shop_owner.shop.basic",
     liveInOwnerV1: true
   },
@@ -95,7 +95,7 @@ const SHOP_OWNER_PLAN_FEATURES: ShopOwnerPaywallFeatureDefinition[] = [
     id: "owner-kiosk-status-visibility",
     title: "Kiosk setup and status visibility",
     description: "Review kiosk readiness and setup posture without enabling advanced kiosk controls.",
-    requiredTier: "free",
+    requiredTier: "standard",
     featureKey: "shop_owner.shop.basic",
     liveInOwnerV1: true
   },
@@ -187,7 +187,7 @@ const SHOP_OWNER_GUARDRAILS: ShopOwnerPaywallGuardrail[] = [
     description: "This UI reads the existing entitlement resolver and does not decide paid access."
   },
   {
-    title: "Free shop setup stays available",
+    title: "Standard shop setup stays available at $0",
     description: "Basic shop profile, hours, chairs, first invite, More/settings, support, and compliance stay open."
   },
   {
@@ -217,7 +217,7 @@ const FORBIDDEN_USER_COPY_PATTERN = new RegExp(
 function planLabel(tier: EntitlementTier): ShopOwnerPaywallSummary["currentPlanLabel"] {
   if (tier === "elite") return "Elite";
   if (tier === "pro") return "Pro";
-  return "Free";
+  return "Standard";
 }
 
 function billingLabel(snapshot: EntitlementSnapshot | null) {
@@ -273,7 +273,7 @@ function evidenceLabel(snapshot: EntitlementSnapshot | null) {
     case "needs_review":
       return "Plan proof needs review";
     default:
-      return "Free server fallback";
+      return "Standard server fallback";
   }
 }
 
@@ -308,11 +308,11 @@ function buildFeatureView(input: {
       })
     : null;
   const requiredPlanLabel = planLabel(definition.requiredTier);
-  const fallbackReason = definition.requiredTier === "free"
-    ? "Free shop setup remains available to the canonical owner account."
+  const fallbackReason = definition.requiredTier === "standard"
+    ? "Standard shop setup remains available at $0 to the canonical owner account."
     : `This feature needs ${requiredPlanLabel} server entitlement proof before it can unlock.`;
 
-  if (definition.requiredTier === "free" && access?.allowed) {
+  if (definition.requiredTier === "standard" && access?.allowed) {
     return {
       id: definition.id,
       title: definition.title,
@@ -320,7 +320,7 @@ function buildFeatureView(input: {
       requiredPlanLabel,
       state: "available",
       stateLabel: "Available",
-      reason: "Free shop essentials remain available.",
+      reason: "Standard shop essentials remain available at $0.",
       evidenceSource: "Server entitlement registry"
     };
   }
@@ -370,7 +370,7 @@ export function buildShopOwnerPaywallSummary(input: {
   const snapshot = input.entitlement ? buildEntitlementSnapshot(input.entitlement) : null;
   const activeOwnerPaywall = input.user?.role === "shop_owner_user" && input.entitlement?.accountRole === "shop_owner_user";
   const grouped = {
-    free: [] as ShopOwnerPaywallFeatureView[],
+    standard: [] as ShopOwnerPaywallFeatureView[],
     pro: [] as ShopOwnerPaywallFeatureView[],
     elite: [] as ShopOwnerPaywallFeatureView[]
   };
@@ -384,7 +384,7 @@ export function buildShopOwnerPaywallSummary(input: {
     grouped[definition.requiredTier].push(view);
   }
 
-  const allFeatures = [...grouped.free, ...grouped.pro, ...grouped.elite];
+  const allFeatures = [...grouped.standard, ...grouped.pro, ...grouped.elite];
   const needsReviewCount = allFeatures.filter((feature) => feature.state === "needs_review").length;
   const lockedFeatureCount = allFeatures.filter((feature) => feature.state === "locked" || feature.state === "forbidden_role" || feature.state === "unauthenticated").length;
   const comingSoonCount = allFeatures.filter((feature) => feature.state === "coming_soon").length;
@@ -392,12 +392,12 @@ export function buildShopOwnerPaywallSummary(input: {
 
   return {
     activeOwnerPaywall,
-    currentPlanLabel: planLabel(snapshot?.tier ?? "free"),
+    currentPlanLabel: planLabel(snapshot?.tier ?? "standard"),
     billingLabel: billingLabel(snapshot),
-    statusLabel: needsReviewCount ? "Needs Review" : snapshot?.paidAccess ? "Paid access verified" : "Free access active",
+    statusLabel: needsReviewCount ? "Needs Review" : snapshot?.paidAccess ? "Paid access verified" : "Standard access active",
     statusTone,
     serverEvidenceLabel: evidenceLabel(snapshot),
-    freeShopSetupAvailable: true,
+    standardShopSetupAvailable: true,
     lockedFeatureCount,
     needsReviewCount,
     comingSoonCount,

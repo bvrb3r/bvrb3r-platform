@@ -99,12 +99,12 @@ vi.mock("@/components/auth/logout-button", () => ({
 import { ClientProfileScreen } from "@/components/client-experience/client-profile-screen";
 
 const freeClientPaywallSummary: ClientPaywallSummary = {
-  currentPlanLabel: "Free",
+  currentPlanLabel: "Standard",
   billingLabel: "No paid billing cycle connected",
-  statusLabel: "Free access active",
+  statusLabel: "Standard access active",
   statusTone: "neutral",
   serverEvidenceLabel: "Server default",
-  freeBookingAvailable: true,
+  standardBookingAvailable: true,
   lockedFeatureCount: 6,
   needsReviewCount: 0,
   upgradeActionLabel: "Review plan access",
@@ -112,14 +112,14 @@ const freeClientPaywallSummary: ClientPaywallSummary = {
   checkoutUrl: null,
   portalUrl: null,
   features: {
-    free: [{
+    standard: [{
       id: "client-basic-booking",
       title: "Basic booking, search, and discovery",
       description: "Search barbers, view shops, book eligible services, and manage activity.",
-      requiredPlanLabel: "Free",
+      requiredPlanLabel: "Standard",
       state: "available",
       stateLabel: "Available",
-      reason: "Free client essentials remain available.",
+      reason: "Standard client essentials remain available.",
       evidenceSource: "Server entitlement registry"
     }],
     pro: [{
@@ -414,7 +414,7 @@ describe("client profile screen", () => {
       expect(screen.queryByText(label)).not.toBeInTheDocument();
     });
     expect(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method for bookings, auto-booking, subscriptions, tools, ads, and promotions/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
-    expect(screen.getByRole("link", { name: /Plan Access Free booking stays open. Pro and Elite tools require server-verified plan access. Needs review/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
+    expect(screen.getByRole("link", { name: /Plan Access Standard booking stays open at \$0. Pro and Elite tools require server-verified plan access. Needs review/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
     expect(screen.getByRole("link", { name: /Stripe Connect Creator-only/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
     expect(screen.getByRole("link", { name: /Creator Payouts Locked until approved. All creator payout information/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
     expect(screen.getByRole("link", { name: /Rewards Points, credits, loyalty progress, and referrals/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
@@ -470,7 +470,7 @@ describe("client profile screen", () => {
     );
 
     expect(screen.getByTestId("client-plan-access-card")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Free client access" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Standard client access" })).toBeInTheDocument();
     expect(screen.getByText("Basic booking, search, and discovery")).toBeInTheDocument();
     expect(screen.getByText("Priority rebooking preferences")).toBeInTheDocument();
     expect(screen.getByText("Premium discovery filters")).toBeInTheDocument();

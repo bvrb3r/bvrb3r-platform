@@ -570,7 +570,7 @@ export function OwnerSettingsWorkspace({
     },
     {
       title: "Plan Access",
-      subtitle: "Review Free, Pro, and Elite shop tools. Plan management is being prepared.",
+      subtitle: "Review Standard, Pro, and Elite shop tools. Standard is $0; paid plan management is being prepared.",
       onClick: () => setPlanAccessOpen(true),
       icon: <LockKeyhole className="h-5 w-5" />,
       status: ownerPlanSummary?.statusLabel ?? "Needs Review",
@@ -903,7 +903,7 @@ export function OwnerSettingsWorkspace({
             sectionKey: "owner-settings-payments-banking",
             title: "Plan Access",
             eyebrow: "Payments & Banking",
-            helper: "Review Free, Pro, and Elite shop tools. Plan management is being prepared.",
+            helper: "Review Standard, Pro, and Elite shop tools. Standard is $0; paid plan management is being prepared.",
             mode: "read_only",
             statusLabel: ownerPlanSummary.statusLabel,
             privacyLevel: "financial",

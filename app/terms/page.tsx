@@ -82,7 +82,7 @@ export default function TermsPage() {
         </LegalSection>
 
         <LegalSection title="8. Subscriptions and digital features">
-          Free, Pro, and Elite are feature-access tiers, not account roles. Paid access starts only
+          Standard, Pro, and Elite are feature-access tiers, not account roles. Standard costs $0. Paid access starts only
           after confirmed billing and entitlement truth. Billing interval, renewal, cancellation,
           and refund information will be shown at purchase. Native-app purchases may also be
           governed by Apple or Google billing terms where required.

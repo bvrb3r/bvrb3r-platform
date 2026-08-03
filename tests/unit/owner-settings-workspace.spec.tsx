@@ -38,14 +38,14 @@ vi.mock("@/components/marketplace/service-catalog-workspace", () => ({
 }));
 
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
-import { buildFreeEntitlementTruth } from "@/lib/entitlements/domain";
+import { buildStandardEntitlementTruth } from "@/lib/entitlements/domain";
 import { buildShopOwnerPaywallSummary } from "@/lib/entitlements/shop-owner-paywall";
 import { OwnerSettingsWorkspace } from "@/components/operations/owner-settings-workspace";
 
 function makeFreeOwnerPaywallSummary() {
   return buildShopOwnerPaywallSummary({
     user: { id: "owner-demo", role: "shop_owner_user" },
-    entitlement: buildFreeEntitlementTruth({
+    entitlement: buildStandardEntitlementTruth({
       profileId: "owner-demo",
       accountRole: "shop_owner_user"
     })
@@ -259,18 +259,18 @@ describe("owner More workspace", () => {
 
     const planSummaryCard = screen.getByTestId("owner-settings-plan-access-summary");
     expect(within(planSummaryCard).getByText("Shop owner plan access")).toBeInTheDocument();
-    expect(within(planSummaryCard).getByText("Free shop access")).toBeInTheDocument();
+    expect(within(planSummaryCard).getByText("Standard shop access")).toBeInTheDocument();
     expect(within(planSummaryCard).getByText("Shop profile, location, hours, and chairs")).toBeInTheDocument();
     expect(within(planSummaryCard).getByRole("button", { name: "Plan management is being prepared" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: /Plan Access Review Free, Pro, and Elite shop tools/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Plan Access Review Standard, Pro, and Elite shop tools/ }));
     const dialog = screen.getByRole("dialog", { name: "Plan Access" });
     expect(within(dialog).getByText("Payments & Banking")).toBeInTheDocument();
     within(dialog).getAllByRole("button", { name: "Plan management is being prepared" }).forEach((button) => {
       expect(button).toBeDisabled();
     });
     expect(within(dialog).getByText("Server owns plan truth")).toBeInTheDocument();
-    expect(within(dialog).getByText("Free shop setup stays available")).toBeInTheDocument();
+    expect(within(dialog).getByText("Standard shop setup stays available at $0")).toBeInTheDocument();
     expect(within(dialog).getByText("Money stays server-owned")).toBeInTheDocument();
 
     ["Paywall", "Subscriptions", "Upgrade", "Plans", "Billing Settings", "Premium", "Pro Settings", "Elite Settings"].forEach((heading) => {
