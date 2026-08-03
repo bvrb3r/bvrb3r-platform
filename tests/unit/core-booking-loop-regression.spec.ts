@@ -80,6 +80,17 @@ const SERVICE_REFERENCE = "srv-test-cut-1777841145997";
 
 function createTables(): Record<string, Row[]> {
   return {
+    architect_system_controls: [{
+      control_key: "maintenance",
+      active: false,
+      reason: null,
+      version: 1
+    }, {
+      control_key: "bookings",
+      active: false,
+      reason: null,
+      version: 1
+    }],
     shops: [],
     profiles: [{
       id: CLIENT_PROFILE_ID,

@@ -1,6 +1,10 @@
 import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  ArchitectRuntimeControlError,
+  assertArchitectRuntimeControlAllows
+} from "@/lib/architect/city-map/runtime-controls.server";
 import { recordIdentityAuditEvent } from "@/lib/auth/identity-audit";
 import { hasInternalAccess, isShopMemberOf, type PermissionActor } from "@/lib/auth/permissions";
 import {
@@ -394,6 +398,16 @@ export type ConfirmedBooking = {
  */
 export async function confirmBooking(input: ConfirmBookingInput): Promise<ConfirmedBooking> {
   const supabase = requireSupabase();
+  try {
+    await assertArchitectRuntimeControlAllows(supabase, "bookings");
+  } catch (error) {
+    if (error instanceof ArchitectRuntimeControlError) {
+      throw new BookingEngineError("retry", "bookings_paused", error.message, {
+        controlKey: error.controlKey
+      });
+    }
+    throw error;
+  }
   const actorKey = requireActorBinding(input.actor);
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
 
