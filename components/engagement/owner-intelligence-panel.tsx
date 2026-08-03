@@ -73,9 +73,11 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [shopDocumentName, setShopDocumentName] = useState("bvrb3r-business-license.pdf");
 
-  async function handleEnablePush() {
-    const result = await pwa.enablePush();
-    setFeedback({ tone: result.ok ? "success" : "error", message: result.message });
+  function handleRequestPush() {
+    const result = pwa.requestPushPrimer("owner");
+    if (!result.opened) {
+      setFeedback({ tone: "info", message: result.message });
+    }
   }
 
   async function handleDisablePush() {
@@ -961,7 +963,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
               </div>
             ) : null}
             <div className="mt-4 flex flex-wrap gap-3">
-              {mobileSummary?.pushEnabled ? <Button className="h-11 px-5" variant="secondary" onClick={() => void handleDisablePush()}>Turn off owner alerts</Button> : <Button className="h-11 px-5" variant="secondary" onClick={() => void handleEnablePush()}>Enable owner alerts</Button>}
+              {mobileSummary?.pushEnabled ? <Button className="h-11 px-5" variant="secondary" onClick={() => void handleDisablePush()}>Turn off owner alerts</Button> : <Button className="h-11 px-5" variant="secondary" onClick={handleRequestPush}>Enable owner alerts</Button>}
               <span className="status-pill text-white/62">Marketplace highlights, trust alerts, and activation signals can now route through the mobile layer.</span>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1007,7 +1009,6 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
     </section>
   );
 }
-
 
 
 

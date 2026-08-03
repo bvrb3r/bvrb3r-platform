@@ -1,9 +1,10 @@
 import Stripe from "stripe";
 import { runtimeConfig } from "@/lib/config/runtime";
+import { requireAppointmentPaymentAllowed } from "@/lib/payments/appointment-payment-guard";
 
 export interface DepositIntentRequest {
   appointmentId: string;
-  amount: number;
+  clientProfileId: string;
   customerEmail: string;
   customerName: string;
 }
@@ -52,9 +53,16 @@ async function createStripeProvider(): Promise<PaymentProvider> {
   return {
     kind: "stripe",
     async createDepositIntent(input) {
+      const appointment = await requireAppointmentPaymentAllowed({
+        appointmentId: input.appointmentId,
+        expectedClientProfileId: input.clientProfileId
+      });
+      if (appointment.depositAmount <= 0) {
+        throw new Error("This appointment does not require a deposit.");
+      }
       const customer = await ensureCustomer(input.customerEmail, input.customerName);
       const intent = await stripe.paymentIntents.create({
-        amount: Math.round(input.amount * 100),
+        amount: Math.round(appointment.depositAmount * 100),
         currency: "usd",
         customer: customer.id,
         automatic_payment_methods: { enabled: true },

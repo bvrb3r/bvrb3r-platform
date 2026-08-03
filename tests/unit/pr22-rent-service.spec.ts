@@ -106,10 +106,18 @@ describe("PR22 rent service boundaries", () => {
     expect(contributionSelect).not.toMatch(/eligible|service|tip|tax|earnings|gross/i);
     expect(supabase.filters).toContainEqual({
       table: "rent_contributions",
-      method: "in",
+      method: "eq",
       column: "shop_id",
-      value: ["shop-ybor"]
+      value: "shop-ybor"
     });
+  });
+
+  it("requires one explicit shop instead of pooling a multi-shop owner", async () => {
+    await expect(getRentWorkspacePayload(user("shop_owner_user", {
+      ownedShopId: "shop-ybor",
+      locationIds: ["shop-ybor", "shop-hyde"]
+    }))).rejects.toMatchObject({ status: 400 });
+    expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
   });
 
   it("fails closed for a client before querying rent truth", async () => {

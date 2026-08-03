@@ -1,12 +1,12 @@
 import {
-  buildFreeEntitlementTruth,
+  buildStandardEntitlementTruth,
   isCanonicalPaidInterval,
   isEntitlementAccountRole,
   isEntitlementBillingInterval,
-  isEntitlementStatus,
-  isEntitlementTier,
   isPaidEntitlementActive,
   isPaidEntitlementTier,
+  normalizeEntitlementStatus,
+  normalizeEntitlementTier,
   rankEntitlementTier,
   roleToEntitlementRole,
   type EntitlementAccessState,
@@ -68,11 +68,11 @@ function isSchemaUnavailableError(error: unknown) {
 
 function mapRowToEntitlementTruth(row: AccountEntitlementRow, fallbackRole: ServerEntitlementTruth["accountRole"]): ServerEntitlementTruth {
   const accountRole = isEntitlementAccountRole(row.account_role) ? row.account_role : fallbackRole;
-  const tier = isEntitlementTier(row.tier) ? row.tier : "free";
+  const tier = normalizeEntitlementTier(row.tier) ?? "standard";
   const billingInterval = isEntitlementBillingInterval(row.billing_interval) ? row.billing_interval : "none";
-  const status = isEntitlementStatus(row.entitlement_status) ? row.entitlement_status : "needs_review";
+  const status = normalizeEntitlementStatus(row.entitlement_status) ?? "needs_review";
   const reasons: string[] = [];
-  if (!isEntitlementTier(row.tier)) {
+  if (!normalizeEntitlementTier(row.tier)) {
     reasons.push("Stored entitlement tier is missing or noncanonical.");
   }
   if (!isEntitlementBillingInterval(row.billing_interval)) {
@@ -99,7 +99,7 @@ function mapRowToEntitlementTruth(row: AccountEntitlementRow, fallbackRole: Serv
     updatedAt: row.last_verified_at ?? row.updated_at,
     verification: {
       persistenceConnected: true,
-      stripePriceMapped: Boolean(row.stripe_price_id) || tier === "free",
+      stripePriceMapped: Boolean(row.stripe_price_id) || tier === "standard",
       webhookVerified: row.source_of_truth === "stripe_webhook",
       reasons
     }
@@ -113,7 +113,7 @@ export function buildEntitlementSnapshot(entitlement: ServerEntitlementTruth): E
     && entitlement.source !== "server_default"
     && entitlement.verification.stripePriceMapped
     && entitlement.verification.persistenceConnected;
-  const accessState: EntitlementAccessState = paidAccess || entitlement.tier === "free"
+  const accessState: EntitlementAccessState = paidAccess || entitlement.tier === "standard"
     ? "allowed"
     : entitlement.verification.reasons.length
       ? "needs_review"
@@ -149,7 +149,7 @@ export async function resolveServerEntitlementForUser(input: {
 
   const supabase = input.supabaseOverride ?? createSupabaseAdminClient();
   if (!supabase) {
-    return buildFreeEntitlementTruth({
+    return buildStandardEntitlementTruth({
       profileId: input.user.id,
       accountRole,
       persistenceConnected: false,
@@ -166,7 +166,7 @@ export async function resolveServerEntitlementForUser(input: {
 
   if (result.error) {
     if (isSchemaUnavailableError(result.error)) {
-      return buildFreeEntitlementTruth({
+      return buildStandardEntitlementTruth({
         profileId: input.user.id,
         accountRole,
         persistenceConnected: false,
@@ -177,7 +177,7 @@ export async function resolveServerEntitlementForUser(input: {
   }
 
   if (!result.data) {
-    return buildFreeEntitlementTruth({
+    return buildStandardEntitlementTruth({
       profileId: input.user.id,
       accountRole
     });
@@ -196,8 +196,8 @@ export function checkEntitledFeatureAccess(input: {
     return {
       allowed: false,
       state: "unknown_entitlement" as const,
-      requiredTier: "free" as const,
-      currentTier: "free" as const,
+      requiredTier: "standard" as const,
+      currentTier: "standard" as const,
       reason: "Feature is not registered in the server entitlement registry."
     };
   }
@@ -207,7 +207,7 @@ export function checkEntitledFeatureAccess(input: {
       allowed: false,
       state: "unauthenticated" as const,
       requiredTier: feature.requiredTier,
-      currentTier: input.entitlement?.tier ?? "free",
+      currentTier: input.entitlement?.tier ?? "standard",
       reason: "A signed-in account is required."
     };
   }
@@ -218,7 +218,7 @@ export function checkEntitledFeatureAccess(input: {
       allowed: false,
       state: "forbidden_role" as const,
       requiredTier: feature.requiredTier,
-      currentTier: input.entitlement?.tier ?? "free",
+      currentTier: input.entitlement?.tier ?? "standard",
       reason: "The signed-in role does not own this feature."
     };
   }
@@ -228,18 +228,18 @@ export function checkEntitledFeatureAccess(input: {
       allowed: false,
       state: "needs_review" as const,
       requiredTier: feature.requiredTier,
-      currentTier: "free" as const,
+      currentTier: "standard" as const,
       reason: "Server entitlement proof is missing."
     };
   }
 
-  if (feature.requiredTier === "free") {
+  if (feature.requiredTier === "standard") {
     return {
       allowed: true,
       state: "allowed" as const,
       requiredTier: feature.requiredTier,
       currentTier: input.entitlement.tier,
-      reason: "Free feature is available to the canonical account role."
+      reason: "Standard feature is available to the canonical account role."
     };
   }
 

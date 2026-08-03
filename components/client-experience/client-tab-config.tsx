@@ -33,7 +33,7 @@ export const CLIENT_PRIMARY_NAV_ITEMS: Array<{
   { key: "search", href: CLIENT_PRIMARY_TAB_HREFS.search, label: "Search", icon: Search },
   { key: "culture", href: CLIENT_PRIMARY_TAB_HREFS.culture, label: "Culture", icon: Sparkles },
   { key: "messages", href: CLIENT_PRIMARY_TAB_HREFS.messages, label: "Messages", icon: MessageSquareText },
-  { key: "more", href: CLIENT_PRIMARY_TAB_HREFS.more, label: "Account", icon: Ellipsis }
+  { key: "more", href: CLIENT_PRIMARY_TAB_HREFS.more, label: "More", icon: Ellipsis }
 ];
 
 export const GUEST_CLIENT_NAV_ITEMS: Array<{

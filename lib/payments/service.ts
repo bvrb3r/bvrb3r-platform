@@ -15,6 +15,15 @@ import {
   syncStripeSettlementForPayment
 } from "@/lib/fintech/service";
 import { reversePointsForAppointment } from "@/lib/points/engine";
+import {
+  applyEligibleGiftBalanceAtCheckout,
+  GiftCardServiceError
+} from "@/lib/gift-cards/service";
+import {
+  AppointmentPaymentGuardError,
+  requireAppointmentPaymentAllowed,
+  requireShopPaymentAllowed
+} from "@/lib/payments/appointment-payment-guard";
 import { buildAppointmentLifecycleFields } from "@/lib/appointments/domain";
 import { isBvrb3rFinancialAppointment } from "@/lib/barber/command-center";
 import {
@@ -1872,6 +1881,29 @@ export async function createCapturedStripePaymentRecord(
     paymentStatus: "captured"
   });
 
+  if (input.appointmentId) {
+    try {
+      await requireAppointmentPaymentAllowed({ appointmentId: input.appointmentId }, supabase);
+    } catch (error) {
+      if (error instanceof AppointmentPaymentGuardError) {
+        throw new PaymentServiceError(error.message, error.status);
+      }
+      throw error;
+    }
+  } else if (input.posSaleId && input.shopId) {
+    try {
+      await requireShopPaymentAllowed({
+        shopId: input.shopId,
+        locationId: input.shopId
+      }, supabase);
+    } catch (error) {
+      if (error instanceof AppointmentPaymentGuardError) {
+        throw new PaymentServiceError(error.message, error.status);
+      }
+      throw error;
+    }
+  }
+
   let paymentMethod: PaymentMethodRow;
   try {
     paymentMethod = await loadStripePaymentMethodOrThrow(supabase, input.clientId, input.paymentMethodId);
@@ -3709,7 +3741,7 @@ export async function createAppointmentPayment(user: UserAccount, input: {
 }) {
   const supabase = getSupabaseOrThrow();
   const actor = await resolvePaymentActor(user, supabase);
-  const appointment = await loadAppointmentOrThrow(supabase, input.appointmentId);
+  let appointment = await loadAppointmentOrThrow(supabase, input.appointmentId);
   assertBvrb3rOwnsAppointmentPayment(appointment);
 
   if (isPaymentClientRole(actor.role)) {
@@ -3731,12 +3763,58 @@ export async function createAppointmentPayment(user: UserAccount, input: {
     throw new PaymentServiceError("Unable to inspect existing appointment payments.", 500);
   }
 
+  if ((existingPaymentsResult.data ?? []).length) {
+    throw new PaymentServiceError("A booking payment is already active for this appointment.", 409);
+  }
+
+  let giftApplication = {
+    outcome: "not_applied" as "not_applied" | "applied",
+    appliedCents: 0,
+    tipAppliedCents: 0,
+    serviceOnly: true
+  };
+  const clientProfileResult = await supabase
+    .from("clients")
+    .select("profile_id")
+    .eq("id", appointment.client_id)
+    .maybeSingle();
+  if (clientProfileResult.error) {
+    throw new PaymentServiceError("Unable to verify gift balance ownership before checkout.", 503);
+  }
+  const clientProfileId = (clientProfileResult.data?.profile_id as string | null | undefined) ?? null;
+  if (clientProfileId) {
+    try {
+      giftApplication = await applyEligibleGiftBalanceAtCheckout({
+        profileId: clientProfileId,
+        appointmentId: appointment.id
+      });
+    } catch (error) {
+      if (error instanceof GiftCardServiceError) {
+        throw new PaymentServiceError(error.message, error.status);
+      }
+      throw error;
+    }
+    if (giftApplication.outcome === "applied") {
+      appointment = await loadAppointmentOrThrow(supabase, appointment.id);
+    }
+  }
+
+  if (giftApplication.outcome === "applied" && numeric(appointment.balance_due) <= 0) {
+    return {
+      payment: null,
+      giftApplication,
+      summary: await readAppointmentPaymentSummary(appointment.id, supabase)
+    };
+  }
+
   const paymentIntent = resolveAppointmentPaymentIntent({
     appointmentStatus: appointment.status,
     depositAmount: numeric(appointment.deposit_amount),
     balanceDue: numeric(appointment.balance_due),
-    grandTotal: numeric(appointment.grand_total),
-    hasActiveBookingPayment: Boolean((existingPaymentsResult.data ?? []).length)
+    grandTotal: giftApplication.outcome === "applied"
+      ? numeric(appointment.balance_due)
+      : numeric(appointment.grand_total),
+    hasActiveBookingPayment: false
   });
 
   let paymentMethod: PaymentMethodRow | null = null;
@@ -3766,12 +3844,15 @@ export async function createAppointmentPayment(user: UserAccount, input: {
     metadata: {
       appointmentStatus: appointment.status,
       paymentStage: paymentIntent.stage,
+      giftCardAppliedCents: giftApplication.appliedCents,
+      giftCardTipAppliedCents: giftApplication.tipAppliedCents,
       source: isPaymentClientRole(actor.role) ? "client_payment_surface" : "shop_payment_surface"
     }
   });
 
   return {
     payment,
+    giftApplication,
     summary: await readAppointmentPaymentSummary(appointment.id, supabase)
   };
 }

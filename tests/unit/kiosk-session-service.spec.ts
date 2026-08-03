@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getCurrentUserFromServerMock, createSupabaseAdminClientMock, isSupabaseEnabledMock } = vi.hoisted(() => ({
+const { getCurrentUserFromServerMock, createSupabaseAdminClientMock, isSupabaseEnabledMock, assertBillingRiskMock } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
   createSupabaseAdminClientMock: vi.fn(),
-  isSupabaseEnabledMock: vi.fn()
+  isSupabaseEnabledMock: vi.fn(),
+  assertBillingRiskMock: vi.fn()
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -19,6 +20,20 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock
 }));
 
+vi.mock("@/lib/billing/pr34-service", () => ({
+  assertPr34BillingRiskAction: assertBillingRiskMock,
+  Pr34BillingServiceError: class Pr34BillingServiceError extends Error {
+    status: number;
+    code: string;
+
+    constructor(message: string, status = 400, code = "billing_request_failed") {
+      super(message);
+      this.status = status;
+      this.code = code;
+    }
+  }
+}));
+
 import {
   assertAnyActiveKioskDeviceSession,
   assertKioskDeviceSession,
@@ -26,6 +41,7 @@ import {
   readKioskSessionToken,
   startKioskDeviceSession
 } from "@/lib/kiosk/session-service";
+import { Pr34BillingServiceError } from "@/lib/billing/pr34-service";
 
 const SHOP = { id: "shop-ybor-01", public_username: "yborcuts", owner_profile_id: "owner-profile-1" };
 const LOCATION = { id: "0b6f5cbe-8a25-4b3e-9a67-0c2f6f2d9f11", reference_code: SHOP.id };
@@ -38,15 +54,33 @@ function sha256(value: string) {
 
 type SessionRow = Record<string, unknown>;
 
-function createSupabaseStub(options: { settingRow?: typeof SETTING | null; sessionRows?: SessionRow[] } = {}) {
+function createSupabaseStub(options: {
+  settingRow?: typeof SETTING | null;
+  sessionRows?: SessionRow[];
+  controlRows?: SessionRow[];
+} = {}) {
   const sessions: SessionRow[] = options.sessionRows ?? [];
   const updates: SessionRow[] = [];
   const settingRow = options.settingRow === undefined ? SETTING : options.settingRow;
+  const controlRows = options.controlRows ?? [
+    { control_key: "maintenance", active: false, reason: null, version: 1 },
+    { control_key: "kiosks", active: false, reason: null, version: 1 }
+  ];
 
   const stub = {
     sessions,
     updates,
     from(table: string) {
+      if (table === "architect_system_controls") {
+        return {
+          select: () => ({
+            in: async (_column: string, values: string[]) => ({
+              data: controlRows.filter((row) => values.includes(String(row.control_key))),
+              error: null
+            })
+          })
+        };
+      }
       if (table === "kiosk_settings") {
         return {
           select: () => ({
@@ -128,7 +162,9 @@ describe("kiosk device sessions", () => {
     getCurrentUserFromServerMock.mockReset();
     createSupabaseAdminClientMock.mockReset();
     isSupabaseEnabledMock.mockReset();
+    assertBillingRiskMock.mockReset();
     isSupabaseEnabledMock.mockReturnValue(true);
+    assertBillingRiskMock.mockResolvedValue({ allowed: true, action: "kiosk", reason: null });
     supabase = createSupabaseStub();
     createSupabaseAdminClientMock.mockReturnValue(supabase);
   });
@@ -146,8 +182,32 @@ describe("kiosk device sessions", () => {
       location_id: LOCATION.id,
       mode: "shop_owner",
       status: "active",
-      session_token_hash: sha256(session.token)
+      session_token_hash: sha256(session.token),
+      metadata: {
+        billingProfileId: SHOP.owner_profile_id,
+        billingAccountRole: "shop_owner_user"
+      }
     });
+    expect(assertBillingRiskMock).toHaveBeenCalledWith(expect.objectContaining({
+      user: { id: SHOP.owner_profile_id, role: "shop_owner_user" },
+      action: "kiosk"
+    }));
+  });
+
+  it("blocks session start when the global kiosk switch is active", async () => {
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseStub({
+      controlRows: [
+        { control_key: "maintenance", active: false, reason: null, version: 1 },
+        { control_key: "kiosks", active: true, reason: "Kiosk incident", version: 2 }
+      ]
+    }));
+    signInAs({ id: SHOP.owner_profile_id });
+
+    await expect(startKioskDeviceSession({ scope: "shop", targetReference: SHOP.id }))
+      .rejects.toMatchObject({
+        status: 503,
+        code: "architect_system_control_active"
+      });
   });
 
   it("lets shop-scoped staff start the shop kiosk session", async () => {
@@ -200,6 +260,19 @@ describe("kiosk device sessions", () => {
     supabase.sessions[0]!.expires_at = new Date(Date.now() - 1000).toISOString();
     await expect(assertKioskDeviceSession({ scope: "shop", targetReference: SHOP.id, token: session.token }))
       .rejects.toMatchObject({ status: 401, code: "session_invalid" });
+  });
+
+  it("rechecks the target billing account on every active kiosk mutation", async () => {
+    signInAs({ id: SHOP.owner_profile_id });
+    const session = await startKioskDeviceSession({ scope: "shop", targetReference: SHOP.id });
+    assertBillingRiskMock.mockRejectedValueOnce(new Pr34BillingServiceError(
+      "Balance due",
+      423,
+      "account_balance_locked"
+    ));
+
+    await expect(assertKioskDeviceSession({ scope: "shop", targetReference: SHOP.id, token: session.token }))
+      .rejects.toMatchObject({ status: 423, code: "account_balance_locked" });
   });
 
   it("accepts any active session for unscoped kiosk lookups and completes sessions on exit", async () => {

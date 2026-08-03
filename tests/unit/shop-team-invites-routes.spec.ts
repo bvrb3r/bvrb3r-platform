@@ -74,8 +74,34 @@ describe("shop team invite routes", () => {
     expect(body.shop.id).toBe("shop-ybor");
     expect(listOwnerTeamInviteDirectoryMock).toHaveBeenCalledWith(
       expect.objectContaining({ role: "owner" }),
-      "fade"
+      "fade",
+      undefined
     );
+  });
+
+  it("keeps the visual demo directory shop-scoped without a failed live-provider request", async () => {
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "demo");
+    getSessionUserMock.mockResolvedValue({
+      id: "profile-owner",
+      role: "owner",
+      email: "owner@example.com",
+      ownedShopId: null,
+      locationIds: ["loc-ybor"]
+    });
+    const { GET } = await import("@/app/api/owner/team/invites/route");
+
+    const response = await GET({
+      nextUrl: new URL("https://bvrb3r.test/api/owner/team/invites?shopId=loc-ybor")
+    } as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      shop: { id: "loc-ybor", label: "loc-ybor", setupNote: null },
+      barbers: []
+    });
+    expect(listOwnerTeamInviteDirectoryMock).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
   });
 
   it("creates owner invites without assigning the barber immediately", async () => {

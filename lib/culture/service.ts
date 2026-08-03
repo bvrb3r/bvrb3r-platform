@@ -421,6 +421,7 @@ type CulturePersonalizationSignals = {
   savedPostIds: Set<string>;
   likedPostIds: Set<string>;
   suppressedPostIds: Set<string>;
+  suppressedAuthorIds: Set<string>;
 };
 
 // Culture media storage is server-only; browsers upload through the API route after role checks.
@@ -1195,7 +1196,8 @@ function emptyCulturePersonalizationSignals(): CulturePersonalizationSignals {
     followedAuthorIds: new Set(),
     savedPostIds: new Set(),
     likedPostIds: new Set(),
-    suppressedPostIds: new Set()
+    suppressedPostIds: new Set(),
+    suppressedAuthorIds: new Set()
   };
 }
 
@@ -1208,7 +1210,7 @@ export async function getCulturePersonalizationSignals(
     return emptyCulturePersonalizationSignals();
   }
 
-  const [edgeRows, engagementRows, reportRows] = await Promise.all([
+  const [edgeRows, engagementRows, reportRows, outgoingBlockRows, incomingBlockRows, muteRows] = await Promise.all([
     fetchOptionalRows<Record<string, unknown>>(
       supabase
         .from("user_engagement_edges")
@@ -1229,6 +1231,27 @@ export async function getCulturePersonalizationSignals(
         .select("post_id, status")
         .eq("reporter_profile_id", profileId),
       "viewer_culture_reports"
+    ),
+    fetchOptionalRows<Record<string, unknown>>(
+      supabase
+        .from("culture_profile_blocks")
+        .select("blocked_profile_id, active")
+        .eq("blocker_profile_id", profileId),
+      "viewer_culture_outgoing_blocks"
+    ),
+    fetchOptionalRows<Record<string, unknown>>(
+      supabase
+        .from("culture_profile_blocks")
+        .select("blocker_profile_id, active")
+        .eq("blocked_profile_id", profileId),
+      "viewer_culture_incoming_blocks"
+    ),
+    fetchOptionalRows<Record<string, unknown>>(
+      supabase
+        .from("culture_profile_mutes")
+        .select("muted_profile_id, active")
+        .eq("muter_profile_id", profileId),
+      "viewer_culture_mutes"
     )
   ]);
 
@@ -1263,6 +1286,27 @@ export async function getCulturePersonalizationSignals(
     const postId = safeNullableText(report.post_id);
     if (postId && report.status !== "resolved") {
       signals.suppressedPostIds.add(postId);
+    }
+  }
+
+  for (const block of outgoingBlockRows) {
+    if (block.active !== false) {
+      const targetProfileId = safeNullableText(block.blocked_profile_id);
+      if (targetProfileId) signals.suppressedAuthorIds.add(targetProfileId);
+    }
+  }
+
+  for (const block of incomingBlockRows) {
+    if (block.active !== false) {
+      const targetProfileId = safeNullableText(block.blocker_profile_id);
+      if (targetProfileId) signals.suppressedAuthorIds.add(targetProfileId);
+    }
+  }
+
+  for (const mute of muteRows) {
+    if (mute.active !== false) {
+      const targetProfileId = safeNullableText(mute.muted_profile_id);
+      if (targetProfileId) signals.suppressedAuthorIds.add(targetProfileId);
     }
   }
 
@@ -1358,7 +1402,10 @@ export function rankCultureFeedItems(
   feedSessionId = ""
 ) {
   const ranked = [...posts]
-    .filter((post) => !signals.suppressedPostIds.has(post.id))
+    .filter((post) => (
+      !signals.suppressedPostIds.has(post.id)
+      && !signals.suppressedAuthorIds.has(post.author_profile_id)
+    ))
     .sort((left, right) => {
       const scoreDelta = culturePostPersonalizationScore(right, lookups, signals) - culturePostPersonalizationScore(left, lookups, signals);
       if (scoreDelta !== 0) {

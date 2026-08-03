@@ -61,7 +61,7 @@ export const bvrb3rTokens = {
     16: "64px"
   },
   font: {
-    body: 'var(--font-inter), Inter, "SF Pro Display", "Helvetica Neue", Arial, sans-serif',
+    body: 'var(--font-archivo), Archivo, "SF Pro Display", "Helvetica Neue", Arial, sans-serif',
     display: 'var(--font-archivo), Archivo, "SF Pro Display", "Helvetica Neue", Arial, sans-serif',
     serif: 'var(--font-instrument-serif), "Instrument Serif", Georgia, "Times New Roman", serif',
     kicker: 'var(--font-space-mono), "Space Mono", ui-monospace, monospace'

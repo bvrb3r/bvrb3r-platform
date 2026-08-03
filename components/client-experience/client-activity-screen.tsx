@@ -4,6 +4,7 @@ import { Gift, Link2, WalletCards } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClientReferralSummary } from "@/lib/engagement/client";
 import { useMarketplaceAnalyticsMutation } from "@/lib/marketplace/client";
@@ -96,6 +97,13 @@ export function ClientActivityScreen() {
       </header>
 
       {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
+
+      <FeatureGateTease
+        gateKey="client.analytics.style_history"
+        label="Style history"
+        eyebrow="Client analytics"
+        detail="A client-controlled view of past styles, saved references, and repeat outcomes."
+      />
 
       <ClientSectionBlock
         eyebrow="Balance"

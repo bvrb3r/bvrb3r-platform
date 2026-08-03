@@ -30,6 +30,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Use Node.js 22
         uses: actions/setup-node@v4
@@ -93,6 +94,7 @@ jobs:
           tests/unit/public-home-routing.spec.tsx
           tests/unit/public-site.spec.tsx
           tests/unit/runtime-resilience-provider.spec.tsx
+          tests/unit/secret-hygiene-guard.spec.ts
 
       - name: Full test suite
         run: npm test
@@ -107,7 +109,14 @@ jobs:
         run: npm run verify:doctrine
 
       - name: Tracked secret hygiene
-        run: npm run verify:secrets
+        env:
+          SECRET_SCAN_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$SECRET_SCAN_BASE_SHA" ]; then
+            npm run verify:secrets -- --commit-range "$SECRET_SCAN_BASE_SHA..HEAD"
+          else
+            npm run verify:secrets
+          fi
 
       - name: Production dependency security audit
         run: npm audit --omit=dev --audit-level=high

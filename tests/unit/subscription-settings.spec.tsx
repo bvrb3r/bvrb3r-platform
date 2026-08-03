@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
-import { buildFreeEntitlementTruth, type EntitlementAccountRole, type ServerEntitlementTruth } from "@/lib/entitlements/domain";
+import { buildStandardEntitlementTruth, type EntitlementAccountRole, type ServerEntitlementTruth } from "@/lib/entitlements/domain";
 import { buildSubscriptionSettingsSummary } from "@/lib/entitlements/subscription-settings";
 
 const forbiddenUserCopy =
@@ -46,30 +46,30 @@ function summaryFor(role: EntitlementAccountRole, entitlement: ServerEntitlement
 
 describe("subscription settings manage plan", () => {
   it("builds role-aware current tier cards from server entitlement snapshots", () => {
-    const client = summaryFor("client_user", buildFreeEntitlementTruth({ profileId: "profile-client_user", accountRole: "client_user" }));
+    const client = summaryFor("client_user", buildStandardEntitlementTruth({ profileId: "profile-client_user", accountRole: "client_user" }));
     const barber = summaryFor("barber_user", paidEntitlement("barber_user"));
     const owner = summaryFor("shop_owner_user", paidEntitlement("shop_owner_user", { tier: "elite" }));
 
     expect(client).toMatchObject({
       roleLabel: "Client",
-      currentTierLabel: "Free",
+      currentTierLabel: "Standard",
       accessStateLabel: "Active"
     });
-    expect(client.roleCopy).toBe("Free helps clients book and manage basics. Pro and Elite unlock advanced client benefits where configured.");
+    expect(client.roleCopy).toBe("Standard costs $0 and helps clients book and manage basics. Pro and Elite unlock advanced client benefits where configured.");
 
     expect(barber).toMatchObject({
       roleLabel: "Barber",
       currentTierLabel: "Pro",
       accessStateLabel: "Active"
     });
-    expect(barber.roleCopy).toBe("Free keeps basic profile and booking setup. Pro and Elite unlock business, retention, and growth tools where configured.");
+    expect(barber.roleCopy).toBe("Standard costs $0 and keeps basic profile and booking setup open. Pro and Elite unlock business, retention, and growth tools where configured.");
 
     expect(owner).toMatchObject({
       roleLabel: "Shop Owner",
       currentTierLabel: "Elite",
       accessStateLabel: "Active"
     });
-    expect(owner.roleCopy).toBe("Free keeps shop setup basics. Pro and Elite unlock team, money, kiosk, reports, and scale tools where configured.");
+    expect(owner.roleCopy).toBe("Standard costs $0 and keeps shop setup basics open. Pro and Elite unlock team, money, kiosk, reports, and scale tools where configured.");
   });
 
   it("keeps missing portal configuration in a safe disabled manage-plan state", () => {
@@ -116,7 +116,7 @@ describe("subscription settings manage plan", () => {
   });
 
   it("refreshes entitlement state from the server endpoint without accepting a frontend tier", async () => {
-    const initial = summaryFor("client_user", buildFreeEntitlementTruth({ profileId: "profile-client_user", accountRole: "client_user" }));
+    const initial = summaryFor("client_user", buildStandardEntitlementTruth({ profileId: "profile-client_user", accountRole: "client_user" }));
     const refreshed = summaryFor("client_user", paidEntitlement("client_user"));
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => ({
       ok: true,
@@ -126,7 +126,7 @@ describe("subscription settings manage plan", () => {
 
     render(<SubscriptionSettingsCard summary={initial} />);
 
-    expect(screen.getByTestId("subscription-settings-card-client")).toHaveTextContent("Free Client plan");
+    expect(screen.getByTestId("subscription-settings-card-client")).toHaveTextContent("Standard Client plan");
     fireEvent.click(screen.getByRole("button", { name: "Refresh plan status" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/subscription/settings", expect.objectContaining({
@@ -139,7 +139,7 @@ describe("subscription settings manage plan", () => {
   });
 
   it("renders refresh failures without changing the card to Pass", async () => {
-    const initial = summaryFor("shop_owner_user", buildFreeEntitlementTruth({
+    const initial = summaryFor("shop_owner_user", buildStandardEntitlementTruth({
       profileId: "profile-shop_owner_user",
       accountRole: "shop_owner_user",
       persistenceConnected: false,

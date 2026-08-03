@@ -93,7 +93,7 @@ export function ShopOwnerPlanAccessCard({
   }
 
   const featureGroups = [
-    { label: "Free", items: summary.features.free },
+    { label: "Standard · $0", items: summary.features.standard },
     { label: "Pro", items: summary.features.pro },
     { label: "Elite", items: summary.features.elite }
   ];
@@ -111,7 +111,7 @@ export function ShopOwnerPlanAccessCard({
             {summary.currentPlanLabel} shop access
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">
-            Free shop profile, hours, chairs, first invite, More/settings, support, and compliance stay open. Pro and Elite shop tools unlock only from server entitlement proof.
+            Standard is $0 and keeps the shop profile, hours, chairs, first invite, More/settings, support, and compliance open. Pro and Elite tools unlock only from server entitlement proof.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

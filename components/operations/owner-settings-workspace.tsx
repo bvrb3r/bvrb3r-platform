@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   BarChart3,
@@ -32,11 +33,13 @@ import {
   MoreSectionGroup,
   type MoreSectionGroup as MoreSectionGroupConfig
 } from "@/components/dashboard/more/more-components";
+import { RoadFutureGates } from "@/components/road/road-future-gates";
 import { MoreSettingModal } from "@/components/dashboard/more/more-setting-modal";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
+import type { ShopAddressMapboxFieldProps } from "@/components/marketplace/shop-address-mapbox-field";
 import { KioskSettingsCard } from "@/components/kiosk/kiosk-actions";
 import { ShopOwnerPlanAccessCard, ShopOwnerUpgradePrompt } from "@/components/owner-experience/shop-owner-plan-access-card";
 import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
@@ -54,6 +57,19 @@ import { getReadableActionError } from "@/lib/utils/feedback";
 import type { UserAccount } from "@/types/domain";
 
 type SettingTone = "green" | "yellow" | "red" | "muted";
+
+const ShopAddressMapboxField = dynamic<ShopAddressMapboxFieldProps>(
+  () => import("@/components/marketplace/shop-address-mapbox-field")
+    .then((module) => module.ShopAddressMapboxField),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-[24px] border border-dashed border-white/12 bg-black/25 p-5 text-sm text-white/58">
+        Loading verified map tools…
+      </div>
+    )
+  }
+);
 
 type SettingRow = {
   title: string;
@@ -570,7 +586,7 @@ export function OwnerSettingsWorkspace({
     },
     {
       title: "Plan Access",
-      subtitle: "Review Free, Pro, and Elite shop tools. Plan management is being prepared.",
+      subtitle: "Review Standard, Pro, and Elite shop tools. Standard is $0; paid plan management is being prepared.",
       onClick: () => setPlanAccessOpen(true),
       icon: <LockKeyhole className="h-5 w-5" />,
       status: ownerPlanSummary?.statusLabel ?? "Needs Review",
@@ -639,8 +655,14 @@ export function OwnerSettingsWorkspace({
     },
     {
       title: "Privacy",
-      subtitle: "Shop data, team data, client communication, public shop visibility, and owner/private visibility",
-      href: "/verify-contact",
+      subtitle: "Export, deactivate, deletion grace, shop data, and owner/private visibility",
+      href: "/dashboard/account/privacy",
+      icon: <ShieldCheck className="h-5 w-5" />
+    },
+    {
+      title: "Culture Safety",
+      subtitle: "Reports, blocks, mutes, appeals, and Culture standing",
+      href: "/dashboard/culture/safety",
       icon: <ShieldCheck className="h-5 w-5" />
     },
     {
@@ -683,6 +705,27 @@ export function OwnerSettingsWorkspace({
   ];
 
   const ownerMoreSections: MoreSectionGroupConfig[] = [
+    {
+      id: "owner-settings-progress-reference",
+      title: "Progress & Reference",
+      subtitle: "Follow your journey, then open the complete BVRB3R system map.",
+      roleScope: "owner" as const,
+      rows: [
+        { title: "The Road", subtitle: "Your real progress, badges, referrals, and next milestone.", href: "/road", icon: <BarChart3 className="h-5 w-5" /> },
+        { title: "System Atlas", subtitle: "The 21 mission chains · every door to its exit.", href: "/atlas", icon: <FileText className="h-5 w-5" /> }
+      ]
+    },
+    {
+      id: "owner-settings-access-tools",
+      title: "Access & Tools",
+      subtitle: "Open the shared cards, identity, and business-planning doors.",
+      roleScope: "owner" as const,
+      rows: [
+        { title: "Gift cards", subtitle: "Buy, claim, redeem, and review real shop-scoped gift-card balance.", href: "/gift-cards", icon: <Gift className="h-5 w-5" /> },
+        { title: "App ID", subtitle: "Your public-safe verified shop card and QR.", href: "/id", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Business Toolkit", subtitle: "Income, pricing, rent, AutoBooth, utilization, and no-show estimates.", href: "/pro/toolkit", icon: <BarChart3 className="h-5 w-5" /> }
+      ]
+    },
     {
       id: "owner-settings-shop-profile",
       title: "SHOP BUSINESS SETTINGS",
@@ -795,6 +838,17 @@ export function OwnerSettingsWorkspace({
 
       <section className="space-y-3">
         <MoreSectionGroup group={ownerMoreSections[0]} />
+        <RoadFutureGates role="shop_owner_user" />
+        {primaryShop ? (
+          <ShopAddressMapboxField
+            shopId={primaryShop.shopId}
+            currentAddress={shopPublicLocationLine === "Add shop address" ? null : shopPublicLocationLine}
+            onSaved={() => {
+              setQuickSetupFeedback({ tone: "success", message: "Verified shop address and public map pin saved." });
+              void profileQuery.refetch();
+            }}
+          />
+        ) : null}
         {selectedBrandingManager ? (
           shops.length ? (
             <div className="grid gap-4 pt-1 xl:grid-cols-[0.88fr_1.12fr]">
@@ -903,7 +957,7 @@ export function OwnerSettingsWorkspace({
             sectionKey: "owner-settings-payments-banking",
             title: "Plan Access",
             eyebrow: "Payments & Banking",
-            helper: "Review Free, Pro, and Elite shop tools. Plan management is being prepared.",
+            helper: "Review Standard, Pro, and Elite shop tools. Standard is $0; paid plan management is being prepared.",
             mode: "read_only",
             statusLabel: ownerPlanSummary.statusLabel,
             privacyLevel: "financial",

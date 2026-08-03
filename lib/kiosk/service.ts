@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { assertPr34BillingRiskAction, Pr34BillingServiceError } from "@/lib/billing/pr34-service";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { getBarberAvailabilityPayload, getBarberDetailsPayload } from "@/lib/booking/platform-service";
 import { demoLocations } from "@/lib/data/demo";
@@ -62,6 +63,20 @@ export class KioskServiceError extends Error {
     super(message);
     this.name = "KioskServiceError";
     this.status = status;
+  }
+}
+
+async function assertKioskClientBalanceClear(profileId: string) {
+  try {
+    await assertPr34BillingRiskAction({
+      user: { id: profileId, role: "client_user" },
+      action: "kiosk"
+    });
+  } catch (error) {
+    if (error instanceof Pr34BillingServiceError) {
+      throw new KioskServiceError(error.message, error.status === 423 ? 423 : 503);
+    }
+    throw new KioskServiceError("The kiosk cannot verify this client's $0.00 account balance.", 503);
   }
 }
 
@@ -537,6 +552,9 @@ export async function createKioskBooking(input: {
     selectedProfileId: input.selectedProfileId,
     source: "shop_kiosk"
   });
+  if (client && isSupabaseEnabled()) {
+    await assertKioskClientBalanceClear(client.profileId);
+  }
   const waitEstimate = calculateKioskWaitTime({
     queueDepth: queuePayload.summary.activeCount,
     nextAvailableAt: candidate.slot.startsAt,
@@ -620,6 +638,9 @@ export async function createBarberKioskBooking(input: {
     selectedProfileId: input.selectedProfileId,
     source: "barber_kiosk"
   });
+  if (client && isSupabaseEnabled()) {
+    await assertKioskClientBalanceClear(client.profileId);
+  }
   const waitEstimate = calculateKioskWaitTime({
     nextAvailableAt: slot.startsAt,
     serviceDurationMinutes: availability.service?.durationMin,

@@ -1,5 +1,8 @@
 import type { Route } from "next";
-import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
+import {
+  buildMarketplaceBookingHref,
+  type MarketplaceBookingHref
+} from "@/lib/marketplace/links";
 import type { ClientEngagementSummary, ClientReferralSummary, IntelligenceRebookingWindow } from "@/types/engagement";
 import type { ClientMembershipValueView } from "@/types/monetization";
 
@@ -181,7 +184,7 @@ export function buildQuickRebookHref(input: {
   locationId?: string;
   serviceId?: string;
   appointmentTime?: string;
-}) {
+}): MarketplaceBookingHref {
   return buildMarketplaceBookingHref({
     barberId: input.barberId,
     username: input.username,
@@ -196,7 +199,7 @@ export function buildClientPrimaryBookingHref(input: {
   home: ClientHomeInput;
   bookings: ClientBookingsInput;
   summary: ClientEngagementSummary;
-}) {
+}): MarketplaceBookingHref {
   const preferredBarber = resolvePreferredBarber(input.home, input.bookings, input.summary);
   const preferredServiceId = resolvePreferredServiceId(input.bookings, input.summary);
 
@@ -218,7 +221,7 @@ export function buildClientPrimaryBookingHref(input: {
     });
   }
 
-  return "/booking/new?mode=next-available" as Route;
+  return "/booking/new?mode=next-available";
 }
 
 export function buildClientDashboardFeed(input: {

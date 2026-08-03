@@ -3,14 +3,14 @@ import type { Role } from "@/types/domain";
 export const ENTITLEMENT_ACCOUNT_ROLES = ["client_user", "barber_user", "shop_owner_user"] as const;
 export type EntitlementAccountRole = (typeof ENTITLEMENT_ACCOUNT_ROLES)[number];
 
-export const ENTITLEMENT_TIERS = ["free", "pro", "elite"] as const;
+export const ENTITLEMENT_TIERS = ["standard", "pro", "elite"] as const;
 export type EntitlementTier = (typeof ENTITLEMENT_TIERS)[number];
 
 export const ENTITLEMENT_BILLING_INTERVALS = ["none", "monthly", "yearly"] as const;
 export type EntitlementBillingInterval = (typeof ENTITLEMENT_BILLING_INTERVALS)[number];
 
 export const ENTITLEMENT_STATUSES = [
-  "free",
+  "standard",
   "trialing",
   "active",
   "past_due",
@@ -89,12 +89,28 @@ export function isEntitlementTier(value: unknown): value is EntitlementTier {
   return typeof value === "string" && ENTITLEMENT_TIERS.includes(value as EntitlementTier);
 }
 
+export function normalizeEntitlementTier(value: unknown): EntitlementTier | null {
+  if (value === "free") {
+    return "standard";
+  }
+
+  return isEntitlementTier(value) ? value : null;
+}
+
 export function isEntitlementBillingInterval(value: unknown): value is EntitlementBillingInterval {
   return typeof value === "string" && ENTITLEMENT_BILLING_INTERVALS.includes(value as EntitlementBillingInterval);
 }
 
 export function isEntitlementStatus(value: unknown): value is EntitlementStatus {
   return typeof value === "string" && ENTITLEMENT_STATUSES.includes(value as EntitlementStatus);
+}
+
+export function normalizeEntitlementStatus(value: unknown): EntitlementStatus | null {
+  if (value === "free") {
+    return "standard";
+  }
+
+  return isEntitlementStatus(value) ? value : null;
 }
 
 export function isPaidEntitlementTier(tier: EntitlementTier) {
@@ -143,7 +159,7 @@ export function mapStripeSubscriptionStatusToEntitlement(status: string | null |
   }
 }
 
-export function buildFreeEntitlementTruth(input: {
+export function buildStandardEntitlementTruth(input: {
   profileId?: string | null;
   accountRole: EntitlementAccountRole;
   persistenceConnected?: boolean;
@@ -152,9 +168,9 @@ export function buildFreeEntitlementTruth(input: {
   return {
     profileId: input.profileId ?? null,
     accountRole: input.accountRole,
-    tier: "free",
+    tier: "standard",
     billingInterval: "none",
-    status: "free",
+    status: "standard",
     source: "server_default",
     stripeCustomerId: null,
     stripeSubscriptionId: null,
@@ -168,7 +184,7 @@ export function buildFreeEntitlementTruth(input: {
       persistenceConnected: input.persistenceConnected ?? true,
       stripePriceMapped: false,
       webhookVerified: false,
-      reasons: [input.reason ?? "No server-paid entitlement exists; defaulting to Free."]
+      reasons: [input.reason ?? "No server-paid entitlement exists; defaulting to Standard."]
     }
   };
 }

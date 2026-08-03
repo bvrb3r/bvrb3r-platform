@@ -46,6 +46,7 @@ import {
   MoreSectionGroup,
   type MoreSectionGroup as MoreSectionGroupConfig
 } from "@/components/dashboard/more/more-components";
+import { RoadFutureGates } from "@/components/road/road-future-gates";
 import { MoreSettingModal } from "@/components/dashboard/more/more-setting-modal";
 import { BarberEarningsWorkspace } from "@/components/operations/barber-earnings-workspace";
 import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
@@ -1147,13 +1148,45 @@ export function BarberSettingsScreen({
   };
   const barberMoreSections: MoreSectionGroupConfig[] = [
     {
+      id: "barber-settings-progress-reference",
+      title: "Progress & Reference",
+      subtitle: "Follow your journey, then open the complete BVRB3R system map.",
+      roleScope: "barber" as const,
+      rows: [
+        { title: "The Road", subtitle: "Your real progress, badges, referrals, and next milestone.", href: "/road", icon: <MapPin className="h-5 w-5" /> },
+        { title: "System Atlas", subtitle: "The 21 mission chains · every door to its exit.", href: "/atlas", icon: <FileText className="h-5 w-5" /> }
+      ]
+    },
+    {
+      id: "barber-settings-access-tools",
+      title: "Access & Tools",
+      subtitle: "Open the shared cards, identity, and business-planning doors.",
+      roleScope: "barber" as const,
+      rows: [
+        { title: "Gift cards", subtitle: "Buy, claim, redeem, and review real gift-card balance.", href: "/gift-cards", icon: <Gift className="h-5 w-5" /> },
+        { title: "App ID", subtitle: "Your public-safe BVRB3R card and QR.", href: "/id", icon: <Fingerprint className="h-5 w-5" /> },
+        { title: "Business Toolkit", subtitle: "Income, pricing, rent, AutoBooth, utilization, and no-show estimates.", href: "/pro/toolkit", icon: <BarChart3 className="h-5 w-5" /> }
+      ]
+    },
+    {
+      id: "barber-settings-calendar-connections",
+      title: "Calendar Connections",
+      subtitle: "Keep external schedule truth visible without moving external money.",
+      roleScope: "barber" as const,
+      rows: [
+        { title: "Square Appointments", subtitle: "Read-only appointment import · Pays on Square", href: "/dashboard/barber/calendar/square", icon: <CalendarDays className="h-5 w-5" /> },
+        { title: "Apple Calendar", subtitle: "Private feed out · device-minimized busy windows in", href: "/dashboard/barber/calendar/apple", icon: <CalendarDays className="h-5 w-5" /> },
+        { title: "Google Calendar", subtitle: "Dedicated BVRB3R calendar out · free/busy only in", href: "/dashboard/barber/calendar/google", icon: <CalendarDays className="h-5 w-5" /> }
+      ]
+    },
+    {
       id: "barber-settings-payments-banking",
       title: "Payments & Banking",
       subtitle: "Payout account, eligible balance, transactions, and tax posture.",
       roleScope: "barber" as const,
       rows: [
         { title: "Wallet / Billing", subtitle: "Default payment method for bookings, subscriptions, and tools", href: "/dashboard/barber/more?section=wallet", icon: <CreditCard className="h-5 w-5" /> },
-        { title: "Plan Access", subtitle: "Free profile and booking setup stay open. Pro and Elite tools require server-verified plan access.", onClick: () => document.getElementById(sectionIdMap.plan)?.scrollIntoView({ behavior: "smooth", block: "start" }), status: subscriptionSummary?.accessStateLabel ?? "Needs Review", tone: subscriptionSummary?.accessTone === "green" ? "green" : subscriptionSummary?.accessTone === "red" ? "red" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Plan Access", subtitle: "Standard profile and booking setup stay open at $0. Pro and Elite tools require server-verified plan access.", onClick: () => document.getElementById(sectionIdMap.plan)?.scrollIntoView({ behavior: "smooth", block: "start" }), status: subscriptionSummary?.accessStateLabel ?? "Needs Review", tone: subscriptionSummary?.accessTone === "green" ? "green" : subscriptionSummary?.accessTone === "red" ? "red" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Stripe Connect", subtitle: "Manage bank accounts and payouts", href: "/dashboard/barber/more?section=payouts", status: payoutSetupStatusLabel, tone: payoutsReady ? "green" : "yellow", icon: <WalletCards className="h-5 w-5" />, needsAction: !payoutsReady },
         { title: "Barber Payouts", subtitle: "Eligible balance, payout routing, payout holds, release readiness, and payout history", href: "/dashboard/barber/more?section=payouts", status: payoutCurrency(eligiblePayoutAmount ?? 0), tone: hasPayoutAmount ? "green" : "muted", icon: <CircleDollarSign className="h-5 w-5" /> },
         { title: "Rewards", subtitle: "Points, credits, loyalty progress, and referrals", href: "/rewards", icon: <Gift className="h-5 w-5" /> },
@@ -1167,10 +1200,12 @@ export function BarberSettingsScreen({
       subtitle: "Identity, license, account security, and privacy.",
       roleScope: "barber" as const,
       rows: [
+        { title: "Setup Checklist", subtitle: "Five required go-live gates plus ChairSync, portfolio, and chair QR/NFC", href: "/dashboard/barber/setup", status: "Open checklist", tone: "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Identity Verification", subtitle: "Government ID or driver license proving who owns this account", onClick: () => openBusinessTool("verification"), status: formatStatusLabel(canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)), icon: <Fingerprint className="h-5 w-5" />, testId: "business-tool-verification" },
         { title: "License Verification", subtitle: "Barber license upload, license state, license review, and approval status", onClick: () => openBusinessTool("verification"), icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Password & Login", subtitle: "Password, sign-in method, email login, phone login, and connected access", onClick: () => openBusinessTool("account"), icon: <KeyRound className="h-5 w-5" />, testId: "business-tool-account-login" },
-        { title: "Privacy", subtitle: "Public profile and communication preferences", onClick: () => openBusinessTool("notifications"), icon: <SlidersHorizontal className="h-5 w-5" />, testId: "business-tool-privacy" },
+        { title: "Privacy", subtitle: "Export, deactivate, deletion grace, and communication visibility", href: "/dashboard/account/privacy", icon: <SlidersHorizontal className="h-5 w-5" />, testId: "business-tool-privacy" },
+        { title: "Culture Safety", subtitle: "Reports, blocks, mutes, appeals, and Culture standing", href: "/dashboard/culture/safety", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Account Security", subtitle: "Email verification, phone verification, device/session protection, and account status", onClick: () => openBusinessTool("account"), icon: <Settings2 className="h-5 w-5" />, testId: "business-tool-account" },
         { title: "Legal", subtitle: "Barber terms, platform agreement, payout terms, shop relationship terms, and service policies", onClick: () => openBusinessTool("legal"), icon: <FileText className="h-5 w-5" />, testId: "business-tool-legal" }
       ]
@@ -3168,7 +3203,9 @@ export function BarberSettingsScreen({
             </BusinessToolModal>
           ) : null}
 
-        {barberMoreSections.filter((group) => group.title !== "Business Setup").map((group) => <MoreSectionGroup key={group.title} group={group} />)}
+        <MoreSectionGroup group={barberMoreSections[0]} />
+        <RoadFutureGates role="barber_user" />
+        {barberMoreSections.slice(1).filter((group) => group.title !== "Business Setup").map((group) => <MoreSectionGroup key={group.title} group={group} />)}
 
         <MoreLogoutCard />
       </div>

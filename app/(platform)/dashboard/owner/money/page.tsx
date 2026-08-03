@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { ShopOwnerPlanAccessCard } from "@/components/owner-experience/shop-owner-plan-access-card";
-import { FintechWorkspace } from "@/components/operations/fintech-workspace";
-import { OwnerMoneyWorkspace } from "@/components/operations/owner-money-workspace";
 import { Card } from "@/components/ui/card";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 import { resolveShopOwnerPaywallSummaryForUser } from "@/lib/entitlements/shop-owner-paywall";
@@ -51,11 +49,13 @@ export default async function OwnerMoneyPage({
           </p>
         </Card>
       ) : null}
-      <OwnerMoneyWorkspace />
       {fintechRequested ? (
-        <section className="mt-4">
-          <FintechWorkspace viewerRole="owner" locationIds={user.locationIds} />
-        </section>
+        <Card className="mt-4 rounded-[28px] border border-amber-300/18 bg-amber-300/[0.055] p-5 sm:p-6">
+          <p className="surface-label">Detailed finance closed</p>
+          <p className="mt-3 text-lg font-semibold text-white">
+            Shop owners can see booth rent billed, paid, and outstanding. Barber earnings, tips, payouts, and external-provider money remain private.
+          </p>
+        </Card>
       ) : null}
     </DashboardShell>
   );

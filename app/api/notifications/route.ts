@@ -3,9 +3,30 @@ import { z } from "zod";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import {
   getNotificationCenter,
+  markNotificationsRead,
   NotificationServiceError,
   saveNotificationCenterPreferences
 } from "@/lib/notifications/service";
+import { notificationCategories, notificationChannels } from "@/lib/notifications/domain";
+
+const channelSchema = z.object(
+  Object.fromEntries(notificationChannels.map((channel) => [channel, z.boolean()])) as {
+    push: z.ZodBoolean;
+    sms: z.ZodBoolean;
+    email: z.ZodBoolean;
+  }
+);
+
+const channelPreferencesSchema = z.object(
+  Object.fromEntries(notificationCategories.map((category) => [category, channelSchema])) as {
+    booking: typeof channelSchema;
+    queue: typeof channelSchema;
+    money: typeof channelSchema;
+    culture: typeof channelSchema;
+    team: typeof channelSchema;
+    system: typeof channelSchema;
+  }
+);
 
 const preferencesSchema = z.object({
   push_enabled: z.boolean().optional(),
@@ -14,8 +35,17 @@ const preferencesSchema = z.object({
   message_alerts_enabled: z.boolean().optional(),
   rewards_alerts_enabled: z.boolean().optional(),
   creator_alerts_enabled: z.boolean().optional(),
+  channel_preferences: channelPreferencesSchema.optional(),
+  quiet_hours_enabled: z.boolean().optional(),
   quiet_hours_start: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
-  quiet_hours_end: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional()
+  quiet_hours_end: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  quiet_hours_timezone: z.string().regex(/^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+)+$/).optional(),
+  marketing_barber_enabled: z.boolean().optional(),
+  marketing_platform_enabled: z.boolean().optional()
+});
+
+const readStateSchema = z.object({
+  notificationId: z.string().uuid().optional()
 });
 
 function errorResponse(error: unknown) {
@@ -57,3 +87,20 @@ export async function PATCH(request: Request) {
   }
 }
 
+export async function POST(request: Request) {
+  try {
+    const session = await getCurrentUserFromServer();
+    if (!session.authenticated || session.user.id === "guest-user") {
+      return NextResponse.json({ error: "Sign in to update notifications." }, { status: 401 });
+    }
+    const parsed = readStateSchema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid notification read-state request." }, { status: 400 });
+    }
+    return NextResponse.json(
+      await markNotificationsRead(session.user, parsed.data.notificationId)
+    );
+  } catch (error) {
+    return errorResponse(error);
+  }
+}

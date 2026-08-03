@@ -7,6 +7,7 @@ import { PublicBarberGrowthActions } from "@/components/marketplace/public-barbe
 import { PublicBarberMessageAction } from "@/components/marketplace/public-barber-message-action";
 import { PublicBarberPortfolioGrid } from "@/components/marketplace/public-barber-portfolio-grid";
 import { PublicBarberReviewsSection } from "@/components/marketplace/public-barber-reviews-section";
+import { ReportBlockSheet } from "@/components/trust/report-block-sheet";
 import { getBookingLocationSummary } from "@/lib/marketplace/client-facing";
 import { dateLabel } from "@/lib/utils";
 import type { PublicBarberProfileView } from "@/lib/marketplace/engine";
@@ -101,12 +102,14 @@ export function PublicBarberProfile({
   profile,
   viewerCanFollow = false,
   viewerCanMessage = false,
-  viewerCanReview = viewerCanFollow
+  viewerCanReview = viewerCanFollow,
+  viewerCanReport = viewerCanFollow
 }: {
   profile: PublicBarberProfileView;
   viewerCanFollow?: boolean;
   viewerCanMessage?: boolean;
   viewerCanReview?: boolean;
+  viewerCanReport?: boolean;
 }) {
   const displayName = getDisplayName(profile);
   const handle = getHandle(profile.profile.username);
@@ -228,6 +231,15 @@ export function PublicBarberProfile({
                 canFollow={viewerCanFollow}
                 initialFollowerCount={followerCount}
               />
+              {viewerCanReport ? (
+                <ReportBlockSheet
+                  targetProfileId={profile.barber.userId}
+                  targetLabel={displayName}
+                  source="public_profile"
+                  triggerLabel="Safety"
+                  triggerClassName="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/10 bg-black/24 px-4 text-xs font-black uppercase tracking-[0.12em] text-white/68 transition hover:border-red-400/25 hover:text-red-100"
+                />
+              ) : null}
             </div>
           </div>
         </div>
@@ -258,6 +270,7 @@ export function PublicBarberProfile({
         initialReviewCount={reviewCount}
         initialReviews={profile.reviews}
         viewerCanReview={viewerCanReview}
+        viewerCanReport={viewerCanReport}
       />
     </div>
   );

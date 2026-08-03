@@ -99,12 +99,12 @@ vi.mock("@/components/auth/logout-button", () => ({
 import { ClientProfileScreen } from "@/components/client-experience/client-profile-screen";
 
 const freeClientPaywallSummary: ClientPaywallSummary = {
-  currentPlanLabel: "Free",
+  currentPlanLabel: "Standard",
   billingLabel: "No paid billing cycle connected",
-  statusLabel: "Free access active",
+  statusLabel: "Standard access active",
   statusTone: "neutral",
   serverEvidenceLabel: "Server default",
-  freeBookingAvailable: true,
+  standardBookingAvailable: true,
   lockedFeatureCount: 6,
   needsReviewCount: 0,
   upgradeActionLabel: "Review plan access",
@@ -112,14 +112,14 @@ const freeClientPaywallSummary: ClientPaywallSummary = {
   checkoutUrl: null,
   portalUrl: null,
   features: {
-    free: [{
+    standard: [{
       id: "client-basic-booking",
       title: "Basic booking, search, and discovery",
       description: "Search barbers, view shops, book eligible services, and manage activity.",
-      requiredPlanLabel: "Free",
+      requiredPlanLabel: "Standard",
       state: "available",
       stateLabel: "Available",
-      reason: "Free client essentials remain available.",
+      reason: "Standard client essentials remain available.",
       evidenceSource: "Server entitlement registry"
     }],
     pro: [{
@@ -406,7 +406,7 @@ describe("client profile screen", () => {
     expect(screen.getByRole("link", { name: /Culture Profile Public creator identity, bio, interests, display style, and Culture profile visibility/ })).toHaveAttribute("href", "/dashboard/client/public-profile");
     expect(screen.getByRole("link", { name: /Content Settings Posting defaults, visibility, content categories, comments, sharing, and moderation preferences/ })).toHaveAttribute("href", "/dashboard/client/public-profile");
     expect(screen.getByRole("link", { name: /Performance Posts, views, followers, engagement, shares, profile clicks, and booking influence/ })).toHaveAttribute("href", "/dashboard/client/activity");
-    expect(screen.getByRole("link", { name: /Creator Safety Content rules, strikes, reports, appeal status, and platform standing/ })).toHaveAttribute("href", "/contact");
+    expect(screen.getByRole("link", { name: /Creator Safety Content rules, strikes, reports, appeal status, and platform standing/ })).toHaveAttribute("href", "/dashboard/culture/safety");
     expect(screen.getByText("Creator tools locked")).toBeInTheDocument();
     expect(screen.queryByText("0 posts")).not.toBeInTheDocument();
     expect(screen.queryByText("No violations")).not.toBeInTheDocument();
@@ -414,7 +414,7 @@ describe("client profile screen", () => {
       expect(screen.queryByText(label)).not.toBeInTheDocument();
     });
     expect(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method for bookings, auto-booking, subscriptions, tools, ads, and promotions/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
-    expect(screen.getByRole("link", { name: /Plan Access Free booking stays open. Pro and Elite tools require server-verified plan access. Needs review/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
+    expect(screen.getByRole("link", { name: /Plan Access Standard booking stays open at \$0. Pro and Elite tools require server-verified plan access. Needs review/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
     expect(screen.getByRole("link", { name: /Stripe Connect Creator-only/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
     expect(screen.getByRole("link", { name: /Creator Payouts Locked until approved. All creator payout information/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
     expect(screen.getByRole("link", { name: /Rewards Points, credits, loyalty progress, and referrals/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
@@ -428,7 +428,7 @@ describe("client profile screen", () => {
     expect(screen.getByText("Required when this account becomes eligible to receive payouts, such as creator payouts. Not required for normal booking.")).toBeInTheDocument();
     expect(screen.queryByText("License Verification")).not.toBeInTheDocument();
     expect(screen.queryByText("Business Verification")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Privacy Booking data, rewards data/ })).toHaveAttribute("href", "/contact");
+    expect(screen.getByRole("link", { name: /Privacy Export, deactivate, deletion grace, and account visibility/ })).toHaveAttribute("href", "/dashboard/account/privacy");
     expect(screen.getByRole("link", { name: /Help Center Guides and support resources/ })).toHaveAttribute("href", "/contact");
     expect(screen.queryByRole("heading", { name: "Account & Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Booking Activity" })).not.toBeInTheDocument();
@@ -470,7 +470,7 @@ describe("client profile screen", () => {
     );
 
     expect(screen.getByTestId("client-plan-access-card")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Free client access" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Standard client access" })).toBeInTheDocument();
     expect(screen.getByText("Basic booking, search, and discovery")).toBeInTheDocument();
     expect(screen.getByText("Priority rebooking preferences")).toBeInTheDocument();
     expect(screen.getByText("Premium discovery filters")).toBeInTheDocument();

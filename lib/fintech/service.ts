@@ -1,4 +1,8 @@
 import Stripe from "stripe";
+import {
+  ArchitectRuntimeControlError,
+  assertArchitectRuntimeControlAllows
+} from "@/lib/architect/city-map/runtime-controls.server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
@@ -60,6 +64,8 @@ import {
   type StripeConnectEnvironmentView
 } from "@/lib/stripe/connect";
 import { processStripeBillingWebhookEvent } from "@/lib/monetization/service";
+import { processGiftCardStripeEvent } from "@/lib/gift-cards/service";
+import { syncGroupPaymentIntentProviderStatus } from "@/lib/group-booking/payment-status-sync";
 import {
   isPayoutReadinessEligible,
   loadPaymentRoutingConstraintEvidence,
@@ -1008,6 +1014,17 @@ function getSupabaseOrThrow() {
   }
 
   return supabase;
+}
+
+async function assertPayoutExecutionEnabled(supabase: SupabaseClient) {
+  try {
+    await assertArchitectRuntimeControlAllows(supabase, "payouts");
+  } catch (error) {
+    if (error instanceof ArchitectRuntimeControlError) {
+      throw new FintechServiceError(error.message, error.status);
+    }
+    throw error;
+  }
 }
 
 async function resolveStripeWebhookPayment(
@@ -6002,6 +6019,7 @@ export async function releaseFreelanceRoutingPayout(input: {
     };
   }
 
+  await assertPayoutExecutionEnabled(supabase);
   const now = new Date().toISOString();
   const { attemptNumber, idempotencyKey } = nextUniqueFreelancePayoutReleaseAttempt({
     routingRecordId: context.routing.id,
@@ -6312,6 +6330,7 @@ export async function releaseReadyFreelancePayoutBatch(input: {
     };
   }
 
+  await assertPayoutExecutionEnabled(getSupabaseOrThrow());
   const preflight = await inspectPlatformBalanceBeforeRelease({
     amount: requiredAmount,
     currency: "usd"
@@ -6527,6 +6546,7 @@ export async function executeFintechPayouts(
   }
 ): Promise<ExecuteFintechPayoutsResult> {
   const supabase = getSupabaseOrThrow();
+  await assertPayoutExecutionEnabled(supabase);
   const actor = await resolveActor(user, supabase);
   assertManagementActor(actor);
 
@@ -7228,20 +7248,25 @@ async function processStripeMoneyMovementWebhook(
 
     const payment = await resolveStripeWebhookPayment(supabase, { paymentIntentId });
     if (!payment) {
+      await syncGroupPaymentIntentProviderStatus({ paymentIntentId, outcome: "needs_review" });
       return { handled: false, connectedAccountId: null as string | null };
     }
 
     await syncStripeWebhookPaymentStatus(supabase, payment, "captured", { event });
     await syncStripeSettlementForPayment(supabase, payment.id, { throwOnError: true });
+    await syncGroupPaymentIntentProviderStatus({ paymentIntentId, outcome: "paid" });
     return { handled: true, connectedAccountId: null as string | null };
   }
 
-  if (event.type === "payment_intent.payment_failed" || event.type === "charge.failed") {
+  if (event.type === "payment_intent.payment_failed" || event.type === "payment_intent.canceled" || event.type === "charge.failed") {
     const paymentIntentId =
-      event.type === "payment_intent.payment_failed"
+      event.type === "payment_intent.payment_failed" || event.type === "payment_intent.canceled"
         ? (typeof eventObject.id === "string" ? eventObject.id : null)
         : (typeof eventObject.payment_intent === "string" ? eventObject.payment_intent : null);
-    const chargeId = typeof eventObject.id === "string" ? eventObject.id : null;
+    const chargeId = event.type === "charge.failed" && typeof eventObject.id === "string" ? eventObject.id : null;
+    if (paymentIntentId) {
+      await syncGroupPaymentIntentProviderStatus({ paymentIntentId, outcome: "needs_review" });
+    }
     const payment = await resolveStripeWebhookPayment(supabase, {
       paymentIntentId,
       chargeId
@@ -7280,6 +7305,9 @@ async function processStripeMoneyMovementWebhook(
       });
     }
     await syncStripeSettlementForPayment(supabase, payment.id, { throwOnError: true });
+    if (event.type === "charge.succeeded" && paymentIntentId) {
+      await syncGroupPaymentIntentProviderStatus({ paymentIntentId, outcome: "paid" });
+    }
     return { handled: true, connectedAccountId: null as string | null };
   }
 
@@ -7377,6 +7405,14 @@ export async function processStripeConnectWebhook(
   try {
     const billingResult = await processStripeBillingWebhookEvent(event);
     if (billingResult.handled) {
+      await completeStripeWebhookAudit(supabase, audit.row.id, {
+        processingStatus: "processed"
+      });
+      return { received: true, duplicate: false, status: "processed" };
+    }
+
+    const giftCardResult = await processGiftCardStripeEvent(event);
+    if (giftCardResult.handled) {
       await completeStripeWebhookAudit(supabase, audit.row.id, {
         processingStatus: "processed"
       });

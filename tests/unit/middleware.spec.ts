@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { NextRequest } from "next/server";
 
 const { createServerClientMock, getUserMock } = vi.hoisted(() => ({
@@ -67,5 +68,47 @@ describe("phase 0 auth middleware", () => {
     expect(config.matcher).toContain("/architect/:path*");
     expect(config.matcher).toContain("/dashboard/:path*");
     expect(config.matcher).toContain("/verify-contact/:path*");
+  });
+
+  it("protects the private queue root without intercepting public token status URLs", () => {
+    expect(unstable_doesMiddlewareMatch({
+      config,
+      nextConfig: {},
+      url: "https://bvrb3r.app/queue"
+    })).toBe(true);
+    expect(unstable_doesMiddlewareMatch({
+      config,
+      nextConfig: {},
+      url: "https://bvrb3r.app/queue/public-capability-token"
+    })).toBe(false);
+  });
+
+  it("protects exact owner aliases while preserving public shop profile slugs", () => {
+    expect(unstable_doesMiddlewareMatch({
+      config,
+      nextConfig: {},
+      url: "https://bvrb3r.app/shop/home"
+    })).toBe(true);
+    expect(unstable_doesMiddlewareMatch({
+      config,
+      nextConfig: {},
+      url: "https://bvrb3r.app/shop/phillips-barbershop"
+    })).toBe(false);
+    expect(unstable_doesMiddlewareMatch({
+      config,
+      nextConfig: {},
+      url: "https://bvrb3r.app/pro/rent"
+    })).toBe(true);
+  });
+
+  it("keeps client activity private while leaving guest home and search public", () => {
+    expect(unstable_doesMiddlewareMatch({
+      config,
+      nextConfig: {},
+      url: "https://bvrb3r.app/activity"
+    })).toBe(true);
+    for (const url of ["https://bvrb3r.app/home", "https://bvrb3r.app/search?q=fade"]) {
+      expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url })).toBe(false);
+    }
   });
 });

@@ -1,14 +1,33 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import type { Route } from "next";
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, MapPinned } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, MapPinned, MessageCircle, Navigation, Route as RouteIcon } from "lucide-react";
+import type {
+  DiscoveryMapBounds,
+  MapboxDiscoveryCanvasProps
+} from "@/components/marketplace/mapbox-discovery-canvas";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMarketplaceRoutePreviewMutation, type MarketplaceMapViewport } from "@/lib/marketplace/client";
 import { dateLabel } from "@/lib/utils";
 import type { MapDiscoveryMarker } from "@/types/domain";
+
+const MapboxDiscoveryCanvas = dynamic<MapboxDiscoveryCanvasProps>(
+  () => import("@/components/marketplace/mapbox-discovery-canvas")
+    .then((module) => module.MapboxDiscoveryCanvas),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="min-h-[320px] rounded-[30px] border border-white/8 bg-black/30 p-4">
+        <Skeleton className="h-full min-h-[288px] w-full rounded-[24px]" />
+      </div>
+    )
+  }
+);
 
 function MarkerSkeleton() {
   return (
@@ -20,16 +39,22 @@ function MarkerSkeleton() {
   );
 }
 
-function normalizePosition(value: number, min: number, max: number) {
-  if (max === min) {
-    return 50;
-  }
-
-  return 12 + ((value - min) / (max - min)) * 76;
-}
-
-export function DiscoveryMapPanel({ markers, isLoading, error }: { markers: MapDiscoveryMarker[]; isLoading: boolean; error?: string | null; }) {
+export function DiscoveryMapPanel({
+  markers,
+  isLoading,
+  error,
+  onSearchBounds,
+  origin
+}: {
+  markers: MapDiscoveryMarker[];
+  isLoading: boolean;
+  error?: string | null;
+  onSearchBounds?: (bounds: DiscoveryMapBounds) => void;
+  origin?: Pick<MarketplaceMapViewport, "latitude" | "longitude">;
+}) {
   const [selectedId, setSelectedId] = useState<string | null>(markers[0]?.id ?? null);
+  const routePreview = useMarketplaceRoutePreviewMutation();
+  const resetRoutePreview = routePreview.reset;
 
   useEffect(() => {
     if (!markers.length) {
@@ -41,18 +66,10 @@ export function DiscoveryMapPanel({ markers, isLoading, error }: { markers: MapD
   }, [markers]);
 
   const selectedMarker = markers.find((marker) => marker.id === selectedId) ?? markers[0] ?? null;
-  const bounds = useMemo(() => {
-    if (!markers.length) {
-      return { minLat: 0, maxLat: 1, minLng: 0, maxLng: 1 };
-    }
 
-    return {
-      minLat: Math.min(...markers.map((marker) => marker.latitude)),
-      maxLat: Math.max(...markers.map((marker) => marker.latitude)),
-      minLng: Math.min(...markers.map((marker) => marker.longitude)),
-      maxLng: Math.max(...markers.map((marker) => marker.longitude))
-    };
-  }, [markers]);
+  useEffect(() => {
+    resetRoutePreview();
+  }, [origin?.latitude, origin?.longitude, resetRoutePreview, selectedId]);
 
   return (
     <Card className="rounded-[36px] p-6 sm:p-8">
@@ -64,68 +81,110 @@ export function DiscoveryMapPanel({ markers, isLoading, error }: { markers: MapD
         <MapPinned className="h-5 w-5 text-[#d9f985]" />
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.04fr_0.96fr]">
-        <div className="order-2 relative min-h-[280px] overflow-hidden rounded-[30px] border border-white/8 bg-[radial-gradient(circle_at_top,rgba(196, 242, 78,0.14),rgba(8,8,8,0.98))] p-4 sm:min-h-[320px] lg:order-1 lg:min-h-[360px]">
-          <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:48px_48px]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(196, 242, 78,0.12),transparent_24%),radial-gradient(circle_at_74%_62%,rgba(196, 242, 78,0.08),transparent_22%)]" />
+        <div className="order-2 space-y-4 lg:order-1">
           {isLoading && !markers.length ? (
-            <div className="relative z-10 grid gap-3 sm:grid-cols-2">
+            <div className="grid min-h-[320px] gap-3 rounded-[30px] border border-white/8 bg-black/30 p-4 sm:grid-cols-2">
               <MarkerSkeleton />
               <MarkerSkeleton />
               <MarkerSkeleton />
             </div>
-          ) : markers.length ? (
-            <>
-              <div className="relative z-10 h-[280px] sm:h-[320px] rounded-[24px] border border-white/8 bg-black/18">
-                {markers.map((marker) => {
-                  const left = normalizePosition(marker.longitude, bounds.minLng, bounds.maxLng);
-                  const top = 100 - normalizePosition(marker.latitude, bounds.minLat, bounds.maxLat);
-                  const isActive = marker.id === selectedId;
-                  return (
-                    <button
-                      key={marker.id}
-                      type="button"
-                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${isActive ? "border-[#e0f6a0]/70 bg-[linear-gradient(135deg,#c4f24e_0%,#d4f97a_100%)] text-black shadow-[0_12px_28px_rgba(196, 242, 78,0.28)]" : "border-white/14 bg-black/70 text-white hover:border-[#C4F24E]/28 hover:text-[#e4f9b8]"}`}
-                      style={{ left: `${left}%`, top: `${top}%` }}
-                      onClick={() => setSelectedId(marker.id)}
-                    >
-                      {marker.kind === "shop" ? "Shop" : "Chair"}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="relative z-10 mt-4 rounded-[24px] border border-white/8 bg-black/25 p-4">
-                {selectedMarker ? (
-                  <>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-lg font-semibold">{selectedMarker.label}</p>
-                        <p className="mt-2 text-sm text-white/58">{selectedMarker.shopName ?? "Independent route coverage"}</p>
-                      </div>
-                      <span className="status-pill text-[#e4f9b8]">{selectedMarker.kind === "shop" ? "Shop" : "Barber"}</span>
-                    </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-[18px] border border-white/8 bg-black/30 px-3 py-3 text-sm text-white/72">Rating {selectedMarker.rating.toFixed(1)}</div>
-                      <div className="rounded-[18px] border border-white/8 bg-black/30 px-3 py-3 text-sm text-white/72">{selectedMarker.priceRangeLabel}</div>
-                      <div className="rounded-[18px] border border-white/8 bg-black/30 px-3 py-3 text-sm text-white/72">{dateLabel(selectedMarker.nextAvailableAt)}</div>
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {selectedMarker.featuredLabel ? <span className="status-pill text-[#e4f9b8]">{selectedMarker.featuredLabel}</span> : null}
-                      {selectedMarker.trustLabel ? <span className="status-pill text-white/72">{selectedMarker.trustLabel}</span> : null}
-                      {selectedMarker.cityLabel ? <span className="status-pill text-white/72">{selectedMarker.cityLabel}</span> : null}
-                    </div>
-                    {selectedMarker.bookingHref ? (
-                      <Link href={selectedMarker.bookingHref as Route} className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#e0f6a0]/40 bg-[linear-gradient(135deg,#c4f24e_0%,#d4f97a_100%)] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-black shadow-[0_14px_34px_rgba(196, 242, 78,0.24)] transition hover:translate-y-[-1px] hover:shadow-[0_18px_38px_rgba(196, 242, 78,0.28)]">
-                        Book from map
-                        <ArrowRight className="h-4 w-4" />
-                      </Link>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-            </>
           ) : (
-            <div className="relative z-10 empty-state-panel rounded-[24px] p-5 text-sm text-white/55">No visible markers matched this filter set.</div>
+            <MapboxDiscoveryCanvas
+              markers={markers}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onSearchBounds={onSearchBounds}
+              routeCoordinates={routePreview.data?.geometry.coordinates}
+            />
           )}
+          {selectedMarker ? (
+            <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-lg font-semibold">{selectedMarker.label}</p>
+                  <p className="mt-2 text-sm text-white/58">{selectedMarker.shopName ?? "Independent route coverage"}</p>
+                </div>
+                <span className="status-pill text-[#e4f9b8]">{selectedMarker.kind === "shop" ? "Shop" : "Barber"}</span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[18px] border border-white/8 bg-black/30 px-3 py-3 text-sm text-white/72">Rating {selectedMarker.rating.toFixed(1)}</div>
+                <div className="rounded-[18px] border border-white/8 bg-black/30 px-3 py-3 text-sm text-white/72">{selectedMarker.priceRangeLabel}</div>
+                <div className="rounded-[18px] border border-white/8 bg-black/30 px-3 py-3 text-sm text-white/72">{selectedMarker.distanceMiles === undefined ? dateLabel(selectedMarker.nextAvailableAt) : `${selectedMarker.distanceMiles.toFixed(1)} mi`}</div>
+              </div>
+              {selectedMarker.driveTimeMinutes ? (
+                <div className="mt-3 rounded-[18px] border border-[#C4F24E]/14 bg-[#C4F24E]/[0.055] px-3 py-3 text-sm text-white/72">
+                  About {selectedMarker.driveTimeMinutes} min by car
+                  {selectedMarker.driveDistanceMiles ? ` · ${selectedMarker.driveDistanceMiles.toFixed(1)} road mi` : ""}
+                </div>
+              ) : null}
+              {routePreview.data ? (
+                <div role="status" className="mt-3 rounded-[18px] border border-[#C4F24E]/18 bg-[#C4F24E]/[0.07] px-3 py-3 text-sm text-white/72">
+                  Route overview: about {routePreview.data.durationMinutes} min · {routePreview.data.distanceMiles.toFixed(1)} road mi.
+                  <span className="mt-1 block text-xs text-white/48">Overview only. Open Apple Maps or Google Maps for live navigation.</span>
+                </div>
+              ) : null}
+              {routePreview.error ? (
+                <div role="status" className="mt-3 rounded-[18px] border border-red-400/20 bg-red-500/[0.07] px-3 py-3 text-sm text-red-100">
+                  {routePreview.error instanceof Error ? routePreview.error.message : "The route preview is unavailable."}
+                </div>
+              ) : null}
+              <div className="mt-4 flex flex-wrap gap-2">
+                {selectedMarker.featuredLabel ? <span className="status-pill text-[#C9A24D]">{selectedMarker.featuredLabel}</span> : null}
+                {selectedMarker.trustLabel ? <span className="status-pill text-white/72">{selectedMarker.trustLabel}</span> : null}
+                {selectedMarker.cityLabel ? <span className="status-pill text-white/72">{selectedMarker.cityLabel}</span> : null}
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {origin ? (
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#C4F24E]/30 bg-[#C4F24E]/8 px-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#e4f9b8] disabled:cursor-wait disabled:opacity-55"
+                    disabled={routePreview.isPending}
+                    onClick={() => routePreview.mutate({ markerId: selectedMarker.id, origin })}
+                  >
+                    {routePreview.isPending ? "Loading route..." : routePreview.data ? "Refresh route" : "Preview route"}
+                    <RouteIcon className="h-4 w-4" />
+                  </button>
+                ) : null}
+                {selectedMarker.username ? (
+                  <Link
+                    href={`/${selectedMarker.kind === "shop" ? "shop" : "barber"}/${selectedMarker.username}` as Route}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/14 bg-black/35 px-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white"
+                  >
+                    View profile
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                ) : null}
+                {selectedMarker.bookingHref ? (
+                  <Link href={selectedMarker.bookingHref as Route} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#e0f6a0]/40 bg-[#C4F24E] px-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-black">
+                    Book
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                ) : null}
+                <a
+                  href={`https://maps.apple.com/?daddr=${encodeURIComponent(`${selectedMarker.latitude},${selectedMarker.longitude}`)}&dirflg=d`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/14 bg-black/35 px-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white"
+                >
+                  Apple Maps
+                  <Navigation className="h-4 w-4" />
+                </a>
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${selectedMarker.latitude},${selectedMarker.longitude}`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/14 bg-black/35 px-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white"
+                >
+                  Google Maps
+                  <MapPinned className="h-4 w-4" />
+                </a>
+                <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-dashed border-white/10 px-4 text-[10px] uppercase tracking-[0.14em] text-white/38" title="Messaging opens after a verified relationship or booking thread exists.">
+                  <MessageCircle className="h-4 w-4" />
+                  Message after booking
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="order-1 space-y-3 lg:order-2">
           {error ? <FeedbackBanner tone="error" message={error} /> : null}
@@ -164,9 +223,5 @@ export function DiscoveryMapPanel({ markers, isLoading, error }: { markers: MapD
     </Card>
   );
 }
-
-
-
-
 
 

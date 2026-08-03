@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFreeEntitlementTruth, type ServerEntitlementTruth } from "@/lib/entitlements/domain";
+import { buildStandardEntitlementTruth, type ServerEntitlementTruth } from "@/lib/entitlements/domain";
 import { buildClientPaywallSummary } from "@/lib/entitlements/client-paywall";
 
 function activeClientEntitlement(overrides: Partial<ServerEntitlementTruth> = {}): ServerEntitlementTruth {
@@ -29,18 +29,18 @@ function activeClientEntitlement(overrides: Partial<ServerEntitlementTruth> = {}
 }
 
 describe("client paywall locked feature model", () => {
-  it("keeps free client booking, search, and discovery available from server entitlement truth", () => {
+  it("keeps standard client booking, search, and discovery available from server entitlement truth", () => {
     const summary = buildClientPaywallSummary({
       user: { id: "profile-client", role: "client_user" },
-      entitlement: buildFreeEntitlementTruth({
+      entitlement: buildStandardEntitlementTruth({
         profileId: "profile-client",
         accountRole: "client_user"
       })
     });
 
-    expect(summary.currentPlanLabel).toBe("Free");
-    expect(summary.freeBookingAvailable).toBe(true);
-    expect(summary.features.free.every((feature) => feature.state === "available")).toBe(true);
+    expect(summary.currentPlanLabel).toBe("Standard");
+    expect(summary.standardBookingAvailable).toBe(true);
+    expect(summary.features.standard.every((feature) => feature.state === "available")).toBe(true);
     expect(summary.features.pro.every((feature) => feature.state === "locked")).toBe(true);
     expect(summary.features.elite.every((feature) => feature.state === "locked")).toBe(true);
   });
@@ -61,7 +61,7 @@ describe("client paywall locked feature model", () => {
   it("keeps unavailable persistence in Needs Review rather than fake upgrade success", () => {
     const summary = buildClientPaywallSummary({
       user: { id: "profile-client", role: "client_user" },
-      entitlement: buildFreeEntitlementTruth({
+      entitlement: buildStandardEntitlementTruth({
         profileId: "profile-client",
         accountRole: "client_user",
         persistenceConnected: false,

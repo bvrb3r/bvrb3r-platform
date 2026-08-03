@@ -80,6 +80,17 @@ const SERVICE_REFERENCE = "srv-test-cut-1777841145997";
 
 function createTables(): Record<string, Row[]> {
   return {
+    architect_system_controls: [{
+      control_key: "maintenance",
+      active: false,
+      reason: null,
+      version: 1
+    }, {
+      control_key: "bookings",
+      active: false,
+      reason: null,
+      version: 1
+    }],
     shops: [],
     profiles: [{
       id: CLIENT_PROFILE_ID,
@@ -396,6 +407,12 @@ function createSupabaseMock(tables: Record<string, Row[]>) {
   return {
     from(table: string) {
       return new QueryBuilder(table);
+    },
+    rpc(name: string) {
+      if (name !== "pr36_shop_payment_allowed") {
+        throw new Error(`Unexpected RPC ${name}`);
+      }
+      return Promise.resolve({ data: true, error: null });
     }
   };
 }
@@ -1074,6 +1091,7 @@ describe("core booking loop regression", () => {
   });
 
   it("refuses completion when no captured booking payment exists", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const tables = createTables();
     const appointmentReference = "appt-unpaid-tier1";
     tables.appointments.push(buildConfirmedAppointmentRow(appointmentReference));
@@ -1096,5 +1114,13 @@ describe("core booking loop regression", () => {
       status: "confirmed",
       completed_at: null
     });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[barber-appointment] complete_failed",
+      expect.objectContaining({
+        appointmentId: canonicalAppointmentUuid(appointmentReference),
+        errorName: "PaymentNotCaptured"
+      })
+    );
+    warnSpy.mockRestore();
   });
 });

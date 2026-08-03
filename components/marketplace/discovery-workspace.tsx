@@ -12,7 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClientEngagementSummary } from "@/lib/engagement/client";
-import { useHaircutNowMatch, useMarketplaceDiscovery, useMarketplaceMap, type MarketplaceApiError } from "@/lib/marketplace/client";
+import {
+  useHaircutNowMatch,
+  useMarketplaceDiscovery,
+  useMarketplaceMap,
+  coarsenMarketplaceOrigin,
+  type MarketplaceApiError,
+  type MarketplaceMapViewport
+} from "@/lib/marketplace/client";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import { currency, dateLabel } from "@/lib/utils";
@@ -78,6 +85,9 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
   const [specialty, setSpecialty] = useState("");
   const [maxDistanceMiles, setMaxDistanceMiles] = useState("");
   const [showInstantMatch, setShowInstantMatch] = useState(false);
+  const [mapViewport, setMapViewport] = useState<MarketplaceMapViewport>();
+  const [locationPermissionError, setLocationPermissionError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
 
   const deferredQuery = useDeferredValue(query);
   const filters: DiscoveryFilters = {
@@ -93,7 +103,7 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
 
   const discoveryQuery = useMarketplaceDiscovery(filters, clientId);
   const clientSummaryQuery = useClientEngagementSummary(Boolean(clientId));
-  const mapQuery = useMarketplaceMap(filters);
+  const mapQuery = useMarketplaceMap(filters, mapViewport);
   const haircutNowQuery = useHaircutNowMatch(clientId, locationId || undefined);
 
   const discoveryError = discoveryQuery.error ? getReadableActionError(discoveryQuery.error as MarketplaceApiError) : null;
@@ -101,6 +111,29 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
   const instantError = haircutNowQuery.error ? getReadableActionError(haircutNowQuery.error as MarketplaceApiError) : null;
   const results = discoveryQuery.data ?? [];
   const markers = mapQuery.data ?? [];
+
+  function requestNearbyMap() {
+    if (!navigator.geolocation) {
+      setLocationPermissionError("Location is unavailable on this device. Search by city or shop instead.");
+      return;
+    }
+    setLocating(true);
+    setLocationPermissionError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setMapViewport(coarsenMarketplaceOrigin({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        }));
+        setLocating(false);
+      },
+      () => {
+        setLocationPermissionError("Location permission was not granted. Search still works without exposing your location.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: false, timeout: 8_000, maximumAge: 5 * 60 * 1000 }
+    );
+  }
   const locationOptions = [...new Map(results.filter((result) => result.locationId).map((result) => [result.locationId!, result.locationLabel ?? result.shopName ?? result.locationId!])).entries()];
   const clientSummary = clientSummaryQuery.data;
   const favoriteUpdates = (clientSummary?.followedBarbers ?? [])
@@ -519,15 +552,34 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
           </div>
         </Card>
 
-        <DiscoveryMapPanel markers={markers} isLoading={mapQuery.isLoading && !mapQuery.data} error={mapError} />
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" variant="secondary" className="min-h-11" onClick={requestNearbyMap} disabled={locating}>
+            <Compass className="h-4 w-4" />
+            {locating ? "Locating..." : mapViewport ? "Refresh my location" : "Use my location"}
+          </Button>
+          <p className="text-xs leading-6 text-white/48">
+            {mapViewport
+              ? "Supabase PostGIS now selects and ranks the nearby result set; Mapbox renders those pins."
+              : "Location permission is requested only when you choose it."}
+          </p>
+        </div>
+        {locationPermissionError ? <FeedbackBanner tone="info" message={locationPermissionError} /> : null}
+        <DiscoveryMapPanel
+          markers={markers}
+          isLoading={mapQuery.isLoading && !mapQuery.data}
+          error={mapError}
+          origin={mapViewport ? {
+            latitude: mapViewport.latitude,
+            longitude: mapViewport.longitude
+          } : undefined}
+          onSearchBounds={(bounds) => {
+            setMapViewport((current) => current ? { ...current, ...bounds } : current);
+          }}
+        />
       </section>
     </div>
   );
 }
-
-
-
-
 
 
 

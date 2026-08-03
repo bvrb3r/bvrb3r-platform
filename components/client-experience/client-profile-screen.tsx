@@ -34,6 +34,7 @@ import { ClientPaymentMethodsPanel } from "@/components/client-experience/client
 import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
 import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
+import { RoadFutureGates } from "@/components/road/road-future-gates";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
@@ -304,6 +305,26 @@ export function ClientProfileScreen({
   })();
   const clientMoreSections: MoreSectionGroupConfig[] = [
     {
+      title: "Progress & Reference",
+      subtitle: "Follow your journey, then open the complete BVRB3R system map.",
+      roleScope: "client" as const,
+      rows: [
+        { href: "/road", title: "The Road", subtitle: "Your real progress, badges, referrals, and next milestone.", icon: <MapPinned className="h-5 w-5" /> },
+        { href: "/road#road-referrals", title: "Invite friends", subtitle: "Share your Road code; rewards count only after a qualified SET 1 completion.", icon: <MailPlus className="h-5 w-5" /> },
+        { href: "/atlas", title: "System Atlas", subtitle: "The 21 mission chains · every door to its exit.", icon: <FileText className="h-5 w-5" /> }
+      ]
+    },
+    {
+      title: "Access & Tools",
+      subtitle: "Open the shared cards, identity, and business-planning doors.",
+      roleScope: "client" as const,
+      rows: [
+        { href: "/gift-cards", title: "Gift cards", subtitle: "Buy, claim, redeem, and review real gift-card balance.", icon: <Gift className="h-5 w-5" /> },
+        { href: "/id", title: "App ID", subtitle: "Your public-safe BVRB3R card and QR.", icon: <ShieldCheck className="h-5 w-5" /> },
+        { href: "/pro/toolkit", title: "Business Toolkit", subtitle: "Marketing-accessible income, pricing, rent, and utilization estimates.", icon: <SlidersHorizontal className="h-5 w-5" /> }
+      ]
+    },
+    {
       title: "Client Content Creator Settings",
       subtitle: "Manage your creator eligibility, Culture profile, content settings, performance, and creator safety.",
       roleScope: "client" as const,
@@ -313,7 +334,7 @@ export function ClientProfileScreen({
         { href: "/dashboard/client/public-profile", title: "Culture Profile", subtitle: "Public creator identity, bio, interests, display style, and Culture profile visibility.", icon: <Camera className="h-5 w-5" /> },
         { href: "/dashboard/client/public-profile", title: "Content Settings", subtitle: "Posting defaults, visibility, content categories, comments, sharing, and moderation preferences.", icon: <SlidersHorizontal className="h-5 w-5" /> },
         { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Performance", subtitle: "Posts, views, followers, engagement, shares, profile clicks, and booking influence.", icon: <ReceiptText className="h-5 w-5" /> },
-        { href: "/contact", title: "Creator Safety", subtitle: "Content rules, strikes, reports, appeal status, and platform standing.", icon: <ShieldCheck className="h-5 w-5" /> }
+        { href: "/dashboard/culture/safety", title: "Creator Safety", subtitle: "Content rules, strikes, reports, appeal status, and platform standing.", icon: <ShieldCheck className="h-5 w-5" /> }
       ]
     },
     {
@@ -322,7 +343,7 @@ export function ClientProfileScreen({
       roleScope: "client" as const,
       rows: [
         { href: "/dashboard/client/more?section=wallet", title: "Wallet / Billing", subtitle: "Default payment method for bookings, auto-booking, subscriptions, tools, ads, and promotions.", icon: <CreditCard className="h-5 w-5" />, needsAction: !defaultPaymentMethod },
-        { href: "/dashboard/client/more?section=wallet", title: "Plan Access", subtitle: "Free booking stays open. Pro and Elite tools require server-verified plan access.", icon: <ShieldCheck className="h-5 w-5" />, status: paywallSummary?.statusLabel ?? "Needs review", tone: paywallSummary?.statusTone === "green" ? "green" : "yellow", needsAction: Boolean(!paywallSummary || paywallSummary.lockedFeatureCount || paywallSummary.needsReviewCount) },
+        { href: "/dashboard/client/more?section=wallet", title: "Plan Access", subtitle: "Standard booking stays open at $0. Pro and Elite tools require server-verified plan access.", icon: <ShieldCheck className="h-5 w-5" />, status: paywallSummary?.statusLabel ?? "Needs review", tone: paywallSummary?.statusTone === "green" ? "green" : "yellow", needsAction: Boolean(!paywallSummary || paywallSummary.lockedFeatureCount || paywallSummary.needsReviewCount) },
         { href: "/dashboard/client/more?section=rewards", title: "Stripe Connect", subtitle: "Creator-only. Manage bank accounts and payout connection when creator payout eligibility unlocks.", icon: <WalletCards className="h-5 w-5" />, status: "Creator-only", tone: "yellow", needsAction: true },
         { href: "/dashboard/client/more?section=rewards", title: "Creator Payouts", subtitle: "Locked until approved. All creator payout information for this account lives here.", icon: <CircleDollarSign className="h-5 w-5" />, status: "Locked", tone: "yellow", needsAction: true },
         { href: "/dashboard/client/more?section=rewards", title: "Rewards", subtitle: "Points, credits, loyalty progress, and referrals", icon: <Gift className="h-5 w-5" /> },
@@ -337,7 +358,7 @@ export function ClientProfileScreen({
       rows: [
         { title: "Identity Verification", subtitle: "Required when this account becomes eligible to receive payouts, such as creator payouts. Not required for normal booking.", href: "/verify-contact", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Password & Login", subtitle: "Password, sign-in method, email login, phone login, and connected access.", href: "/verify-contact", icon: <KeyRound className="h-5 w-5" /> },
-        { title: "Privacy", subtitle: "Booking data, rewards data, location preference, public culture profile, and communication visibility.", href: "/contact", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Privacy", subtitle: "Export, deactivate, deletion grace, and account visibility.", href: "/dashboard/account/privacy", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Account Security", subtitle: "Email verification, phone verification, device/session protection, and account status.", href: "/verify-contact", status: emailVerified || phoneVerified ? "Verified" : "Needs setup", tone: emailVerified || phoneVerified ? "green" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
         { title: "Legal", subtitle: "Terms, privacy policy, creator terms, rewards terms, payout terms, and account agreements.", href: "/contact", icon: <FileText className="h-5 w-5" /> }
       ]
@@ -1322,7 +1343,9 @@ export function ClientProfileScreen({
         </ClientSectionBlock>
       ) : null}
 
-      {clientMoreSections.map((group) => <MoreSectionGroup key={group.title} group={group} />)}
+      <MoreSectionGroup group={clientMoreSections[0]} />
+      <RoadFutureGates role="client_user" />
+      {clientMoreSections.slice(1).map((group) => <MoreSectionGroup key={group.title} group={group} />)}
 
       <MoreLogoutCard />
 

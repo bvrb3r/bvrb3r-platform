@@ -1,5 +1,4 @@
-﻿import type { Route } from "next";
-import type { AiRecommendationType } from "@/types/ai";
+﻿import type { AiRecommendationType } from "@/types/ai";
 import type { HaircutNowMatch, MarketplaceSourceKind } from "@/types/domain";
 import { buildDeepLinkPayload } from "@/lib/mobile/links";
 
@@ -16,7 +15,9 @@ interface BookingHrefOptions {
   aiRecommendationType?: AiRecommendationType;
 }
 
-export function buildMarketplaceBookingHref(options: BookingHrefOptions): Route {
+export type MarketplaceBookingHref = "/booking/new" | `/booking/new?${string}`;
+
+export function buildMarketplaceBookingHref(options: BookingHrefOptions): MarketplaceBookingHref {
   const params = new URLSearchParams();
 
   if (options.barberId) {
@@ -60,7 +61,7 @@ export function buildMarketplaceBookingHref(options: BookingHrefOptions): Route 
   }
 
   const queryString = params.toString();
-  return `/booking/new${queryString ? `?${queryString}` : ""}` as Route;
+  return `/booking/new${queryString ? `?${queryString}` : ""}` as MarketplaceBookingHref;
 }
 
 export function buildMarketplaceBookingLinks(options: BookingHrefOptions) {

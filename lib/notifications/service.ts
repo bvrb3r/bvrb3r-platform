@@ -4,6 +4,14 @@ import {
   updateNotificationPreferences,
   type NotificationPreferencesPayload
 } from "@/lib/settings/service";
+import {
+  forceActiveQueueSms,
+  normalizeNotificationChannelPreferences,
+  notificationCategory,
+  notificationCategories,
+  notificationChannels,
+  safeNotificationDeepLink
+} from "@/lib/notifications/domain";
 import type { UserAccount } from "@/types/domain";
 
 type NotificationRow = {
@@ -16,6 +24,8 @@ type NotificationRow = {
   scheduled_for: string | null;
   created_at: string | null;
   metadata: Record<string, unknown> | null;
+  read_at: string | null;
+  deep_link: string | null;
 };
 
 type DeliveryRow = {
@@ -43,9 +53,13 @@ export type NotificationCenterPayload = {
     channel: string;
     status: string;
     type: string;
+    category: ReturnType<typeof notificationCategory>;
     createdAt: string | null;
     scheduledFor: string | null;
     operational: boolean;
+    readAt: string | null;
+    unread: boolean;
+    deepLink: string | null;
   }>;
   deliveries: Array<{
     id: string;
@@ -64,6 +78,7 @@ export type NotificationCenterPayload = {
     updatedAt: string;
   }>;
   preferences: NotificationPreferencesPayload | null;
+  activeQueueSmsLocked: boolean;
   generatedAt: string;
 };
 
@@ -83,6 +98,43 @@ function assertSignedIn(user: UserAccount) {
   }
 }
 
+async function hasActiveQueueSmsLock(
+  supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+  user: UserAccount
+) {
+  const client = await supabase
+    .from("clients")
+    .select("id")
+    .eq("profile_id", user.id)
+    .maybeSingle();
+  if (client.error) {
+    throw new NotificationServiceError("Unable to verify active queue notification protection.", 500);
+  }
+  if (!client.data?.id) {
+    return false;
+  }
+  const queue = await supabase
+    .from("waitlist_entries")
+    .select("id")
+    .eq("client_id", client.data.id)
+    .eq("operational_sms_consent", true)
+    .in("public_queue_state", [
+      "waiting",
+      "almost_ready",
+      "ready",
+      "grace",
+      "behind",
+      "delayed",
+      "reassigned",
+      "rejoin"
+    ])
+    .limit(1);
+  if (queue.error) {
+    throw new NotificationServiceError("Unable to verify active queue notification protection.", 500);
+  }
+  return Boolean(queue.data?.length);
+}
+
 export async function getNotificationCenter(user: UserAccount): Promise<NotificationCenterPayload> {
   assertSignedIn(user);
   const supabase = createSupabaseAdminClient();
@@ -92,6 +144,7 @@ export async function getNotificationCenter(user: UserAccount): Promise<Notifica
       items: [],
       deliveries: [],
       preferences: preferenceResult.notificationPreferences,
+      activeQueueSmsLocked: false,
       generatedAt: new Date().toISOString()
     };
   }
@@ -99,14 +152,14 @@ export async function getNotificationCenter(user: UserAccount): Promise<Notifica
   const [profileItems, emailItems, profileDeliveries, emailDeliveries] = await Promise.all([
     supabase
       .from("notifications")
-      .select("id, title, body, channel, status, notification_type, scheduled_for, created_at, metadata")
+      .select("id, title, body, channel, status, notification_type, scheduled_for, created_at, metadata, read_at, deep_link")
       .eq("profile_id", user.id)
       .order("created_at", { ascending: false })
       .limit(80),
     user.email
       ? supabase
         .from("notifications")
-        .select("id, title, body, channel, status, notification_type, scheduled_for, created_at, metadata")
+        .select("id, title, body, channel, status, notification_type, scheduled_for, created_at, metadata, read_at, deep_link")
         .eq("audience_email", user.email)
         .order("created_at", { ascending: false })
         .limit(80)
@@ -146,6 +199,7 @@ export async function getNotificationCenter(user: UserAccount): Promise<Notifica
         .map((row) => [row.id as string, row as DeliveryRow])
     ).values()
   ).sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+  const activeQueueSmsLocked = await hasActiveQueueSmsLock(supabase, user);
 
   return {
     items: notificationRows.map((row) => ({
@@ -155,8 +209,12 @@ export async function getNotificationCenter(user: UserAccount): Promise<Notifica
       channel: row.channel,
       status: row.status,
       type: row.notification_type ?? "system",
+      category: notificationCategory(row.notification_type),
       createdAt: row.created_at,
       scheduledFor: row.scheduled_for,
+      readAt: row.read_at,
+      unread: row.read_at === null,
+      deepLink: safeNotificationDeepLink(row.deep_link, row.metadata),
       operational: Boolean(row.metadata?.operational)
         || ["booking_alert", "queue_alert", "payment_alert"].includes(row.notification_type ?? "")
     })),
@@ -176,7 +234,16 @@ export async function getNotificationCenter(user: UserAccount): Promise<Notifica
       createdAt: row.created_at,
       updatedAt: row.updated_at
     })),
-    preferences: preferenceResult.notificationPreferences,
+    preferences: preferenceResult.notificationPreferences
+      ? {
+        ...preferenceResult.notificationPreferences,
+        channelPreferences: forceActiveQueueSms(
+          preferenceResult.notificationPreferences.channelPreferences,
+          activeQueueSmsLocked
+        )
+      }
+      : null,
+    activeQueueSmsLocked,
     generatedAt: new Date().toISOString()
   };
 }
@@ -192,19 +259,28 @@ const preferenceEvidenceFields = [
 
 export async function saveNotificationCenterPreferences(
   user: UserAccount,
-  values: Record<string, string | boolean | number | string[] | null>
+  values: Record<string, string | boolean | number | string[] | Record<string, unknown> | null>
 ) {
   assertSignedIn(user);
+  const supabase = createSupabaseAdminClient();
+  const activeQueueSmsLocked = supabase
+    ? await hasActiveQueueSmsLock(supabase, user)
+    : false;
+  const channelPreferences = forceActiveQueueSms(
+    normalizeNotificationChannelPreferences(values.channel_preferences),
+    activeQueueSmsLocked
+  );
   const result = await updateNotificationPreferences(user, {
     ...values,
+    channel_preferences: channelPreferences,
     // Operational booking and money truth cannot be muted. Marketing remains
     // separate and optional.
     booking_alerts_enabled: true,
-    payout_alerts_enabled: true
+    payout_alerts_enabled: true,
+    sms_enabled: activeQueueSmsLocked ? true : values.sms_enabled
   });
-  const supabase = createSupabaseAdminClient();
   if (supabase) {
-    const evidenceRows = preferenceEvidenceFields
+    const legacyEvidenceRows = preferenceEvidenceFields
       .filter(([field]) => typeof values[field] === "boolean")
       .map(([field, channel, category]) => ({
         profile_id: user.id,
@@ -217,6 +293,21 @@ export async function saveNotificationCenterPreferences(
           userInitiated: true
         }
       }));
+    const matrixEvidenceRows = values.channel_preferences
+      ? notificationCategories.flatMap((category) => notificationChannels.map((channel) => ({
+        profile_id: user.id,
+        category,
+        channel,
+        enabled: channelPreferences[category][channel],
+        evidence: {
+          surface: "notification_center",
+          matrix: true,
+          activeQueueSmsLocked: category === "queue" && channel === "sms" && activeQueueSmsLocked,
+          userInitiated: true
+        }
+      })))
+      : [];
+    const evidenceRows = [...legacyEvidenceRows, ...matrixEvidenceRows];
     if (evidenceRows.length) {
       const evidence = await supabase.from("notification_consent_events").insert(evidenceRows);
       if (evidence.error) {
@@ -227,3 +318,34 @@ export async function saveNotificationCenterPreferences(
   return result.notificationPreferences;
 }
 
+export async function markNotificationsRead(
+  user: UserAccount,
+  notificationId?: string
+) {
+  assertSignedIn(user);
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    return { updated: true };
+  }
+
+  const updateOwned = async (field: "profile_id" | "audience_email", value: string) => {
+    let query = supabase
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq(field, value)
+      .is("read_at", null);
+    if (notificationId) {
+      query = query.eq("id", notificationId);
+    }
+    const result = await query;
+    if (result.error) {
+      throw new NotificationServiceError("Unable to update notification read state.", 500);
+    }
+  };
+
+  await updateOwned("profile_id", user.id);
+  if (user.email) {
+    await updateOwned("audience_email", user.email);
+  }
+  return { updated: true };
+}

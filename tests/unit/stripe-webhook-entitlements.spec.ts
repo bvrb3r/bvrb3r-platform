@@ -102,7 +102,7 @@ describe("Stripe entitlement webhook mapping", () => {
     expect(update).toMatchObject({
       handled: true,
       blocked: true,
-      reason: "Stripe price is not mapped to a canonical Free/Pro/Elite entitlement."
+      reason: "Stripe price is not mapped to a canonical Standard/Pro/Elite entitlement."
     });
   });
 

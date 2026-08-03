@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/account-privacy",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/calendar-sync/scheduled",
+      "schedule": "* * * * *"
+    }
+  ]
+}

@@ -43,7 +43,7 @@ export function ClientEngagementPanel() {
   const mobileSummaryQuery = useMobileActivationSummary();
   const followMutation = useFollowBarberMutation();
   const pwa = usePwa();
-  const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
 
   async function handleFollow(barberId: string) {
     setFeedback(null);
@@ -55,9 +55,11 @@ export function ClientEngagementPanel() {
     }
   }
 
-  async function handleEnablePush() {
-    const result = await pwa.enablePush();
-    setFeedback({ tone: result.ok ? "success" : "error", message: result.message });
+  function handleRequestPush() {
+    const result = pwa.requestPushPrimer("booking");
+    if (!result.opened) {
+      setFeedback({ tone: "info", message: result.message });
+    }
   }
 
   async function handleDisablePush() {
@@ -202,7 +204,7 @@ export function ClientEngagementPanel() {
                 Turn off alerts
               </button>
             ) : (
-              <button type="button" className="inline-flex h-11 items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e4f9b8] transition hover:border-[#C4F24E]/30 hover:bg-[#C4F24E]/14" onClick={() => void handleEnablePush()}>
+              <button type="button" className="inline-flex h-11 items-center gap-2 rounded-full border border-[#C4F24E]/20 bg-[#C4F24E]/10 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e4f9b8] transition hover:border-[#C4F24E]/30 hover:bg-[#C4F24E]/14" onClick={handleRequestPush}>
                 Enable booking alerts
               </button>
             )}
@@ -299,5 +301,4 @@ export function ClientEngagementPanel() {
     </section>
   );
 }
-
 

@@ -1,6 +1,10 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { trackAiRecommendation } from "@/lib/ai/service";
+import { isClientRole, normalizeAccountRole } from "@/lib/auth/roles";
+import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { assertPr34BillingRiskAction, Pr34BillingServiceError } from "@/lib/billing/pr34-service";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { recordReferralBookingProgress } from "@/lib/referrals/service";
 import { recordBookingCreatedPlatformEvent } from "@/lib/core/booking-events";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
@@ -75,6 +79,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid booking payload." }, { status: 400 });
     }
 
+    const session = await getCurrentUserFromServer();
+    if (!session.authenticated) {
+      return NextResponse.json({ error: "Sign in to book through this account route." }, { status: 401 });
+    }
+    if (!isClientRole(session.user.role)) {
+      return NextResponse.json({ error: "This booking route is available only to client accounts." }, { status: 403 });
+    }
+    if (isSupabaseEnabled()) {
+      await assertPr34BillingRiskAction({
+        user: { id: session.user.id, role: normalizeAccountRole(session.user.role) },
+        action: "booking"
+      });
+    }
+
     const {
       sourceKind,
       matchedFrom,
@@ -87,7 +105,11 @@ export async function POST(request: NextRequest) {
     const provider = await getLiveOperationsProvider();
     const result = await provider.createBooking({
       ...bookingInput,
-      actorRole: "client"
+      clientId: session.user.clientId || undefined,
+      actorRole: "client",
+      actorEmail: session.user.email,
+      actorProfileId: session.user.id,
+      createdBy: session.user.id
     });
     await recordBookingCreatedPlatformEvent({
       appointment: result.appointment,
@@ -152,6 +174,20 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ appointment: result.appointment });
   } catch (error) {
+    if (error instanceof Pr34BillingServiceError) {
+      const locked = error.code === "account_balance_locked";
+      return NextResponse.json(
+        {
+          error: locked
+            ? error.message
+            : "We could not verify the account balance. Booking remains paused until server truth is available.",
+          code: locked ? error.code : "booking_balance_unverified",
+          recoveryHref: locked ? "/billing" : "mailto:support@bvrb3r.app"
+        },
+        { status: locked ? 423 : 503, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     if (error instanceof LiveOperationValidationError) {
       return NextResponse.json(
         serializeBookingValidationError(error),
@@ -169,7 +205,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unable to create appointment." }, { status: 500 });
   }
 }
-
-
 
 

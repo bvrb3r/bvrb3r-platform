@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ShopOwnerPlanAccessCard, ShopOwnerUpgradePrompt } from "@/components/owner-experience/shop-owner-plan-access-card";
-import { buildFreeEntitlementTruth, type ServerEntitlementTruth } from "@/lib/entitlements/domain";
+import { buildStandardEntitlementTruth, type ServerEntitlementTruth } from "@/lib/entitlements/domain";
 import { buildShopOwnerPaywallSummary } from "@/lib/entitlements/shop-owner-paywall";
 
 const forbiddenUserCopy = /shop_owner_user|client_user|barber_user|guest_user|owner_user|shop_admin|entitlement_status|stripe_customer_id|stripe_subscription_id|account_entitlements|provider_payment_method_id|payment_intent|localStorage|webhook_unverified|server_default|payout_readiness_status|payment_routing_records|relationship_type|booth_rent_barber|commission_barber|freelance_barber/i;  // doctrine-allow
@@ -33,19 +33,19 @@ function activeOwnerEntitlement(overrides: Partial<ServerEntitlementTruth> = {})
 }
 
 describe("shop owner paywall locked feature model", () => {
-  it("keeps Free owner shop setup available and paid owner tools locked", () => {
+  it("keeps Standard owner shop setup available and paid owner tools locked", () => {
     const summary = buildShopOwnerPaywallSummary({
       user: { id: "profile-owner", role: "shop_owner_user" },
-      entitlement: buildFreeEntitlementTruth({
+      entitlement: buildStandardEntitlementTruth({
         profileId: "profile-owner",
         accountRole: "shop_owner_user"
       })
     });
 
     expect(summary.activeOwnerPaywall).toBe(true);
-    expect(summary.currentPlanLabel).toBe("Free");
-    expect(summary.freeShopSetupAvailable).toBe(true);
-    expect(summary.features.free.every((feature) => feature.state === "available")).toBe(true);
+    expect(summary.currentPlanLabel).toBe("Standard");
+    expect(summary.standardShopSetupAvailable).toBe(true);
+    expect(summary.features.standard.every((feature) => feature.state === "available")).toBe(true);
     expect(summary.features.pro.every((feature) => feature.state === "locked")).toBe(true);
     expect(summary.features.elite.every((feature) => feature.state === "locked")).toBe(true);
     expect(summary.checkoutUrl).toBeNull();
@@ -114,7 +114,7 @@ describe("shop owner paywall locked feature model", () => {
   it("handles missing entitlement persistence as Needs Review without fake Pro or Elite access", () => {
     const summary = buildShopOwnerPaywallSummary({
       user: { id: "profile-owner", role: "shop_owner_user" },
-      entitlement: buildFreeEntitlementTruth({
+      entitlement: buildStandardEntitlementTruth({
         profileId: "profile-owner",
         accountRole: "shop_owner_user",
         persistenceConnected: false,
@@ -122,9 +122,9 @@ describe("shop owner paywall locked feature model", () => {
       })
     });
 
-    expect(summary.currentPlanLabel).toBe("Free");
+    expect(summary.currentPlanLabel).toBe("Standard");
     expect(summary.statusLabel).toBe("Needs Review");
-    expect(summary.features.free.every((feature) => feature.state === "available")).toBe(true);
+    expect(summary.features.standard.every((feature) => feature.state === "available")).toBe(true);
     expect(summary.features.pro.every((feature) => feature.state === "needs_review")).toBe(true);
     expect(summary.features.elite.every((feature) => feature.state === "needs_review")).toBe(true);
   });
@@ -141,7 +141,7 @@ describe("shop owner paywall locked feature model", () => {
 
     expect(clientSummary.activeOwnerPaywall).toBe(false);
     expect(barberSummary.activeOwnerPaywall).toBe(false);
-    expect(clientSummary.features.free.every((feature) => feature.state === "forbidden_role")).toBe(true);
+    expect(clientSummary.features.standard.every((feature) => feature.state === "forbidden_role")).toBe(true);
     expect(barberSummary.features.pro.every((feature) => feature.state === "forbidden_role")).toBe(true);
   });
 
@@ -157,13 +157,14 @@ describe("shop owner paywall locked feature model", () => {
     expect(serialized).not.toMatch(forbiddenUserCopy);
     expect(summary.checkoutUrl).toBeNull();
     expect(summary.portalUrl).toBeNull();
-    expect(serialized).not.toMatch(/providerGrossAmount|barberPayoutAmount|shopSplitAmount|readyForPayoutAmount|\$\d/);
+    expect(serialized).not.toMatch(/providerGrossAmount|barberPayoutAmount|shopSplitAmount|readyForPayoutAmount/);
+    expect(serialized).toContain("Standard shop setup stays available at $0");
   });
 
   it("renders owner plan cards and parked plan-management CTA without forbidden copy", () => {
     const summary = buildShopOwnerPaywallSummary({
       user: { id: "profile-owner", role: "shop_owner_user" },
-      entitlement: buildFreeEntitlementTruth({
+      entitlement: buildStandardEntitlementTruth({
         profileId: "profile-owner",
         accountRole: "shop_owner_user"
       })
@@ -173,7 +174,7 @@ describe("shop owner paywall locked feature model", () => {
     const card = screen.getByTestId("shop-owner-plan-access-card");
 
     expect(within(card).getByText("Shop owner plan access")).toBeInTheDocument();
-    expect(within(card).getByText("Free shop access")).toBeInTheDocument();
+    expect(within(card).getByText("Standard shop access")).toBeInTheDocument();
     expect(within(card).getByText("Shop profile, location, hours, and chairs")).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: "Plan management is being prepared" })).toBeDisabled();
     expect(within(card).getByRole("link", { name: "Keep setting up your shop" })).toHaveAttribute("href", "/dashboard/owner/more");
@@ -190,10 +191,10 @@ describe("shop owner paywall locked feature model", () => {
     expect(screen.queryByTestId("shop-owner-plan-access-card")).not.toBeInTheDocument();
   });
 
-  it("keeps direct locked money and kiosk access safely blocked for Free owners", () => {
+  it("keeps direct locked money and kiosk access safely blocked for Standard owners", () => {
     const summary = buildShopOwnerPaywallSummary({
       user: { id: "profile-owner", role: "shop_owner_user" },
-      entitlement: buildFreeEntitlementTruth({
+      entitlement: buildStandardEntitlementTruth({
         profileId: "profile-owner",
         accountRole: "shop_owner_user"
       })
@@ -208,7 +209,7 @@ describe("shop owner paywall locked feature model", () => {
   it("renders the upgrade prompt as a safe parked plan-management state", () => {
     const summary = buildShopOwnerPaywallSummary({
       user: { id: "profile-owner", role: "shop_owner_user" },
-      entitlement: buildFreeEntitlementTruth({
+      entitlement: buildStandardEntitlementTruth({
         profileId: "profile-owner",
         accountRole: "shop_owner_user"
       })

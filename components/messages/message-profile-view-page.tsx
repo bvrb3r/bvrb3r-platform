@@ -12,6 +12,9 @@ import { PublicBarberProfile } from "@/components/marketplace/public-barber-prof
 import { PublicShopProfile } from "@/components/marketplace/public-shop-profile";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 import { getPublicShopProfilePayload, getBarberDetailsPayload } from "@/lib/booking/platform-service";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { readSymmetricBlockedProfileIds } from "@/lib/trust/product-pr31-blocks";
 import type { UserAccount } from "@/types/domain";
 
 type ViewerSurface = "client" | "barber" | "shop";
@@ -61,21 +64,29 @@ function ProfileBackLink({ href }: { href: string }) {
 async function ProfileTargetContent({
   targetKind,
   target,
-  backHref
+  backHref,
+  viewerProfileId
 }: {
   targetKind: ProfileTargetKind;
   target: string;
   backHref: string;
+  viewerProfileId: string;
 }) {
   if (targetKind === "client") {
     const username = cleanPublicClientUsername(target) || "client";
     const profile = await readPublicClientProfile(username);
+    if (profile && isSupabaseEnabled()) {
+      const supabase = createSupabaseAdminClient();
+      if (!supabase) throw new Error("Unable to verify profile block state.");
+      if ((await readSymmetricBlockedProfileIds(supabase, viewerProfileId)).has(profile.id)) notFound();
+    }
     return (
       <PublicClientProfileContent
         profile={profile}
         username={username}
         backHref={backHref}
         backLabel="Back to Messages"
+        viewerCanReport
       />
     );
   }
@@ -84,6 +95,11 @@ async function ProfileTargetContent({
     const profile = await getBarberDetailsPayload(target);
     if (!profile) {
       notFound();
+    }
+    if (isSupabaseEnabled()) {
+      const supabase = createSupabaseAdminClient();
+      if (!supabase) throw new Error("Unable to verify profile block state.");
+      if ((await readSymmetricBlockedProfileIds(supabase, viewerProfileId)).has(profile.barber.userId)) notFound();
     }
 
     return (
@@ -94,6 +110,7 @@ async function ProfileTargetContent({
           viewerCanFollow
           viewerCanMessage
           viewerCanReview={false}
+          viewerCanReport
         />
       </div>
     );
@@ -102,6 +119,21 @@ async function ProfileTargetContent({
   const payload = await getPublicShopProfilePayload(target);
   if (!payload) {
     notFound();
+  }
+  if (isSupabaseEnabled()) {
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) throw new Error("Unable to verify profile block state.");
+    const [shopResult, staffResult, blockedProfileIds] = await Promise.all([
+      supabase.from("shops").select("owner_profile_id").eq("id", payload.shop.id).maybeSingle(),
+      supabase.from("staff_locations").select("profile_id").eq("location_id", payload.shop.id),
+      readSymmetricBlockedProfileIds(supabase, viewerProfileId)
+    ]);
+    if (shopResult.error || staffResult.error) throw new Error("Unable to verify shop profile block state.");
+    const shopProfileIds = [
+      shopResult.data?.owner_profile_id,
+      ...(staffResult.data ?? []).map((row) => row.profile_id)
+    ].filter((profileId): profileId is string => Boolean(profileId));
+    if (shopProfileIds.some((profileId) => blockedProfileIds.has(profileId))) notFound();
   }
 
   return (
@@ -161,7 +193,7 @@ export async function MessageProfileViewPage({
 
   const target = decodeURIComponent(rawTarget).trim();
   const backHref = buildBackHref(surface, resolvedSearchParams.sourceThreadId);
-  const content = await ProfileTargetContent({ targetKind, target, backHref });
+  const content = await ProfileTargetContent({ targetKind, target, backHref, viewerProfileId: user.id });
 
   return renderShell(surface, user, content);
 }

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getDefaultRouteForUser, isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { isRoleAllowed } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { recordIdentityAuditEvent } from "@/lib/auth/identity-audit";
 import { Role } from "@/types/domain";
 
 function isAuthenticatedSession(
@@ -33,7 +34,19 @@ export async function getAuthorizedUser(allowedRoles: Role[]) {
   redirectIfAccessDisabled(user.accountStatus);
 
   if (!isRoleAllowed(user.role, allowedRoles)) {
-    redirect(getDefaultRouteForUser(user));
+    const home = getDefaultRouteForUser(user);
+    await recordIdentityAuditEvent({
+      actor: user,
+      source: "server_route_guard",
+      entityType: "protected_route",
+      action: "wrong_role_access_denied",
+      outcome: "denied",
+      metadata: {
+        allowedRoles,
+        safeDestination: home
+      }
+    });
+    redirect("/access-denied");
   }
 
   return user;
@@ -48,7 +61,18 @@ export async function getPlatformAdminUser() {
   redirectIfAccessDisabled(user.accountStatus);
 
   if (!isPlatformAdminUser(user)) {
-    redirect(getDefaultRouteForUser(user));
+    const home = getDefaultRouteForUser(user);
+    await recordIdentityAuditEvent({
+      actor: user,
+      source: "server_route_guard",
+      entityType: "architect_route",
+      action: "architect_access_denied",
+      outcome: "denied",
+      metadata: {
+        safeDestination: home
+      }
+    });
+    redirect("/access-denied");
   }
 
   return user;

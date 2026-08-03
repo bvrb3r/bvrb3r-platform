@@ -96,6 +96,17 @@ const PAYMENT_METHOD_ID = "77777777-7777-5777-8777-777777777777";
 
 function createTables() {
   return {
+    architect_system_controls: [{
+      control_key: "maintenance",
+      active: false,
+      reason: null,
+      version: 1
+    }, {
+      control_key: "bookings",
+      active: false,
+      reason: null,
+      version: 1
+    }],
     shops: [],
     barbers: [{
       id: BARBER_ID,
@@ -430,6 +441,12 @@ function createSupabaseMock(
   return {
     from(table: string) {
       return new QueryBuilder(table);
+    },
+    rpc(name: string) {
+      if (name !== "pr36_shop_payment_allowed") {
+        throw new Error(`Unexpected RPC ${name}`);
+      }
+      return Promise.resolve({ data: true, error: null });
     }
   };
 }

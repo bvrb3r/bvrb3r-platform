@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, LockKeyhole, ShieldCheck } from "lucide-react";
 import { KioskExitDialog } from "@/components/kiosk/kiosk-exit-dialog";
+import { RegisteredFeatureGate } from "@/components/ui/feature-gate";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,6 +32,7 @@ import {
   kioskFriendLabel,
   kioskFromPriceChip,
   kioskHowPayTitle,
+  kioskLoyaltyGateCopy,
   kioskNoTipLabel,
   kioskPayChip,
   kioskPickATime,
@@ -404,7 +406,8 @@ export function KioskParityScreen({
   scope = "shop",
   initialLocale = DEFAULT_KIOSK_LOCALE,
   soundEnabled = true,
-  cardSimulationEnabled = false
+  cardSimulationEnabled = false,
+  loyaltyReward = null
 }: {
   shopId: string;
   scope?: "shop" | "barber";
@@ -419,6 +422,13 @@ export function KioskParityScreen({
    * server decides — the client can never switch it on for itself.
    */
   cardSimulationEnabled?: boolean;
+  /**
+   * Server-verified service-only reward. Production callers omit this until
+   * the identified kiosk client has a real eligible reward; fixtures may pass
+   * one for visual QA. Tips are calculated after the service discount and the
+   * settlement system remains responsible for paying the barber full price.
+   */
+  loyaltyReward?: { visitNumber: number; serviceDiscountCents: number } | null;
 }) {
   const router = useRouter();
   const kioskQuery = useKioskPayloadQuery(shopId, scope);
@@ -438,6 +448,8 @@ export function KioskParityScreen({
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [payMethod, setPayMethod] = useState<PayMethod | null>(null);
   const [tipPercent, setTipPercent] = useState<number | null>(null);
+  const [giftDeclined, setGiftDeclined] = useState(false);
+  const [loyaltyUsed, setLoyaltyUsed] = useState(false);
   const [charging, setCharging] = useState(false);
   const [result, setResult] = useState<KioskBookingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -451,6 +463,7 @@ export function KioskParityScreen({
   const soundRef = useRef<KioskSoundPlayer | null>(null);
   const payload = kioskQuery.data;
   const t = KIOSK_COPY[locale];
+  const loyaltyGateCopy = kioskLoyaltyGateCopy(locale);
 
   const clientSearch = useKioskClientSearchQuery(form.publicUsername);
   const searchResults = clientSearch.data?.results ?? [];
@@ -503,7 +516,11 @@ export function KioskParityScreen({
 
   const queueAhead = selectedBarber?.queueAhead ?? payload?.queue.activeCount ?? 0;
   const waitMinutes = waitMinutesOf(selectedBarber, payload?.queue.averageWaitMinutes ?? null);
-  const subtotalCents = selectedService?.priceCents ?? 0;
+  const serviceSubtotalCents = selectedService?.priceCents ?? 0;
+  const loyaltyDiscountCents = loyaltyUsed && loyaltyReward
+    ? Math.min(serviceSubtotalCents, Math.max(0, loyaltyReward.serviceDiscountCents))
+    : 0;
+  const subtotalCents = Math.max(0, serviceSubtotalCents - loyaltyDiscountCents);
   const tipOptions = useMemo(() => buildKioskTipOptions(subtotalCents), [subtotalCents]);
   const tipCents = calculateKioskTipCents(subtotalCents, tipPercent ?? 0);
   const totalCents = calculateKioskTotalCents(subtotalCents, tipPercent ?? 0);
@@ -563,6 +580,8 @@ export function KioskParityScreen({
     setMode("next");
     setPayMethod(null);
     setTipPercent(null);
+    setGiftDeclined(false);
+    setLoyaltyUsed(false);
     setCharging(false);
     setResult(null);
     setError(null);
@@ -1052,6 +1071,45 @@ export function KioskParityScreen({
                 })}
               </div>
             )}
+
+            {scope === "shop" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  wipe("welcome");
+                  router.push(`/kiosk/shop/${encodeURIComponent(shopId)}/group` as Route);
+                }}
+                className="mt-6 flex min-h-[76px] w-full max-w-[720px] items-center justify-between rounded-[20px] border border-[#C9A87C]/35 bg-[#C9A87C]/[0.045] px-6 text-left"
+              >
+                <span>
+                  <span className="block font-mono text-[9px] uppercase tracking-[0.2em] text-[#C9A87C]">Group walk-in · 2–6 people</span>
+                  <span className="mt-1 block text-sm text-white/62">Request seats together or take the fastest chairs first. The live floor sets the wait.</span>
+                </span>
+                <span className="ml-4 text-xl text-[#C4F24E]">→</span>
+              </button>
+            ) : null}
+
+            <RegisteredFeatureGate
+              gateKey={scope === "shop" ? "kiosk.shop.loyalty_check_in" : "kiosk.barber.loyalty_check_in"}
+              scale="row"
+              label={loyaltyGateCopy.label}
+              note={loyaltyGateCopy.detail}
+              reasonCopy={loyaltyGateCopy.reason}
+              className="mt-6 w-full max-w-[720px] rounded-[20px]"
+            >
+              <button
+                type="button"
+                className="flex min-h-[64px] w-full items-center justify-between rounded-[20px] border border-white/12 bg-white/[0.025] px-5 text-left"
+              >
+                <span>
+                  <span className="block font-mono text-[9px] uppercase tracking-[0.18em] text-[#C9A87C]">
+                    {loyaltyGateCopy.label}
+                  </span>
+                  <span className="mt-1 block text-xs text-white/55">{loyaltyGateCopy.detail}</span>
+                </span>
+                <span className="text-[#C4F24E]">→</span>
+              </button>
+            </RegisteredFeatureGate>
           </div>
           <p className="mt-10 font-mono text-[9px] uppercase tracking-[0.32em] text-white/55">{t.powered}</p>
         </section>
@@ -1280,6 +1338,68 @@ export function KioskParityScreen({
           {backButton("details")}
           {eyebrow(t.lastStep)}
           {heading(kioskHowPayTitle(locale, firstName))}
+
+          {loyaltyReward && !giftDeclined ? (
+            <div className="mt-7 flex flex-col gap-4 rounded-[24px] border border-white/12 bg-white/[0.025] p-5 sm:flex-row sm:items-center">
+              <div>
+                <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#C9A87C]">
+                  {locale === "es" ? "Antes de pagar" : locale === "ht" ? "Anvan ou peye" : "Before payment"}
+                </p>
+                <p className="mt-2 text-sm font-bold">
+                  {locale === "es" ? "¿Vas a usar una tarjeta de regalo?" : locale === "ht" ? "Èske w ap itilize yon kat kado?" : "Are you using a gift card?"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 sm:ml-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    wipe("welcome");
+                    router.push("/gift-cards?mode=redeem" as Route);
+                  }}
+                  className="min-h-11 rounded-full border border-white/15 px-5 text-xs font-bold text-white/70"
+                >
+                  {locale === "es" ? "Sí — canjear primero" : locale === "ht" ? "Wi — reklame l anvan" : "Yes — redeem first"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGiftDeclined(true)}
+                  className="min-h-11 rounded-full bg-white/10 px-5 text-xs font-bold text-white"
+                >
+                  {locale === "es" ? "No tengo una" : locale === "ht" ? "Mwen pa gen youn" : "No gift card"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {loyaltyReward && giftDeclined ? (
+            <div className="mt-7 flex flex-col gap-5 rounded-[24px] border border-[#C9A87C]/45 bg-[#C9A87C]/[0.08] p-5 sm:flex-row sm:items-center" role="status" aria-live="polite">
+              <div>
+                <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#C9A87C]">
+                  {locale === "es" ? "Recompensa de lealtad" : locale === "ht" ? "Rekonpans fidelite" : "Loyalty reward"}
+                </p>
+                <p className="mt-2 text-lg font-extrabold text-[#EAD9B0]">
+                  {locale === "es"
+                    ? `Tu corte número ${loyaltyReward.visitNumber} — mitad de precio`
+                    : locale === "ht"
+                      ? `${loyaltyReward.visitNumber}yèm koupe ou — mwatye pri`
+                      : `Your ${loyaltyReward.visitNumber}th cut — this one’s half off`}
+                </p>
+                <p className="mt-1 text-xs text-white/48">
+                  {locale === "es" ? "Se aplica solo al servicio. La propina sigue siendo del barbero." : locale === "ht" ? "Li aplike sou sèvis la sèlman. Poubwa a rete pou babè a." : "Applies to the service only. The tip still belongs to your barber."}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-pressed={loyaltyUsed}
+                onClick={() => setLoyaltyUsed((value) => !value)}
+                className="min-h-12 rounded-full border border-[#C9A87C]/50 bg-[#C9A87C]/10 px-6 text-sm font-bold text-[#EAD9B0] sm:ml-auto"
+              >
+                {loyaltyUsed
+                  ? (locale === "es" ? "Recompensa aplicada ✓" : locale === "ht" ? "Rekonpans aplike ✓" : "Reward applied ✓")
+                  : `${locale === "es" ? "Usarla" : locale === "ht" ? "Sèvi avè l" : "Use it"} — −${formatKioskMoney(Math.min(serviceSubtotalCents, loyaltyReward.serviceDiscountCents))}`}
+              </button>
+            </div>
+          ) : null}
 
           <div className="mt-9 grid gap-5 md:grid-cols-2">
             <button

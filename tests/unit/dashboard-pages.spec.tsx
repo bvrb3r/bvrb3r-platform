@@ -55,6 +55,12 @@ vi.mock("@/components/operations/owner-team-workspace", () => ({
   OwnerTeamWorkspace: () => <div data-testid="owner-team-workspace-stub">Owner team workspace</div>
 }));
 
+vi.mock("@/components/operations/owner-operations-workspace", () => ({
+  OwnerOperationsWorkspace: ({ shopIds }: { shopIds: string[] }) => (
+    <div data-testid="owner-operations-workspace-stub">{shopIds.filter(Boolean).join(",")}</div>
+  )
+}));
+
 vi.mock("@/components/operations/manager-overview", () => ({
   ManagerOverview: ({ locationIds }: { locationIds: string[] }) => <div data-testid="manager-overview-stub">{locationIds.join(",")}</div>
 }));
@@ -236,7 +242,8 @@ describe("dashboard role pages", () => {
     render(await OwnerDashboardPage());
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
-    expect(screen.getByTestId("owner-team-workspace-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("owner-operations-workspace-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("owner-team-workspace-stub")).not.toBeInTheDocument();
     expect(screen.queryByTestId("owner-overview-stub")).not.toBeInTheDocument();
   });
 
@@ -278,8 +285,8 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.queryByRole("heading", { name: "Home" })).not.toBeInTheDocument();
     expect(screen.queryByText("Your calendar, chair status, money posture, and next move.")).not.toBeInTheDocument();
-    expect(screen.getByTestId("barber-calendar-screen-stub")).toHaveTextContent("Blaze King");
-    expect(screen.queryByTestId("barber-workspace-stub")).not.toBeInTheDocument();
+    expect(screen.getByTestId("barber-workspace-stub")).toHaveTextContent("Blaze King");
+    expect(screen.queryByTestId("barber-calendar-screen-stub")).not.toBeInTheDocument();
     expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Professional account");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
   });

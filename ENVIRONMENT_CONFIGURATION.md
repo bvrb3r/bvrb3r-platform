@@ -71,6 +71,7 @@ This repo supports three environment profiles without changing application logic
 | --- | --- | --- |
 | `RESEND_API_KEY` | `lib/config/runtime.ts`, `lib/engagement/live-delivery.ts` | Bearer token for Resend email delivery. |
 | `RESEND_FROM_EMAIL` | `lib/config/runtime.ts`, `lib/engagement/live-delivery.ts` | Sender identity for outbound email. |
+| `CRON_SECRET` | `app/api/cron/account-privacy/route.ts` | Long random bearer secret used by the scheduled privacy export/deletion worker. Server-only. |
 
 ### Web push (VAPID)
 
@@ -79,6 +80,46 @@ This repo supports three environment profiles without changing application logic
 | `NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY` | `lib/config/runtime.ts`, `components/pwa/pwa-provider.tsx`, `lib/engagement/delivery.ts` | Public VAPID key exposed to the client for subscription registration and placeholder-vs-live provider selection. |
 | `WEB_PUSH_PRIVATE_KEY` | `lib/config/runtime.ts`, `lib/engagement/live-delivery.ts` | Private VAPID key used for signed web push delivery. |
 | `WEB_PUSH_SUBJECT` | `lib/config/runtime.ts`, `lib/engagement/live-delivery.ts` | Contact subject for VAPID claims. |
+
+### Mapbox and PostGIS discovery
+
+| Variable | Used in | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | `components/marketplace/mapbox-discovery-canvas.tsx`, shop address search | URL-restricted public token for browser rendering and temporary suggestions. Never place a secret token here. |
+| `NEXT_PUBLIC_MAPBOX_STYLE_DARK` | `components/marketplace/mapbox-discovery-canvas.tsx` | Liquid Black Glass Mapbox Studio style URL; Mapbox dark is the temporary fallback. |
+| `NEXT_PUBLIC_MAPBOX_STYLE_LIGHT` | Mapbox light-theme surfaces | Platinum Frost Mapbox Studio style URL; Mapbox light is the temporary fallback. |
+| `MAPBOX_SERVER_TOKEN` | Permanent shop geocoding and top-candidate Matrix travel times | Server-only token used after an approved owner confirms a shop address and for bounded one-to-many drive-time estimates. |
+
+### App ID
+
+| Variable | Used in | Notes |
+| --- | --- | --- |
+| `APP_ID_SIGNING_SECRET` | `/id` QR issuance and resolution | Server-only HMAC secret with at least 32 random characters. Use a different value in each environment. |
+| `APP_ID_APPLE_WALLET_ISSUER_URL_TEMPLATE` | `/id` Apple Wallet action | Optional HTTPS signed-pass issuer template containing `{token}`. If absent, Apple Wallet is honestly shown as setup required. |
+| `APP_ID_GOOGLE_WALLET_ISSUER_URL_TEMPLATE` | `/id` Google Wallet action | Optional HTTPS signed-pass issuer template containing `{token}`. If absent, Google Wallet is honestly shown as setup required. |
+| `GIFT_CARD_CLAIM_SECRET` | Gift-card purchase confirmation and Stripe webhook delivery | Server-only HMAC secret with at least 32 random characters. It makes a paid claim credential recoverable without storing plaintext; use a different value per environment. |
+
+### Group split payments
+
+| Variable | Used in | Notes |
+| --- | --- | --- |
+| `GROUP_PAYMENT_LINK_SECRET` | Signed `/pay/group/...` links | Server-only HMAC secret with at least 32 random characters. Use a different random value in each environment. Split payment remains visibly gated when it is absent. |
+| `PAYMENTS_PROVIDER` | Group-booking provider readiness | Must be `stripe` only after Stripe keys, the signed webhook, and Twilio delivery are verified. `mock` never creates or texts a payment link. |
+
+### Calendar sync
+
+| Variable | Used in | Notes |
+| --- | --- | --- |
+| `CALENDAR_TOKEN_ENCRYPTION_KEY` | `lib/calendar-sync/secrets.ts` | Server-only 32-byte encryption key for provider credentials and OAuth state. Use a different random key per environment. |
+| `CALENDAR_SYNC_CRON_SECRET` | `app/api/calendar-sync/scheduled/route.ts` | Optional dedicated scheduler bearer secret. Vercel's automatic cron bearer using `CRON_SECRET` is also accepted. |
+| `SQUARE_APPLICATION_ID` | Square ChairSync OAuth | Square scheduling application ID. Square payment and checkout data are outside this integration. |
+| `SQUARE_APPLICATION_SECRET` | Square ChairSync OAuth | Server-only Square scheduling credential. |
+| `SQUARE_CALENDAR_REDIRECT_URI` | Square ChairSync OAuth | Exact callback URL registered with Square. |
+| `SQUARE_WEBHOOK_SIGNATURE_KEY` | Square calendar webhook | Server-only signature verifier for inbound schedule events. |
+| `SQUARE_CALENDAR_WEBHOOK_URL` | Square calendar webhook | Exact public webhook URL registered with Square. |
+| `GOOGLE_CALENDAR_CLIENT_ID` | Google Calendar OAuth | OAuth client ID for the dedicated BVRB3R calendar. |
+| `GOOGLE_CALENDAR_CLIENT_SECRET` | Google Calendar OAuth | Server-only OAuth secret. |
+| `GOOGLE_CALENDAR_REDIRECT_URI` | Google Calendar OAuth | Exact callback URL registered with Google. |
 
 ### APNs
 
@@ -106,9 +147,9 @@ This repo supports three environment profiles without changing application logic
 
 | Variable | Used in | Notes |
 | --- | --- | --- |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | `lib/payments/provider.ts` | Only needed when `PAYMENTS_PROVIDER=stripe`. |
-| `STRIPE_SECRET_KEY` | `lib/payments/provider.ts` | Server secret for Stripe-backed payment flows. |
-| `STRIPE_WEBHOOK_SECRET` | `.env.example` | Declared in the repo template, but not referenced by current application code. |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | `lib/payments/provider.ts`, group split-payment page | Browser key used only when `PAYMENTS_PROVIDER=stripe`. |
+| `STRIPE_SECRET_KEY` | `lib/payments/provider.ts`, group split-payment service | Server secret for Stripe-backed payment flows. |
+| `STRIPE_WEBHOOK_SECRET` | Signed Stripe webhook verification | Required for payment-ledger and group-responsibility reconciliation. `STRIPE_CONNECT_WEBHOOK_SECRET` takes precedence when configured. |
 | `GOOGLE_MAPS_API_KEY` | `.env.example` | Declared in the repo template, but not referenced by current application code. |
 
 ## Operational notes

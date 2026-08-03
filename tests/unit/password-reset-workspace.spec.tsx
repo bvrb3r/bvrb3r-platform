@@ -8,6 +8,7 @@ const {
   getSessionMock,
   setSessionMock,
   signOutMock,
+  signInWithPasswordMock,
   updateUserMock
 } = vi.hoisted(() => ({
   replaceMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   getSessionMock: vi.fn(),
   setSessionMock: vi.fn(),
   signOutMock: vi.fn(),
+  signInWithPasswordMock: vi.fn(),
   updateUserMock: vi.fn()
 }));
 
@@ -35,8 +37,7 @@ import {
   ResetPasswordWorkspace
 } from "@/components/auth/password-reset-workspace";
 import {
-  PASSWORD_RESET_GENERIC_FAILURE,
-  PASSWORD_RESET_GENERIC_SUCCESS
+  PASSWORD_RESET_GENERIC_FAILURE
 } from "@/lib/auth/password-recovery";
 
 describe("password reset workspaces", () => {
@@ -49,6 +50,7 @@ describe("password reset workspaces", () => {
     getSessionMock.mockReset();
     setSessionMock.mockReset();
     signOutMock.mockReset();
+    signInWithPasswordMock.mockReset();
     updateUserMock.mockReset();
     fetchMock.mockReset();
     window.localStorage.clear();
@@ -62,6 +64,7 @@ describe("password reset workspaces", () => {
         getSession: getSessionMock,
         setSession: setSessionMock,
         signOut: signOutMock,
+        signInWithPassword: signInWithPasswordMock,
         updateUser: updateUserMock
       }
     });
@@ -69,10 +72,15 @@ describe("password reset workspaces", () => {
     getSessionMock.mockResolvedValue({ data: { session: null } });
     setSessionMock.mockResolvedValue({ error: null });
     signOutMock.mockResolvedValue({ error: null });
+    signInWithPasswordMock.mockResolvedValue({ error: null });
     updateUserMock.mockResolvedValue({ error: null });
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ ok: true, message: PASSWORD_RESET_GENERIC_SUCCESS })
+      json: async () => ({
+        challengeId: "11111111-1111-4111-8111-111111111111",
+        maskedDestination: "p•••@example.test",
+        expiresInSeconds: 600
+      })
     });
   });
 
@@ -81,61 +89,135 @@ describe("password reset workspaces", () => {
     vi.unstubAllGlobals();
   });
 
-  it("submits password recovery identifiers through the server route", async () => {
+  it("requests a six-digit email recovery code through the server route", async () => {
     render(<ForgotPasswordWorkspace />);
 
-    fireEvent.change(screen.getByLabelText("Email, mobile number, or username"), {
-      target: { value: "  phillipmcgee813  " }
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "  phillip@example.test  " }
     });
-    fireEvent.submit(screen.getByRole("button", { name: "Send reset instructions" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Send six-digit code" }).closest("form")!);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/auth/forgot-password", {
+      expect(fetchMock).toHaveBeenCalledWith("/api/auth/recovery/request", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json"
         },
-        body: JSON.stringify({ identifier: "phillipmcgee813" })
+        body: JSON.stringify({
+          channel: "email",
+          destination: "phillip@example.test"
+        })
       });
     });
-    expect(screen.getByText(PASSWORD_RESET_GENERIC_SUCCESS)).toBeInTheDocument();
+    expect(screen.getByText(/Enter the six digits sent to p•••@example.test/)).toBeInTheDocument();
   });
 
-  it("shows the same generic forgot-password copy for unknown identifiers", async () => {
+  it("supports the SMS recovery branch", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ ok: true, message: PASSWORD_RESET_GENERIC_SUCCESS })
+      json: async () => ({
+        challengeId: "11111111-1111-4111-8111-111111111111",
+        maskedDestination: "••• ••• 0100",
+        expiresInSeconds: 600
+      })
     });
 
     render(<ForgotPasswordWorkspace />);
+    fireEvent.click(screen.getByRole("button", { name: "SMS" }));
 
-    fireEvent.change(screen.getByLabelText("Email, mobile number, or username"), {
-      target: { value: "nobody-in-production" }
+    fireEvent.change(screen.getByLabelText("Mobile number"), {
+      target: { value: "(813) 555-0100" }
     });
-    fireEvent.submit(screen.getByRole("button", { name: "Send reset instructions" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Send six-digit code" }).closest("form")!);
 
     await waitFor(() => {
-      expect(screen.getByText(PASSWORD_RESET_GENERIC_SUCCESS)).toBeInTheDocument();
+      expect(screen.getByText(/Enter the six digits sent to ••• ••• 0100/)).toBeInTheDocument();
     });
   });
 
-  it("shows the generic failure only when the server cannot process recovery", async () => {
+  it("shows an honest server recovery failure", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
-      json: async () => ({ ok: false, message: PASSWORD_RESET_GENERIC_FAILURE })
+      json: async () => ({ error: PASSWORD_RESET_GENERIC_FAILURE })
     });
 
     render(<ForgotPasswordWorkspace />);
 
-    fireEvent.change(screen.getByLabelText("Email, mobile number, or username"), {
+    fireEvent.change(screen.getByLabelText("Email address"), {
       target: { value: "bvrb3r@icloud.com" }
     });
-    fireEvent.submit(screen.getByRole("button", { name: "Send reset instructions" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Send six-digit code" }).closest("form")!);
 
     await waitFor(() => {
       expect(screen.getByText(PASSWORD_RESET_GENERIC_FAILURE)).toBeInTheDocument();
     });
+  });
+
+  it("verifies six digits, saves the password, and automatically signs in", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          challengeId: "11111111-1111-4111-8111-111111111111",
+          maskedDestination: "c•••@bvrb3r.demo",
+          expiresInSeconds: 600,
+          demoCode: "246810"
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          resetToken: "reset-token-with-more-than-thirty-two-characters",
+          expiresInSeconds: 500
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          completed: true,
+          signInEmail: "client@bvrb3r.demo"
+        })
+      });
+
+    render(<ForgotPasswordWorkspace />);
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "client@bvrb3r.demo" }
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Send six-digit code" }).closest("form")!);
+
+    await screen.findByText("Demo code: 246810");
+    fireEvent.change(screen.getByLabelText("Six-digit code"), {
+      target: { value: "246810" }
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Verify code" }).closest("form")!);
+
+    await screen.findByText(/Set a fresh key/);
+    fireEvent.change(screen.getByLabelText("New recovery password"), {
+      target: { value: "new-secure-password" }
+    });
+    fireEvent.change(screen.getByLabelText("Confirm recovery password"), {
+      target: { value: "new-secure-password" }
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Save password & sign in" }).closest("form")!);
+
+    await waitFor(() => {
+      expect(signInWithPasswordMock).toHaveBeenCalledWith({
+        email: "client@bvrb3r.demo",
+        password: "new-secure-password"
+      });
+      expect(screen.getByText(/You’re back in/)).toBeInTheDocument();
+    });
+  });
+
+  it("provides a no-access support handoff with an identity checklist", () => {
+    render(<ForgotPasswordWorkspace />);
+    fireEvent.click(screen.getByRole("button", { name: "I can’t access either one" }));
+
+    expect(screen.getByText("Have this ready")).toBeInTheDocument();
+    expect(screen.getByText(/A recent appointment, shop, or barber/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Start support handoff" }))
+      .toHaveAttribute("href", "/contact?subject=account-recovery");
   });
 
   it("exchanges recovery codes on reset-password and does not route to dashboards", async () => {

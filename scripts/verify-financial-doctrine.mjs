@@ -61,6 +61,10 @@ const ALLOWLIST = [
     why: "Immutable historical checkpoint records."
   },
   {
+    prefix: "content/legal/",
+    why: "Byte-exact attorney review drafts are immutable source evidence, explicitly unpublished, and never executable product doctrine."
+  },
+  {
     exact: "lib/doctrine/legacy-data-aliases.ts",
     why: "THE single active-code exception. Isolates retired revenue-share literals so pre-doctrine rows can be recognized and normalized. All other active code imports from here."
   },

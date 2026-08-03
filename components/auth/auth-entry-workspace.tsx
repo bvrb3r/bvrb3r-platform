@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
+import { FormEvent, useMemo, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -84,10 +84,23 @@ function getSearchFeedback(searchParams: ReturnType<typeof useSearchParams>) {
     };
   }
 
+  if (searchParams.get("owner_review") === "1") {
+    return {
+      kind: "success" as const,
+      message: "Owner review is active. Sign in with an approved test account."
+    };
+  }
+
   return null;
 }
 
-export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
+export function AuthEntryWorkspace({
+  mode,
+  signupEnabled = true
+}: {
+  mode: AuthMode;
+  signupEnabled?: boolean;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -110,10 +123,6 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
   const searchFeedback = getSearchFeedback(searchParams);
   const visibleError = errorMessage ?? (searchFeedback?.kind === "error" ? searchFeedback.message : null);
   const visibleSuccess = successMessage ?? (searchFeedback?.kind === "success" ? searchFeedback.message : null);
-
-  useEffect(() => {
-    clearBrowserAccountState();
-  }, []);
 
   async function persistSignupRoleIntent(role: SignupRoleIntent) {
     const response = await fetch("/api/auth/signup-intent", {
@@ -355,12 +364,18 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
           {visibleError ? <p className="mt-4 text-sm leading-7 text-[#ff8f8f]">{visibleError}</p> : null}
           {visibleSuccess ? <p className="mt-4 text-sm leading-7 text-[#e4f9b8]">{visibleSuccess}</p> : null}
 
-          <p className="mt-6 text-sm leading-7 text-white/52">
-            {mode === "login" ? "Need an account?" : "Already have an account?"}{" "}
-            <Link href={mode === "login" ? "/signup" : "/login"} className="text-[#e0f6a0]">
-              {mode === "login" ? "Create account" : "Log in"}
-            </Link>
-          </p>
+          {mode === "login" && !signupEnabled ? (
+            <p className="mt-6 text-sm leading-7 text-white/52">
+              This production build is limited to approved owner-review accounts.
+            </p>
+          ) : (
+            <p className="mt-6 text-sm leading-7 text-white/52">
+              {mode === "login" ? "Need an account?" : "Already have an account?"}{" "}
+              <Link href={mode === "login" ? "/signup" : "/login"} className="text-[#e0f6a0]">
+                {mode === "login" ? "Create account" : "Log in"}
+              </Link>
+            </p>
+          )}
           {unlockKiosk ? (
             <p className="mt-3 text-sm leading-7 text-[#e4f9b8]">
               Staff sign-in will unlock kiosk mode on this device and return you to the protected operator flow.

@@ -1616,7 +1616,7 @@ describe("architect mission control", () => {
     fireEvent.click(screen.getByRole("button", { name: /copy codex packet/i }));
 
     await waitFor(() => expect(clipboardWriteTextMock).toHaveBeenCalledWith(expect.stringContaining("BVRB3R ROUTING FIX")));
-    expect(screen.getByText("Packet copied.")).toBeInTheDocument();
+    expect(await screen.findByText("Packet copied.")).toBeInTheDocument();
   });
 });
 

@@ -13,12 +13,12 @@ vi.mock("next/link", () => ({
 import { ClientCultureScreen } from "@/components/client-experience/client-culture-screen";
 
 const freeClientPaywallSummary: ClientPaywallSummary = {
-  currentPlanLabel: "Free",
+  currentPlanLabel: "Standard",
   billingLabel: "No paid billing cycle connected",
-  statusLabel: "Free access active",
+  statusLabel: "Standard access active",
   statusTone: "neutral",
   serverEvidenceLabel: "Server default",
-  freeBookingAvailable: true,
+  standardBookingAvailable: true,
   lockedFeatureCount: 6,
   needsReviewCount: 0,
   upgradeActionLabel: "Review plan access",
@@ -26,7 +26,7 @@ const freeClientPaywallSummary: ClientPaywallSummary = {
   checkoutUrl: null,
   portalUrl: null,
   features: {
-    free: [],
+    standard: [],
     pro: [],
     elite: []
   }
@@ -173,12 +173,13 @@ describe("client culture screen", () => {
     expect(within(rail).getByText("blaze")).toBeInTheDocument();
   });
 
-  it("renders a safe empty feed state distinct from a feed error", () => {
+  it("renders a safe empty feed state distinct from a feed error", async () => {
     const { rerender } = render(<ClientCultureScreen feed={{ items: [], cursor: null, hasMore: false }} />);
 
     expect(screen.getByText("Culture posts will appear here as the BVRB3R community grows.")).toBeInTheDocument();
     expect(screen.getByText("Empty")).toBeInTheDocument();
     expect(screen.queryByTestId("culture-post-card")).not.toBeInTheDocument();
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
 
     rerender(<ClientCultureScreen feed={{
       items: [],
@@ -187,7 +188,7 @@ describe("client culture screen", () => {
       error: "Unable to load Culture feed. Try again."
     }} />);
 
-    expect(screen.getByText("Unable to load Culture feed. Try again.")).toBeInTheDocument();
+    expect(await screen.findByText("Unable to load Culture feed. Try again.")).toBeInTheDocument();
     expect(screen.getByText("Feed error")).toBeInTheDocument();
     expect(screen.queryByText("Culture posts will appear here as the BVRB3R community grows.")).not.toBeInTheDocument();
   });

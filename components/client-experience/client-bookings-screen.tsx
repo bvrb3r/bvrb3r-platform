@@ -372,6 +372,7 @@ export function ClientBookingsScreen() {
   const hasResolvedLocation = homePayload?.hasResolvedLocation ?? false;
   const barberSearchHref = `${CLIENT_PRIMARY_TAB_HREFS.search}?type=barbers` as Route;
   const getCutNowDefaultPaymentMethod = homePayload?.defaultPaymentMethod ?? defaultPaymentMethod ?? null;
+  const focusedAppointmentId = searchParams.get("appointment");
 
   const [paymentFeedback, setPaymentFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [cancelFeedback, setCancelFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
@@ -386,6 +387,18 @@ export function ClientBookingsScreen() {
       setCancelTargetId(upcomingAppointments[0].id);
     }
   }, [searchParams, upcomingAppointments]);
+
+  useEffect(() => {
+    if (!focusedAppointmentId || !upcomingAppointments.some((appointment) => appointment.id === focusedAppointmentId)) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(`client-appointment-${focusedAppointmentId}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusedAppointmentId, upcomingAppointments]);
 
   const isInitialLoading = bookingsQuery.isLoading && !payload;
   const photoByBarberId = useMemo(() => {
@@ -614,7 +627,15 @@ export function ClientBookingsScreen() {
               return (
                 <article
                   key={appointment.id}
-                  className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(8,8,8,0.99))] p-5 shadow-[0_16px_32px_rgba(0,0,0,0.16)]"
+                  id={`client-appointment-${appointment.id}`}
+                  tabIndex={-1}
+                  data-focused-appointment={appointment.id === focusedAppointmentId ? "true" : undefined}
+                  className={cn(
+                    "rounded-[28px] border bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(8,8,8,0.99))] p-5 shadow-[0_16px_32px_rgba(0,0,0,0.16)] outline-none",
+                    appointment.id === focusedAppointmentId
+                      ? "border-[#C4F24E]/45 ring-2 ring-[#C4F24E]/15"
+                      : "border-white/10"
+                  )}
                 >
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
                     <AppointmentAvatar

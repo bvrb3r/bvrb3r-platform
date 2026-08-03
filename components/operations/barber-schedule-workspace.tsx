@@ -25,6 +25,8 @@ import {
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { KioskLaunchAction } from "@/components/kiosk/kiosk-actions";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GlobalSafetyState } from "@/components/ui/global-safety-state";
+import { RoadHomeWidget } from "@/components/road/road-home-widget";
 import {
   commandButtonIconAccentClassName,
   commandButtonIconClassName,
@@ -614,6 +616,7 @@ function ExternalAppointmentCard({
   appointment: BarberExternalAppointmentView;
   viewMode: BarberScheduleViewMode;
 }) {
+  const sourceBadge = appointment.sourceProvider === "square" ? "SQUARE APP" : appointment.sourceLabel;
   return (
     <GlassCard
       className="border-l-4 border-l-sky-300/60 p-4"
@@ -640,7 +643,7 @@ function ExternalAppointmentCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 text-sm">
-        <span className="status-pill border-sky-300/24 text-sky-100">{appointment.sourceLabel}</span>
+        <span className="status-pill border-sky-300/24 text-sky-100">{sourceBadge}</span>
         <span className="status-pill text-white/68">{appointment.locationLabel}</span>
         <span className="status-pill text-white/68">
           <LockKeyhole className="h-3.5 w-3.5" />
@@ -649,6 +652,7 @@ function ExternalAppointmentCard({
       </div>
 
       <div className="mt-4 rounded-[16px] border border-sky-300/12 bg-sky-300/[0.04] px-4 py-3 text-sm leading-6 text-white/62">
+        {appointment.sourceProvider === "square" ? "Pays on Square. " : ""}
         Calendar details stay isolated to {appointment.sourceLabel}. Payment, checkout, lifecycle and revenue actions are unavailable in BVRB3R.
       </div>
     </GlassCard>
@@ -1723,13 +1727,19 @@ export function BarberScheduleWorkspace({
                         ? "theCut"
                         : entry.sourceProvider === "bvrb3r"
                           ? "BVRB3R"
+                          : entry.sourceProvider === "square"
+                            ? "SQUARE APP"
                           : entry.sourceProvider.slice(0, 1).toUpperCase() + entry.sourceProvider.slice(1)}
                     </span>
                     <span className="status-pill text-white/62">{entry.entryType === "walkin" ? "Walk-in" : "Booked"}</span>
                   </div>
                   <p className="mt-2 text-sm text-white/62">{entry.serviceName} · {entry.shopLabel}</p>
                   <p className="mt-2 text-xs uppercase tracking-[0.14em] text-white/42">
-                    {entry.paymentOwner.startsWith("external:") ? "External payment owner" : entry.paymentOwner.replaceAll("_", " ")}
+                    {entry.paymentOwner === "external:square"
+                      ? "Pays on Square"
+                      : entry.paymentOwner.startsWith("external:")
+                        ? "External payment owner"
+                        : entry.paymentOwner.replaceAll("_", " ")}
                     {entry.assignmentLocked ? " · Barber locked" : ""}
                   </p>
                 </div>
@@ -1747,6 +1757,8 @@ export function BarberScheduleWorkspace({
           )}
         </div>
       </GlassCard>
+
+      <RoadHomeWidget compact={Boolean(currentOrNextAppointmentId)} />
 
       <GlassCard className="rounded-[28px] p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1793,22 +1805,12 @@ export function BarberScheduleWorkspace({
               )}
             </div>
           )) : (
-            <div className="empty-state-panel rounded-[24px] p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xl font-extrabold text-white">No chair activity on this day</p>
-                  <p className="mt-2 text-sm leading-6 text-white/58">No appointments or open slots are scheduled. Add a booking or update availability to open the chair.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <ActionButton type="button" variant="secondary" onClick={openAvailabilityControls}>
-                    Update availability
-                  </ActionButton>
-                  <ActionButton type="button" variant="secondary" onClick={() => router.push("/dashboard/barber/checkout")}>
-                    Quick Charge
-                  </ActionButton>
-                </div>
-              </div>
-            </div>
+            <GlobalSafetyState
+              state="empty_schedule"
+              detail="No appointments or open slots are scheduled. Update availability to open the chair."
+              actionLabel="Update availability"
+              onAction={openAvailabilityControls}
+            />
           )}
 
           <div className="relative grid gap-3 sm:grid-cols-[4.5rem_minmax(0,1fr)] sm:gap-4">

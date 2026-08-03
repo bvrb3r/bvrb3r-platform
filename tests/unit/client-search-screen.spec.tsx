@@ -7,12 +7,14 @@ const {
   replaceMock,
   useClientHomeQueryMock,
   useMarketplaceDiscoveryMock,
+  useMarketplaceMapMock,
   useSaveFavoriteBarberMutationMock,
   useSaveFavoriteShopMutationMock
 } = vi.hoisted(() => ({
   replaceMock: vi.fn(),
   useClientHomeQueryMock: vi.fn(),
   useMarketplaceDiscoveryMock: vi.fn(),
+  useMarketplaceMapMock: vi.fn(),
   useSaveFavoriteBarberMutationMock: vi.fn(),
   useSaveFavoriteShopMutationMock: vi.fn()
 }));
@@ -53,7 +55,20 @@ vi.mock("@/lib/booking/client", () => ({
 }));
 
 vi.mock("@/lib/marketplace/client", () => ({
-  useMarketplaceDiscovery: useMarketplaceDiscoveryMock
+  coarsenMarketplaceOrigin: ({ latitude, longitude }: { latitude: number; longitude: number }) => ({
+    latitude: Math.round(latitude * 1_000) / 1_000,
+    longitude: Math.round(longitude * 1_000) / 1_000
+  }),
+  useMarketplaceDiscovery: useMarketplaceDiscoveryMock,
+  useMarketplaceMap: useMarketplaceMapMock
+}));
+
+vi.mock("@/components/marketplace/discovery-map", () => ({
+  DiscoveryMapPanel: ({
+    origin
+  }: {
+    origin?: { latitude: number; longitude: number };
+  }) => <div data-testid="discovery-map-panel">{JSON.stringify(origin)}</div>
 }));
 
 vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => ({
@@ -69,12 +84,12 @@ vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => 
 import { ClientSearchScreen } from "@/components/client-experience/client-search-screen";
 
 const freeClientPaywallSummary: ClientPaywallSummary = {
-  currentPlanLabel: "Free",
+  currentPlanLabel: "Standard",
   billingLabel: "No paid billing cycle connected",
-  statusLabel: "Free access active",
+  statusLabel: "Standard access active",
   statusTone: "neutral",
   serverEvidenceLabel: "Server default",
-  freeBookingAvailable: true,
+  standardBookingAvailable: true,
   lockedFeatureCount: 6,
   needsReviewCount: 0,
   upgradeActionLabel: "Review plan access",
@@ -82,7 +97,7 @@ const freeClientPaywallSummary: ClientPaywallSummary = {
   checkoutUrl: null,
   portalUrl: null,
   features: {
-    free: [],
+    standard: [],
     pro: [],
     elite: []
   }
@@ -117,6 +132,7 @@ describe("client search screen", () => {
     replaceMock.mockReset();
     useClientHomeQueryMock.mockReset();
     useMarketplaceDiscoveryMock.mockReset();
+    useMarketplaceMapMock.mockReset();
     useSaveFavoriteBarberMutationMock.mockReset();
     useSaveFavoriteShopMutationMock.mockReset();
     useSaveFavoriteBarberMutationMock.mockReturnValue({
@@ -128,6 +144,16 @@ describe("client search screen", () => {
       isPending: false,
       isSuccess: false,
       mutateAsync: vi.fn()
+    });
+    useMarketplaceMapMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isFetching: false,
+      error: null
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: undefined
     });
 
     useClientHomeQueryMock.mockReturnValue({
@@ -504,5 +530,58 @@ describe("client search screen", () => {
     expect(screen.queryByText(/client_home_load_failed/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Something went wrong while processing this action. Please try again.")).not.toBeInTheDocument();
     expect(screen.getByTestId("client-search-debug")).toHaveTextContent("Phillip McGee (barber-phillip)");
+  });
+
+  it("opens map discovery only after explicit consent and coarsens device coordinates", async () => {
+    const getCurrentPosition = vi.fn((success: PositionCallback) => success({
+      coords: {
+        latitude: 27.9506123,
+        longitude: -82.4572987
+      }
+    } as GeolocationPosition));
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
+
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("discovery-map-panel")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show nearby map" }));
+
+    await waitFor(() => {
+      expect(getCurrentPosition).toHaveBeenCalledWith(
+        expect.any(Function),
+        expect.any(Function),
+        { enableHighAccuracy: false, timeout: 8_000, maximumAge: 5 * 60 * 1_000 }
+      );
+      expect(useMarketplaceMapMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ maxDistanceMiles: 20 }),
+        { latitude: 27.951, longitude: -82.457 }
+      );
+      expect(screen.getByTestId("discovery-map-panel")).toHaveTextContent(
+        JSON.stringify({ latitude: 27.951, longitude: -82.457 })
+      );
+    });
+  });
+
+  it("keeps list discovery usable when location permission is denied", async () => {
+    const getCurrentPosition = vi.fn((
+      _success: PositionCallback,
+      error: PositionErrorCallback
+    ) => error({ code: 1, message: "Denied", PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }));
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
+    fireEvent.click(screen.getByRole("button", { name: "Show nearby map" }));
+
+    expect(await screen.findByText("Location permission was not granted. Search still works without sharing your location.")).toBeInTheDocument();
+    expect(screen.getByText("Barbers near you")).toBeInTheDocument();
+    expect(screen.queryByTestId("discovery-map-panel")).not.toBeInTheDocument();
+    expect(useMarketplaceMapMock).toHaveBeenLastCalledWith(expect.any(Object), undefined);
   });
 });

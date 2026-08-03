@@ -19,7 +19,7 @@ export type EntitledFeatureDefinition = {
   label: string;
   accountRole: EntitlementAccountRole;
   requiredTier: EntitlementTier;
-  upgradeTier: Exclude<EntitlementTier, "free"> | null;
+  upgradeTier: Exclude<EntitlementTier, "standard"> | null;
   serverOwned: true;
 };
 
@@ -28,7 +28,7 @@ export const ENTITLED_FEATURE_REGISTRY: EntitledFeatureDefinition[] = [
     key: "client.booking.basic",
     label: "Client booking basics",
     accountRole: "client_user",
-    requiredTier: "free",
+    requiredTier: "standard",
     upgradeTier: null,
     serverOwned: true
   },
@@ -52,7 +52,7 @@ export const ENTITLED_FEATURE_REGISTRY: EntitledFeatureDefinition[] = [
     key: "barber.profile.basic",
     label: "Barber profile basics",
     accountRole: "barber_user",
-    requiredTier: "free",
+    requiredTier: "standard",
     upgradeTier: null,
     serverOwned: true
   },
@@ -76,7 +76,7 @@ export const ENTITLED_FEATURE_REGISTRY: EntitledFeatureDefinition[] = [
     key: "shop_owner.shop.basic",
     label: "Shop operating basics",
     accountRole: "shop_owner_user",
-    requiredTier: "free",
+    requiredTier: "standard",
     upgradeTier: null,
     serverOwned: true
   },

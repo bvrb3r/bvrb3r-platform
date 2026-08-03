@@ -5,7 +5,7 @@ import { ClientPlanAccessCard } from "@/components/client-experience/client-plan
 import { ShopOwnerPlanAccessCard } from "@/components/owner-experience/shop-owner-plan-access-card";
 import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
 import {
-  buildFreeEntitlementTruth,
+  buildStandardEntitlementTruth,
   isEntitlementAccountRole,
   isEntitlementTier,
   roleToEntitlementRole,
@@ -22,21 +22,21 @@ import { checkEntitledFeatureAccess, resolveServerEntitlementForUser } from "@/l
 import { RETIRED_REVENUE_SHARE_ACCOUNT_ROLE } from "@/lib/doctrine/legacy-data-aliases";
 
 const accountRoles = ["client_user", "barber_user", "shop_owner_user"] as const satisfies readonly EntitlementAccountRole[];
-const tiers = ["free", "pro", "elite"] as const satisfies readonly EntitlementTier[];
+const tiers = ["standard", "pro", "elite"] as const satisfies readonly EntitlementTier[];
 
 const featureByRole = {
   client_user: {
-    free: "client.booking.basic",
+    standard: "client.booking.basic",
     pro: "client.loyalty.pro",
     elite: "client.priority.elite"
   },
   barber_user: {
-    free: "barber.profile.basic",
+    standard: "barber.profile.basic",
     pro: "barber.retention.pro",
     elite: "barber.growth.elite"
   },
   shop_owner_user: {
-    free: "shop_owner.shop.basic",
+    standard: "shop_owner.shop.basic",
     pro: "shop_owner.money.pro",
     elite: "shop_owner.scale.elite"
   }
@@ -63,7 +63,7 @@ const forbiddenUserCopy =
 
 function activeEntitlement(
   accountRole: EntitlementAccountRole,
-  tier: Exclude<EntitlementTier, "free"> = "pro",
+  tier: Exclude<EntitlementTier, "standard"> = "pro",
   overrides: Partial<ServerEntitlementTruth> = {}
 ): ServerEntitlementTruth {
   return {
@@ -92,8 +92,8 @@ function activeEntitlement(
 }
 
 function entitlementFor(accountRole: EntitlementAccountRole, tier: EntitlementTier): ServerEntitlementTruth {
-  if (tier === "free") {
-    return buildFreeEntitlementTruth({
+  if (tier === "standard") {
+    return buildStandardEntitlementTruth({
       profileId: `profile-${accountRole}`,
       accountRole
     });
@@ -185,7 +185,7 @@ describe("paywall entitlement regression lock", () => {
             entitlement,
             featureKey: featureByRole[accountRole][requiredTier]
           });
-          const shouldAllow = requiredTier === "free" || tierRank(tier) >= tierRank(requiredTier);
+          const shouldAllow = requiredTier === "standard" || tierRank(tier) >= tierRank(requiredTier);
 
           expect(access.allowed, `${accountRole} ${tier} -> ${requiredTier}`).toBe(shouldAllow);
           expect(access.requiredTier).toBe(requiredTier);
@@ -213,25 +213,25 @@ describe("paywall entitlement regression lock", () => {
   it("keeps Client, Barber, and Shop Owner locked surfaces honest and non-crashing", () => {
     const clientSummary = buildClientPaywallSummary({
       user: { id: "profile-client", role: "client_user" },
-      entitlement: buildFreeEntitlementTruth({ profileId: "profile-client", accountRole: "client_user" })
+      entitlement: buildStandardEntitlementTruth({ profileId: "profile-client", accountRole: "client_user" })
     });
-    expect(clientSummary.currentPlanLabel).toBe("Free");
+    expect(clientSummary.currentPlanLabel).toBe("Standard");
     expect(clientSummary.features.pro.every((feature) => feature.state === "locked")).toBe(true);
     expect(clientSummary.features.elite.every((feature) => feature.state === "locked")).toBe(true);
     expect(clientSummary.checkoutUrl).toBeNull();
     expect(clientSummary.portalUrl).toBeNull();
 
     render(<ClientPlanAccessCard summary={clientSummary} showFeatureGroups />);
-    expect(screen.getByTestId("client-plan-access-card")).toHaveTextContent("Free client access");
+    expect(screen.getByTestId("client-plan-access-card")).toHaveTextContent("Standard client access");
     expect(screen.getByRole("link", { name: "Review plan access" })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
 
     const barberSummary = buildSubscriptionSettingsSummary({
       user: { id: "profile-barber", role: "barber_user" },
-      entitlement: buildFreeEntitlementTruth({ profileId: "profile-barber", accountRole: "barber_user" })
+      entitlement: buildStandardEntitlementTruth({ profileId: "profile-barber", accountRole: "barber_user" })
     });
     expect(barberSummary).toMatchObject({
       roleLabel: "Barber",
-      currentTierLabel: "Free",
+      currentTierLabel: "Standard",
       accessStateLabel: "Active"
     });
     render(<SubscriptionSettingsCard summary={barberSummary!} />);
@@ -240,7 +240,7 @@ describe("paywall entitlement regression lock", () => {
 
     const ownerSummary = buildShopOwnerPaywallSummary({
       user: { id: "profile-owner", role: "shop_owner_user" },
-      entitlement: buildFreeEntitlementTruth({ profileId: "profile-owner", accountRole: "shop_owner_user" })
+      entitlement: buildStandardEntitlementTruth({ profileId: "profile-owner", accountRole: "shop_owner_user" })
     });
     expect(ownerSummary.features.pro.every((feature) => feature.state === "locked")).toBe(true);
     expect(ownerSummary.upgradeHref).toBeNull();
@@ -257,12 +257,12 @@ describe("paywall entitlement regression lock", () => {
       await expect(resolveServerEntitlementForUser({ user: { id: `profile-${role}`, role: role as never } })).resolves.toBeNull();
     }
 
-    for (const tier of [...forbiddenRoles, "standard", "premium", "paid"]) {
+    for (const tier of [...forbiddenRoles, "free", "premium", "paid"]) {
       expect(isEntitlementTier(tier), tier).toBe(false);
     }
 
     window.localStorage.setItem("bvrb3r-tier", "elite");
-    const freeClientEntitlement = buildFreeEntitlementTruth({
+    const freeClientEntitlement = buildStandardEntitlementTruth({
       profileId: "profile-client",
       accountRole: "client_user"
     });
@@ -412,12 +412,12 @@ describe("paywall entitlement regression lock", () => {
     const summaries = accountRoles.map((accountRole) => buildSubscriptionSettingsSummary({
       user: { id: `profile-${accountRole}`, role: accountRole },
       entitlement: accountRole === "client_user"
-        ? buildFreeEntitlementTruth({ profileId: `profile-${accountRole}`, accountRole })
+        ? buildStandardEntitlementTruth({ profileId: `profile-${accountRole}`, accountRole })
         : activeEntitlement(accountRole, accountRole === "shop_owner_user" ? "elite" : "pro")
     }));
 
     expect(summaries.map((summary) => summary?.roleLabel)).toEqual(["Client", "Barber", "Shop Owner"]);
-    expect(summaries.map((summary) => summary?.currentTierLabel)).toEqual(["Free", "Pro", "Elite"]);
+    expect(summaries.map((summary) => summary?.currentTierLabel)).toEqual(["Standard", "Pro", "Elite"]);
     for (const summary of summaries) {
       expect(summary?.manageAction).toMatchObject({
         href: null,
@@ -427,7 +427,7 @@ describe("paywall entitlement regression lock", () => {
       render(<SubscriptionSettingsCard summary={summary!} />);
     }
 
-    expect(screen.getByTestId("subscription-settings-card-client")).toHaveTextContent("Free Client plan");
+    expect(screen.getByTestId("subscription-settings-card-client")).toHaveTextContent("Standard Client plan");
     expect(screen.getByTestId("subscription-settings-card-barber")).toHaveTextContent("Pro Barber plan");
     expect(screen.getByTestId("subscription-settings-card-shop_owner")).toHaveTextContent("Elite Shop Owner plan");
     expect(visibleText()).not.toMatch(forbiddenUserCopy);

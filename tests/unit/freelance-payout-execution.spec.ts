@@ -206,6 +206,17 @@ function createBaseTables(overrides: Partial<Record<string, Row[]>> = {}) {
       full_name: "Phillip mcgee",
       role: "barber_user"
     }],
+    architect_system_controls: [{
+      control_key: "maintenance",
+      active: false,
+      reason: null,
+      version: 1
+    }, {
+      control_key: "payouts",
+      active: false,
+      reason: null,
+      version: 1
+    }],
     platform_events: [],
     ...overrides
   } satisfies Record<string, Row[]>;
@@ -1506,6 +1517,38 @@ describe("freelance payout execution", () => {
     expect(result.dryRun).toBe(true);
     expect(tables.payout_executions).toHaveLength(0);
     expect(tables.payment_routing_records[0].released_at).toBeNull();
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("freezes real payout execution while keeping payout evidence inspectable", async () => {
+    const tables = createBaseTables({
+      architect_system_controls: [{
+        control_key: "maintenance",
+        active: false,
+        reason: null,
+        version: 1
+      }, {
+        control_key: "payouts",
+        active: true,
+        reason: "Stripe reconciliation incident",
+        version: 2
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    await expect(releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    })).rejects.toMatchObject({ status: 503 });
+
+    const dryRun = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile",
+      dryRun: true
+    });
+    expect(dryRun.ok).toBe(true);
+    expect(tables.payout_executions).toHaveLength(0);
     expect(createStripeTransferMock).not.toHaveBeenCalled();
   });
 
