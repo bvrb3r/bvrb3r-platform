@@ -121,6 +121,78 @@ export const GATES = {
     since: "PR28",
     owner: "Kiosk",
     note: "Barber-kiosk loyalty check-in is opening in a staged release."
+  },
+  "client.future.concierge": {
+    reason: "building",
+    since: "PR32",
+    owner: "Client Road",
+    note: "Concierge booking requires a complete server-owned booking and provider loop."
+  },
+  "client.future.retail_marketplace": {
+    reason: "building",
+    since: "PR32",
+    owner: "Client Road",
+    note: "Retail marketplace is distinct from live barber and shop discovery."
+  },
+  "client.future.family_profiles": {
+    reason: "building",
+    since: "PR32",
+    owner: "Client Road",
+    note: "Family profiles require dependent identity, consent, and payment ownership."
+  },
+  "client.future.open_chair_alerts": {
+    reason: "building",
+    since: "PR32",
+    owner: "Client Road",
+    note: "Open-chair alerts require server delivery caps and live eligibility truth."
+  },
+  "barber.future.memberships": {
+    reason: "building",
+    since: "PR32",
+    owner: "Barber Road",
+    note: "Barber memberships require complete recurring billing lifecycle truth."
+  },
+  "barber.future.tax_1099_pack": {
+    reason: "building",
+    since: "PR32",
+    owner: "Barber Road",
+    note: "1099 generation remains closed until reporting and review are production-ready."
+  },
+  "barber.future.waitlist_auto_fill": {
+    reason: "building",
+    since: "PR32",
+    owner: "Barber Road",
+    note: "Automatic waitlist fills require consent, conflict protection, and delivery proof."
+  },
+  "barber.future.retail_split": {
+    reason: "building",
+    since: "PR32",
+    owner: "Barber Road",
+    note: "Retail settlement requires explicit product ownership and payout routing."
+  },
+  "owner.future.tax_1099_pack": {
+    reason: "building",
+    since: "PR32",
+    owner: "Owner Road",
+    note: "Shop tax-document generation remains closed pending reporting review."
+  },
+  "owner.future.shift_scheduler": {
+    reason: "building",
+    since: "PR32",
+    owner: "Owner Road",
+    note: "Shift scheduling cannot overwrite barber availability or booked appointments."
+  },
+  "owner.future.marketing_blasts": {
+    reason: "plan",
+    since: "PR32",
+    owner: "Owner Road",
+    note: "Marketing broadcasts remain consent-bound and plan-gated."
+  },
+  "owner.future.inventory": {
+    reason: "building",
+    since: "PR32",
+    owner: "Owner Road",
+    note: "Inventory requires product, location, adjustment, and audit truth."
   }
 } as const satisfies Record<string, FeatureGateDefinition>;
 

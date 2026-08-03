@@ -58,8 +58,8 @@ describe("FeatureGate", () => {
 });
 
 describe("feature gate registry", () => {
-  it("keeps all fifteen canonical placements in one developer truth map", () => {
-    expect(Object.keys(GATES)).toHaveLength(15);
+  it("keeps every canonical placement in one developer truth map", () => {
+    expect(Object.keys(GATES)).toHaveLength(27);
     expect(new Set(Object.values(GATES).map((gate) => gate.reason))).toEqual(
       new Set(Object.keys(FEATURE_GATE_REASONS))
     );
@@ -86,6 +86,6 @@ describe("feature gate registry", () => {
       enabled: true,
       planRequired: "pro"
     });
-    expect(Object.keys(resolved)).toHaveLength(15);
+    expect(Object.keys(resolved)).toHaveLength(27);
   });
 });

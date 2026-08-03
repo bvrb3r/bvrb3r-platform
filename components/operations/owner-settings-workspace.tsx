@@ -32,6 +32,7 @@ import {
   MoreSectionGroup,
   type MoreSectionGroup as MoreSectionGroupConfig
 } from "@/components/dashboard/more/more-components";
+import { RoadFutureGates } from "@/components/road/road-future-gates";
 import { MoreSettingModal } from "@/components/dashboard/more/more-setting-modal";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
@@ -690,6 +691,27 @@ export function OwnerSettingsWorkspace({
 
   const ownerMoreSections: MoreSectionGroupConfig[] = [
     {
+      id: "owner-settings-progress-reference",
+      title: "Progress & Reference",
+      subtitle: "Follow your journey, then open the complete BVRB3R system map.",
+      roleScope: "owner" as const,
+      rows: [
+        { title: "The Road", subtitle: "Your real progress, badges, referrals, and next milestone.", href: "/road", icon: <BarChart3 className="h-5 w-5" /> },
+        { title: "System Atlas", subtitle: "The 21 mission chains · every door to its exit.", href: "/atlas", icon: <FileText className="h-5 w-5" /> }
+      ]
+    },
+    {
+      id: "owner-settings-access-tools",
+      title: "Access & Tools",
+      subtitle: "Open the shared cards, identity, and business-planning doors.",
+      roleScope: "owner" as const,
+      rows: [
+        { title: "Gift cards", subtitle: "Buy, claim, redeem, and review real shop-scoped gift-card balance.", href: "/gift-cards", icon: <Gift className="h-5 w-5" /> },
+        { title: "App ID", subtitle: "Your public-safe verified shop card and QR.", href: "/id", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Business Toolkit", subtitle: "Income, pricing, rent, AutoBooth, utilization, and no-show estimates.", href: "/pro/toolkit", icon: <BarChart3 className="h-5 w-5" /> }
+      ]
+    },
+    {
       id: "owner-settings-shop-profile",
       title: "SHOP BUSINESS SETTINGS",
       subtitle: "Manage the tools that control your shop profile, team, services, hours, policies, kiosk, and operating model.",
@@ -801,6 +823,7 @@ export function OwnerSettingsWorkspace({
 
       <section className="space-y-3">
         <MoreSectionGroup group={ownerMoreSections[0]} />
+        <RoadFutureGates role="shop_owner_user" />
         {selectedBrandingManager ? (
           shops.length ? (
             <div className="grid gap-4 pt-1 xl:grid-cols-[0.88fr_1.12fr]">

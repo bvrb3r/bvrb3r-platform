@@ -17,7 +17,19 @@ const PLACEMENTS: Record<FeatureGateKey, string> = {
   "messages.broadcasts": "components/messages/messaging-inbox-screen.tsx",
   "barber.checkout.saved_cards": "components/barber-experience/barber-checkout-screen.tsx",
   "kiosk.shop.loyalty_check_in": "components/kiosk/kiosk-parity-screen.tsx",
-  "kiosk.barber.loyalty_check_in": "components/kiosk/kiosk-parity-screen.tsx"
+  "kiosk.barber.loyalty_check_in": "components/kiosk/kiosk-parity-screen.tsx",
+  "client.future.concierge": "components/road/road-future-gates.tsx",
+  "client.future.retail_marketplace": "components/road/road-future-gates.tsx",
+  "client.future.family_profiles": "components/road/road-future-gates.tsx",
+  "client.future.open_chair_alerts": "components/road/road-future-gates.tsx",
+  "barber.future.memberships": "components/road/road-future-gates.tsx",
+  "barber.future.tax_1099_pack": "components/road/road-future-gates.tsx",
+  "barber.future.waitlist_auto_fill": "components/road/road-future-gates.tsx",
+  "barber.future.retail_split": "components/road/road-future-gates.tsx",
+  "owner.future.tax_1099_pack": "components/road/road-future-gates.tsx",
+  "owner.future.shift_scheduler": "components/road/road-future-gates.tsx",
+  "owner.future.marketing_blasts": "components/road/road-future-gates.tsx",
+  "owner.future.inventory": "components/road/road-future-gates.tsx"
 };
 
 describe("PR28 feature gate placements", () => {

@@ -34,6 +34,7 @@ import { ClientPaymentMethodsPanel } from "@/components/client-experience/client
 import { ClientPlanAccessCard } from "@/components/client-experience/client-plan-access-card";
 import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
+import { RoadFutureGates } from "@/components/road/road-future-gates";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
@@ -303,6 +304,26 @@ export function ClientProfileScreen({
     return [...options.values()].sort((left, right) => left.label.localeCompare(right.label));
   })();
   const clientMoreSections: MoreSectionGroupConfig[] = [
+    {
+      title: "Progress & Reference",
+      subtitle: "Follow your journey, then open the complete BVRB3R system map.",
+      roleScope: "client" as const,
+      rows: [
+        { href: "/road", title: "The Road", subtitle: "Your real progress, badges, referrals, and next milestone.", icon: <MapPinned className="h-5 w-5" /> },
+        { href: "/road#road-referrals", title: "Invite friends", subtitle: "Share your Road code; rewards count only after a qualified SET 1 completion.", icon: <MailPlus className="h-5 w-5" /> },
+        { href: "/atlas", title: "System Atlas", subtitle: "The 21 mission chains · every door to its exit.", icon: <FileText className="h-5 w-5" /> }
+      ]
+    },
+    {
+      title: "Access & Tools",
+      subtitle: "Open the shared cards, identity, and business-planning doors.",
+      roleScope: "client" as const,
+      rows: [
+        { href: "/gift-cards", title: "Gift cards", subtitle: "Buy, claim, redeem, and review real gift-card balance.", icon: <Gift className="h-5 w-5" /> },
+        { href: "/id", title: "App ID", subtitle: "Your public-safe BVRB3R card and QR.", icon: <ShieldCheck className="h-5 w-5" /> },
+        { href: "/pro/toolkit", title: "Business Toolkit", subtitle: "Marketing-accessible income, pricing, rent, and utilization estimates.", icon: <SlidersHorizontal className="h-5 w-5" /> }
+      ]
+    },
     {
       title: "Client Content Creator Settings",
       subtitle: "Manage your creator eligibility, Culture profile, content settings, performance, and creator safety.",
@@ -1322,7 +1343,9 @@ export function ClientProfileScreen({
         </ClientSectionBlock>
       ) : null}
 
-      {clientMoreSections.map((group) => <MoreSectionGroup key={group.title} group={group} />)}
+      <MoreSectionGroup group={clientMoreSections[0]} />
+      <RoadFutureGates role="client_user" />
+      {clientMoreSections.slice(1).map((group) => <MoreSectionGroup key={group.title} group={group} />)}
 
       <MoreLogoutCard />
 

@@ -1,7 +1,8 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Armchair,
@@ -40,6 +41,7 @@ import {
 import type { OwnerOperationsResponse } from "@/lib/owner-operations/domain";
 import type { ShopTeamInviteDirectoryBarber } from "@/lib/operations/shop-team-invites";
 import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
+import { RoadHomeWidget } from "@/components/road/road-home-widget";
 import { cn } from "@/lib/utils";
 
 type OwnerOperationsTab = "home" | "floor" | "team" | "kiosk" | "chairs";
@@ -55,7 +57,15 @@ const tabOptions: Array<{ id: OwnerOperationsTab; label: string }> = [
 const fieldClassName =
   "min-h-12 w-full rounded-[12px] border border-white/10 bg-black/55 px-4 text-sm text-[var(--text-primary)] outline-none placeholder:text-white/28 focus:border-[var(--bvr-green-border)]";
 const selectClassName = `${fieldClassName} appearance-none`;
+const teamLinkClassName = "inline-flex min-h-10 items-center justify-center rounded-full border border-white/10 bg-black/18 px-3 text-center font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-white/62 transition hover:border-[var(--bvr-green-border)] hover:text-[var(--bvr-green)]";
 const weekdayFormatter = new Intl.DateTimeFormat("en-US", { weekday: "long" });
+
+type TeamRentObligation = {
+  id: string;
+  barberId: string;
+  dueAt: string;
+  remainingCents: number;
+};
 
 function statusLabel(status: string) {
   return status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -225,6 +235,23 @@ function HomePanel({ data }: { data: OwnerOperationsResponse }) {
         The floor, in one look<span className="text-[var(--bvr-green)]">.</span>
       </h2>
 
+      <nav className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Owner home shortcuts">
+        {[
+          ["FLOOR DAY", "/shop/floor"],
+          ["WAITING ROOM TV", "/shop/tv"],
+          ["ANALYTICS", "/shop/analytics"],
+          ["REPORTS", "/shop/reports"]
+        ].map(([label, href]) => (
+          <Link
+            key={label}
+            href={href as Route}
+            className="flex min-h-12 items-center justify-between rounded-[14px] border border-white/10 bg-white/[0.025] px-4 font-mono text-[9px] font-bold tracking-[0.16em] text-white/58 transition hover:border-[var(--bvr-green-border)] hover:text-[var(--bvr-green)]"
+          >
+            {label}<ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        ))}
+      </nav>
+
       {critical ? (
         <OwnerCard className="mt-5 border-red-300/30 bg-red-300/[0.045] px-5 py-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -302,6 +329,8 @@ function HomePanel({ data }: { data: OwnerOperationsResponse }) {
           </p>
         </OwnerCard>
       </div>
+
+      <RoadHomeWidget tone="gold" className="mt-4" />
 
       <p className="mt-4 font-mono text-[10px] leading-5 text-white/38">
         Counts and sources only — external platform money and barber-private earnings never appear on this screen. ChairSync health, kiosk, and queue live-update.
@@ -624,6 +653,8 @@ function TeamPanel({ data }: { data: OwnerOperationsResponse }) {
   const [autoBoothPercent, setAutoBoothPercent] = useState("25");
   const [message, setMessage] = useState("");
   const [relationshipReason, setRelationshipReason] = useState("");
+  const [removeCandidateId, setRemoveCandidateId] = useState<string | null>(null);
+  const [rentObligations, setRentObligations] = useState<TeamRentObligation[] | null>(null);
   const directory = useOwnerTeamDirectoryQuery(data.scope.shopId, search);
   const inviteMutation = useCreateOwnerTeamInviteMutation();
   const respondMutation = useRespondOwnerJoinRequestMutation();
@@ -634,8 +665,62 @@ function TeamPanel({ data }: { data: OwnerOperationsResponse }) {
   const incoming = barbers.filter((barber) => barber.inviteStatus === "requested" && barber.inviteId);
   const candidates = barbers.filter((barber) => barber.canInvite);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    setRentObligations(null);
+    const query = new URLSearchParams({ shopId: data.scope.shopId });
+    void fetch(`/api/rent?${query.toString()}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: controller.signal
+    })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({})) as {
+          obligations?: Array<{
+            id?: unknown;
+            barberId?: unknown;
+            dueAt?: unknown;
+            remainingCents?: unknown;
+          }>;
+        };
+        if (!response.ok || !Array.isArray(body.obligations)) {
+          throw new Error("Rent statements are unavailable.");
+        }
+        setRentObligations(body.obligations.flatMap((obligation) => (
+          typeof obligation.id === "string"
+          && typeof obligation.barberId === "string"
+          && typeof obligation.dueAt === "string"
+          && typeof obligation.remainingCents === "number"
+            ? [{
+                id: obligation.id,
+                barberId: obligation.barberId,
+                dueAt: obligation.dueAt,
+                remainingCents: obligation.remainingCents
+              }]
+            : []
+        )));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setRentObligations(null);
+      });
+    return () => controller.abort();
+  }, [data.scope.shopId]);
+
   function operationStats(barberId: string) {
     return data.team.find((entry) => entry.barberId === barberId);
+  }
+
+  function rentTruth(barberId: string) {
+    const obligation = rentObligations
+      ?.filter((entry) => entry.barberId === barberId)
+      .sort((left, right) => new Date(right.dueAt).getTime() - new Date(left.dueAt).getTime())[0];
+    if (!rentObligations) return { label: "RENT —", due: false, obligationId: null };
+    if (!obligation) return { label: "NO STATEMENT", due: false, obligationId: null };
+    return {
+      label: obligation.remainingCents === 0 ? "PAID ✓" : "DUE",
+      due: obligation.remainingCents > 0,
+      obligationId: obligation.id
+    };
   }
 
   function sendInvite() {
@@ -799,8 +884,13 @@ function TeamPanel({ data }: { data: OwnerOperationsResponse }) {
           {activeRelationships.length ? activeRelationships.map((barber) => {
             const stats = operationStats(barber.barberId);
             const paused = barber.relationshipStatus === "paused";
+            const rent = rentTruth(barber.barberId);
+            const rentHref = `/shop/rent?screen=statement&barberId=${encodeURIComponent(barber.barberId)}` as Route;
+            const termsHref = `/shop/rent?screen=lifecycle&barberId=${encodeURIComponent(barber.barberId)}` as Route;
+            const messageHref = `/dashboard/owner/messages?threadWith=${encodeURIComponent(barber.barberId)}` as Route;
+            const relationshipHelpId = `relationship-pause-effect-${barber.barberId}`;
             return (
-              <div key={barber.relationshipId} className="grid gap-4 p-5 sm:px-6 xl:grid-cols-[1fr_0.85fr_auto] xl:items-center">
+              <div key={barber.relationshipId} id={`team-${barber.barberId}`} className="grid scroll-mt-24 gap-4 p-5 sm:px-6 xl:grid-cols-[1fr_0.85fr_auto] xl:items-center">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-bold text-white">{barber.name}</p>
@@ -824,7 +914,32 @@ function TeamPanel({ data }: { data: OwnerOperationsResponse }) {
                     </div>
                   ))}
                 </div>
-                <div className="flex flex-wrap gap-2 xl:justify-end">
+                <div className="flex max-w-xl flex-wrap gap-2 xl:justify-end">
+                  <Link
+                    href={rentHref}
+                    className={cn(teamLinkClassName, rent.due ? "border-red-300/28 text-red-200" : "border-[var(--bvr-green-border)] text-[var(--bvr-green)]")}
+                    data-rent-obligation-id={rent.obligationId ?? undefined}
+                  >
+                    {rent.label}
+                  </Link>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!paused}
+                    aria-describedby={relationshipHelpId}
+                    disabled={relationshipReason.trim().length < 3 || pauseMutation.isPending}
+                    onClick={() => pauseMutation.mutate({
+                      relationshipId: barber.relationshipId!,
+                      paused: !paused,
+                      reason: relationshipReason.trim()
+                    })}
+                    className={cn(teamLinkClassName, !paused ? "border-[var(--bvr-green-border)] text-[var(--bvr-green)]" : "border-[var(--bvr-gold-border)] text-[var(--bvr-gold-bright)]", "disabled:cursor-not-allowed disabled:opacity-45")}
+                  >
+                    Kiosk {paused ? "OFF" : "ON"}
+                  </button>
+                  <Link href={termsHref} className={teamLinkClassName}>Adjust terms</Link>
+                  <Link href={`#team-${barber.barberId}`} className={teamLinkClassName}>Manage</Link>
+                  <Link href={messageHref} className={teamLinkClassName}>Message</Link>
                   <ActionButton
                     tone="quiet"
                     disabled={relationshipReason.trim().length < 3 || pauseMutation.isPending}
@@ -838,16 +953,38 @@ function TeamPanel({ data }: { data: OwnerOperationsResponse }) {
                   </ActionButton>
                   <ActionButton
                     tone="danger"
-                    disabled={paused || relationshipReason.trim().length < 3 || endMutation.isPending}
-                    onClick={() => endMutation.mutate({
-                      relationshipId: barber.relationshipId!,
-                      reason: relationshipReason.trim()
-                    })}
+                    disabled={relationshipReason.trim().length < 3 || endMutation.isPending}
+                    onClick={() => setRemoveCandidateId(barber.relationshipId)}
                   >
-                    End
+                    Remove barber
                   </ActionButton>
                 </div>
-                {paused ? <p className="text-xs text-amber-200/72 xl:col-span-3">Resume this relationship before ending it. Settle-first still applies.</p> : null}
+                {paused ? (
+                  <p id={relationshipHelpId} className="rounded-[12px] border border-[var(--bvr-gold-border)] bg-[var(--bvr-gold-soft)] px-4 py-3 text-xs leading-5 text-[var(--bvr-gold-bright)] xl:col-span-3">
+                    Kiosk and walk-ins skip this chair. Booked appointments are honored. Rent is unchanged.
+                  </p>
+                ) : <span id={relationshipHelpId} className="sr-only">Turning Kiosk off pauses this relationship. Booked appointments and rent remain unchanged.</span>}
+                {removeCandidateId === barber.relationshipId ? (
+                  <div className="rounded-[14px] border border-red-300/22 bg-red-300/[0.055] p-4 xl:col-span-3" role="alertdialog" aria-label={`Remove ${barber.name}`}>
+                    <p className="font-bold text-white">Remove {barber.name} from this shop?</p>
+                    <p className="mt-2 text-xs leading-5 text-white/58">
+                      Settle-first is enforced by the server. Any remaining rent blocks removal; booked history stays intact and the barber returns to freelance only after the relationship closes.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <ActionButton
+                        tone="danger"
+                        disabled={endMutation.isPending}
+                        onClick={() => void endMutation.mutateAsync({
+                          relationshipId: barber.relationshipId!,
+                          reason: relationshipReason.trim()
+                        }).then(() => setRemoveCandidateId(null)).catch(() => undefined)}
+                      >
+                        {endMutation.isPending ? "Checking balance…" : "Confirm remove"}
+                      </ActionButton>
+                      <ActionButton tone="quiet" disabled={endMutation.isPending} onClick={() => setRemoveCandidateId(null)}>Keep barber</ActionButton>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             );
           }) : (

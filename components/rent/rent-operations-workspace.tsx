@@ -1005,11 +1005,13 @@ function StatementScreen({
 export function RentOperationsWorkspace({
   viewer,
   initialScreen = "lifecycle",
-  shopIds = []
+  shopIds = [],
+  preferredBarberId = null
 }: {
   viewer: "owner" | "barber";
   initialScreen?: RentScreen;
   shopIds?: string[];
+  preferredBarberId?: string | null;
 }) {
   const uniqueShopIds = useMemo(
     () => [...new Set(shopIds.filter(Boolean))],
@@ -1031,8 +1033,18 @@ export function RentOperationsWorkspace({
     const body = await response.json().catch(() => ({})) as RentWorkspacePayload & { error?: string };
     if (!response.ok) throw new Error(body.error ?? "Rent truth could not load.");
     const demo = new URLSearchParams(window.location.search).get("demo") === "1";
-    setPayload(demo && body.obligations.length === 0 ? demoPayload(viewer, shopId || null) : body);
-  }, [shopId, viewer]);
+    const resolved = demo && body.obligations.length === 0 ? demoPayload(viewer, shopId || null) : body;
+    setPayload(preferredBarberId
+      ? {
+          ...resolved,
+          obligations: [...resolved.obligations].sort((left, right) => {
+            const leftRank = left.barberId === preferredBarberId ? 0 : 1;
+            const rightRank = right.barberId === preferredBarberId ? 0 : 1;
+            return leftRank - rightRank || new Date(right.dueAt).getTime() - new Date(left.dueAt).getTime();
+          })
+        }
+      : resolved);
+  }, [preferredBarberId, shopId, viewer]);
 
   useEffect(() => {
     let active = true;
