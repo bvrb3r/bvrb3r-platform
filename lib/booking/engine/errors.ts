@@ -104,7 +104,8 @@ const MESSAGE_BY_REASON: Record<string, string> = {
   key_reused_with_different_payload:
     "This request key was already used for a different booking. Start a new request.",
   engine_unavailable: "Booking is temporarily unavailable. Try again in a moment.",
-  bookings_paused: "New bookings are temporarily paused."
+  bookings_paused: "New bookings are temporarily paused.",
+  account_balance_locked: "Pay the owed account balance in full before booking again."
 };
 
 export function describeBookingFailure(kind: BookingErrorKind, reason: string) {

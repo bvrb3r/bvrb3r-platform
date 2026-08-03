@@ -33,6 +33,7 @@ import {
 import { StripeConnectError } from "@/lib/stripe/connect";
 import { getPlatformSubscriptionPlan } from "@/lib/monetization/platform-subscriptions";
 import { syncServerEntitlementFromStripeSubscription } from "@/lib/entitlements/stripe-webhook";
+import { syncPr34SubscriptionInvoiceBalance } from "@/lib/billing/pr34-webhook";
 import type { EngagementState } from "@/types/engagement";
 import type {
   BarberRevenueIntelligenceView,
@@ -2238,6 +2239,13 @@ export async function processStripeBillingWebhookEvent(event: Stripe.Event) {
       eventId: event.id
     });
     if (entitlementSync.handled) {
+      await syncPr34SubscriptionInvoiceBalance({
+        supabase,
+        invoice,
+        subscription,
+        entitlement: entitlementSync,
+        eventType: event.type
+      });
       return { handled: true };
     }
 

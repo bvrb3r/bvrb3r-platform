@@ -4,6 +4,7 @@ import { confirmBooking } from "@/lib/booking/engine";
 import { resolveConfirmingClientId } from "@/lib/booking/engine/client-resolution";
 import {
   bookingErrorResponse,
+  assertBookingBillingAccess,
   enforceBookingRateLimit,
   resolveBookingRouteContext,
   withBookingSession
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const context = await resolveBookingRouteContext(request);
+    await assertBookingBillingAccess(context);
     const clientId = await resolveConfirmingClientId(context.actor, {
       fullName: parsed.data.fullName ?? null,
       phone: parsed.data.phone ?? null,
