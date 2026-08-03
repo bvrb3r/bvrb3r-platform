@@ -33,6 +33,7 @@ export function ArchitectLayoutChrome({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center gap-2 rounded-[8px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#e4f9b8]"><ShieldCheck className="h-3.5 w-3.5" />Architect session</span>
                     <Link href="/architect" className="rounded-[8px] border border-white/10 bg-black/24 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/68">City Map</Link>
+                    <Link href="/atlas" className="rounded-[8px] border border-[#C9A87C]/25 bg-black/24 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-[#C9A87C]">System Atlas · 21</Link>
                   </div>
                   <p className="mt-2 truncate text-lg font-black text-white">{user.name}</p>
                   <p className="truncate text-sm text-white/58">{user.email}</p>
