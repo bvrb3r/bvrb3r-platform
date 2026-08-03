@@ -1220,6 +1220,12 @@ export async function callQueueEntry(user: UserAccount, entryId: string) {
   const actor = await resolveActor(user, supabase);
   assertQueueManagerRole(actor.user);
   const entry = await loadQueueRowOrThrow(supabase, entryId);
+  if (entry.source_provider === "square") {
+    throw new QueueServiceError(
+      "Square appointments stay read-only and cannot be called into BVRB3R checkout.",
+      409
+    );
+  }
   const scopedLocation = actor.scopedLocations.find((location) => location.id === (entry.shop_id ?? entry.location_id));
   if (scopedLocation) {
     assertLocationScope(actor, scopedLocation.reference_code ?? scopedLocation.id);
@@ -1326,6 +1332,12 @@ export async function convertQueueEntry(
   const supabase = getSupabaseOrThrow();
   const actor = await resolveActor(user, supabase);
   const queueRow = await loadQueueRowOrThrow(supabase, input.entryId);
+  if (queueRow.source_provider === "square" || queueRow.payment_owner === "external:square") {
+    throw new QueueServiceError(
+      "Square appointments cannot convert into BVRB3R checkout or settlement.",
+      409
+    );
+  }
   if (!["active", "called", "assigned"].includes(queueRow.status)) {
     throw new QueueServiceError("Only active, called, or assigned queue entries can convert into appointments.", 409);
   }

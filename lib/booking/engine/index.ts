@@ -186,7 +186,7 @@ export async function readBookingAvailability(input: ReadAvailabilityInput): Pro
   const windowStart = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const windowEnd = new Date(now.getTime() + (policy.bookingHorizonDays + 1) * 24 * 60 * 60 * 1000).toISOString();
 
-  const [appointmentsResult, holdsResult, blockedResult] = await Promise.all([
+  const [appointmentsResult, holdsResult, blockedResult, squareResult, calendarBusyResult] = await Promise.all([
     supabase
       .from("appointments")
       .select("starts_at, ends_at, status")
@@ -204,8 +204,28 @@ export async function readBookingAvailability(input: ReadAvailabilityInput): Pro
       .select("starts_at, ends_at")
       .eq("barber_id", input.barberId)
       .gte("ends_at", windowStart)
+      .lte("starts_at", windowEnd),
+    supabase
+      .from("chairsync_appointments")
+      .select("starts_at, ends_at, status")
+      .eq("barber_id", input.barberId)
+      .eq("provider", "square")
+      .gte("ends_at", windowStart)
+      .lte("starts_at", windowEnd),
+    supabase
+      .from("calendar_busy_blocks")
+      .select("starts_at, ends_at")
+      .eq("barber_id", input.barberId)
+      .gte("ends_at", windowStart)
       .lte("starts_at", windowEnd)
   ]);
+
+  if (squareResult.error || calendarBusyResult.error) {
+    // External calendar truth is availability-blocking. Treating a failed read
+    // as an empty calendar would manufacture an open slot and permit a double
+    // booking, so the booking decision must fail closed and be retried.
+    throw new BookingEngineError("retry", "engine_unavailable");
+  }
 
   const workingHours: WorkingHoursRule[] = ((rulesResult.data ?? []) as Array<{
     id: string;
@@ -231,7 +251,12 @@ export async function readBookingAvailability(input: ReadAvailabilityInput): Pro
         status: string;
         expires_at: string;
       }>,
-      blockedTimes: (blockedResult.data ?? []) as Array<{ starts_at: string; ends_at: string }>,
+      blockedTimes: [
+        ...((blockedResult.data ?? []) as Array<{ starts_at: string; ends_at: string }>),
+        ...((squareResult.data ?? []) as Array<{ starts_at: string; ends_at: string; status: string }>)
+          .filter((appointment) => ["booked", "confirmed", "checked_in"].includes(appointment.status)),
+        ...((calendarBusyResult.data ?? []) as Array<{ starts_at: string; ends_at: string }>)
+      ],
       now
     }),
     startDate: input.startDate,

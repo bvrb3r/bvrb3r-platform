@@ -1063,6 +1063,8 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     availabilityResult,
     barberWorkingHoursResult,
     blockedTimesResult,
+    squareAppointmentsResult,
+    calendarBusyBlocksResult,
     appointmentsResult,
     reviewsResult,
     marketplaceVisibilityResult,
@@ -1080,6 +1082,8 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     supabase.from("availability_rules").select("barber_id, location_id, weekday, start_time, end_time"),
     supabase.from("barber_working_hours").select("barber_reference, shop_reference, weekday, start_time, end_time"),
     supabase.from("blocked_times").select("barber_id, starts_at, ends_at, reason"),
+    supabase.from("chairsync_appointments").select("barber_id, starts_at, ends_at, status").eq("provider", "square"),
+    supabase.from("calendar_busy_blocks").select("barber_id, starts_at, ends_at"),
     supabase.from("appointments").select("id, reference_code, barber_id, client_id, service_id, location_id, status, starts_at, ends_at, total_amount"),
     supabase.from("reviews").select("id, appointment_id, barber_id, client_id, location_id, rating, message, created_at"),
     supabase.from("marketplace_visibility").select("barber_reference, visibility_state, accepts_instant_bookings, featured_rank"),
@@ -1219,7 +1223,13 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
       availabilityRules: (availabilityResult.data ?? []) as CanonicalAvailabilityRuleRow[],
       workingHours: (barberWorkingHoursResult.error ? [] : barberWorkingHoursResult.data ?? []) as CanonicalBarberWorkingHoursRow[]
     }),
-    blockedTimes: (blockedTimesResult.data ?? []) as CanonicalBlockedTimeRow[],
+    blockedTimes: [
+      ...((blockedTimesResult.data ?? []) as CanonicalBlockedTimeRow[]),
+      ...((squareAppointmentsResult.error ? [] : squareAppointmentsResult.data ?? []) as Array<Omit<CanonicalBlockedTimeRow, "reason"> & { status: string }>)
+        .filter((appointment) => ["booked", "confirmed", "checked_in"].includes(appointment.status))
+        .map(({ barber_id, starts_at, ends_at }) => ({ barber_id, starts_at, ends_at, reason: "Square appointment · read-only" })),
+      ...((calendarBusyBlocksResult.error ? [] : calendarBusyBlocksResult.data ?? []) as Array<Omit<CanonicalBlockedTimeRow, "reason">>).map((row) => ({ ...row, reason: "External calendar busy · title private" }))
+    ],
     appointments: (appointmentsResult.data ?? []) as CanonicalAppointmentRow[],
     reviews: (reviewsResult.data ?? []) as CanonicalReviewRow[],
     marketplaceVisibility: (marketplaceVisibilityResult.error ? [] : marketplaceVisibilityResult.data ?? []) as CanonicalMarketplaceVisibilityRow[],
@@ -3045,8 +3055,6 @@ export async function buildCanonicalBarberProfile(
     })
   };
 }
-
-
 
 
 
