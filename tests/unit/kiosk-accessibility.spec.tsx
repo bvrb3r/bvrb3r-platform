@@ -328,6 +328,12 @@ describe("kiosk accessibility", () => {
       const decorations = Array.from(container.querySelectorAll("[aria-hidden='true']"));
       expect(decorations.length).toBeGreaterThan(0);
       for (const decoration of decorations) {
+        if (
+          decoration.hasAttribute("inert")
+          && decoration.parentElement?.hasAttribute("data-feature-gate")
+        ) {
+          continue;
+        }
         expect(decoration.querySelector("button, a, input")).toBeNull();
       }
     });

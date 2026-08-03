@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, LockKeyhole, ShieldCheck } from "lucide-react";
 import { KioskExitDialog } from "@/components/kiosk/kiosk-exit-dialog";
+import { RegisteredFeatureGate } from "@/components/ui/feature-gate";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,6 +32,7 @@ import {
   kioskFriendLabel,
   kioskFromPriceChip,
   kioskHowPayTitle,
+  kioskLoyaltyGateCopy,
   kioskNoTipLabel,
   kioskPayChip,
   kioskPickATime,
@@ -451,6 +453,7 @@ export function KioskParityScreen({
   const soundRef = useRef<KioskSoundPlayer | null>(null);
   const payload = kioskQuery.data;
   const t = KIOSK_COPY[locale];
+  const loyaltyGateCopy = kioskLoyaltyGateCopy(locale);
 
   const clientSearch = useKioskClientSearchQuery(form.publicUsername);
   const searchResults = clientSearch.data?.results ?? [];
@@ -1052,6 +1055,28 @@ export function KioskParityScreen({
                 })}
               </div>
             )}
+
+            <RegisteredFeatureGate
+              gateKey={scope === "shop" ? "kiosk.shop.loyalty_check_in" : "kiosk.barber.loyalty_check_in"}
+              scale="row"
+              label={loyaltyGateCopy.label}
+              note={loyaltyGateCopy.detail}
+              reasonCopy={loyaltyGateCopy.reason}
+              className="mt-6 w-full max-w-[720px] rounded-[20px]"
+            >
+              <button
+                type="button"
+                className="flex min-h-[64px] w-full items-center justify-between rounded-[20px] border border-white/12 bg-white/[0.025] px-5 text-left"
+              >
+                <span>
+                  <span className="block font-mono text-[9px] uppercase tracking-[0.18em] text-[#C9A87C]">
+                    {loyaltyGateCopy.label}
+                  </span>
+                  <span className="mt-1 block text-xs text-white/55">{loyaltyGateCopy.detail}</span>
+                </span>
+                <span className="text-[#C4F24E]">→</span>
+              </button>
+            </RegisteredFeatureGate>
           </div>
           <p className="mt-10 font-mono text-[9px] uppercase tracking-[0.32em] text-white/55">{t.powered}</p>
         </section>

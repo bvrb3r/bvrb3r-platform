@@ -39,6 +39,7 @@ import {
 } from "@/lib/owner-operations/client";
 import type { OwnerOperationsResponse } from "@/lib/owner-operations/domain";
 import type { ShopTeamInviteDirectoryBarber } from "@/lib/operations/shop-team-invites";
+import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import { cn } from "@/lib/utils";
 
 type OwnerOperationsTab = "home" | "floor" | "team" | "kiosk" | "chairs";
@@ -394,6 +395,14 @@ function FloorPanel({ data }: { data: OwnerOperationsResponse }) {
           </span>
         </div>
       </OwnerCard>
+
+      <FeatureGateTease
+        gateKey="owner.floor.auto_rebalance"
+        label="Auto-rebalance"
+        eyebrow="Floor Day"
+        detail="Automatically rebalance only eligible cash walk-ins while booked and provider-owned work stays structurally locked."
+        scale="row"
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
@@ -908,6 +917,13 @@ function KioskPanel({ data }: { data: OwnerOperationsResponse }) {
       <h2 className="pt-3 font-serif text-[44px] font-normal leading-[1.05] text-white">
         The front door’s rulebook<span className="text-[var(--bvr-green)]">.</span>
       </h2>
+
+      <FeatureGateTease
+        gateKey="kiosk.analytics.multi_device_compare"
+        label="Multi-device comparison"
+        eyebrow="Kiosk analytics"
+        detail="Compare health, queue intake, and resets across paired devices without exposing guest identity."
+      />
 
       <OwnerCard className="p-5 sm:p-6">
         <div className="grid gap-6 xl:grid-cols-2">

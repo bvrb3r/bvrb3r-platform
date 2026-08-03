@@ -18,6 +18,7 @@ import { usePwa } from "@/components/pwa/pwa-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useBarberEarningsQuery,
@@ -419,6 +420,13 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
 
   return (
     <div className="space-y-4" data-testid="barber-earnings-workspace">
+      <FeatureGateTease
+        gateKey="barber.analytics.city_benchmarks"
+        label="City benchmarks"
+        eyebrow="Barber analytics"
+        detail="Privacy-safe city cohorts compare demand, rebooking, and service mix without exposing another barber’s money."
+      />
+
       <Card className="rounded-[32px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>

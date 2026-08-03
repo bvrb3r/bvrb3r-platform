@@ -4,6 +4,7 @@ import Link from "next/link";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { FintechWorkspace } from "@/components/operations/fintech-workspace";
 import { OwnerMoneyWorkspace } from "@/components/operations/owner-money-workspace";
+import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import { Card } from "@/components/ui/card";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
@@ -56,6 +57,13 @@ export default async function ReportsPage({
           </p>
         </Card>
       ) : null}
+
+      <FeatureGateTease
+        gateKey="reports.custom_builder"
+        label="Custom report builder"
+        eyebrow="Reports"
+        detail="Build reusable Pro exports from canonical operational and BVRB3R-owned money fields."
+      />
 
       <OwnerMoneyWorkspace />
       <section className="mt-4">

@@ -494,6 +494,19 @@ function tr<T>(locale: KioskLocale, en: T, es: T, ht: T): T {
   return locale === "en" ? en : locale === "es" ? es : ht;
 }
 
+export function kioskLoyaltyGateCopy(locale: KioskLocale) {
+  return {
+    label: tr(locale, "Loyalty check-in", "Registro de lealtad", "Anrejistreman fidelite"),
+    reason: tr(locale, "Opening soon", "Próximamente", "Ap ouvri byento"),
+    detail: tr(
+      locale,
+      "Recognize returning clients only after they choose to identify themselves.",
+      "Reconoce a clientes frecuentes solo después de que elijan identificarse.",
+      "Rekonèt kliyan ki retounen sèlman apre yo chwazi idantifye tèt yo."
+    )
+  };
+}
+
 /** Stand-in for a client who has not typed a name yet. */
 export function kioskFriendLabel(locale: KioskLocale) {
   return tr(locale, "friend", "amigo", "zanmi");

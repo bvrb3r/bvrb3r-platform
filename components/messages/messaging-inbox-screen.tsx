@@ -8,6 +8,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { createPortal } from "react-dom";
 import { ArrowLeft, MessageSquarePlus, MessageSquareText, RadioTower, Search, Send, Sparkles, X } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { RegisteredFeatureGate } from "@/components/ui/feature-gate";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, FilterChip, PageHeader, SearchBar } from "@/design/components";
@@ -2214,53 +2215,60 @@ export function MessagingInboxScreen({
             ) : null}
 
             {surface === "shop" && !usesModalThreadView ? (
-              <div className="rounded-lg border border-white/8 bg-white/[0.025] p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-bold uppercase text-[#c4f24e]">{copy.broadcastTitle}</p>
-                    <p className="mt-1 text-xs text-white/48">{copy.broadcastCopy}</p>
+              <RegisteredFeatureGate
+                gateKey="messages.broadcasts"
+                scale="card"
+                label="Broadcasts"
+                className="rounded-lg"
+              >
+                <div className="rounded-lg border border-white/8 bg-white/[0.025] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase text-[#c4f24e]">{copy.broadcastTitle}</p>
+                      <p className="mt-1 text-xs text-white/48">{copy.broadcastCopy}</p>
+                    </div>
+                    <RadioTower className="h-4 w-4 text-[#e4f9b8]" aria-hidden="true" />
                   </div>
-                  <RadioTower className="h-4 w-4 text-[#e4f9b8]" aria-hidden="true" />
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <select
+                      className="h-10 rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none transition focus:border-[#c4f24e]/30"
+                      value={broadcastLocationId}
+                      onChange={(event) => setBroadcastLocationId(event.target.value)}
+                    >
+                      <option value="">Choose location</option>
+                      {broadcastTargets.map((target) => (
+                        <option key={target.locationId} value={target.locationId}>{target.locationLabel}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="h-10 rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none transition focus:border-[#c4f24e]/30"
+                      value={broadcastAudience}
+                      onChange={(event) => setBroadcastAudience(event.target.value as MessagingBroadcastAudience)}
+                    >
+                      <option value="all">Clients and barbers</option>
+                      <option value="clients">Clients only</option>
+                      <option value="barbers">Barbers only</option>
+                    </select>
+                  </div>
+                  <textarea
+                    value={broadcastBody}
+                    onChange={(event) => setBroadcastBody(event.target.value)}
+                    rows={2}
+                    className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-[#090909] px-3 py-2 text-sm text-white outline-none transition placeholder:text-white/34 focus:border-[#C4F24E]/28"
+                    placeholder="Send a shop update."
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      className="h-9 rounded-lg px-3 text-xs normal-case tracking-normal"
+                      disabled={broadcastMutation.isPending || !broadcastLocationId || !broadcastBody.trim()}
+                      onClick={() => void handleBroadcast()}
+                    >
+                      <RadioTower className="h-4 w-4" aria-hidden="true" />
+                      {broadcastMutation.isPending ? "Sending..." : "Send broadcast"}
+                    </Button>
+                  </div>
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <select
-                    className="h-10 rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none transition focus:border-[#c4f24e]/30"
-                    value={broadcastLocationId}
-                    onChange={(event) => setBroadcastLocationId(event.target.value)}
-                  >
-                    <option value="">Choose location</option>
-                    {broadcastTargets.map((target) => (
-                      <option key={target.locationId} value={target.locationId}>{target.locationLabel}</option>
-                    ))}
-                  </select>
-                  <select
-                    className="h-10 rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none transition focus:border-[#c4f24e]/30"
-                    value={broadcastAudience}
-                    onChange={(event) => setBroadcastAudience(event.target.value as MessagingBroadcastAudience)}
-                  >
-                    <option value="all">Clients and barbers</option>
-                    <option value="clients">Clients only</option>
-                    <option value="barbers">Barbers only</option>
-                  </select>
-                </div>
-                <textarea
-                  value={broadcastBody}
-                  onChange={(event) => setBroadcastBody(event.target.value)}
-                  rows={2}
-                  className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-[#090909] px-3 py-2 text-sm text-white outline-none transition placeholder:text-white/34 focus:border-[#C4F24E]/28"
-                  placeholder="Send a shop update."
-                />
-                <div className="mt-2 flex justify-end">
-                  <Button
-                    className="h-9 rounded-lg px-3 text-xs normal-case tracking-normal"
-                    disabled={broadcastMutation.isPending || !broadcastLocationId || !broadcastBody.trim()}
-                    onClick={() => void handleBroadcast()}
-                  >
-                    <RadioTower className="h-4 w-4" aria-hidden="true" />
-                    {broadcastMutation.isPending ? "Sending..." : "Send broadcast"}
-                  </Button>
-                </div>
-              </div>
+              </RegisteredFeatureGate>
             ) : null}
           </aside>
 

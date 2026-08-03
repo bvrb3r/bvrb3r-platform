@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Loader2, RefreshCw } from "lucide-react";
+import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import { GlobalSafetyState } from "@/components/ui/global-safety-state";
 import type { OwnerOperationsResponse } from "@/lib/owner-operations/domain";
 import {
@@ -133,6 +134,20 @@ export function OwnerReportPack({ shopIds }: { shopIds: string[] }) {
       </header>
 
       <div className="mx-auto mt-6 max-w-7xl">
+        <div className="mb-5 grid gap-4 lg:grid-cols-2">
+          <FeatureGateTease
+            gateKey="owner.analytics.forecasting"
+            label="Forecasting"
+            eyebrow="Owner analytics"
+            detail="Forecast operating demand from shop-safe counts without importing barber earnings or tips."
+          />
+          <FeatureGateTease
+            gateKey="owner.reports.custom_builder"
+            label="Custom report builder"
+            eyebrow="Reports"
+            detail="Compose Pro reports from approved shop-operational measures and rent-only money fields."
+          />
+        </div>
         {loading ? (
           <div className="grid min-h-64 place-items-center">
             <Loader2 className="h-7 w-7 animate-spin text-[#C4F24E]" aria-label="Loading reports" />
