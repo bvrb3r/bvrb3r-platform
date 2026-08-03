@@ -54,6 +54,22 @@ function createSupabaseStub(seed: {
     created_at: "2026-04-21T12:00:00.000Z"
   };
   const tables: Record<string, Row[]> = {
+    appointments: [
+      "appt-live-1",
+      "appt-live-2",
+      "appt-live-3",
+      "appt-live-4",
+      "appt-routing-later",
+      "appt-freelance-1",
+      "appt-requires-action",
+      "appt-ledger-failed"
+    ].map((id) => ({
+      id,
+      client_id: "client-live-1",
+      shop_id: null,
+      location_id: "location-live-1",
+      deposit_amount: 0
+    })),
     clients: seed.clients ?? [{
       id: "client-live-1",
       reference_code: "client-live-1",
@@ -208,6 +224,12 @@ function createSupabaseStub(seed: {
       }
 
       return new QueryBuilder(table);
+    },
+    rpc(name: string) {
+      if (name !== "pr36_shop_payment_allowed") {
+        throw new Error(`Unexpected RPC ${name}`);
+      }
+      return Promise.resolve({ data: true, error: null });
     }
   };
 }

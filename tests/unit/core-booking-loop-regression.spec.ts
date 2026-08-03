@@ -407,6 +407,12 @@ function createSupabaseMock(tables: Record<string, Row[]>) {
   return {
     from(table: string) {
       return new QueryBuilder(table);
+    },
+    rpc(name: string) {
+      if (name !== "pr36_shop_payment_allowed") {
+        throw new Error(`Unexpected RPC ${name}`);
+      }
+      return Promise.resolve({ data: true, error: null });
     }
   };
 }

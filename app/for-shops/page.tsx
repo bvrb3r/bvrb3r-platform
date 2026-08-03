@@ -20,8 +20,8 @@ const content: MarketingPageContent = {
     label: "Sign up as a shop owner"
   },
   secondaryCta: {
-    href: "/app",
-    label: "See the app first"
+    href: "/demo?role=owner",
+    label: "Run the interactive demo"
   },
   problemEyebrow: "The floor without the chaos",
   problemTitle: "You shouldn’t have to stand at the desk to know what is happening.",

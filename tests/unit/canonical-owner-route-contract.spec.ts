@@ -22,6 +22,7 @@ const staticOwnerRoutes = {
   switch: "createCanonicalOwnerRouteGate",
   sync: "createCanonicalOwnerRouteGate",
   team: "dashboard/owner/team/page",
+  tv: "WaitingRoomTv",
   verify: "OwnerSettingsPage"
 } as const;
 
