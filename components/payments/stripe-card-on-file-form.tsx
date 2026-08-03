@@ -653,7 +653,7 @@ function SplitStripeCardFields({
       base: {
         color: "#ffffff",
         fontSize: "16px",
-        fontFamily: "Inter, system-ui, sans-serif",
+        fontFamily: "Archivo, system-ui, sans-serif",
         "::placeholder": {
           color: "#8a8a8a"
         }

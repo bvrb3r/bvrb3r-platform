@@ -61,7 +61,7 @@ function main() {
     },
     {
       label: "Android wrapper",
-      ok: hasFile("android\\app\\build.gradle") || hasFile("android\\app\\build.gradle.kts"),
+      ok: hasFile("android/app/build.gradle") || hasFile("android/app/build.gradle.kts"),
       detail: "android/app"
     },
     {

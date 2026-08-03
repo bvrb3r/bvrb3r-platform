@@ -285,8 +285,8 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.queryByRole("heading", { name: "Home" })).not.toBeInTheDocument();
     expect(screen.queryByText("Your calendar, chair status, money posture, and next move.")).not.toBeInTheDocument();
-    expect(screen.getByTestId("barber-calendar-screen-stub")).toHaveTextContent("Blaze King");
-    expect(screen.queryByTestId("barber-workspace-stub")).not.toBeInTheDocument();
+    expect(screen.getByTestId("barber-workspace-stub")).toHaveTextContent("Blaze King");
+    expect(screen.queryByTestId("barber-calendar-screen-stub")).not.toBeInTheDocument();
     expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Professional account");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
   });

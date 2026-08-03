@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { ShopOwnerPlanAccessCard } from "@/components/owner-experience/shop-owner-plan-access-card";
-import { OwnerOperationsWorkspace } from "@/components/operations/owner-operations-workspace";
 import { Card } from "@/components/ui/card";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 import { resolveShopOwnerPaywallSummaryForUser } from "@/lib/entitlements/shop-owner-paywall";
@@ -50,7 +49,6 @@ export default async function OwnerMoneyPage({
           </p>
         </Card>
       ) : null}
-      <OwnerOperationsWorkspace shopIds={[user.ownedShopId ?? "", ...user.locationIds]} />
       {fintechRequested ? (
         <Card className="mt-4 rounded-[28px] border border-amber-300/18 bg-amber-300/[0.055] p-5 sm:p-6">
           <p className="surface-label">Detailed finance closed</p>

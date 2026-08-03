@@ -438,7 +438,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
                   return action ? <Button type="button" className="h-11 px-4" disabled={lifecycleMutation.isPending && pendingAppointmentId === nextAppointment.id} onClick={() => void handleLifecycleAction(nextAppointment, action)}>{lifecycleMutation.isPending && pendingAppointmentId === nextAppointment.id ? action.pendingLabel : action.label}</Button> : <span className="status-pill text-white/72">{nextAppointment.display.statusLabel}</span>;
                 })()}
                 <Button type="button" variant="secondary" className="h-11 px-4" disabled={threadMutation.isPending} onClick={() => void handleMessage(nextAppointment)}><MessageSquareText className="h-4 w-4" />{threadMutation.isPending ? "Opening..." : "Message client"}</Button>
-                <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber")}>Reschedule in calendar</Button>
+                <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Reschedule in calendar</Button>
                 {nextAppointment.status === "completed" && nextAppointment.financial.outstandingBalance > 0 ? <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}>Open checkout</Button> : null}
                 {canCancelAppointment(nextAppointment) ? <Button type="button" variant="ghost" className="h-11 px-4" disabled={cancelMutation.isPending && pendingAppointmentId === nextAppointment.id} onClick={() => void handleCancel(nextAppointment)}>{cancelMutation.isPending && pendingAppointmentId === nextAppointment.id ? "Cancelling..." : "Cancel booking"}</Button> : null}
               </div>
@@ -479,7 +479,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
                       >
                         {notifyGapMutation.isPending && isPending ? "Notifying..." : alert.actionLabel}
                       </Button>
-                      <Button type="button" variant="ghost" className="h-10 px-3" onClick={() => router.push("/dashboard/barber")}>
+                      <Button type="button" variant="ghost" className="h-10 px-3" onClick={() => router.push("/dashboard/barber/calendar")}>
                         Open calendar
                       </Button>
                     </div>
@@ -490,7 +490,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
           </div>
           <div className="mt-4 flex flex-wrap gap-2">{blockerLabels.length ? blockerLabels.slice(0, 4).map((label) => <span key={label} className="status-pill text-white/72">{label}</span>) : <span className="status-pill text-[#e4f9b8]">No active compliance blockers</span>}</div>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber")}>Open calendar</Button>
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Open calendar</Button>
             <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}><WalletCards className="h-4 w-4" />Open checkout</Button>
             <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/more?section=payouts")}>Review payout setup</Button>
           </div>
@@ -518,7 +518,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
                 <div className="mt-4 flex flex-wrap gap-3">
                   {action ? <Button type="button" className="h-11 px-4" disabled={lifecycleMutation.isPending && isPending} onClick={() => void handleLifecycleAction(appointment, action)}>{lifecycleMutation.isPending && isPending ? action.pendingLabel : action.label}</Button> : <span className="status-pill text-white/72">{appointment.display.statusLabel}</span>}
                   <Button type="button" variant="secondary" className="h-11 px-4" disabled={threadMutation.isPending} onClick={() => void handleMessage(appointment)}><MessageSquareText className="h-4 w-4" />{threadMutation.isPending ? "Opening..." : "Message"}</Button>
-                  <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber")}>Reschedule</Button>
+                  <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Reschedule</Button>
                   {appointment.status === "completed" && appointment.financial.outstandingBalance > 0 ? <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}>Checkout</Button> : null}
                   {canCancelAppointment(appointment) ? <Button type="button" variant="ghost" className="h-11 px-4" disabled={cancelMutation.isPending && isPending} onClick={() => void handleCancel(appointment)}>{cancelMutation.isPending && isPending ? "Cancelling..." : "Cancel"}</Button> : null}
                 </div>

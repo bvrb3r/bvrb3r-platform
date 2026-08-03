@@ -111,6 +111,14 @@ describe("auth entry workspace", () => {
     expect(window.localStorage.getItem("sb-project-auth-token-code-verifier")).toBe("pkce-verifier");
   });
 
+  it("keeps owner-review login available without exposing public signup", () => {
+    render(<AuthEntryWorkspace mode="login" signupEnabled={false} />);
+
+    expect(screen.getByText("This production build is limited to approved owner-review accounts.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Create account" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log in" })).toBeEnabled();
+  });
+
   it("shows the forgot password entry point on the login screen", () => {
     render(<AuthEntryWorkspace mode="login" />);
 

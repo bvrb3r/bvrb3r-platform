@@ -7,7 +7,7 @@ import { LocateFixed, MapPinned, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 
-type SavedShopLocation = {
+export type SavedShopLocation = {
   address: string;
   city: string;
   region: string;
@@ -17,15 +17,17 @@ type SavedShopLocation = {
   verified: boolean;
 };
 
+export type ShopAddressMapboxFieldProps = {
+  shopId: string;
+  currentAddress?: string | null;
+  onSaved?: (location: SavedShopLocation) => void;
+};
+
 export function ShopAddressMapboxField({
   shopId,
   currentAddress,
   onSaved
-}: {
-  shopId: string;
-  currentAddress?: string | null;
-  onSaved?: (location: SavedShopLocation) => void;
-}) {
+}: ShopAddressMapboxFieldProps) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim() ?? "";
   const [value, setValue] = useState(currentAddress ?? "");
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);

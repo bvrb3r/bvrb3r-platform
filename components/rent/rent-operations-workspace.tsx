@@ -208,11 +208,13 @@ function ScreenRail({
 function LifecycleScreen({
   payload,
   viewer,
-  onRefresh
+  onRefresh,
+  onOpenStatement
 }: {
   payload: RentWorkspacePayload;
   viewer: "owner" | "barber";
   onRefresh: () => Promise<void>;
+  onOpenStatement: () => void;
 }) {
   const [tab, setTab] = useState<LifecycleTab>("pay");
   const [rail, setRail] = useState<PaymentRail>("card");
@@ -533,7 +535,11 @@ function LifecycleScreen({
           <div className="p-6 sm:p-8">
             <div className="flex items-center justify-between">
               <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#C9A87C]">Rent history</p>
-              <button type="button" className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#C4F24E]">
+              <button
+                type="button"
+                onClick={onOpenStatement}
+                className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#C4F24E]"
+              >
                 Full statement →
               </button>
             </div>
@@ -549,7 +555,11 @@ function LifecycleScreen({
               ))}
             </div>
             <div className="mt-7 grid gap-2">
-              <button type="button" className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/12 text-sm font-bold text-white/62">
+              <button
+                type="button"
+                onClick={() => setTab("changes")}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/12 text-sm font-bold text-white/62"
+              >
                 <FileText className="h-4 w-4" /> View agreement
               </button>
               {viewer === "barber" && payload.contributions.some((row) => row.status === "settled") ? (
@@ -1113,7 +1123,12 @@ export function RentOperationsWorkspace({
         />
       ) : null}
       {!loading && !error && screen === "lifecycle" ? (
-        <LifecycleScreen payload={payload} viewer={viewer} onRefresh={load} />
+        <LifecycleScreen
+          payload={payload}
+          viewer={viewer}
+          onRefresh={load}
+          onOpenStatement={() => setScreen("statement")}
+        />
       ) : null}
       {!loading && !error && screen === "autobooth" ? (
         <AutoBoothScreen payload={payload} />

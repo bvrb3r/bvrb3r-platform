@@ -26,8 +26,8 @@ describe("public client profile page", () => {
     expect(screen.getByRole("heading", { name: "Public Profile" })).toBeInTheDocument();
     expect(screen.getByText("Jordan Ellis")).toBeInTheDocument();
     expect(screen.getByText("@jordan_ellis")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Follow" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Message" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in to follow" })).toHaveAttribute("href", "/login?next=%2Fclient%2Fjordan_ellis");
+    expect(screen.getByText("Message unavailable")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
     expect(screen.getByText("Culture posts")).toBeInTheDocument();
     expect(screen.queryByText(/email/i)).not.toBeInTheDocument();

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { AuthEntryWorkspace } from "@/components/auth/auth-entry-workspace";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { isOwnerReviewMode } from "@/lib/config/owner-review";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
 import { redirect } from "next/navigation";
 
@@ -12,7 +13,7 @@ export default async function LoginPage() {
 
   return (
     <Suspense fallback={null}>
-      <AuthEntryWorkspace mode="login" />
+      <AuthEntryWorkspace mode="login" signupEnabled={!isOwnerReviewMode()} />
     </Suspense>
   );
 }

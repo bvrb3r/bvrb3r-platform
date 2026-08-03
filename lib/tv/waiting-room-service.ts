@@ -12,6 +12,7 @@ import { readOwnerOperationsControlState } from "@/lib/owner-operations/service"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { UserAccount } from "@/types/domain";
 import type { WaitingRoomMenuGroup, WaitingRoomTvSnapshot } from "./waiting-room";
+import { resolveWaitingRoomTvStatus } from "./waiting-room";
 
 type ServiceRow = {
   id: string;
@@ -102,6 +103,12 @@ export async function readWaitingRoomTvSnapshot(user: UserAccount, requestedShop
     nextAppointmentStart: barber.nextAppointmentStart
   }));
   const menu = await readMenu(shopId, team);
+  const status = resolveWaitingRoomTvStatus({
+    emergencyDisabledAt: operations.controls.kiosk.emergencyDisabledAt,
+    healthStatus: operations.controls.kiosk.healthStatus,
+    intakeOpen: operations.controls.floor.intakeOpen,
+    hasContent: Boolean(team.length || menu.length)
+  });
 
   return {
     shopId,
@@ -109,6 +116,6 @@ export async function readWaitingRoomTvSnapshot(user: UserAccount, requestedShop
     generatedAt: operations.generatedAt,
     team,
     menu,
-    status: team.length || menu.length ? "live" : "empty"
+    status
   };
 }

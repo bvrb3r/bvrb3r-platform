@@ -238,7 +238,7 @@ function HomePanel({ data }: { data: OwnerOperationsResponse }) {
       <nav className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Owner home shortcuts">
         {[
           ["FLOOR DAY", "/shop/floor"],
-          ["WAITING ROOM TV", "/shop/tv"],
+          ["WAITING ROOM TV", `/shop/tv?shopId=${encodeURIComponent(data.scope.shopId)}`],
           ["ANALYTICS", "/shop/analytics"],
           ["REPORTS", "/shop/reports"]
         ].map(([label, href]) => (
@@ -1279,10 +1279,12 @@ function ChairsPanel({ data }: { data: OwnerOperationsResponse }) {
 
 export function OwnerOperationsWorkspace({
   shopIds,
-  initialTab = "home"
+  initialTab = "home",
+  embedded = false
 }: {
   shopIds: string[];
   initialTab?: OwnerOperationsTab;
+  embedded?: boolean;
 }) {
   const uniqueShopIds = useMemo(() => Array.from(new Set(shopIds.filter(Boolean))), [shopIds]);
   const [selectedShopId, setSelectedShopId] = useState(uniqueShopIds.length > 1 ? uniqueShopIds[0] : undefined);
@@ -1301,8 +1303,11 @@ export function OwnerOperationsWorkspace({
   }[tab];
 
   return (
-    <div className="min-h-screen bg-[#060708] pb-12 text-[var(--text-primary)]">
-      <header className="sticky top-0 z-20 border-b border-white/[0.08] bg-[#060708]/95 px-4 py-4 backdrop-blur-xl sm:px-8">
+    <div className={cn(
+      "text-[var(--text-primary)]",
+      embedded ? "pb-4" : "min-h-screen bg-[#060708] pb-12"
+    )}>
+      {!embedded ? <header className="sticky top-0 z-20 border-b border-white/[0.08] bg-[#060708]/95 px-4 py-4 backdrop-blur-xl sm:px-8">
         <div className="mx-auto flex max-w-[1080px] flex-wrap items-center gap-3">
           <p className="font-display text-sm font-black tracking-[0.22em] text-white">
             BVRB<span className="text-[var(--bvr-green)]">3</span>R
@@ -1363,7 +1368,7 @@ export function OwnerOperationsWorkspace({
             Reports
           </Link>
         </div>
-      </header>
+      </header> : null}
 
       <div className="mx-auto max-w-[1080px] px-4 sm:px-8">
         {query.isLoading ? (

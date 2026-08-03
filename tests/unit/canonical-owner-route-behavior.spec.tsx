@@ -17,7 +17,13 @@ vi.mock("@/lib/entitlements/shop-owner-paywall", () => ({
 }));
 
 vi.mock("@/components/dashboard/dashboard-shell", () => ({
-  DashboardShell: ({ children }: { children: ReactNode }) => <div>{children}</div>
+  DashboardShell: ({
+    activeHref,
+    children
+  }: {
+    activeHref: string;
+    children: ReactNode;
+  }) => <div data-testid="dashboard-shell" data-active-href={activeHref}>{children}</div>
 }));
 
 vi.mock("@/components/owner-experience/shop-owner-plan-access-card", () => ({
@@ -29,13 +35,24 @@ vi.mock("@/components/operations/owner-schedule-workspace", () => ({
 }));
 
 vi.mock("@/components/operations/owner-operations-workspace", () => ({
-  OwnerOperationsWorkspace: ({ initialTab }: { initialTab?: string }) => (
-    <div data-testid="owner-operations-workspace" data-initial-tab={initialTab} />
+  OwnerOperationsWorkspace: ({
+    embedded,
+    initialTab
+  }: {
+    embedded?: boolean;
+    initialTab?: string;
+  }) => (
+    <div
+      data-testid="owner-operations-workspace"
+      data-embedded={String(Boolean(embedded))}
+      data-initial-tab={initialTab}
+    />
   )
 }));
 
 import CanonicalOwnerAnalyticsPage from "@/app/shop/analytics/page";
 import CanonicalOwnerChairsPage from "@/app/shop/chairs/page";
+import CanonicalOwnerFloorPage from "@/app/shop/floor/page";
 import CanonicalOwnerSchedulePage from "@/app/shop/schedule/page";
 
 describe("canonical owner route behavior", () => {
@@ -58,6 +75,24 @@ describe("canonical owner route behavior", () => {
     render(await CanonicalOwnerChairsPage());
 
     expect(screen.getByTestId("owner-operations-workspace")).toHaveAttribute("data-initial-tab", "chairs");
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
+  });
+
+  it("opens canonical Floor Day inside the owner schedule shell", async () => {
+    render(await CanonicalOwnerFloorPage());
+
+    expect(screen.getByTestId("dashboard-shell")).toHaveAttribute(
+      "data-active-href",
+      "/dashboard/owner/schedule"
+    );
+    expect(screen.getByTestId("owner-operations-workspace")).toHaveAttribute(
+      "data-initial-tab",
+      "floor"
+    );
+    expect(screen.getByTestId("owner-operations-workspace")).toHaveAttribute(
+      "data-embedded",
+      "true"
+    );
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
   });
 

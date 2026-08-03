@@ -8,7 +8,7 @@ const staticOwnerRoutes = {
   bridge: "createCanonicalOwnerRouteGate",
   chairs: "OwnerOperationsWorkspace",
   chairfill: "createCanonicalOwnerRouteGate",
-  floor: "dashboard/owner/schedule/page",
+  floor: 'initialTab="floor"',
   home: "dashboard/owner/page",
   identity: "OwnerSettingsPage",
   kiosk: "dashboard/owner/kiosk/page",

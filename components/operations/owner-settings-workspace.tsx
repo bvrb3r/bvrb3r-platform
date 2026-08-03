@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   BarChart3,
@@ -38,7 +39,7 @@ import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
-import { ShopAddressMapboxField } from "@/components/marketplace/shop-address-mapbox-field";
+import type { ShopAddressMapboxFieldProps } from "@/components/marketplace/shop-address-mapbox-field";
 import { KioskSettingsCard } from "@/components/kiosk/kiosk-actions";
 import { ShopOwnerPlanAccessCard, ShopOwnerUpgradePrompt } from "@/components/owner-experience/shop-owner-plan-access-card";
 import { SubscriptionSettingsCard } from "@/components/subscription/subscription-settings-card";
@@ -56,6 +57,19 @@ import { getReadableActionError } from "@/lib/utils/feedback";
 import type { UserAccount } from "@/types/domain";
 
 type SettingTone = "green" | "yellow" | "red" | "muted";
+
+const ShopAddressMapboxField = dynamic<ShopAddressMapboxFieldProps>(
+  () => import("@/components/marketplace/shop-address-mapbox-field")
+    .then((module) => module.ShopAddressMapboxField),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-[24px] border border-dashed border-white/12 bg-black/25 p-5 text-sm text-white/58">
+        Loading verified map tools…
+      </div>
+    )
+  }
+);
 
 type SettingRow = {
   title: string;

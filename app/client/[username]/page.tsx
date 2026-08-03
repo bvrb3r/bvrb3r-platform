@@ -27,6 +27,7 @@ export default async function PublicClientProfilePage({ params }: { params: Prom
       <PublicClientProfileContent
         profile={profile}
         username={username}
+        viewerCanFollow={session.authenticated && session.user.id !== "guest-user"}
         viewerCanReport={session.authenticated && session.user.id !== "guest-user"}
       />
     </main>

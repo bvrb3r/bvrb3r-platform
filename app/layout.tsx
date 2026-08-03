@@ -1,20 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, Instrument_Serif, Inter, Space_Mono } from "next/font/google";
+import { Archivo, Instrument_Serif, Space_Mono } from "next/font/google";
 import "./globals.css";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { AppProviders } from "@/components/providers/app-providers";
 import { NO_FLASH_SCRIPT } from "@/components/providers/theme-provider";
+import { isOwnerReviewMode } from "@/lib/config/owner-review";
 import { runtimeConfig } from "@/lib/config/runtime";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 // --- BVRB3R type system ---------------------------------------------------
-// Archivo   → display / section headings
+// Archivo   → UI, body, and section headings
 // Instrument Serif → editorial headlines (the gold-period signature)
-// Inter     → body / UI text
 // Space Mono → kickers, eyebrow labels, mono tags
 const archivo = Archivo({
   subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--font-archivo",
   display: "swap"
 });
@@ -27,12 +27,6 @@ const instrumentSerif = Instrument_Serif({
   display: "swap"
 });
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap"
-});
-
 const spaceMono = Space_Mono({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -40,7 +34,7 @@ const spaceMono = Space_Mono({
   display: "swap"
 });
 
-const fontVariables = `${archivo.variable} ${instrumentSerif.variable} ${inter.variable} ${spaceMono.variable}`;
+const fontVariables = `${archivo.variable} ${instrumentSerif.variable} ${spaceMono.variable}`;
 
 const iosDeepLink = `${runtimeConfig.appLinkScheme}://open?href=%2Fdiscover`;
 const androidDeepLink = `${runtimeConfig.appLinkScheme}://open?href=%2Fdiscover`;
@@ -58,6 +52,18 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false
   },
+  robots: isOwnerReviewMode()
+    ? {
+        index: false,
+        follow: false,
+        nocache: true,
+        googleBot: {
+          index: false,
+          follow: false,
+          noimageindex: true
+        }
+      }
+    : undefined,
   metadataBase: new URL(runtimeConfig.appUrl)
 };
 
