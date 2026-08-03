@@ -61,7 +61,7 @@ export function ContactVerificationWorkspace() {
     });
   }, [payload]);
 
-  async function continueFromCanonicalState(preferredNextPath?: Route) {
+  async function continueFromCanonicalState(preferredNextPath?: string) {
     if (isContinuing) {
       return preferredNextPath ?? null;
     }

@@ -1,4 +1,3 @@
-import type { Route } from "next";
 import { demoUsers } from "@/lib/data/demo";
 import { isDemoMode, runtimeConfig } from "@/lib/config/runtime";
 import { getCanonicalAccountRole, isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
@@ -8,6 +7,16 @@ import type { Role, UserAccount } from "@/types/domain";
 export const DEMO_SESSION_COOKIE = "bvrb3r-demo-email";
 export const DEFAULT_DEMO_EMAIL = "owner@bvrb3r.demo";
 export const CANONICAL_PLATFORM_ADMIN_EMAIL = "bvrb3r@icloud.com";
+
+export type DemoDefaultRoute =
+  | "/"
+  | "/architect"
+  | "/dashboard/barber"
+  | "/dashboard/client"
+  | "/dashboard/front-desk"
+  | "/dashboard/manager"
+  | "/dashboard/owner"
+  | "/post-auth";
 
 const demoEmailAliases = new Map<string, string>([
   ["lux@bvrb3r.demop", "lux@bvrb3r.demo"],
@@ -67,7 +76,7 @@ export interface DemoLauncherAccount {
   dashboardLabel: string;
   roleLabel: string;
   description: string;
-  redirectTo: Route;
+  redirectTo: DemoDefaultRoute;
 }
 
 function normalizeDemoEmail(email?: string) {
@@ -165,7 +174,7 @@ export function getUserRoleLabel(user: UserAccount) {
   return getRoleLabel(user.role);
 }
 
-export function getDefaultRouteForUser(user: UserAccount): Route {
+export function getDefaultRouteForUser(user: UserAccount): DemoDefaultRoute {
   if (user.accountStatus === "profile_only") {
     return "/post-auth";
   }

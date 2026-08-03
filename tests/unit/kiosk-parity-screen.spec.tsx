@@ -400,6 +400,30 @@ describe("kiosk parity screen", () => {
       expect(screen.getByText("Total $56.25")).toBeInTheDocument();
     });
 
+    it("offers the service-only loyalty reward after a gift decline in the barber kiosk", () => {
+      useKioskPayloadQueryMock.mockReturnValue({ data: barberPayload, isLoading: false, error: null, refetch: vi.fn() });
+      render(
+        <KioskParityScreen
+          shopId="barber-marcus"
+          scope="barber"
+          cardSimulationEnabled
+          loyaltyReward={{ visitNumber: 10, serviceDiscountCents: 2_000 }}
+        />
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Take the next chair/i }));
+      fillDetails({ service: /Signature Cut/ });
+      fireEvent.click(screen.getByRole("button", { name: /Join the line/i }));
+
+      expect(screen.getByText("Are you using a gift card?")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "No gift card" }));
+      expect(screen.getByText("Your 10th cut — this one’s half off")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Use it — −\$20/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Tap, insert, or swipe/i }));
+
+      expect(screen.getByText("Your Signature Cut is $20.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /20% · Total \$24/ })).toBeInTheDocument();
+    });
+
     it("shows the reserving state while the booking is in flight", async () => {
       let release: ((value: typeof bookingResult) => void) | undefined;
       bookingMock.mockImplementation(() => new Promise((resolve) => {

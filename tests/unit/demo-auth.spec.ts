@@ -1,17 +1,19 @@
 import { CANONICAL_PLATFORM_ADMIN_EMAIL, findDemoUserByEmail, getDefaultRouteForUser, getDemoLauncherAccounts, getUserRoleLabel, isPlatformAdminUser, resolveDemoUser } from "@/lib/auth/demo-auth";
 
+const demoAccountCases: Array<[string, string, string, string]> = [
+  ["architect@bvrb3r.demo", "platform_admin", "/post-auth", "Platform admin"],
+  ["client@bvrb3r.demo", "client_user", "/dashboard/client", "Client"],
+  ["lux@bvrb3r.demo", "barber_user", "/dashboard/barber", "Freelance barber"],
+  ["blaze@bvrb3r.demo", "barber_user", "/dashboard/barber", "Full Booth Rent barber"],
+  ["fade@bvrb3r.demo", "barber_user", "/dashboard/barber", "Freelance barber"],
+  ["wave@bvrb3r.demo", "manager", "/dashboard/manager", "Barber manager"],
+  ["frontdesk@bvrb3r.demo", "front_desk", "/dashboard/front-desk", "Front desk"],
+  ["manager@bvrb3r.demo", "manager", "/dashboard/manager", "Shop manager"],
+  ["owner@bvrb3r.demo", "shop_owner_user", "/dashboard/owner", "Shop owner"]
+];
+
 describe("demo account mapping", () => {
-  it.each([
-    ["architect@bvrb3r.demo", "platform_admin", "/post-auth", "Platform admin"],
-    ["client@bvrb3r.demo", "client_user", "/dashboard/client", "Client"],
-    ["lux@bvrb3r.demo", "barber_user", "/dashboard/barber", "Freelance barber"],
-    ["blaze@bvrb3r.demo", "barber_user", "/dashboard/barber", "Full Booth Rent barber"],
-    ["fade@bvrb3r.demo", "barber_user", "/dashboard/barber", "Freelance barber"],
-    ["wave@bvrb3r.demo", "manager", "/dashboard/manager", "Barber manager"],
-    ["frontdesk@bvrb3r.demo", "front_desk", "/dashboard/front-desk", "Front desk"],
-    ["manager@bvrb3r.demo", "manager", "/dashboard/manager", "Shop manager"],
-    ["owner@bvrb3r.demo", "shop_owner_user", "/dashboard/owner", "Shop owner"]
-  ])("maps %s to %s and %s", (email, role, route, roleLabel) => {
+  it.each(demoAccountCases)("maps %s to %s and %s", (email, role, route, roleLabel) => {
     const user = findDemoUserByEmail(email);
 
     expect(user?.email).toBe(email);

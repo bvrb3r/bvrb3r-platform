@@ -13,13 +13,15 @@ export default async function BarberKioskPage({
 }) {
   const { barberId } = await params;
   const { lang } = await searchParams;
+  const isFixture = isKioskFixtureTarget("barber", barberId);
 
   return (
     <KioskParityScreen
       shopId={barberId}
       scope="barber"
       initialLocale={resolveKioskLocale(lang)}
-      cardSimulationEnabled={isKioskFixtureTarget("barber", barberId)}
+      cardSimulationEnabled={isFixture}
+      loyaltyReward={isFixture ? { visitNumber: 10, serviceDiscountCents: 2_000 } : null}
     />
   );
 }

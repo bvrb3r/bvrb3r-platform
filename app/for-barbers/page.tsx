@@ -20,8 +20,8 @@ const content: MarketingPageContent = {
     label: "Sign up as a barber"
   },
   secondaryCta: {
-    href: "/app",
-    label: "See the app first"
+    href: "/demo?role=barber",
+    label: "Run the interactive demo"
   },
   problemEyebrow: "The expensive gaps",
   problemTitle: "Empty minutes are the most expensive thing in the shop.",
