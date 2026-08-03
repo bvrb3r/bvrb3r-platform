@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Link from "next/link";
 import { FeatureGateTease } from "@/components/ui/feature-gate-tease";
 import type { FeatureGateKey } from "@/lib/feature-gates";
@@ -48,7 +49,7 @@ export function RoadFutureGates({ role }: { role: RoadRole }) {
         ))}
         {role === "shop_owner_user" ? (
           <Link
-            href="/gift-cards"
+            href={"/gift-cards" as Route}
             className="flex min-h-16 items-center justify-between rounded-[20px] border border-[var(--bvr-green-border)] bg-[var(--bvr-green-soft)] px-4 text-sm text-white/62"
             data-future-door-graduated="owner.gift-cards"
           >
