@@ -124,6 +124,8 @@ describe("Product PR39 Mapbox + PostGIS stack", () => {
     const map = read("components/marketplace/mapbox-discovery-canvas.tsx");
     const route = read("app/api/marketplace/map/route.ts");
     const client = read("lib/marketplace/client.ts");
+    const discoverRoute = read("app/discover/page.tsx");
+    const clientSearch = read("components/client-experience/client-search-screen.tsx");
     expect(map).toContain('cluster: true');
     expect(map).toContain("getClusterExpansionZoom");
     expect(map).toContain("Search this area");
@@ -136,6 +138,11 @@ describe("Product PR39 Mapbox + PostGIS stack", () => {
     expect(route).toContain('authority: "supabase_postgis"');
     expect(route).not.toContain("legacy_provider");
     expect(client).toContain("enabled: Boolean(viewport)");
+    expect(discoverRoute).toContain("ClientSearchScreen");
+    expect(clientSearch).toContain("DiscoveryMapPanel");
+    expect(clientSearch).toContain("useMarketplaceMap");
+    expect(clientSearch).toContain("coarsenMarketplaceOrigin");
+    expect(clientSearch).toContain("Show nearby map");
   });
 
   it("keeps Matrix estimates bounded and Directions limited to an overview", () => {

@@ -9,6 +9,7 @@ import { ClientDiscoveryCard } from "@/components/client-experience/client-disco
 import { ClientPrimarySearchBar } from "@/components/client-experience/client-primary-search-bar";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { ClientShopDiscoveryCard } from "@/components/client-experience/client-shop-discovery-card";
+import { DiscoveryMapPanel } from "@/components/marketplace/discovery-map";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,12 +17,15 @@ import { GlobalSafetyState } from "@/components/ui/global-safety-state";
 import { FilterChip, PageHeader } from "@/design/components";
 import { useClientHomeQuery } from "@/lib/booking/client";
 import {
+  coarsenMarketplaceOrigin,
   useMarketplaceDiscovery,
-  type MarketplaceApiError
+  useMarketplaceMap,
+  type MarketplaceApiError,
+  type MarketplaceMapViewport
 } from "@/lib/marketplace/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { ClientPaywallSummary } from "@/lib/entitlements/client-paywall";
-import type { DiscoveryResult, RecommendedShopView } from "@/types/domain";
+import type { DiscoveryFilters, DiscoveryResult, RecommendedShopView } from "@/types/domain";
 
 type AvailabilityFilter = "any" | "today" | "now";
 type ClientSearchType = "barbers" | "shops";
@@ -183,6 +187,9 @@ export function ClientSearchScreen({
   const [submittedQuery, setSubmittedQuery] = useState(initialQuery);
   const [lastSubmittedQuery, setLastSubmittedQuery] = useState(initialQuery.trim());
   const [manualSearchPending, setManualSearchPending] = useState(false);
+  const [mapViewport, setMapViewport] = useState<MarketplaceMapViewport>();
+  const [locatingMap, setLocatingMap] = useState(false);
+  const [mapLocationError, setMapLocationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedLocationId && defaultLocationId) {
@@ -203,7 +210,7 @@ export function ClientSearchScreen({
   );
   const hasSubmittedDirectSearch = Boolean(lastSubmittedQuery);
 
-  const discoveryQuery = useMarketplaceDiscovery({
+  const discoveryFilters: DiscoveryFilters = {
     query: trimmedQuery || undefined,
     category: serviceFilter || undefined,
     locationId: selectedLocationId || undefined,
@@ -211,7 +218,9 @@ export function ClientSearchScreen({
     maxPrice,
     availability,
     maxDistanceMiles: 20
-  }, clientId);
+  };
+  const discoveryQuery = useMarketplaceDiscovery(discoveryFilters, clientId);
+  const mapQuery = useMarketplaceMap(discoveryFilters, mapViewport);
   const discoveryBusy = Boolean(discoveryQuery.isLoading || discoveryQuery.isFetching || manualSearchPending);
 
   useEffect(() => {
@@ -378,6 +387,30 @@ export function ClientSearchScreen({
     syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, nextValue);
   }
 
+  function openNearbyMap() {
+    if (!navigator.geolocation) {
+      setMapLocationError("Location is unavailable on this device. Search still works without sharing your location.");
+      return;
+    }
+
+    setLocatingMap(true);
+    setMapLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setMapViewport(coarsenMarketplaceOrigin({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        }));
+        setLocatingMap(false);
+      },
+      () => {
+        setMapLocationError("Location permission was not granted. Search still works without sharing your location.");
+        setLocatingMap(false);
+      },
+      { enableHighAccuracy: false, timeout: 8_000, maximumAge: 5 * 60 * 1_000 }
+    );
+  }
+
   const barbersSection = (
     <ClientSectionBlock
       bare
@@ -516,6 +549,34 @@ export function ClientSearchScreen({
           </FilterChip>
         </div>
       </section>
+
+      {mapViewport ? (
+        <DiscoveryMapPanel
+          markers={mapQuery.data ?? []}
+          isLoading={mapQuery.isLoading || mapQuery.isFetching}
+          error={mapQuery.error ? getReadableActionError(mapQuery.error as MarketplaceApiError) : null}
+          origin={mapViewport}
+          onSearchBounds={(bounds) => setMapViewport((current) => current ? { ...current, ...bounds } : current)}
+        />
+      ) : (
+        <Card className="rounded-[28px] border-white/10 bg-black/25 p-5 sm:flex sm:items-center sm:justify-between sm:gap-6">
+          <div>
+            <p className="bvr-section-label">Nearby map</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
+              See live barbers and shops around you. BVRB3R reduces device location to neighborhood precision before search.
+            </p>
+            {mapLocationError ? <div className="mt-3"><FeedbackBanner tone="error" message={mapLocationError} /></div> : null}
+          </div>
+          <button
+            type="button"
+            className="mt-4 inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-[#C4F24E]/30 bg-[#C4F24E]/8 px-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#e4f9b8] disabled:cursor-wait disabled:opacity-55 sm:mt-0"
+            disabled={locatingMap}
+            onClick={openNearbyMap}
+          >
+            {locatingMap ? "Finding nearby..." : "Show nearby map"}
+          </button>
+        </Card>
+      )}
 
       {prefersShopDiscovery ? shopsSection : barbersSection}
       {prefersShopDiscovery ? barbersSection : shopsSection}
