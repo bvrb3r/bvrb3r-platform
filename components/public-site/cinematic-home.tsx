@@ -22,7 +22,7 @@ const revealCards = [
   }
 ] as const;
 
-export function CinematicHome() {
+export function CinematicHome({ signupEnabled = true }: { signupEnabled?: boolean }) {
   return (
     <div className={styles.cinematicPage}>
       <PublicNav />
@@ -110,15 +110,27 @@ export function CinematicHome() {
               Browse the culture, find the chair, and book the service that fits. Free to explore and built to work in your
               browser.
             </p>
-            <div className={styles.heroActions}>
-              <Link href="/signup?lane=client" className={styles.largePrimary}>
-                Join as a client <span aria-hidden="true">→</span>
-              </Link>
-              <Link href="/signup?lane=barber" className={styles.largeSecondary}>
-                Sign up as a barber
-              </Link>
-            </div>
-            <p className={styles.cinematicNote}>Free for clients · Nothing to install · Guest browsing stays open</p>
+            {signupEnabled ? (
+              <div className={styles.heroActions}>
+                <Link href="/signup?lane=client" className={styles.largePrimary}>
+                  Join as a client <span aria-hidden="true">→</span>
+                </Link>
+                <Link href="/signup?lane=barber" className={styles.largeSecondary}>
+                  Sign up as a barber
+                </Link>
+              </div>
+            ) : (
+              <div className={styles.heroActions}>
+                <Link href="/login" className={styles.largePrimary}>
+                  Owner review sign in <span aria-hidden="true">→</span>
+                </Link>
+              </div>
+            )}
+            <p className={styles.cinematicNote}>
+              {signupEnabled
+                ? "Free for clients · Nothing to install · Guest browsing stays open"
+                : "Private production review · Approved test accounts only"}
+            </p>
           </div>
         </section>
       </main>

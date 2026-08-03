@@ -10,7 +10,7 @@ describe("dashboard shell identity and navigation", () => {
     ["wave@bvrb3r.demo", "Barber manager workspace", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
     ["blaze@bvrb3r.demo", "Professional account", ["Home", "Checkout", "Profile", "Messages", "More"]],
     ["lux@bvrb3r.demo", "Professional account", ["Home", "Checkout", "Profile", "Messages", "More"]],
-    ["client@bvrb3r.demo", "Search, book, and manage visits", ["Home", "Search", "Culture", "Messages", "Account"]]
+    ["client@bvrb3r.demo", "Search, book, and manage visits", ["Home", "Search", "Culture", "Messages", "More"]]
   ])("renders the platform shell identity for %s", (email, expectedSubtitle, navLabels) => {
     const user = resolveDemoUser(email);
     const activeHref = getDefaultRouteForUser(user);
@@ -263,7 +263,7 @@ describe("dashboard shell identity and navigation", () => {
       </DashboardShell>
     );
 
-    ["Home", "Search", "Culture", "Messages", "Account"].forEach((label) => {
+    ["Home", "Search", "Culture", "Messages", "More"].forEach((label) => {
       expect(screen.getAllByRole("link", { name: new RegExp(label, "i") }).length).toBeGreaterThan(0);
     });
 

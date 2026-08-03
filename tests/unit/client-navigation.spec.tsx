@@ -20,7 +20,7 @@ describe("client navigation", () => {
     expect(screen.getByRole("link", { name: /search/i })).toHaveAttribute("href", "/dashboard/client/search");
     expect(screen.getByRole("link", { name: /culture/i })).toHaveAttribute("href", "/dashboard/client/culture");
     expect(screen.getByRole("link", { name: /messages/i })).toHaveAttribute("href", "/dashboard/client/messages");
-    expect(screen.getByRole("link", { name: /account/i })).toHaveAttribute("href", "/dashboard/client/more");
+    expect(screen.getByRole("link", { name: /more/i })).toHaveAttribute("href", "/dashboard/client/more");
     expect(screen.queryByRole("link", { name: /activity/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /profile/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /bookings/i })).not.toBeInTheDocument();
@@ -39,7 +39,7 @@ describe("client navigation", () => {
     expect(screen.getByRole("link", { name: "Culture" })).toHaveAttribute("href", "/dashboard/client/culture");
     expect(screen.getByRole("link", { name: "Messages" })).toHaveAttribute("href", "/dashboard/client/messages");
     expect(screen.getByRole("link", { name: "Messages" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: "Account" })).toHaveAttribute("href", "/dashboard/client/more");
+    expect(screen.getByRole("link", { name: "More" })).toHaveAttribute("href", "/dashboard/client/more");
     expect(screen.queryByRole("link", { name: "Activity" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /bookings/i })).not.toBeInTheDocument();
@@ -48,7 +48,7 @@ describe("client navigation", () => {
   it("keeps client bottom navigation tap targets at the mobile minimum", () => {
     render(<ClientBottomNav activeTab="home" />);
 
-    ["Home", "Search", "Culture", "Messages", "Account"].forEach((label) => {
+    ["Home", "Search", "Culture", "Messages", "More"].forEach((label) => {
       expect(screen.getByRole("link", { name: label })).toHaveClass("min-h-12");
     });
   });

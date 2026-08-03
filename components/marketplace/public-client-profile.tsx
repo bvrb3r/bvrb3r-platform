@@ -1,8 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
-import { MessageCircle, Share2, Sparkles, UserPlus } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { PublicClientProfileActions } from "@/components/marketplace/public-client-profile-actions";
 import { isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ReportBlockSheet } from "@/components/trust/report-block-sheet";
@@ -133,12 +134,14 @@ export function PublicClientProfileContent({
   username,
   backHref = "/",
   backLabel = "BVRB3R",
+  viewerCanFollow = false,
   viewerCanReport = false
 }: {
   profile: PublicClientProfile | null;
   username: string;
   backHref?: Route | string;
   backLabel?: string;
+  viewerCanFollow?: boolean;
   viewerCanReport?: boolean;
 }) {
   const displayName = getPublicClientDisplayName(profile, username);
@@ -180,18 +183,11 @@ export function PublicClientProfileContent({
             </div>
 
             <div className="flex flex-col gap-3">
-              <button type="button" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#c4f24e]/35 bg-[#c4f24e]/10 px-5 text-sm font-extrabold text-[#c4f24e]">
-                <UserPlus className="h-4 w-4" />
-                Follow
-              </button>
-              <button type="button" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white">
-                <MessageCircle className="h-4 w-4" />
-                Message
-              </button>
-              <button type="button" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white">
-                <Share2 className="h-4 w-4" />
-                Share
-              </button>
+              <PublicClientProfileActions
+                profileId={profile?.id ?? null}
+                profilePath={`/client/${encodeURIComponent(publicUsername)}`}
+                canFollow={viewerCanFollow}
+              />
               {viewerCanReport && profile ? (
                 <ReportBlockSheet
                   targetProfileId={profile.id}

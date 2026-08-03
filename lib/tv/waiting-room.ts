@@ -51,14 +51,28 @@ export type WaitingRoomMenuGroup = {
   services: Array<{ id: string; name: string; priceCents: number; durationMinutes: number }>;
 };
 
+export type WaitingRoomTvStatus = "live" | "empty" | "closed" | "offline" | "emergency" | "setup";
+
 export type WaitingRoomTvSnapshot = {
   shopId: string;
   shopName: string;
   generatedAt: string;
   team: WaitingRoomTeamRow[];
   menu: WaitingRoomMenuGroup[];
-  status: "live" | "empty";
+  status: WaitingRoomTvStatus;
 };
+
+export function resolveWaitingRoomTvStatus(input: {
+  emergencyDisabledAt?: string | null;
+  healthStatus?: string | null;
+  intakeOpen: boolean;
+  hasContent: boolean;
+}): WaitingRoomTvStatus {
+  if (input.emergencyDisabledAt) return "emergency";
+  if (["offline", "unhealthy", "error", "disabled"].includes(input.healthStatus?.toLowerCase() ?? "")) return "offline";
+  if (!input.intakeOpen) return "closed";
+  return input.hasContent ? "live" : "empty";
+}
 
 export function sceneAtElapsedSeconds(elapsedSeconds: number): WaitingRoomSceneId {
   const total = WAITING_ROOM_TIMELINE.reduce((sum, entry) => sum + entry.durationSeconds, 0);

@@ -61,7 +61,18 @@ export async function getPlatformAdminUser() {
   redirectIfAccessDisabled(user.accountStatus);
 
   if (!isPlatformAdminUser(user)) {
-    redirect(getDefaultRouteForUser(user));
+    const home = getDefaultRouteForUser(user);
+    await recordIdentityAuditEvent({
+      actor: user,
+      source: "server_route_guard",
+      entityType: "architect_route",
+      action: "architect_access_denied",
+      outcome: "denied",
+      metadata: {
+        safeDestination: home
+      }
+    });
+    redirect("/access-denied");
   }
 
   return user;

@@ -169,12 +169,19 @@ describe("authorized user guard", () => {
   it("redirects the retired demo architect identity away from the architect route", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
 
-    await expect(getPlatformAdminUser()).rejects.toThrow("REDIRECT:/post-auth");
+    await expect(getPlatformAdminUser()).rejects.toThrow("REDIRECT:/access-denied");
   });
 
   it("redirects a normal owner away from the architect route", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
-    await expect(getPlatformAdminUser()).rejects.toThrow("REDIRECT:/dashboard/owner");
+    await expect(getPlatformAdminUser()).rejects.toThrow("REDIRECT:/access-denied");
+    expect(recordIdentityAuditEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: "architect_access_denied",
+      outcome: "denied",
+      metadata: {
+        safeDestination: "/dashboard/owner"
+      }
+    }));
   });
 });

@@ -76,19 +76,21 @@ function routeCollection(coordinates?: Array<[number, number]>): FeatureCollecti
   };
 }
 
+export type MapboxDiscoveryCanvasProps = {
+  markers: MapDiscoveryMarker[];
+  selectedId: string | null;
+  onSelect: (markerId: string) => void;
+  onSearchBounds?: (bounds: DiscoveryMapBounds) => void;
+  routeCoordinates?: Array<[number, number]>;
+};
+
 export function MapboxDiscoveryCanvas({
   markers,
   selectedId,
   onSelect,
   onSearchBounds,
   routeCoordinates
-}: {
-  markers: MapDiscoveryMarker[];
-  selectedId: string | null;
-  onSelect: (markerId: string) => void;
-  onSearchBounds?: (bounds: DiscoveryMapBounds) => void;
-  routeCoordinates?: Array<[number, number]>;
-}) {
+}: MapboxDiscoveryCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const fittedRef = useRef(false);

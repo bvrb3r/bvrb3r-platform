@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   formatTvPrice,
   sceneAtElapsedSeconds,
@@ -14,13 +14,52 @@ function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "BV";
 }
 
-function EmptyScene({ title, detail }: { title: string; detail: string }) {
+const LIVE_REFRESH_INTERVAL_MS = 30_000;
+const OFFLINE_RETRY_INTERVAL_MS = 5_000;
+
+function EmptyScene({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) {
   return (
     <div className="flex min-h-[52vh] flex-col items-center justify-center rounded-[36px] border border-white/10 bg-white/[0.025] p-10 text-center">
       <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-[#C9A87C]">Approved content only</p>
       <h2 className="mt-5 font-serif text-5xl sm:text-7xl" data-display="true">{title}</h2>
       <p className="mt-5 max-w-xl text-lg leading-8 text-white/48">{detail}</p>
+      {action}
     </div>
+  );
+}
+
+function StatusScene({
+  status,
+  onRetry,
+  retrying = false
+}: {
+  status: Exclude<WaitingRoomTvSnapshot["status"], "live">;
+  onRetry?: () => void;
+  retrying?: boolean;
+}) {
+  const copy = {
+    empty: ["The floor is quiet", "No public-safe chair or menu state is available yet."],
+    closed: ["We’re closed", "The waiting room display will resume when the shop opens walk-in intake."],
+    offline: ["Display offline", "Live shop state is unavailable. Please see the front desk for help."],
+    emergency: ["Please see staff", "The waiting-room display is paused by the shop’s emergency control."],
+    setup: ["Choose a shop", "Open the waiting-room TV from a shop dashboard to bind this display to the correct floor."]
+  }[status];
+
+  return (
+    <EmptyScene
+      title={copy[0]}
+      detail={copy[1]}
+      action={status === "offline" && onRetry ? (
+        <button
+          type="button"
+          className="mt-7 rounded-full border border-[#C9A87C]/45 bg-[#C9A87C]/10 px-6 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#EAD9B0] disabled:cursor-wait disabled:opacity-55"
+          disabled={retrying}
+          onClick={onRetry}
+        >
+          {retrying ? "Reconnecting…" : "Retry connection"}
+        </button>
+      ) : undefined}
+    />
   );
 }
 
@@ -124,8 +163,35 @@ export function WaitingRoomTv({ initialSnapshot }: { initialSnapshot: WaitingRoo
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [elapsed, setElapsed] = useState(0);
   const [now, setNow] = useState(() => new Date());
+  const [networkAvailable, setNetworkAvailable] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const refreshInFlight = useRef(false);
   const scene = useMemo(() => sceneAtElapsedSeconds(elapsed), [elapsed]);
   const uniqueScenes = useMemo(() => [...new Set(WAITING_ROOM_TIMELINE.map((entry) => entry.id))], []);
+  const setupRequired = snapshot.status === "setup";
+  const displayStatus = !networkAvailable || refreshFailed ? "offline" : snapshot.status;
+
+  const refreshSnapshot = useCallback(async () => {
+    if (setupRequired || refreshInFlight.current) return;
+
+    refreshInFlight.current = true;
+    setRetrying(true);
+    try {
+      const response = await fetch(`/api/shop/tv?shopId=${encodeURIComponent(snapshot.shopId)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Waiting-room TV refresh failed with ${response.status}`);
+
+      const next = await response.json() as WaitingRoomTvSnapshot;
+      setSnapshot(next);
+      setNetworkAvailable(true);
+      setRefreshFailed(false);
+    } catch {
+      setRefreshFailed(true);
+    } finally {
+      refreshInFlight.current = false;
+      setRetrying(false);
+    }
+  }, [setupRequired, snapshot.shopId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -136,14 +202,26 @@ export function WaitingRoomTv({ initialSnapshot }: { initialSnapshot: WaitingRoo
   }, []);
 
   useEffect(() => {
-    const refresh = window.setInterval(async () => {
-      const response = await fetch(`/api/shop/tv?shopId=${encodeURIComponent(snapshot.shopId)}`, { cache: "no-store" }).catch(() => null);
-      if (!response?.ok) return;
-      const next = await response.json() as WaitingRoomTvSnapshot;
-      setSnapshot(next);
-    }, 30_000);
+    if (setupRequired) return;
+    const refresh = window.setInterval(
+      () => void refreshSnapshot(),
+      displayStatus === "offline" ? OFFLINE_RETRY_INTERVAL_MS : LIVE_REFRESH_INTERVAL_MS
+    );
     return () => window.clearInterval(refresh);
-  }, [snapshot.shopId]);
+  }, [displayStatus, refreshSnapshot, setupRequired]);
+
+  useEffect(() => {
+    if (setupRequired) return;
+
+    const handleOffline = () => setNetworkAvailable(false);
+    const handleOnline = () => void refreshSnapshot();
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [refreshSnapshot, setupRequired]);
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#060708] px-6 py-5 text-[#F5F1E8] sm:px-10">
@@ -151,12 +229,18 @@ export function WaitingRoomTv({ initialSnapshot }: { initialSnapshot: WaitingRoo
         <div><p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#C9A87C]">{snapshot.shopName}</p><h1 className="mt-2 text-xl font-black uppercase tracking-[0.08em]">The BVRB3R Lounge · {WAITING_ROOM_SCENE_LABELS[scene]}</h1></div>
         <time className="font-mono text-lg text-white/65">{now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</time>
       </header>
-      <div className="mt-5"><Scene scene={scene} snapshot={snapshot} /></div>
+      <div className="mt-5">
+        {displayStatus === "live"
+          ? <Scene scene={scene} snapshot={snapshot} />
+          : <StatusScene status={displayStatus} onRetry={() => void refreshSnapshot()} retrying={retrying} />}
+      </div>
       <footer className="mt-5 flex items-center justify-between gap-5 border-t border-white/10 pt-4">
         <div className="flex gap-2" aria-label={`${uniqueScenes.length} TV scenes`}>
           {uniqueScenes.map((id) => <span key={id} className={`h-1.5 w-5 rounded-full ${id === scene ? "bg-[#C9A87C]" : "bg-white/15"}`} />)}
         </div>
-        <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/30">Live public-safe state · refreshes every 30 seconds</p>
+        <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/30">
+          {retrying ? "reconnecting" : displayStatus} public-safe state · refreshes every {displayStatus === "offline" ? "5" : "30"} seconds
+        </p>
       </footer>
     </main>
   );

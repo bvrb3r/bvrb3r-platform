@@ -4,6 +4,7 @@ import { AuthSessionRecovery } from "@/components/auth/auth-session-recovery";
 import { CinematicHome } from "@/components/public-site/cinematic-home";
 import { buildOAuthCallbackRedirectPath, type OAuthCallbackSearchParams } from "@/lib/auth/oauth-callback";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { isOwnerReviewMode } from "@/lib/config/owner-review";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
 
 type HomePageProps = {
@@ -39,7 +40,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   return (
     <>
       <AuthSessionRecovery mode="public" />
-      <CinematicHome />
+      <CinematicHome signupEnabled={!isOwnerReviewMode()} />
     </>
   );
 }

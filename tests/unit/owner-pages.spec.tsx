@@ -89,15 +89,12 @@ describe("owner dashboard tab pages", () => {
 
     render(await OwnerTeamPage());
 
-    expect(screen.getByTestId("owner-operations-workspace-stub")).toHaveAttribute("data-initial-tab", "team");
+    expect(screen.getByTestId("owner-team-workspace-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("owner-operations-workspace-stub")).not.toBeInTheDocument();
   });
 
-  it("routes the old overview alias to privacy-safe owner operations", async () => {
-    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
-
-    render(await OwnerOverviewPage());
-
-    expect(screen.getByTestId("owner-operations-workspace-stub")).toHaveAttribute("data-initial-tab", "home");
+  it("routes the old overview alias to canonical Owner Home", () => {
+    expect(() => OwnerOverviewPage()).toThrow("NEXT_REDIRECT");
   });
 
   it("renders Floor Day on the canonical schedule tab", async () => {
@@ -105,10 +102,11 @@ describe("owner dashboard tab pages", () => {
 
     render(await OwnerSchedulePage());
 
-    expect(screen.getByTestId("owner-operations-workspace-stub")).toHaveAttribute("data-initial-tab", "floor");
+    expect(screen.getByTestId("owner-schedule-workspace-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("owner-operations-workspace-stub")).not.toBeInTheDocument();
   });
 
-  it("renders shop-scoped operations on the canonical money tab", async () => {
+  it("keeps the canonical money tab limited to owner plan and booth rent", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     render(
@@ -117,7 +115,8 @@ describe("owner dashboard tab pages", () => {
       })
     );
 
-    expect(screen.getByTestId("owner-operations-workspace-stub")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open booth rent" })).toHaveAttribute("href", "/dashboard/owner/rent");
+    expect(screen.queryByTestId("owner-operations-workspace-stub")).not.toBeInTheDocument();
     expect(screen.queryByTestId("fintech-workspace-stub")).not.toBeInTheDocument();
   });
 
@@ -141,7 +140,7 @@ describe("owner dashboard tab pages", () => {
     );
 
     expect(screen.getByText("Growth parked")).toBeInTheDocument();
-    expect(screen.getByTestId("owner-operations-workspace-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("owner-operations-workspace-stub")).not.toBeInTheDocument();
   });
 
   it("keeps detailed owner fintech closed to protect barber money", async () => {
@@ -153,7 +152,7 @@ describe("owner dashboard tab pages", () => {
       })
     );
 
-    expect(screen.getByTestId("owner-operations-workspace-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("owner-operations-workspace-stub")).not.toBeInTheDocument();
     expect(screen.queryByTestId("fintech-workspace-stub")).not.toBeInTheDocument();
     expect(screen.getByText("Detailed finance closed")).toBeInTheDocument();
   });

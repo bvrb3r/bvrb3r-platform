@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import type { Route } from "next";
 import { useEffect, useState } from "react";
 import { ArrowRight, MapPinned, MessageCircle, Navigation, Route as RouteIcon } from "lucide-react";
-import {
-  MapboxDiscoveryCanvas,
-  type DiscoveryMapBounds
+import type {
+  DiscoveryMapBounds,
+  MapboxDiscoveryCanvasProps
 } from "@/components/marketplace/mapbox-discovery-canvas";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
@@ -14,6 +15,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useMarketplaceRoutePreviewMutation, type MarketplaceMapViewport } from "@/lib/marketplace/client";
 import { dateLabel } from "@/lib/utils";
 import type { MapDiscoveryMarker } from "@/types/domain";
+
+const MapboxDiscoveryCanvas = dynamic<MapboxDiscoveryCanvasProps>(
+  () => import("@/components/marketplace/mapbox-discovery-canvas")
+    .then((module) => module.MapboxDiscoveryCanvas),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="min-h-[320px] rounded-[30px] border border-white/8 bg-black/30 p-4">
+        <Skeleton className="h-full min-h-[288px] w-full rounded-[24px]" />
+      </div>
+    )
+  }
+);
 
 function MarkerSkeleton() {
   return (
@@ -209,6 +223,5 @@ export function DiscoveryMapPanel({
     </Card>
   );
 }
-
 
 

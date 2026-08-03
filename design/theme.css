@@ -41,7 +41,7 @@
 
   --font-display: var(--font-archivo), Archivo, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
   --font-serif: var(--font-instrument-serif), "Instrument Serif", Georgia, "Times New Roman", serif;
-  --font-body: var(--font-inter), Inter, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --font-body: var(--font-archivo), Archivo, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
   --font-kicker: var(--font-space-mono), "Space Mono", ui-monospace, monospace;
 }
 
