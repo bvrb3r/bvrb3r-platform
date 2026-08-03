@@ -2583,15 +2583,12 @@ async function assertProfilesCanMessage(supabase: SupabaseClient, actorProfileId
   ]);
 
   const messageBlockingError = actorBlocksTarget.error ?? targetBlocksActor.error ?? null;
-  if (messageBlockingError && !isMissingMessageLifecycleTable(messageBlockingError)) {
+  if (messageBlockingError) {
     throw new MessagingServiceError("Unable to verify message block state.", 500);
   }
 
   const cultureBlockingError = actorCultureBlocksTarget.error ?? targetCultureBlocksActor.error ?? null;
-  const cultureBlockTableMissing = cultureBlockingError
-    && /culture_profile_blocks/i.test(cultureBlockingError.message ?? "")
-    && /schema cache|relation|table|could not find/i.test(cultureBlockingError.message ?? "");
-  if (cultureBlockingError && !cultureBlockTableMissing) {
+  if (cultureBlockingError) {
     throw new MessagingServiceError("Unable to verify Culture block state.", 500);
   }
 
@@ -2602,6 +2599,63 @@ async function assertProfilesCanMessage(supabase: SupabaseClient, actorProfileId
     || targetCultureBlocksActor.data
   ) {
     throw new MessagingServiceError("You cannot message this user.", 403, "message_blocked", "block_check");
+  }
+}
+
+export async function readSymmetricMessagingBlockedProfileIds(
+  supabase: SupabaseClient,
+  actorProfileId: string
+): Promise<Set<string>> {
+  const [messageOutgoing, messageIncoming, cultureOutgoing, cultureIncoming] = await Promise.all([
+    supabase
+      .from("message_user_blocks")
+      .select("blocked_profile_id")
+      .eq("blocker_profile_id", actorProfileId),
+    supabase
+      .from("message_user_blocks")
+      .select("blocker_profile_id")
+      .eq("blocked_profile_id", actorProfileId),
+    supabase
+      .from("culture_profile_blocks")
+      .select("blocked_profile_id")
+      .eq("blocker_profile_id", actorProfileId)
+      .eq("active", true),
+    supabase
+      .from("culture_profile_blocks")
+      .select("blocker_profile_id")
+      .eq("blocked_profile_id", actorProfileId)
+      .eq("active", true)
+  ]);
+  if (messageOutgoing.error || messageIncoming.error || cultureOutgoing.error || cultureIncoming.error) {
+    throw new MessagingServiceError("Unable to verify messaging block state.", 500, "block_state_unavailable", "block_check");
+  }
+
+  return new Set([
+    ...(messageOutgoing.data ?? []).map((row) => String(row.blocked_profile_id)),
+    ...(messageIncoming.data ?? []).map((row) => String(row.blocker_profile_id)),
+    ...(cultureOutgoing.data ?? []).map((row) => String(row.blocked_profile_id)),
+    ...(cultureIncoming.data ?? []).map((row) => String(row.blocker_profile_id))
+  ].filter(Boolean));
+}
+
+async function assertMessageThreadIsUnblocked(
+  supabase: SupabaseClient,
+  actorProfileId: string,
+  threadId: string
+) {
+  const participantsResult = await supabase
+    .from("thread_participants")
+    .select("profile_id")
+    .eq("thread_id", threadId);
+  if (participantsResult.error) {
+    throw new MessagingServiceError("Unable to verify thread block state.", 500, "block_state_unavailable", "block_check");
+  }
+
+  const targetProfileIds = unique((participantsResult.data ?? [])
+    .map((row) => String(row.profile_id))
+    .filter((profileId) => profileId && profileId !== actorProfileId));
+  for (const targetProfileId of targetProfileIds) {
+    await assertProfilesCanMessage(supabase, actorProfileId, targetProfileId);
   }
 }
 
@@ -3328,6 +3382,7 @@ export async function getMessagingInboxPayload(user: UserAccount): Promise<Messa
   }
 
   const actor = await resolveMessagingActor(user, supabase);
+  const blockedProfileIds = await readSymmetricMessagingBlockedProfileIds(supabase, actor.profile.id);
   const participantResult = await supabase
     .from("thread_participants")
     .select("thread_id")
@@ -3339,7 +3394,11 @@ export async function getMessagingInboxPayload(user: UserAccount): Promise<Messa
 
   const threadIds = unique((participantResult.data ?? []).map((row) => row.thread_id as string));
   const bundle = await readThreadBundle(supabase, actor.profile.id, threadIds);
-  const threads = bundle.threads.map((thread) =>
+  const threads = bundle.threads.filter((thread) => !bundle.participants.some((participant) =>
+    participant.thread_id === thread.id
+    && participant.profile_id !== actor.profile.id
+    && blockedProfileIds.has(participant.profile_id)
+  )).map((thread) =>
     buildThreadSummary({
       thread,
       currentProfileId: actor.profile.id,
@@ -3362,14 +3421,31 @@ export async function getMessagingInboxPayload(user: UserAccount): Promise<Messa
     ),
     readEligibleContacts(supabase, actor, threads)
   ]);
+  const visibleEligibleAppointments = eligibleAppointments.filter(
+    (candidate) => !blockedProfileIds.has(candidate.counterpart.profileId)
+  );
+  const visibleEligibleContacts = contactData.eligibleContacts.filter(
+    (candidate) => !blockedProfileIds.has(candidate.profileId)
+  );
+  const visibleBroadcastTargets = contactData.broadcastTargets
+    .map((target) => ({
+      ...target,
+      clientCount: visibleEligibleContacts.filter((contact) =>
+        contact.locationId === target.locationId && contact.threadType === "client_shop"
+      ).length,
+      barberCount: visibleEligibleContacts.filter((contact) =>
+        contact.locationId === target.locationId && contact.threadType === "barber_shop"
+      ).length
+    }))
+    .filter((target) => target.clientCount > 0 || target.barberCount > 0);
 
   return {
     available: true,
     viewer: baseViewer(user, actor.profile.id),
     threads,
-    eligibleAppointments,
-    eligibleContacts: contactData.eligibleContacts,
-    broadcastTargets: contactData.broadcastTargets
+    eligibleAppointments: visibleEligibleAppointments,
+    eligibleContacts: visibleEligibleContacts,
+    broadcastTargets: visibleBroadcastTargets
   };
 }
 
@@ -3399,6 +3475,8 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
   if (!membershipResult.data) {
     throw new MessagingServiceError("Only thread participants can view this conversation.", 403);
   }
+
+  await assertMessageThreadIsUnblocked(supabase, actor.profile.id, threadId);
 
   const initialBundle = await readThreadBundle(supabase, actor.profile.id, [threadId]);
   const initialThread = initialBundle.threads[0];
@@ -3531,6 +3609,7 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
   if (normalizedQuery.length < 2) {
     return { results: [] };
   }
+  const blockedProfileIds = await readSymmetricMessagingBlockedProfileIds(supabase, actor.profile.id);
 
   const warnings: MessagingParticipantSearchWarning[] = [];
   let threadLookup = new Map<string, string>();
@@ -3573,6 +3652,9 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
   if (supportMatches) {
     try {
       const supportProfile = await readPrimarySupportProfile(supabase);
+      if (blockedProfileIds.has(supportProfile.id)) {
+        throw new MessagingServiceError("This account is blocked.", 403, "message_blocked", "block_check");
+      }
       results.set(`support:${supportProfile.id}`, {
         id: supportProfile.id,
         participantId: supportProfile.id,
@@ -3712,6 +3794,9 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
       if (!profile || !isBarberRole(profile.role)) {
         continue;
       }
+      if (blockedProfileIds.has(profile.id)) {
+        continue;
+      }
 
       const publicProfile = [barber.reference_code, barber.booking_slug, barber.id, barber.profile_id]
         .map((value) => (value ? barberProfilesByReference.get(value) ?? null : null))
@@ -3808,6 +3893,9 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
       if (!clientProfileIds.has(profile.id)) {
         continue;
       }
+      if (blockedProfileIds.has(profile.id)) {
+        continue;
+      }
 
       const metadata = buildClientMessagingMetadata(supabase, profile);
       if (
@@ -3894,6 +3982,9 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
       const primaryShopProfile = pickPrimaryShopProfile(shopParticipantsByLocation.get(shop.id) ?? []);
       const metadata = buildShopMessagingMetadata(supabase, shop);
       const profileId = primaryShopProfile?.id ?? shop.owner_profile_id ?? shop.id;
+      if (blockedProfileIds.has(profileId)) {
+        continue;
+      }
       const isOwnShop = primaryShopProfile?.id === actor.profile.id || shop.owner_profile_id === actor.profile.id || (actor.kind === "shop" && actor.locationIds?.includes(shop.id));
       const action = isOwnShop
         ? { createThreadInput: null, messageDisabledReason: "This is your shop." }
@@ -3945,6 +4036,7 @@ export async function markMessageThreadRead(user: UserAccount, threadId: string)
   }
 
   const actor = await resolveMessagingActor(user, supabase);
+  await assertMessageThreadIsUnblocked(supabase, actor.profile.id, threadId);
   const lastReadAt = new Date().toISOString();
   const updateResult = await supabase
     .from("thread_participants")
@@ -4274,8 +4366,12 @@ export async function sendMessagingBroadcast(
 
   await assertActorCanReachLocation(supabase, actor, location.id);
   const normalizedBody = normalizeMessageBody(input.body);
+  const blockedProfileIds = await readSymmetricMessagingBlockedProfileIds(supabase, actor.profile.id);
   const contactData = await readEligibleContacts(supabase, actor, []);
   const targets = contactData.eligibleContacts.filter((contact) => {
+    if (blockedProfileIds.has(contact.profileId)) {
+      return false;
+    }
     if (contact.locationId !== location.id) {
       return false;
     }
@@ -4371,6 +4467,8 @@ export async function sendThreadMessage(user: UserAccount, threadId: string, inp
   if (!membershipResult.data) {
     throw new MessagingServiceError("Only thread participants can send messages.", 403);
   }
+
+  await assertMessageThreadIsUnblocked(supabase, actor.profile.id, threadId);
 
   const requestState = await readMessageThreadRequestsByThreadIds(supabase, [threadId]);
   const request = requestState.get(threadId) ?? null;

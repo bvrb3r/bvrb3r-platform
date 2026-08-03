@@ -43,12 +43,18 @@ function getSafeErrorCode(error: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
-async function getSessionClientId(): Promise<string | undefined> {
+async function getSessionAudience() {
   try {
     const session = await getCurrentUserFromServer();
-    return isClientRole(session.user.role) ? session.user.clientId : undefined;
-  } catch {
-    return undefined;
+    const authenticated = session.authenticated !== false && session.user.id !== "guest-user";
+    return {
+      clientId: authenticated && isClientRole(session.user.role) ? session.user.clientId : undefined,
+      profileId: authenticated && session.user.id ? session.user.id : undefined
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/no active session|no session/i.test(message)) return {};
+    throw error;
   }
 }
 
@@ -70,11 +76,14 @@ export async function GET(request: NextRequest) {
   }
 
   const filters = parsed.data;
-  const clientId = await getSessionClientId();
+  const { clientId, profileId } = await getSessionAudience();
 
   try {
+    const discoveryPromise = profileId
+      ? readPublicDiscovery(filters, profileId)
+      : readPublicDiscovery(filters);
     const results = await withTimeout(
-      readPublicDiscovery(filters),
+      discoveryPromise,
       DISCOVERY_TIMEOUT_MS,
       "client_search_timeout"
     );

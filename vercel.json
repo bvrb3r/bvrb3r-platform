@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/account-privacy",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

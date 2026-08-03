@@ -12,6 +12,7 @@ import { RegisteredFeatureGate } from "@/components/ui/feature-gate";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, FilterChip, PageHeader, SearchBar } from "@/design/components";
+import { ReportBlockSheet } from "@/components/trust/report-block-sheet";
 import { isBarberAccountRole } from "@/lib/auth/roles";
 import type { MessagingApiError } from "@/lib/messages/client";
 import {
@@ -1067,6 +1068,7 @@ function ConversationPanel({
   threadError,
   onApprovePaymentRequest,
   onRequestAction,
+  onSafetyBlocked,
   onComposerChange,
   onDeclinePaymentRequest,
   onSend
@@ -1088,6 +1090,7 @@ function ConversationPanel({
   threadError: unknown;
   onApprovePaymentRequest: (paymentRequestId: string) => void;
   onRequestAction: (requestId: string, action: "accept" | "decline" | "block" | "report") => void;
+  onSafetyBlocked: () => void;
   onComposerChange: (value: string) => void;
   onDeclinePaymentRequest: (paymentRequestId: string) => void;
   onSend: () => void;
@@ -1110,6 +1113,13 @@ function ConversationPanel({
   const bookingHref = activeThread?.counterpart?.bookingHref ?? "/booking/new";
   const lastActiveLabel = messages.length ? formatLastActiveLabel(messages[messages.length - 1]?.createdAt) : null;
   const bookingActionLabel = surface === "client" ? "Rebook" : "Book";
+  const safetyTarget = activeThread?.counterpart ?? null;
+  const safetyRequestStatus = activeThread?.request?.status;
+  const safetyControlsAvailable = Boolean(
+    safetyTarget
+    && activeThread?.threadType !== "support"
+    && (!safetyRequestStatus || safetyRequestStatus === "accepted")
+  );
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
   const previousThreadIdRef = useRef<string | undefined>(undefined);
@@ -1248,6 +1258,16 @@ function ConversationPanel({
                     {bookingActionLabel}
                   </Link>
                 ) : null}
+                {safetyControlsAvailable && safetyTarget ? (
+                  <ReportBlockSheet
+                    targetProfileId={safetyTarget.profileId}
+                    targetLabel={safetyTarget.fullName}
+                    source="message_thread"
+                    onBlocked={onSafetyBlocked}
+                    triggerLabel="Safety"
+                    triggerClassName="inline-flex h-8 items-center gap-1 rounded-lg border border-red-400/18 px-3 text-xs font-bold text-red-100/74 transition hover:bg-red-500/8 hover:text-red-100"
+                  />
+                ) : null}
               </div>
             </div>
 
@@ -1368,7 +1388,7 @@ function ConversationPanel({
                 value={composerBody}
                 onChange={(event) => onComposerChange(event.target.value)}
                 rows={1}
-                className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-white/34"
+                className="max-h-28 min-h-10 min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-white/34"
                 placeholder={composerPlaceholder}
                 disabled={composerDisabledByLifecycle}
               />
@@ -1412,6 +1432,7 @@ function ConversationModal({
   onComposerChange,
   onDeclinePaymentRequest,
   onRequestAction,
+  onSafetyBlocked,
   onSend,
   paymentRequestActionId,
   relatedAppointmentContexts,
@@ -1431,6 +1452,7 @@ function ConversationModal({
   onComposerChange: (value: string) => void;
   onDeclinePaymentRequest: (paymentRequestId: string) => void;
   onRequestAction: (requestId: string, action: "accept" | "decline" | "block" | "report") => void;
+  onSafetyBlocked: () => void;
   onSend: () => void;
   paymentRequestActionId?: string | null;
   relatedAppointmentContexts: AppointmentContextView[];
@@ -1457,6 +1479,7 @@ function ConversationModal({
           onClose={onClose}
           onApprovePaymentRequest={onApprovePaymentRequest}
           onRequestAction={onRequestAction}
+          onSafetyBlocked={onSafetyBlocked}
           relatedAppointmentContexts={relatedAppointmentContexts}
           paymentRequestActionId={paymentRequestActionId}
           sendPending={sendPending}
@@ -1779,6 +1802,14 @@ export function MessagingInboxScreen({
     setModalThreadId(null);
     router.push(basePath as Route, { scroll: false });
   }, [basePath, router, usesModalThreadView]);
+
+  const handleSafetyBlocked = useCallback(() => {
+    setComposerBody("");
+    setModalThreadId(null);
+    setStatusUpdate({ tone: "info", message: "Account blocked. Conversation removed." });
+    router.push(basePath as Route, { scroll: false });
+    void threadsQuery.refetch();
+  }, [basePath, router, threadsQuery]);
 
   useEffect(() => {
     if (
@@ -2283,6 +2314,7 @@ export function MessagingInboxScreen({
               messages={messages}
               onApprovePaymentRequest={(paymentRequestId) => void handleApprovePaymentRequest(paymentRequestId)}
               onRequestAction={(requestId, action) => void handleRequestAction(requestId, action)}
+              onSafetyBlocked={handleSafetyBlocked}
               relatedAppointmentContexts={relatedAppointmentContexts}
               selectedThreadId={selectedThreadId}
               paymentRequestActionId={paymentRequestActionId}
@@ -2308,6 +2340,7 @@ export function MessagingInboxScreen({
           messages={messages}
           onApprovePaymentRequest={(paymentRequestId) => void handleApprovePaymentRequest(paymentRequestId)}
           onRequestAction={(requestId, action) => void handleRequestAction(requestId, action)}
+          onSafetyBlocked={handleSafetyBlocked}
           relatedAppointmentContexts={relatedAppointmentContexts}
           paymentRequestActionId={paymentRequestActionId}
           sendPending={sendMessageMutation.isPending}

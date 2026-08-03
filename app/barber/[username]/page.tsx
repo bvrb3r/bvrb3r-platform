@@ -3,6 +3,9 @@ import { ClientAppShell } from "@/components/client-experience/client-app-shell"
 import { PublicBarberProfile } from "@/components/marketplace/public-barber-profile";
 import { getBarberDetailsPayload } from "@/lib/booking/platform-service";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { areProfilesCultureBlocked } from "@/lib/trust/product-pr31-blocks";
 
 export default async function PublicBarberProfilePage({ params }: { params: Promise<{ username: string }>; }) {
   const { username } = await params;
@@ -11,6 +14,11 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
     getClientExperienceContext()
   ]);
   if (!profile) notFound();
+  if (context.viewer.id !== "guest-user" && isSupabaseEnabled()) {
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) throw new Error("Unable to verify public profile access.");
+    if (await areProfilesCultureBlocked(supabase, context.viewer.id, profile.barber.userId)) notFound();
+  }
 
   return (
     <ClientAppShell activeTab="search" mode={context.isGuest ? "guest" : "client"}>
@@ -19,6 +27,7 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
         viewerCanFollow={context.isSignedInClient}
         viewerCanMessage={context.isSignedInClient}
         viewerCanReview={context.isSignedInClient}
+        viewerCanReport={context.isSignedInClient}
       />
     </ClientAppShell>
   );

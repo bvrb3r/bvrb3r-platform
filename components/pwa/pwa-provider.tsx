@@ -3,7 +3,8 @@
 import { createContext, startTransition, useContext, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
-import { BellRing, Download, Share2, Signal, SignalZero, Smartphone } from "lucide-react";
+import { BellRing, Download, Share2, Signal, SignalZero } from "lucide-react";
+import { PushPermissionPrimer, type PushPrimerIntent } from "@/components/pwa/push-permission-primer";
 import { Button } from "@/components/ui/button";
 import type { AppRuntimeMode, DeviceCapabilityRecord, MobilePlatformKind, PushPermissionState } from "@/types/mobile";
 
@@ -25,16 +26,18 @@ interface PwaContextValue {
   pushSupported: boolean;
   pushPermission: PushPermissionState;
   pushEnabled: boolean;
-  enablePush: () => Promise<{ ok: boolean; message: string }>;
+  requestPushPrimer: (intent: PushPrimerIntent) => { opened: boolean; message: string };
   disablePush: () => Promise<void>;
 }
 
 const DISMISS_INSTALL_KEY = "bvrb3r-pwa-install-dismissed-at";
-const DISMISS_PUSH_KEY = "bvrb3r-pwa-push-dismissed-at";
 const DEVICE_KEY = "bvrb3r-device-id";
 const PUSH_ACTIVE_KEY = "bvrb3r-pwa-push-active";
+const PUSH_PRIMER_SESSION_KEY = "bvrb3r-push-primer-session-decision";
 const DISMISS_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
 const PwaContext = createContext<PwaContextValue | null>(null);
+
+type PushPrimerSessionDecision = "deferred" | "denied";
 
 function isClientDemoRuntime() {
   return process.env.NEXT_PUBLIC_AUTH_MODE === "demo"
@@ -149,6 +152,33 @@ function getPlatform(): MobilePlatformKind {
   return "unknown";
 }
 
+function getPushRecoveryInstructions(runtimeMode: AppRuntimeMode) {
+  const platform = getPlatform();
+  const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent.toLowerCase();
+
+  if (runtimeMode === "native_ios" || platform === "ios") {
+    return "On iPhone or iPad, open Settings → Notifications → BVRB3R, then turn on Allow Notifications. If BVRB3R is not listed, add it to your Home Screen and retry from the installed app.";
+  }
+
+  if (runtimeMode === "native_android") {
+    return "On Android, open Settings → Notifications → App notifications → BVRB3R, then turn notifications on.";
+  }
+
+  if (platform === "android") {
+    return "On Android Chrome, open Chrome → Settings → Site settings → Notifications → BVRB3R, then choose Allow and reload the app.";
+  }
+
+  if (platform === "macos" && userAgent.includes("safari") && !userAgent.includes("chrome") && !userAgent.includes("chromium")) {
+    return "On Mac Safari, open Safari → Settings → Websites → Notifications, find BVRB3R, choose Allow, then reload the app.";
+  }
+
+  if (platform === "windows") {
+    return "In Chrome or Edge, select the site controls beside the address → Site settings → Notifications → Allow, then reload BVRB3R.";
+  }
+
+  return "Open this browser’s site settings, set Notifications for BVRB3R to Allow, then reload the app.";
+}
+
 function getOrCreateDeviceId() {
   if (typeof window === "undefined") {
     return null;
@@ -258,12 +288,12 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
   const [isOnline, setIsOnline] = useState(true);
   const [isStandalone, setIsStandalone] = useState(false);
   const [dismissedInstall, setDismissedInstall] = useState(false);
-  const [dismissedPush, setDismissedPush] = useState(false);
   const [installState, setInstallState] = useState<"idle" | "prompting" | "accepted">("idle");
   const [pushPermission, setPushPermission] = useState<PushPermissionState>("unsupported");
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushState, setPushState] = useState<"idle" | "activating" | "active" | "error">("idle");
   const [pushMessage, setPushMessage] = useState<string | null>(null);
+  const [pushPrimerIntent, setPushPrimerIntent] = useState<PushPrimerIntent | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [presenceSyncTick, setPresenceSyncTick] = useState(0);
 
@@ -274,7 +304,8 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     const currentRuntimeMode = resolveRuntimeMode(isStandaloneMode());
     setIsOnline(typeof navigator === "undefined" ? true : navigator.onLine);
     setIsStandalone(isStandaloneMode());
-    setPushPermission(getPushPermission(currentRuntimeMode));
+    const currentPermission = getPushPermission(currentRuntimeMode);
+    setPushPermission(currentPermission);
     setDeviceId(getOrCreateDeviceId());
     if (typeof window === "undefined") {
       return;
@@ -286,10 +317,8 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       setDismissedInstall(Number.isFinite(age) && age < DISMISS_WINDOW_MS);
     }
 
-    const dismissedPushAt = window.localStorage.getItem(DISMISS_PUSH_KEY);
-    if (dismissedPushAt) {
-      const age = Date.now() - Number(dismissedPushAt);
-      setDismissedPush(Number.isFinite(age) && age < DISMISS_WINDOW_MS);
+    if (currentPermission === "granted") {
+      window.sessionStorage.removeItem(PUSH_PRIMER_SESSION_KEY);
     }
 
     setPushEnabled(window.localStorage.getItem(PUSH_ACTIVE_KEY) === "true");
@@ -343,7 +372,11 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       const currentRuntimeMode = resolveRuntimeMode(currentStandalone);
       setIsOnline(typeof navigator === "undefined" ? true : navigator.onLine);
       setIsStandalone(currentStandalone);
-      setPushPermission(getPushPermission(currentRuntimeMode));
+      const currentPermission = getPushPermission(currentRuntimeMode);
+      setPushPermission(currentPermission);
+      if (currentPermission === "granted") {
+        window.sessionStorage.removeItem(PUSH_PRIMER_SESSION_KEY);
+      }
       setPresenceSyncTick((current) => current + 1);
     };
 
@@ -500,19 +533,6 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     return Boolean(installEvent) || isIosDevice();
   }, [dismissedInstall, installEvent, installState, isStandalone, nativeRuntime]);
 
-  const showPushPrompt = useMemo(() => {
-    const isRoleSurface = pathname?.startsWith("/dashboard") || pathname === "/referrals";
-    if (!isRoleSurface || dismissedPush || !isOnline || showInstallPrompt) {
-      return false;
-    }
-
-    if ((!nativeRuntime && pushPermission === "unsupported") || pushPermission === "denied" || pushEnabled) {
-      return false;
-    }
-
-    return isStandalone || nativeRuntime || Boolean(installEvent) || pathname === "/dashboard/client" || pathname === "/dashboard/barber" || pathname === "/dashboard/owner";
-  }, [dismissedPush, installEvent, isOnline, isStandalone, nativeRuntime, pathname, pushEnabled, pushPermission, showInstallPrompt]);
-
   async function handleInstall() {
     if (!installEvent) {
       return;
@@ -538,11 +558,51 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     setDismissedInstall(true);
   }
 
-  function dismissPushPrompt() {
+  function persistPushPrimerDecision(decision: PushPrimerSessionDecision | null) {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(DISMISS_PUSH_KEY, String(Date.now()));
+      if (decision) {
+        window.sessionStorage.setItem(PUSH_PRIMER_SESSION_KEY, decision);
+      } else {
+        window.sessionStorage.removeItem(PUSH_PRIMER_SESSION_KEY);
+      }
     }
-    setDismissedPush(true);
+  }
+
+  function requestPushPrimer(intent: PushPrimerIntent) {
+    if (pushEnabled) {
+      return { opened: false, message: "Push alerts are already live for this device." };
+    }
+
+    const currentPermission = getPushPermission(runtimeMode);
+    setPushPermission(currentPermission);
+    if (!nativeRuntime && currentPermission === "unsupported") {
+      return { opened: false, message: "Push alerts are not available on this device yet." };
+    }
+
+    const storedDecision = typeof window === "undefined" ? null : window.sessionStorage.getItem(PUSH_PRIMER_SESSION_KEY);
+    if (storedDecision === "deferred" || storedDecision === "denied") {
+      return {
+        opened: false,
+        message: storedDecision === "denied"
+          ? "Push permission was blocked for this session. Use your device settings to allow it, then return to BVRB3R."
+          : "Push setup was deferred for this session. You can try again after reopening BVRB3R."
+      };
+    }
+
+    if (currentPermission === "denied") {
+      persistPushPrimerDecision("denied");
+    }
+
+    setPushMessage(null);
+    setPushState("idle");
+    setPushPrimerIntent(intent);
+    return { opened: true, message: "Review the alert benefits before enabling push." };
+  }
+
+  function dismissPushPrimer() {
+    persistPushPrimerDecision(pushPermission === "denied" ? "denied" : "deferred");
+    setPushPrimerIntent(null);
+    setPushMessage(null);
   }
 
   async function ensureServiceWorker() {
@@ -557,7 +617,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     return navigator.serviceWorker.ready;
   }
 
-  async function enablePush() {
+  async function activatePushFromPrimer() {
     if (typeof window === "undefined" || !deviceId) {
       return { ok: false, message: "This device is not ready for push activation yet." };
     }
@@ -582,7 +642,9 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
           return { ok: false, message };
         }
 
-        const permission = await Notification.requestPermission();
+        const permission = Notification.permission === "granted"
+          ? "granted"
+          : await Notification.requestPermission();
         setPushPermission(permission as PushPermissionState);
 
         if (permission !== "granted") {
@@ -591,6 +653,10 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
             ? "Push alerts were blocked. You can enable them later in browser settings."
             : "Push alerts were not enabled yet.";
           setPushMessage(message);
+          persistPushPrimerDecision(permission === "denied" ? "denied" : "deferred");
+          if (permission !== "denied") {
+            setPushPrimerIntent(null);
+          }
           return { ok: false, message };
         }
 
@@ -652,8 +718,9 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
         setPushEnabled(true);
         setPushState("active");
         setPushMessage(message);
-        setDismissedPush(true);
+        setPushPrimerIntent(null);
       });
+      persistPushPrimerDecision(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["mobile", "activation"] }),
         queryClient.invalidateQueries({ queryKey: ["engagement"] })
@@ -689,6 +756,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
         method: "DELETE"
       });
       window.localStorage.setItem(PUSH_ACTIVE_KEY, "false");
+      persistPushPrimerDecision(null);
       startTransition(() => {
         setPushEnabled(false);
         setPushState("idle");
@@ -712,7 +780,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     pushSupported: pushPermission !== "unsupported" || nativeRuntime,
     pushPermission,
     pushEnabled,
-    enablePush,
+    requestPushPrimer,
     disablePush
   };
 
@@ -733,7 +801,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       ) : null}
-      {showInstallPrompt ? (
+      {showInstallPrompt && !pushPrimerIntent ? (
         <div className="pointer-events-none fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+7.5rem)] z-50 flex justify-center sm:inset-x-6 lg:bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
           <div className="pointer-events-auto w-full max-w-xl rounded-[28px] border border-[#C4F24E]/16 bg-[rgba(8,8,8,0.94)] p-4 shadow-[0_22px_48px_rgba(0,0,0,0.42)] backdrop-blur">
             <div className="flex items-start gap-3">
@@ -766,29 +834,16 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       ) : null}
-      {showPushPrompt ? (
-        <div className="pointer-events-none fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+7.5rem)] z-50 flex justify-center sm:inset-x-6">
-          <div className="pointer-events-auto w-full max-w-xl rounded-[28px] border border-white/10 bg-[rgba(7,7,7,0.94)] p-4 shadow-[0_22px_48px_rgba(0,0,0,0.42)] backdrop-blur">
-            <div className="flex items-start gap-3">
-              <div className="rounded-full border border-[#C4F24E]/18 bg-[#C4F24E]/10 p-2 text-[#e4f9b8]">
-                <Smartphone className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e4f9b8]">Activate mobile alerts</p>
-                <p className="mt-1 text-sm text-white/76">Enable push alerts for booking confirmations, marketplace momentum, and role-specific updates on this device.</p>
-                {pushMessage ? <p className="mt-3 text-xs text-white/52">{pushMessage}</p> : null}
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Button className="h-11 px-5" disabled={pushState === "activating"} onClick={() => void enablePush()}>
-                {pushState === "activating" ? "Connecting alerts..." : "Enable alerts"}
-              </Button>
-              <Button type="button" variant="secondary" className="h-11 px-5" onClick={dismissPushPrompt}>
-                Maybe later
-              </Button>
-            </div>
-          </div>
-        </div>
+      {pushPrimerIntent ? (
+        <PushPermissionPrimer
+          intent={pushPrimerIntent}
+          permission={pushPermission}
+          activating={pushState === "activating"}
+          message={pushMessage}
+          recoveryInstructions={getPushRecoveryInstructions(runtimeMode)}
+          onEnable={() => void activatePushFromPrimer()}
+          onNotNow={dismissPushPrimer}
+        />
       ) : null}
     </PwaContext.Provider>
   );
@@ -804,4 +859,3 @@ type SyncSubscriptionPayload = {
   appBundleId?: string;
   appVersion?: string;
 };
-

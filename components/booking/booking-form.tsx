@@ -444,7 +444,7 @@ function clearBookingDraft() {
 export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } = {}) {
   const isGuestMode = mode === "guest";
   const searchParams = useSearchParams();
-  const { isOnline } = usePwa();
+  const { isOnline, requestPushPrimer } = usePwa();
   const { selectedLocationId, selectedBarberId, setLocation, setBarber } = useBookingStore();
   const bookingMutation = useCreateBookingMutation();
   const paymentMethodsQuery = usePaymentMethodsQuery(undefined, !isGuestMode);
@@ -1049,6 +1049,9 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
           ? "Booking confirmed. Payment is verifying on the server."
           : "Appointment created. Payment is verifying on the server and Activity will show the receipt state."
       });
+      if (!isGuestMode) {
+        requestPushPrimer("booking");
+      }
     } catch (error) {
       const bookingError = error as BookingApiError;
       if (bookingError.code === "schedule_conflict" || bookingError.status === 409) {
@@ -1089,6 +1092,9 @@ export function BookingForm({ mode = "client" }: { mode?: "client" | "guest" } =
         tone: "info",
         message: `Waitlist joined. Request ${result.waitlist.id} is now persisted for follow-up and availability matching.`
       });
+      if (!isGuestMode) {
+        requestPushPrimer("booking");
+      }
     } catch (error) {
       setStatusUpdate({ tone: "error", message: getReadableActionError(error as BookingApiError) });
     }

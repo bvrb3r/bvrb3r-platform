@@ -13,9 +13,13 @@ const requirements = [
   { path: "app/community-guidelines/page.tsx", tokens: ["Community Guidelines", "Authentic reviews", "Messaging and consent"] },
   { path: "app/data-rights/page.tsx", tokens: ["Data Rights", "Account export", "Account deletion", "Retention and legal holds"] },
   { path: "app/api/legal/acceptances/route.ts", tokens: ["legal_reacceptance_required", "compliance_acceptances", "document_version", "accepted_at"] },
-  { path: "app/api/account/data-rights/route.ts", tokens: ["data_rights_requests", "content-disposition", "deletion_request_already_open", "cache-control"] },
+  { path: "app/api/account/data-rights/route.ts", tokens: ["data_rights_requests", "deletion_request_already_open", "export_delivery_requires_request"] },
+  { path: "lib/trust/account-data-export.ts", tokens: ["transactionsAsParty", "payment credentials and full card data", "createAccountExportToken", "sendAccountExportReadyEmail"] },
+  { path: "lib/trust/account-privacy-worker.ts", tokens: ["account_export_archives", "24 * 60 * 60 * 1000", "finalize_account_deletion", "ban_duration"] },
+  { path: "app/api/account/exports/[token]/route.ts", tokens: ["hashAccountExportToken", "content-disposition", "cache-control", "status: 410"] },
+  { path: "supabase/migrations/20260803073148_converge_pr31_data_deletion_workers.sql", tokens: ["grace_period_days", "account_export_archives", "account_deletion_finalization_jobs", "pr31_restore_account_deletion"] },
   { path: "supabase/migrations/20260711213000_mission6_legal_privacy_data_rights.sql", tokens: ["create table if not exists public.data_rights_requests", "enable row level security", "data_rights_requests_open_deletion_idx"] },
-  { path: "tests/unit/legal-data-rights-certification.spec.ts", tokens: ["rejects stale legal versions", "authenticated export", "auditable request"] }
+  { path: "tests/unit/legal-data-rights-certification.spec.ts", tokens: ["rejects stale legal versions", "authenticated emailed export", "auditable request"] }
 ];
 
 function currentCommit() {
@@ -45,12 +49,19 @@ for (const requirement of requirements) {
   }
 }
 
-const routeSource = existsSync(join(root, "app/api/account/data-rights/route.ts"))
-  ? readFileSync(join(root, "app/api/account/data-rights/route.ts"), "utf8")
-  : "";
+const safetyPaths = [
+  "app/api/account/data-rights/route.ts",
+  "app/api/account/exports/[token]/route.ts",
+  "lib/trust/account-data-export.ts",
+  "lib/trust/account-privacy-worker.ts"
+];
+const routeSource = safetyPaths
+  .filter((path) => existsSync(join(root, path)))
+  .map((path) => readFileSync(join(root, path), "utf8"))
+  .join("\n");
 for (const forbidden of ["auth.admin.deleteUser", "provider_payment_method_id", "SUPABASE_SERVICE_ROLE_KEY"]) {
   if (routeSource.includes(forbidden)) {
-    findings.push({ path: "app/api/account/data-rights/route.ts", code: "unsafe_export_or_deletion_behavior", detail: `Forbidden data-rights token present: ${forbidden}` });
+    findings.push({ path: "account data-rights implementation", code: "unsafe_export_or_deletion_behavior", detail: `Forbidden data-rights token present: ${forbidden}` });
   }
 }
 
@@ -86,7 +97,8 @@ const proof = {
     "Unauthenticated legal-acceptance and data-rights API requests return 401.",
     "Current legal acceptance can be recorded for an authenticated user.",
     "A stale legal version returns legal_reacceptance_required.",
-    "Authenticated export returns no-store JSON with attachment disposition.",
+    "The worker emails an authenticated, one-account export link that expires after 24 hours.",
+    "The export download returns no-store JSON with attachment disposition and rejects expired links.",
     "Deletion request creates one auditable pending request and duplicate open requests are denied."
   ],
   inventory: inventory.sort()

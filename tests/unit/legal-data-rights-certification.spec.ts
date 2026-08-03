@@ -29,20 +29,30 @@ describe("Mission 6 legal and data-rights certification", () => {
     const source = read("app/api/legal/acceptances/route.ts");
     expect(source).toContain("legal_reacceptance_required");
     expect(source).toContain("document.version !== parsed.data.documentVersion");
-    expect(source).toContain('.from("compliance_acceptances").insert');
+    expect(source).toContain('.from("compliance_acceptances").upsert');
+    expect(source).toContain("role: acceptanceRole");
+    expect(source).not.toContain("account_role: user.role");
+    expect(source).toContain('onConflict: "user_id,document_key,document_version"');
+    expect(source).toContain("ignoreDuplicates: true");
     expect(source).toContain("accepted_at: acceptedAt");
     expect(source).toContain("ip_address: requestIp(request)");
     expect(source).toContain('user.id === "guest-user"');
   });
 
-  it("provides an authenticated export without payment credentials", () => {
-    const source = read("app/api/account/data-rights/route.ts");
-    expect(source).toContain('mode !== "export"');
-    expect(source).toContain('content-disposition');
-    expect(source).toContain('cache-control');
-    expect(source).toContain("payment credentials and full card data");
-    expect(source).not.toContain("provider_payment_method_id");
-    expect(source).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
+  it("provides an authenticated emailed export without payment credentials", () => {
+    const requestRoute = read("app/api/account/data-rights/route.ts");
+    const exportService = read("lib/trust/account-data-export.ts");
+    const worker = read("lib/trust/account-privacy-worker.ts");
+    const downloadRoute = read("app/api/account/exports/[token]/route.ts");
+    expect(requestRoute).toContain("export_delivery_requires_request");
+    expect(worker).toContain("sendAccountExportReadyEmail");
+    expect(worker).toContain("24 * 60 * 60 * 1000");
+    expect(downloadRoute).toContain('content-disposition');
+    expect(downloadRoute).toContain('cache-control');
+    expect(exportService).toContain("payment credentials and full card data");
+    expect(exportService).not.toContain("provider_payment_method_id");
+    expect(exportService).not.toContain("provider_payment_intent_id");
+    expect(downloadRoute).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
   });
 
   it("treats deletion as an auditable request instead of an immediate destructive action", () => {
@@ -57,6 +67,8 @@ describe("Mission 6 legal and data-rights certification", () => {
   });
 
   it("publishes the required legal and user-rights surfaces", () => {
+    expect(read("app/legal/page.tsx")).toContain("Legal documents");
+    expect(read("app/legal/page.tsx")).toContain("Counsel review required");
     expect(read("app/terms/page.tsx")).toContain("Terms of Service");
     expect(read("app/privacy/page.tsx")).toContain("Privacy Policy");
     expect(read("app/community-guidelines/page.tsx")).toContain("Community Guidelines");

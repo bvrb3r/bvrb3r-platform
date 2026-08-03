@@ -13,23 +13,19 @@ export function PushPermissionScreen() {
     pushSupported,
     pushPermission,
     pushEnabled,
-    enablePush
+    requestPushPrimer
   } = usePwa();
-  const [activating, setActivating] = useState(false);
   const [feedback, setFeedback] = useState<{
-    tone: "success" | "error";
+    tone: "info" | "error";
     message: string;
   } | null>(null);
 
-  async function activate() {
-    setActivating(true);
+  function openPrimer() {
     setFeedback(null);
-    const result = await enablePush();
-    setActivating(false);
-    setFeedback({
-      tone: result.ok ? "success" : "error",
-      message: result.message
-    });
+    const result = requestPushPrimer("notifications");
+    if (!result.opened) {
+      setFeedback({ tone: "info", message: result.message });
+    }
   }
 
   const blocked = pushPermission === "denied";
@@ -80,7 +76,7 @@ export function PushPermissionScreen() {
               </p>
               <p className="mt-2 text-xs leading-6 text-white/43">
                 {blocked
-                  ? "Your browser blocked the prompt. Re-enable notifications for this site in the browser’s site settings, then return here."
+                  ? "Open the recovery steps below for instructions matched to this device and browser."
                   : "BVRB3R stores one revocable device subscription. Disabling it removes delivery for this device only."}
               </p>
             </div>
@@ -89,9 +85,9 @@ export function PushPermissionScreen() {
 
         {feedback ? <div className="mt-5"><FeedbackBanner tone={feedback.tone} message={feedback.message} /></div> : null}
 
-        {!pushEnabled && pushSupported && !blocked ? (
-          <Button className="mt-8 w-full" disabled={activating} onClick={() => void activate()}>
-            {activating ? "Connecting alerts…" : "Allow push alerts"}
+        {!pushEnabled && pushSupported ? (
+          <Button className="mt-8 w-full" onClick={openPrimer}>
+            {blocked ? "View recovery steps" : "Review and enable alerts"}
           </Button>
         ) : (
           <Button className="mt-8 w-full" variant="secondary" onClick={() => router.push("/notifications")}>

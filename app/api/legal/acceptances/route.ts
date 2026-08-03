@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { LEGAL_DOCUMENTS, REQUIRED_ACCOUNT_AGREEMENTS } from "@/lib/legal/documents";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { UserAccount } from "@/types/domain";
 
 const acceptanceSchema = z.object({
   documentKey: z.enum(["terms", "privacy", "community_guidelines"]),
@@ -16,6 +18,28 @@ function currentDocument(documentKey: z.infer<typeof acceptanceSchema>["document
 
 function requestIp(request: Request) {
   return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+}
+
+type ComplianceAcceptanceRole = "client" | "barber" | "shop_owner" | "platform_admin";
+
+function complianceAcceptanceRole(role: UserAccount["role"]): ComplianceAcceptanceRole | null {
+  if (isClientRole(role)) {
+    return "client";
+  }
+
+  if (isBarberAccountRole(role)) {
+    return "barber";
+  }
+
+  if (isShopOwnerRole(role)) {
+    return "shop_owner";
+  }
+
+  if (role === "platform_admin" || role === "architect") {
+    return "platform_admin";
+  }
+
+  return null;
 }
 
 export async function GET() {
@@ -68,28 +92,53 @@ export async function POST(request: Request) {
     );
   }
 
+  const acceptanceRole = complianceAcceptanceRole(user.role);
+  if (!acceptanceRole) {
+    return NextResponse.json({ error: "This account role cannot record legal acceptance." }, { status: 403 });
+  }
+
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
     return NextResponse.json({ error: "Legal acceptance storage is unavailable." }, { status: 503 });
   }
 
   const acceptedAt = new Date().toISOString();
-  const result = await supabase.from("compliance_acceptances").insert({
-    user_id: user.id,
-    account_role: user.role,
-    document_key: document.key,
-    document_version: document.version,
-    accepted_at: acceptedAt,
-    ip_address: requestIp(request),
-    user_agent: request.headers.get("user-agent")
-  });
+  const result = await supabase.from("compliance_acceptances").upsert(
+    {
+      user_id: user.id,
+      role: acceptanceRole,
+      document_key: document.key,
+      document_version: document.version,
+      accepted_at: acceptedAt,
+      ip_address: requestIp(request),
+      user_agent: request.headers.get("user-agent")
+    },
+    {
+      onConflict: "user_id,document_key,document_version",
+      ignoreDuplicates: true
+    }
+  );
 
   if (result.error) {
-    const duplicate = result.error.code === "23505";
-    if (!duplicate) {
-      return NextResponse.json({ error: "Unable to record legal acceptance." }, { status: 500 });
-    }
+    return NextResponse.json({ error: "Unable to record legal acceptance." }, { status: 500 });
   }
 
-  return NextResponse.json({ accepted: true, documentKey: document.key, documentVersion: document.version, acceptedAt });
+  const persisted = await supabase
+    .from("compliance_acceptances")
+    .select("document_key, document_version, accepted_at")
+    .eq("user_id", user.id)
+    .eq("document_key", document.key)
+    .eq("document_version", document.version)
+    .maybeSingle();
+
+  if (persisted.error || !persisted.data) {
+    return NextResponse.json({ error: "Unable to verify legal acceptance." }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    accepted: true,
+    documentKey: persisted.data.document_key,
+    documentVersion: persisted.data.document_version,
+    acceptedAt: persisted.data.accepted_at
+  });
 }

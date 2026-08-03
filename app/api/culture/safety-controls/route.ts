@@ -11,14 +11,21 @@ import {
   submitPr27CultureAppeal,
   submitPr27CultureReport
 } from "@/lib/trust/product-pr27-service";
+import {
+  buildPr31ReportDetails,
+  toPr27CultureCategory
+} from "@/lib/trust/product-pr31-report-block";
 
 const actionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("report"),
     reportedProfileId: z.string().min(1).max(128),
     postId: z.string().min(1).max(128).optional().nullable(),
-    category: z.enum(["spam", "harassment", "stolen_work", "explicit_content", "dangerous_services", "other"]),
-    details: z.string().trim().max(2000).optional().nullable()
+    category: z.enum(["spam", "harassment", "stolen_work", "explicit_content", "dangerous_services", "other"]).optional(),
+    details: z.string().trim().max(2000).optional().nullable(),
+    reason: z.enum(["spam", "harassment", "unsafe_conduct", "fake_profile", "payment_scam", "other"]).optional(),
+    evidenceDescription: z.string().trim().max(1600).optional().nullable(),
+    sourceSurface: z.enum(["public_profile", "culture_post", "message_thread"]).optional()
   }),
   z.object({
     action: z.literal("block"),
@@ -74,10 +81,33 @@ export async function POST(request: Request) {
         error: parsed.error.issues[0]?.message ?? "Invalid Culture safety action."
       }, { status: 400 });
     }
+    if (
+      parsed.data.action === "report"
+      && !parsed.data.category
+      && !(parsed.data.reason && parsed.data.sourceSurface)
+    ) {
+      return NextResponse.json({ error: "A canonical report reason and source are required." }, { status: 400 });
+    }
 
     switch (parsed.data.action) {
-      case "report":
-        return NextResponse.json(await submitPr27CultureReport(user, parsed.data), { status: 201 });
+      case "report": {
+        const category = parsed.data.reason
+          ? toPr27CultureCategory(parsed.data.reason)
+          : parsed.data.category!;
+        const details = parsed.data.reason && parsed.data.sourceSurface
+          ? buildPr31ReportDetails({
+              reason: parsed.data.reason,
+              source: parsed.data.sourceSurface,
+              evidenceDescription: parsed.data.evidenceDescription
+            })
+          : parsed.data.details;
+        return NextResponse.json(await submitPr27CultureReport(user, {
+          reportedProfileId: parsed.data.reportedProfileId,
+          postId: parsed.data.postId,
+          category,
+          details
+        }), { status: 201 });
+      }
       case "block":
         return NextResponse.json(await setPr27CultureBlock(user, parsed.data));
       case "mute":

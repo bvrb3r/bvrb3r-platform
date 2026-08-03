@@ -57,9 +57,11 @@ export function BarberEngagementPanel() {
   const [issuingState, setIssuingState] = useState("FL");
   const [expirationDate, setExpirationDate] = useState("2027-06-30");
 
-  async function handleEnablePush() {
-    const result = await pwa.enablePush();
-    setFeedback({ tone: result.ok ? "success" : "error", message: result.message });
+  function handleRequestPush() {
+    const result = pwa.requestPushPrimer("chair");
+    if (!result.opened) {
+      setFeedback({ tone: "info", message: result.message });
+    }
   }
 
   async function handleDisablePush() {
@@ -281,7 +283,7 @@ export function BarberEngagementPanel() {
               <div className="rounded-[22px] border border-[#C4F24E]/18 bg-[#C4F24E]/8 p-4"><p className="surface-label text-[#e4f9b8]">Offline read lanes</p><p className="mt-3 text-3xl font-semibold">{mobileSummary?.offlineSupport.cachedRoutes.length ?? 0}</p><p className="mt-2 text-sm text-white/62">Already-opened discovery and dashboard reads stay visible when signal drops.</p></div>
             </div>
             <div className="mt-4 flex flex-wrap gap-3">
-              {mobileSummary?.pushEnabled ? <Button className="h-11 px-5" variant="secondary" onClick={() => void handleDisablePush()}>Turn off mobile alerts</Button> : <Button className="h-11 px-5" variant="secondary" onClick={() => void handleEnablePush()}>Enable chair alerts</Button>}
+              {mobileSummary?.pushEnabled ? <Button className="h-11 px-5" variant="secondary" onClick={() => void handleDisablePush()}>Turn off mobile alerts</Button> : <Button className="h-11 px-5" variant="secondary" onClick={handleRequestPush}>Enable chair alerts</Button>}
               <span className="status-pill text-white/62">Booking alerts, reviews, verification updates, and premium visibility changes can route here.</span>
             </div>
             <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4 text-sm text-white/64">{activation?.monetizationEligibility.reason ?? "Activation rules are loading."}</div>
@@ -333,7 +335,6 @@ export function BarberEngagementPanel() {
     </section>
   );
 }
-
 
 
 
