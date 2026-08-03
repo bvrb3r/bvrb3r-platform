@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/booking/route-auth";
 import {
   ShopTeamInviteServiceError,
   endBarberShopRelationship,
+  setOwnerTeamRelationshipPause,
   updateOwnerTeamRelationship
 } from "@/lib/operations/shop-team-invites";
 
@@ -17,6 +18,12 @@ const updateSchema = z.object({
   publicTeamVisible: z.boolean().optional(),
   publicTeamOrder: z.number().int().min(0).max(999).optional(),
   featuredOnShopProfile: z.boolean().optional()
+}).strict();
+
+const pauseSchema = z.object({
+  relationshipId: z.string().trim().min(1),
+  paused: z.boolean(),
+  reason: z.string().trim().min(3).max(500)
 }).strict();
 
 function toErrorResponse(error: unknown, fallback: string) {
@@ -50,7 +57,14 @@ export async function DELETE(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const user = await getSessionUser();
-    const parsed = updateSchema.safeParse(await request.json().catch(() => null));
+    const body = await request.json().catch(() => null);
+    const pause = pauseSchema.safeParse(body);
+    if (pause.success) {
+      return NextResponse.json(
+        await setOwnerTeamRelationshipPause(user, pause.data)
+      );
+    }
+    const parsed = updateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid shop relationship update payload." }, { status: 400 });
     }

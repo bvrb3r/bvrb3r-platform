@@ -18,6 +18,24 @@ vi.mock("@/components/operations/owner-overview", () => ({
   OwnerOverview: () => <div data-testid="owner-overview-stub">Owner overview workspace</div>
 }));
 
+vi.mock("@/components/operations/owner-operations-workspace", () => ({
+  OwnerOperationsWorkspace: ({
+    shopIds,
+    initialTab
+  }: {
+    shopIds: string[];
+    initialTab?: string;
+  }) => (
+    <div
+      data-testid="owner-operations-workspace-stub"
+      data-shop-ids={shopIds.filter(Boolean).join(",")}
+      data-initial-tab={initialTab ?? "home"}
+    >
+      Owner operations workspace
+    </div>
+  )
+}));
+
 vi.mock("@/components/messages/messaging-inbox-screen", () => ({
   MessagingInboxScreen: ({ surface }: { surface: string }) => <div data-testid="messaging-inbox-stub">{surface}</div>
 }));
@@ -58,39 +76,39 @@ describe("owner dashboard tab pages", () => {
     getAuthorizedUserMock.mockReset();
   });
 
-  it("renders the owner team workspace on the canonical home tab", async () => {
+  it("renders shop-scoped owner operations on the canonical home tab", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     render(await OwnerDashboardPage());
 
-    expect(screen.getByTestId("owner-team-workspace-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("owner-operations-workspace-stub")).toHaveAttribute("data-initial-tab", "home");
   });
 
-  it("keeps the legacy team route as an alias to owner home controls", async () => {
+  it("keeps the team route on the privacy-safe team view", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     render(await OwnerTeamPage());
 
-    expect(screen.getByTestId("owner-team-workspace-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("owner-operations-workspace-stub")).toHaveAttribute("data-initial-tab", "team");
   });
 
-  it("keeps the old owner overview screen reachable", async () => {
+  it("routes the old overview alias to privacy-safe owner operations", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     render(await OwnerOverviewPage());
 
-    expect(screen.getByTestId("owner-overview-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("owner-operations-workspace-stub")).toHaveAttribute("data-initial-tab", "home");
   });
 
-  it("renders the owner schedule workspace on the canonical schedule tab", async () => {
+  it("renders Floor Day on the canonical schedule tab", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     render(await OwnerSchedulePage());
 
-    expect(screen.getByTestId("owner-schedule-workspace-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("owner-operations-workspace-stub")).toHaveAttribute("data-initial-tab", "floor");
   });
 
-  it("renders the owner money workspace on the canonical money tab", async () => {
+  it("renders shop-scoped operations on the canonical money tab", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     render(
@@ -99,7 +117,7 @@ describe("owner dashboard tab pages", () => {
       })
     );
 
-    expect(screen.getByTestId("owner-money-workspace-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("owner-operations-workspace-stub")).toBeInTheDocument();
     expect(screen.queryByTestId("fintech-workspace-stub")).not.toBeInTheDocument();
   });
 
@@ -123,10 +141,10 @@ describe("owner dashboard tab pages", () => {
     );
 
     expect(screen.getByText("Growth parked")).toBeInTheDocument();
-    expect(screen.getByTestId("owner-money-workspace-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("owner-operations-workspace-stub")).toBeInTheDocument();
   });
 
-  it("keeps fintech operations reachable from the owner money tab when requested", async () => {
+  it("keeps detailed owner fintech closed to protect barber money", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     render(
@@ -135,8 +153,9 @@ describe("owner dashboard tab pages", () => {
       })
     );
 
-    expect(screen.getByTestId("owner-money-workspace-stub")).toBeInTheDocument();
-    expect(screen.getByTestId("fintech-workspace-stub")).toHaveTextContent("loc-ybor,loc-hyde");
+    expect(screen.getByTestId("owner-operations-workspace-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("fintech-workspace-stub")).not.toBeInTheDocument();
+    expect(screen.getByText("Detailed finance closed")).toBeInTheDocument();
   });
 
   it("renders the owner More workspace on the canonical More tab", async () => {

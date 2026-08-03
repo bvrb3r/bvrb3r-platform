@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
+import { isShopOwnerRole } from "@/lib/auth/roles";
 import {
   ShopTeamInviteServiceError,
   createOwnerTeamInvite,
@@ -47,9 +48,23 @@ function toErrorResponse(error: unknown, fallback: string) {
 export async function GET(request: NextRequest) {
   try {
     const user = await getSessionUser();
+    if (process.env.NEXT_PUBLIC_AUTH_MODE === "demo") {
+      if (!(isShopOwnerRole(user.role) || user.role === "manager")) {
+        return NextResponse.json({ error: "Only shop owners and managers can manage team invites." }, { status: 403 });
+      }
+      const shopId = request.nextUrl.searchParams.get("shopId")?.trim() || user.ownedShopId || user.locationIds[0];
+      if (!shopId) {
+        return NextResponse.json({ error: "Choose one shop before loading the team directory." }, { status: 400 });
+      }
+      return NextResponse.json({
+        shop: { id: shopId, label: shopId, setupNote: null },
+        barbers: []
+      });
+    }
     const payload = await listOwnerTeamInviteDirectory(
       user,
-      request.nextUrl.searchParams.get("q") ?? undefined
+      request.nextUrl.searchParams.get("q") ?? undefined,
+      request.nextUrl.searchParams.get("shopId") ?? undefined
     );
     return NextResponse.json(payload);
   } catch (error) {
