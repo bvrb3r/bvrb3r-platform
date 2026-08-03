@@ -10,9 +10,9 @@ const commands = [
   { label: "lint", command: "npm run lint" },
   { label: "typecheck", command: "npm run typecheck" },
   {
-    label: "identity, booking, money, owner, kiosk, legal, public conversion, and Architect regression tests",
+    label: "identity, booking, money, owner, kiosk, legal, public conversion, Architect, and Mission 7 regression tests",
     command:
-      "npx vitest run tests/unit/internal-operator-access.spec.ts tests/unit/shop-operator-access.spec.ts tests/unit/kiosk-mode-screen.spec.tsx tests/unit/kiosk-service-eligibility.spec.ts tests/unit/fintech-domain.spec.ts tests/unit/money-routing-lifecycle.spec.ts tests/unit/money-routing-service-contract.spec.ts tests/unit/core-booking-loop-regression.spec.ts tests/unit/money-readiness-proof.spec.ts tests/unit/marketplace-discover-route.spec.ts tests/unit/public-conversion-routes.spec.ts tests/unit/post-auth-return.spec.ts tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts tests/unit/legal-data-rights-certification.spec.ts",
+      "npx vitest run tests/unit/internal-operator-access.spec.ts tests/unit/shop-operator-access.spec.ts tests/unit/kiosk-mode-screen.spec.tsx tests/unit/kiosk-service-eligibility.spec.ts tests/unit/fintech-domain.spec.ts tests/unit/money-routing-lifecycle.spec.ts tests/unit/money-routing-service-contract.spec.ts tests/unit/core-booking-loop-regression.spec.ts tests/unit/money-readiness-proof.spec.ts tests/unit/marketplace-discover-route.spec.ts tests/unit/public-conversion-routes.spec.ts tests/unit/post-auth-return.spec.ts tests/unit/architect-mission-control-foundation.spec.ts tests/unit/architect-mission-control.spec.tsx tests/unit/architect-incident-detection.spec.ts tests/unit/legal-data-rights-certification.spec.ts tests/unit/stripe-webhook-certification.spec.ts",
     env: {
       NODE_ENV: "test",
       VITEST: "true"
@@ -24,6 +24,7 @@ const commands = [
   { label: "Shop Owner Tier 1 truth certification", command: "npm run verify:shop-owner-tier1" },
   { label: "Shop Owner and kiosk loop certification", command: "npm run verify:owner-kiosk" },
   { label: "legal, privacy, consent, deletion, and export certification", command: "npm run verify:legal-data-rights" },
+  { label: "Mission 7 processor and security foundation", command: "npm run verify:mission7-foundation" },
   { label: "aggregate-only production money proof", command: "npm run verify:money" }
 ];
 
@@ -54,13 +55,13 @@ for (const item of commands) {
 const generatedAt = new Date().toISOString();
 const validationCommand = commands.map((item) => item.command).join(" && ");
 const proof = {
-  schemaVersion: 8,
+  schemaVersion: 9,
   generatedAt,
   validationTimestamp: generatedAt,
   validationCommit: currentCommit(),
   validationSource: "package.json prebuild -> verify:deployment",
   validationCommand,
-  regressionSuiteName: "identity-client-booking-barber-completion-shop-owner-kiosk-legal-data-rights-money-public-conversion-and-architect-mandatory-regression",
+  regressionSuiteName: "identity-client-booking-barber-completion-shop-owner-kiosk-legal-data-rights-money-public-conversion-architect-and-mission7-foundation-mandatory-regression",
   regressionTestCount: null,
   lintStatus: "pass",
   typecheckStatus: "pass",
@@ -70,6 +71,7 @@ const proof = {
   shopOwnerTier1ProofPath: "/.well-known/bvrb3r-shop-owner-tier1-proof.json",
   ownerKioskProofPath: "/.well-known/bvrb3r-owner-kiosk-proof.json",
   legalDataRightsProofPath: "/.well-known/bvrb3r-legal-data-rights-proof.json",
+  mission7FoundationProofPath: "/.well-known/bvrb3r-mission7-foundation-proof.json",
   moneyProofPath: "/.well-known/bvrb3r-money-readiness-proof.json",
   publicConversionProofPath: "/.well-known/bvrb3r-public-conversion-proof.json"
 };

@@ -52,6 +52,7 @@
     "verify:mission4": "npm run verify:client-booking && npx vitest run tests/unit/core-booking-loop-regression.spec.ts tests/unit/booking-mutation-routes.spec.ts tests/unit/booking-client-resolution.spec.ts tests/unit/booking-availability-slot-engine.spec.ts",
     "verify:mission5": "npm run verify:owner-kiosk && npm run verify:shop-owner-tier1 && npx vitest run tests/unit/shop-operator-access.spec.ts tests/unit/kiosk-mode-screen.spec.tsx tests/unit/kiosk-service-eligibility.spec.ts tests/unit/core-booking-loop-regression.spec.ts tests/unit/fintech-domain.spec.ts tests/unit/money-routing-lifecycle.spec.ts",
     "verify:mission6": "npm run verify:legal-data-rights && npx vitest run tests/unit/legal-data-rights-certification.spec.ts",
+    "verify:mission7-foundation": "node scripts/verify-mission7-foundation.mjs && npx vitest run tests/unit/stripe-webhook-certification.spec.ts",
     "verify:v1": "npm run verify:deployment && npm run verify:money:enforce",
     "seed": "tsx lib/data/seed.ts",
     "supabase:start": "supabase start",
