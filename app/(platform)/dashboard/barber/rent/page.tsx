@@ -1,5 +1,4 @@
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { RentWorkspace } from "@/components/rent/rent-workspace";
+import { RentOperationsWorkspace } from "@/components/rent/rent-operations-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function BarberRentPage({
@@ -14,17 +13,18 @@ export default async function BarberRentPage({
     "booth_rent_barber"
   ]);
   const { view } = await searchParams;
-  const initialView = view === "autobooth" ? "autobooth" : "rent";
+  const initialScreen = view === "autobooth"
+    ? "autobooth"
+    : view === "statement"
+      ? "statement"
+      : "lifecycle";
 
+  void user;
   return (
-    <DashboardShell
-      user={user}
-      activeHref="/dashboard/barber/rent"
-      title="Booth Rent"
-      subtitle="Fixed obligation, private earnings, rent only"
-      hidePageHeader
-    >
-      <RentWorkspace viewer="barber" initialView={initialView} />
-    </DashboardShell>
+    <div className="min-h-screen bg-[#060708] px-3 py-4 sm:px-6">
+      <div className="mx-auto max-w-7xl">
+        <RentOperationsWorkspace viewer="barber" initialScreen={initialScreen} />
+      </div>
+    </div>
   );
 }

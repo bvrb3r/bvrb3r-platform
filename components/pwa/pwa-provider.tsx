@@ -36,6 +36,14 @@ const PUSH_ACTIVE_KEY = "bvrb3r-pwa-push-active";
 const DISMISS_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
 const PwaContext = createContext<PwaContextValue | null>(null);
 
+function isClientDemoRuntime() {
+  return process.env.NEXT_PUBLIC_AUTH_MODE === "demo"
+    || !(
+      process.env.NEXT_PUBLIC_SUPABASE_URL
+      && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    );
+}
+
 function getCapacitorBridge(): CapacitorBridge | null {
   if (typeof window === "undefined") {
     return null;
@@ -396,7 +404,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     if (typeof navigator === "undefined") {
       return;
     }
-    if (process.env.NEXT_PUBLIC_AUTH_MODE === "demo") {
+    if (isClientDemoRuntime()) {
       return;
     }
 
@@ -796,5 +804,4 @@ type SyncSubscriptionPayload = {
   appBundleId?: string;
   appVersion?: string;
 };
-
 

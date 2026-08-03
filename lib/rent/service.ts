@@ -6,6 +6,12 @@ import {
   type RentSetupGateKey,
   type RentSetupGateStatus
 } from "@/lib/rent/domain";
+import {
+  buildRentStatement,
+  buildRentStatementCsv,
+  buildRentStatementPdf,
+  type RentStatement
+} from "@/lib/rent/operations-domain";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { UserAccount } from "@/types/domain";
@@ -66,7 +72,17 @@ export type RentContributionView = {
   kind: string;
   status: string;
   appliedCents: number;
+  eligibleServiceCents: number | null;
+  excludedTipCents: number | null;
+  excludedTaxCents: number | null;
+  excludedExternalCents: number | null;
+  refundedServiceCents: number | null;
+  requestedCents: number | null;
+  appointmentId: string | null;
+  paymentId: string | null;
+  providerEventId: string | null;
   evidenceReference: string | null;
+  reversalOfContributionId: string | null;
   createdAt: string;
   settledAt: string | null;
 };
@@ -82,6 +98,9 @@ export type RentActionView = {
 
 export type RentWorkspacePayload = {
   viewer: "owner" | "barber";
+  scope: {
+    shopId: string | null;
+  };
   relationships: Array<{
     id: string;
     shopId: string;
@@ -92,6 +111,49 @@ export type RentWorkspacePayload = {
   obligations: RentObligationView[];
   contributions: RentContributionView[];
   actions: RentActionView[];
+  autopay: Array<{
+    agreementId: string;
+    enabled: boolean;
+    version: number;
+    enabledAt: string | null;
+    disabledAt: string | null;
+  }>;
+  paymentRequests: Array<{
+    id: string;
+    obligationId: string;
+    rail: "card" | "barber_balance" | "cash";
+    status: string;
+    requestedCents: number;
+    appliedCents: number;
+    providerReference: string | null;
+    evidenceReference: string | null;
+    createdAt: string;
+    settledAt: string | null;
+  }>;
+  disputes: Array<{
+    id: string;
+    contributionId: string;
+    obligationId: string;
+    status: "open" | "under_review" | "released" | "reversed";
+    heldCents: number;
+    reappliedCents: number;
+    returnedCents: number;
+    reason: string;
+    evidenceReference: string;
+    resolutionReason: string | null;
+    createdAt: string;
+    resolvedAt: string | null;
+  }>;
+  lifecycleRequests: Array<{
+    id: string;
+    relationshipId: string;
+    type: "change_terms" | "pause" | "leave" | "end";
+    status: string;
+    reason: string;
+    proposedTerms: Record<string, unknown>;
+    requestedEffectiveAt: string;
+    createdAt: string;
+  }>;
   warnings: string[];
 };
 
@@ -136,7 +198,17 @@ type ContributionRow = {
   contribution_kind: string;
   status: string;
   applied_cents: number;
+  eligible_service_cents?: number;
+  excluded_tip_cents?: number;
+  excluded_tax_cents?: number;
+  excluded_external_cents?: number;
+  refunded_service_cents?: number;
+  requested_cents?: number;
+  appointment_id?: string | null;
+  payment_id?: string | null;
+  provider_event_id?: string | null;
   evidence_reference: string | null;
+  reversal_of_contribution_id?: string | null;
   created_at: string;
   settled_at: string | null;
 };
@@ -154,6 +226,14 @@ function isMissingContract(error: SupabaseErrorLike | null) {
   return error?.code === "42P01"
     || error?.code === "PGRST205"
     || /(rent_(agreements|obligations|contributions|actions_audit)|shop_setup_gates).*not found/i.test(error?.message ?? "");
+}
+
+function isMissingPr26Contract(error: SupabaseErrorLike | null) {
+  return error?.code === "42P01"
+    || error?.code === "PGRST205"
+    || /(rent_(autopay_preferences|payment_requests|line_disputes|lifecycle_requests)).*not found/i.test(
+      error?.message ?? ""
+    );
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -198,7 +278,7 @@ function mapObligation(row: ObligationRow): RentObligationView {
   };
 }
 
-function resolveScope(user: UserAccount) {
+function resolveScope(user: UserAccount, requestedShopId?: string | null) {
   if (isShopOwnerRole(user.role)) {
     const shopIds = Array.from(new Set(
       [user.ownedShopId, ...user.locationIds].filter((value): value is string => Boolean(value))
@@ -206,27 +286,47 @@ function resolveScope(user: UserAccount) {
     if (!shopIds.length) {
       throw new RentServiceError("No shop is attached to this owner account.", 403);
     }
-    return { viewer: "owner" as const, shopIds, barberId: null };
+    const requested = requestedShopId?.trim();
+    if (requested && !shopIds.includes(requested)) {
+      throw new RentServiceError("That shop is outside your owner scope.", 403);
+    }
+    if (!requested && shopIds.length > 1) {
+      throw new RentServiceError("Choose one shop before opening rent operations.", 400);
+    }
+    return {
+      viewer: "owner" as const,
+      shopIds,
+      shopId: requested ?? shopIds[0],
+      barberId: null
+    };
   }
 
   if (isBarberAccountRole(user.role) && user.barberId) {
-    return { viewer: "barber" as const, shopIds: [], barberId: user.barberId };
+    return { viewer: "barber" as const, shopIds: [], shopId: null, barberId: user.barberId };
   }
 
   throw new RentServiceError("Booth rent is available to shop owners and barbers.", 403);
 }
 
-export async function getRentWorkspacePayload(user: UserAccount): Promise<RentWorkspacePayload> {
-  const scope = resolveScope(user);
+export async function getRentWorkspacePayload(
+  user: UserAccount,
+  requestedShopId?: string | null
+): Promise<RentWorkspacePayload> {
+  const scope = resolveScope(user, requestedShopId);
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
     return {
       viewer: scope.viewer,
+      scope: { shopId: scope.shopId },
       relationships: [],
       agreements: [],
       obligations: [],
       contributions: [],
       actions: [],
+      autopay: [],
+      paymentRequests: [],
+      disputes: [],
+      lifecycleRequests: [],
       warnings: ["Rent truth is temporarily unavailable."]
     };
   }
@@ -246,9 +346,12 @@ export async function getRentWorkspacePayload(user: UserAccount): Promise<RentWo
     .order("period_start", { ascending: false });
   // Owner queries deliberately request only rent-funding columns. The table's
   // service/tip/tax evidence never enters the owner payload.
+  const contributionColumns = scope.viewer === "owner"
+    ? "id, obligation_id, contribution_kind, status, applied_cents, evidence_reference, reversal_of_contribution_id, created_at, settled_at"
+    : "id, obligation_id, contribution_kind, status, applied_cents, eligible_service_cents, excluded_tip_cents, excluded_tax_cents, excluded_external_cents, refunded_service_cents, requested_cents, appointment_id, payment_id, provider_event_id, evidence_reference, reversal_of_contribution_id, created_at, settled_at";
   let contributionQuery = supabase
     .from("rent_contributions")
-    .select("id, obligation_id, contribution_kind, status, applied_cents, evidence_reference, created_at, settled_at")
+    .select(contributionColumns)
     .order("created_at", { ascending: false });
   let actionQuery = supabase
     .from("rent_actions_audit")
@@ -257,11 +360,11 @@ export async function getRentWorkspacePayload(user: UserAccount): Promise<RentWo
     .limit(80);
 
   if (scope.viewer === "owner") {
-    agreementQuery = agreementQuery.in("shop_id", scope.shopIds);
-    relationshipQuery = relationshipQuery.in("shop_id", scope.shopIds);
-    obligationQuery = obligationQuery.in("shop_id", scope.shopIds);
-    contributionQuery = contributionQuery.in("shop_id", scope.shopIds);
-    actionQuery = actionQuery.in("shop_id", scope.shopIds);
+    agreementQuery = agreementQuery.eq("shop_id", scope.shopId);
+    relationshipQuery = relationshipQuery.eq("shop_id", scope.shopId);
+    obligationQuery = obligationQuery.eq("shop_id", scope.shopId);
+    contributionQuery = contributionQuery.eq("shop_id", scope.shopId);
+    actionQuery = actionQuery.eq("shop_id", scope.shopId);
   } else {
     agreementQuery = agreementQuery.eq("barber_id", scope.barberId);
     relationshipQuery = relationshipQuery.eq("barber_id", scope.barberId);
@@ -289,11 +392,16 @@ export async function getRentWorkspacePayload(user: UserAccount): Promise<RentWo
     if (errors.every((error) => isMissingContract(error))) {
       return {
         viewer: scope.viewer,
+        scope: { shopId: scope.shopId },
         relationships: [],
         agreements: [],
         obligations: [],
         contributions: [],
         actions: [],
+        autopay: [],
+        paymentRequests: [],
+        disputes: [],
+        lifecycleRequests: [],
         warnings: ["The PR22 rent contract is awaiting its database migration."]
       };
     }
@@ -302,6 +410,7 @@ export async function getRentWorkspacePayload(user: UserAccount): Promise<RentWo
 
   return {
     viewer: scope.viewer,
+    scope: { shopId: scope.shopId },
     relationships: ((relationshipsResult.data ?? []) as Array<{
       id: string;
       shop_id: string;
@@ -315,13 +424,23 @@ export async function getRentWorkspacePayload(user: UserAccount): Promise<RentWo
     })),
     agreements: ((agreementsResult.data ?? []) as AgreementRow[]).map(mapAgreement),
     obligations: ((obligationsResult.data ?? []) as ObligationRow[]).map(mapObligation),
-    contributions: ((contributionsResult.data ?? []) as ContributionRow[]).map((row) => ({
+    contributions: ((contributionsResult.data ?? []) as unknown as ContributionRow[]).map((row) => ({
       id: row.id,
       obligationId: row.obligation_id,
       kind: row.contribution_kind,
       status: row.status,
       appliedCents: row.applied_cents,
+      eligibleServiceCents: row.eligible_service_cents ?? null,
+      excludedTipCents: row.excluded_tip_cents ?? null,
+      excludedTaxCents: row.excluded_tax_cents ?? null,
+      excludedExternalCents: row.excluded_external_cents ?? null,
+      refundedServiceCents: row.refunded_service_cents ?? null,
+      requestedCents: row.requested_cents ?? null,
+      appointmentId: row.appointment_id ?? null,
+      paymentId: row.payment_id ?? null,
+      providerEventId: row.provider_event_id ?? null,
       evidenceReference: row.evidence_reference,
+      reversalOfContributionId: row.reversal_of_contribution_id ?? null,
       createdAt: row.created_at,
       settledAt: row.settled_at
     })),
@@ -333,7 +452,240 @@ export async function getRentWorkspacePayload(user: UserAccount): Promise<RentWo
       reason: row.reason,
       createdAt: row.created_at
     })),
+    autopay: [],
+    paymentRequests: [],
+    disputes: [],
+    lifecycleRequests: [],
     warnings: []
+  };
+}
+
+export async function getRentOperationsPayload(
+  user: UserAccount,
+  requestedShopId?: string | null
+): Promise<RentWorkspacePayload> {
+  const base = await getRentWorkspacePayload(user, requestedShopId);
+  const scope = resolveScope(user, requestedShopId);
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return base;
+
+  let autopayQuery = supabase
+    .from("rent_autopay_preferences")
+    .select("agreement_id, enabled, version, enabled_at, disabled_at")
+    .order("updated_at", { ascending: false });
+  let paymentQuery = supabase
+    .from("rent_payment_requests")
+    .select("id, obligation_id, payment_rail, status, requested_cents, applied_cents, provider_reference, evidence_reference, created_at, settled_at")
+    .order("created_at", { ascending: false });
+  let disputeQuery = supabase
+    .from("rent_line_disputes")
+    .select("id, contribution_id, obligation_id, status, held_cents, reapplied_cents, returned_cents, reason, evidence_reference, resolution_reason, created_at, resolved_at")
+    .order("created_at", { ascending: false });
+  let lifecycleQuery = supabase
+    .from("rent_lifecycle_requests")
+    .select("id, relationship_id, request_type, status, reason, proposed_terms, requested_effective_at, created_at")
+    .order("created_at", { ascending: false });
+
+  if (scope.viewer === "owner") {
+    autopayQuery = autopayQuery.eq("shop_id", scope.shopId);
+    paymentQuery = paymentQuery.eq("shop_id", scope.shopId);
+    disputeQuery = disputeQuery.eq("shop_id", scope.shopId);
+    lifecycleQuery = lifecycleQuery.eq("shop_id", scope.shopId);
+  } else {
+    autopayQuery = autopayQuery.eq("barber_id", scope.barberId);
+    paymentQuery = paymentQuery.eq("barber_id", scope.barberId);
+    disputeQuery = disputeQuery.eq("barber_id", scope.barberId);
+    lifecycleQuery = lifecycleQuery.eq("barber_id", scope.barberId);
+  }
+
+  const [autopayResult, paymentResult, disputeResult, lifecycleResult] = await Promise.all([
+    autopayQuery,
+    paymentQuery,
+    disputeQuery,
+    lifecycleQuery
+  ]);
+  const errors = [
+    autopayResult.error,
+    paymentResult.error,
+    disputeResult.error,
+    lifecycleResult.error
+  ].filter(Boolean) as SupabaseErrorLike[];
+
+  if (errors.length) {
+    if (errors.every((error) => isMissingPr26Contract(error))) {
+      return {
+        ...base,
+        warnings: [...base.warnings, "PR26 rent operations are awaiting their forward database migration."]
+      };
+    }
+    throw new RentServiceError("Unable to load rent operations.", 500, errors[0]?.code);
+  }
+
+  return {
+    ...base,
+    autopay: ((autopayResult.data ?? []) as Array<{
+      agreement_id: string;
+      enabled: boolean;
+      version: number;
+      enabled_at: string | null;
+      disabled_at: string | null;
+    }>).map((row) => ({
+      agreementId: row.agreement_id,
+      enabled: row.enabled,
+      version: row.version,
+      enabledAt: row.enabled_at,
+      disabledAt: row.disabled_at
+    })),
+    paymentRequests: ((paymentResult.data ?? []) as Array<{
+      id: string;
+      obligation_id: string;
+      payment_rail: "card" | "barber_balance" | "cash";
+      status: string;
+      requested_cents: number;
+      applied_cents: number;
+      provider_reference: string | null;
+      evidence_reference: string | null;
+      created_at: string;
+      settled_at: string | null;
+    }>).map((row) => ({
+      id: row.id,
+      obligationId: row.obligation_id,
+      rail: row.payment_rail,
+      status: row.status,
+      requestedCents: row.requested_cents,
+      appliedCents: row.applied_cents,
+      providerReference: row.provider_reference,
+      evidenceReference: row.evidence_reference,
+      createdAt: row.created_at,
+      settledAt: row.settled_at
+    })),
+    disputes: ((disputeResult.data ?? []) as Array<{
+      id: string;
+      contribution_id: string;
+      obligation_id: string;
+      status: "open" | "under_review" | "released" | "reversed";
+      held_cents: number;
+      reapplied_cents: number;
+      returned_cents: number;
+      reason: string;
+      evidence_reference: string;
+      resolution_reason: string | null;
+      created_at: string;
+      resolved_at: string | null;
+    }>).map((row) => ({
+      id: row.id,
+      contributionId: row.contribution_id,
+      obligationId: row.obligation_id,
+      status: row.status,
+      heldCents: row.held_cents,
+      reappliedCents: row.reapplied_cents,
+      returnedCents: row.returned_cents,
+      reason: row.reason,
+      evidenceReference: row.evidence_reference,
+      resolutionReason: row.resolution_reason,
+      createdAt: row.created_at,
+      resolvedAt: row.resolved_at
+    })),
+    lifecycleRequests: ((lifecycleResult.data ?? []) as Array<{
+      id: string;
+      relationship_id: string;
+      request_type: "change_terms" | "pause" | "leave" | "end";
+      status: string;
+      reason: string;
+      proposed_terms: Record<string, unknown> | null;
+      requested_effective_at: string;
+      created_at: string;
+    }>).map((row) => ({
+      id: row.id,
+      relationshipId: row.relationship_id,
+      type: row.request_type,
+      status: row.status,
+      reason: row.reason,
+      proposedTerms: row.proposed_terms ?? {},
+      requestedEffectiveAt: row.requested_effective_at,
+      createdAt: row.created_at
+    }))
+  };
+}
+
+export async function getRentStatement(
+  user: UserAccount,
+  obligationId: string,
+  requestedShopId?: string | null
+): Promise<RentStatement> {
+  const payload = await getRentOperationsPayload(user, requestedShopId);
+  const obligation = payload.obligations.find((row) => row.id === obligationId);
+  if (!obligation) {
+    throw new RentServiceError("That rent statement is not available to this account.", 403);
+  }
+  const disputes = new Map(
+    payload.disputes.map((row) => [row.contributionId, row])
+  );
+
+  return buildRentStatement({
+    obligationId: obligation.id,
+    periodStart: obligation.periodStart,
+    periodEnd: obligation.periodEnd,
+    obligationCents: obligation.obligationCents,
+    settledCents: obligation.settledCents,
+    remainingCents: obligation.remainingCents,
+    lines: payload.contributions
+      .filter((row) => row.obligationId === obligation.id)
+      .map((row) => {
+        const dispute = disputes.get(row.id);
+        const state = row.reversalOfContributionId
+          ? "reversed" as const
+          : dispute && ["open", "under_review"].includes(dispute.status)
+            ? "held" as const
+            : row.status === "settled"
+              ? "settled" as const
+              : row.status === "pending"
+                ? "pending" as const
+                : row.status === "failed"
+                  ? "failed" as const
+                  : "canceled" as const;
+        return {
+          id: row.id,
+          kind: row.kind,
+          state,
+          appliedCents: row.appliedCents,
+          createdAt: row.createdAt,
+          reference: dispute?.evidenceReference
+            ?? row.evidenceReference
+            ?? row.providerEventId,
+          disputed: state === "held",
+          reversalOfContributionId: row.reversalOfContributionId
+        };
+      })
+  });
+}
+
+export async function exportRentStatement(
+  user: UserAccount,
+  obligationId: string,
+  format: "csv" | "pdf",
+  requestedShopId?: string | null
+) {
+  const statement = await getRentStatement(user, obligationId, requestedShopId);
+  if (!statement.reconciled) {
+    throw new RentServiceError(
+      "This statement is not ready because its ledger does not reconcile to $0.00.",
+      409,
+      "rent_statement_not_reconciled"
+    );
+  }
+
+  if (format === "csv") {
+    return {
+      body: buildRentStatementCsv(statement),
+      contentType: "text/csv; charset=utf-8",
+      extension: "csv"
+    };
+  }
+  return {
+    body: buildRentStatementPdf(statement),
+    contentType: "application/pdf",
+    extension: "pdf"
   };
 }
 
@@ -371,7 +723,7 @@ export async function createRentAgreement(input: {
   termsSnapshot: Record<string, unknown>;
   effectiveAt: string;
 }) {
-  return authenticatedRpc<AgreementRow>("pr22_create_rent_agreement", {
+  return authenticatedRpc<AgreementRow>("pr26_create_rent_agreement_version", {
     p_relationship_id: input.relationshipId,
     p_model: input.model,
     p_rent_amount_cents: input.rentAmountCents,
@@ -382,6 +734,62 @@ export async function createRentAgreement(input: {
     p_cash_settlement_method: input.cashSettlementMethod,
     p_terms_snapshot: input.termsSnapshot,
     p_effective_at: input.effectiveAt
+  });
+}
+
+export async function setRentAutopay(input: {
+  agreementId: string;
+  enabled: boolean;
+  paymentMethodReference?: string | null;
+}) {
+  return authenticatedRpc("pr26_set_rent_autopay", {
+    p_agreement_id: input.agreementId,
+    p_enabled: input.enabled,
+    p_payment_method_reference: input.paymentMethodReference ?? null
+  });
+}
+
+export async function requestRentPayment(input: {
+  obligationId: string;
+  rail: "card" | "barber_balance" | "cash";
+  amountCents: number;
+  idempotencyKey: string;
+}) {
+  return authenticatedRpc("pr26_request_rent_payment", {
+    p_obligation_id: input.obligationId,
+    p_payment_rail: input.rail,
+    p_amount_cents: input.amountCents,
+    p_idempotency_key: input.idempotencyKey
+  });
+}
+
+export async function disputeRentLine(input: {
+  contributionId: string;
+  reason: string;
+  evidenceReference: string;
+}) {
+  return authenticatedRpc("pr26_dispute_rent_line", {
+    p_contribution_id: input.contributionId,
+    p_reason: input.reason,
+    p_evidence_reference: input.evidenceReference
+  });
+}
+
+export async function applyRentRelationshipLifecycle(input: {
+  relationshipId: string;
+  type: "change_terms" | "pause" | "leave" | "end";
+  reason: string;
+  effectiveAt: string;
+  idempotencyKey: string;
+  proposedTerms?: Record<string, unknown>;
+}) {
+  return authenticatedRpc("pr26_apply_relationship_lifecycle", {
+    p_relationship_id: input.relationshipId,
+    p_request_type: input.type,
+    p_reason: input.reason,
+    p_effective_at: input.effectiveAt,
+    p_idempotency_key: input.idempotencyKey,
+    p_proposed_terms: input.proposedTerms ?? {}
   });
 }
 
@@ -423,7 +831,7 @@ export type ShopSetupSnapshot = {
 };
 
 export async function getShopSetupSnapshot(user: UserAccount): Promise<ShopSetupSnapshot> {
-  const scope = resolveScope(user);
+  const scope = resolveScope(user, user.ownedShopId ?? user.locationIds[0] ?? null);
   if (scope.viewer !== "owner") {
     throw new RentServiceError("Only shop owners can manage shop setup.", 403);
   }

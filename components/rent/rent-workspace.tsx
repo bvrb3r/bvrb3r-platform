@@ -36,11 +36,16 @@ const tabs: Array<{ key: RentView; label: string }> = [
 
 const emptyPayload = (viewer: "owner" | "barber"): RentWorkspacePayload => ({
   viewer,
+  scope: { shopId: null },
   relationships: [],
   agreements: [],
   obligations: [],
   contributions: [],
   actions: [],
+  autopay: [],
+  paymentRequests: [],
+  disputes: [],
+  lifecycleRequests: [],
   warnings: []
 });
 
