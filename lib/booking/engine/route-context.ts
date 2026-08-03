@@ -3,6 +3,9 @@ import { getVerifiedActor } from "@/lib/auth/permissions";
 import { clientKeyFromRequest, consumeRateLimit } from "@/lib/kiosk/rate-limit";
 import { BookingEngineError, toBookingEngineError } from "@/lib/booking/engine/errors";
 import type { BookingEngineActor } from "@/lib/booking/engine";
+import { assertPr34BillingRiskAction, Pr34BillingServiceError } from "@/lib/billing/pr34-service";
+import { normalizeAccountRole } from "@/lib/auth/roles";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
   BOOKING_SESSION_COOKIE,
   BOOKING_SESSION_COOKIE_OPTIONS,
@@ -131,6 +134,35 @@ export function requireAccountActor(context: BookingRouteContext) {
   }
 
   return context.actor;
+}
+
+/**
+ * Account balance is a server-owned booking gate. Guests have no account
+ * balance to inspect, while authenticated callers are blocked before a hold or
+ * appointment can be created whenever the balance is owed or unverifiable.
+ */
+export async function assertBookingBillingAccess(context: BookingRouteContext) {
+  if (!isSupabaseEnabled() || !context.actor.profileId || !context.actor.role) return;
+
+  try {
+    await assertPr34BillingRiskAction({
+      user: {
+        id: context.actor.profileId,
+        role: normalizeAccountRole(context.actor.role)
+      },
+      action: "booking"
+    });
+  } catch (error) {
+    if (error instanceof Pr34BillingServiceError && error.code === "account_balance_locked") {
+      throw new BookingEngineError(
+        "forbidden",
+        "account_balance_locked",
+        error.message,
+        { recoveryHref: "/billing" }
+      );
+    }
+    throw new BookingEngineError("retry", "engine_unavailable");
+  }
 }
 
 function readCookie(request: Request, name: string) {

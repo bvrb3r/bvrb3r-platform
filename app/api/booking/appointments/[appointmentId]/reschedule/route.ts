@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { rescheduleBooking } from "@/lib/booking/engine";
 import {
+  assertBookingBillingAccess,
   bookingErrorResponse,
   enforceBookingRateLimit,
   requireAccountActor,
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ap
 
   try {
     const routeContext = await resolveBookingRouteContext(request);
+    await assertBookingBillingAccess(routeContext);
     const actor = requireAccountActor(routeContext);
     const result = await rescheduleBooking({
       actor,

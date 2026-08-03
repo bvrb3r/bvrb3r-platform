@@ -4,6 +4,8 @@ import {
   assertArchitectRuntimeControlAllows
 } from "@/lib/architect/city-map/runtime-controls.server";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { normalizeAccountRole } from "@/lib/auth/roles";
+import { assertPr34BillingRiskAction, Pr34BillingServiceError } from "@/lib/billing/pr34-service";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { KioskSettingsScope } from "@/lib/kiosk/settings-service";
@@ -89,7 +91,36 @@ type ResolvedKioskSessionTarget = {
   locationId: string | null;
   barberId: string | null;
   mode: "shop_owner" | "barber";
+  billingProfileId: string;
+  billingAccountRole: "shop_owner_user" | "barber_user";
 };
+
+async function assertKioskBalanceClear(input: {
+  supabase: SupabaseAdmin;
+  profileId: string;
+  accountRole: "shop_owner_user" | "barber_user";
+}) {
+  try {
+    await assertPr34BillingRiskAction({
+      user: { id: input.profileId, role: normalizeAccountRole(input.accountRole) },
+      action: "kiosk",
+      supabaseOverride: input.supabase
+    });
+  } catch (error) {
+    if (error instanceof Pr34BillingServiceError) {
+      throw new KioskSessionError(
+        error.message,
+        error.code === "account_balance_locked" ? 423 : 503,
+        error.code === "account_balance_locked" ? "account_balance_locked" : "kiosk_balance_unverified"
+      );
+    }
+    throw new KioskSessionError(
+      "The kiosk cannot verify a $0.00 billing balance right now.",
+      503,
+      "kiosk_balance_unverified"
+    );
+  }
+}
 
 async function readEnabledKioskSetting(supabase: SupabaseAdmin, scope: KioskSettingsScope, targetReference: string) {
   const result = await supabase
@@ -119,7 +150,12 @@ async function resolveShopSessionTarget(
   supabase: SupabaseAdmin,
   targetReference: string,
   user: SessionUser
-): Promise<{ shopId: string; locationId: string; authorized: boolean }> {
+): Promise<{
+  shopId: string;
+  locationId: string;
+  authorized: boolean;
+  billingProfileId: string | null;
+}> {
   const normalized = targetReference.replace(/^@+/, "");
   const shopResult = await supabase
     .from("shops")
@@ -172,14 +208,19 @@ async function resolveShopSessionTarget(
     || user.role === "platform_admin"
   );
 
-  return { shopId: shop?.id ?? location.reference_code ?? location.id, locationId: location.id, authorized };
+  return {
+    shopId: shop?.id ?? location.reference_code ?? location.id,
+    locationId: location.id,
+    authorized,
+    billingProfileId: shop?.owner_profile_id ? String(shop.owner_profile_id) : null
+  };
 }
 
 async function resolveBarberSessionTarget(
   supabase: SupabaseAdmin,
   targetReference: string,
   user: SessionUser
-): Promise<{ barberId: string; authorized: boolean }> {
+): Promise<{ barberId: string; authorized: boolean; billingProfileId: string | null }> {
   const result = await supabase
     .from("barbers")
     .select("id, profile_id")
@@ -201,7 +242,7 @@ async function resolveBarberSessionTarget(
     || user.role === "platform_admin"
   );
 
-  return { barberId: barber.id, authorized };
+  return { barberId: barber.id, authorized, billingProfileId: barber.profile_id ? String(barber.profile_id) : null };
 }
 
 async function resolveSessionTarget(
@@ -217,7 +258,18 @@ async function resolveSessionTarget(
     if (!resolved.authorized) {
       throw new KioskSessionError("Only this shop's owner or staff can start its kiosk.", 403, "not_authorized");
     }
-    return { settingId: setting.id, shopId: resolved.shopId, locationId: resolved.locationId, barberId: null, mode: "shop_owner" };
+    if (!resolved.billingProfileId) {
+      throw new KioskSessionError("This shop has no verified billing owner for kiosk launch.", 503, "kiosk_balance_unverified");
+    }
+    return {
+      settingId: setting.id,
+      shopId: resolved.shopId,
+      locationId: resolved.locationId,
+      barberId: null,
+      mode: "shop_owner",
+      billingProfileId: resolved.billingProfileId,
+      billingAccountRole: "shop_owner_user"
+    };
   }
 
   const resolved = await resolveBarberSessionTarget(supabase, targetReference, user);
@@ -231,7 +283,18 @@ async function resolveSessionTarget(
       "target_unresolved"
     );
   }
-  return { settingId: setting.id, shopId: null, locationId: null, barberId: resolved.barberId, mode: "barber" };
+  if (!resolved.billingProfileId) {
+    throw new KioskSessionError("This barber has no verified billing profile for kiosk launch.", 503, "kiosk_balance_unverified");
+  }
+  return {
+    settingId: setting.id,
+    shopId: null,
+    locationId: null,
+    barberId: resolved.barberId,
+    mode: "barber",
+    billingProfileId: resolved.billingProfileId,
+    billingAccountRole: "barber_user"
+  };
 }
 
 export async function startKioskDeviceSession(input: {
@@ -253,6 +316,11 @@ export async function startKioskDeviceSession(input: {
 
   await assertKioskRuntimeEnabled(supabase);
   const target = await resolveSessionTarget(supabase, input.scope, targetReference, user);
+  await assertKioskBalanceClear({
+    supabase,
+    profileId: target.billingProfileId,
+    accountRole: target.billingAccountRole
+  });
   const token = randomBytes(32).toString("hex");
 
   const insert = await supabase
@@ -270,7 +338,9 @@ export async function startKioskDeviceSession(input: {
       metadata: {
         startedByProfileId: user.id,
         targetReference,
-        scope: input.scope
+        scope: input.scope,
+        billingProfileId: target.billingProfileId,
+        billingAccountRole: target.billingAccountRole
       }
     })
     .select("id")
@@ -343,6 +413,22 @@ export async function assertKioskDeviceSession(input: {
     );
   }
 
+  const billingProfileId = typeof row.metadata?.billingProfileId === "string"
+    ? row.metadata.billingProfileId
+    : null;
+  const billingAccountRole = row.metadata?.billingAccountRole === "shop_owner_user"
+    || row.metadata?.billingAccountRole === "barber_user"
+    ? row.metadata.billingAccountRole
+    : null;
+  if (!billingProfileId || !billingAccountRole) {
+    throw new KioskSessionError(
+      "This kiosk session predates balance-lock verification. Relaunch Kiosk Mode from the staff account.",
+      423,
+      "kiosk_balance_unverified"
+    );
+  }
+  await assertKioskBalanceClear({ supabase, profileId: billingProfileId, accountRole: billingAccountRole });
+
   await supabase
     .from("kiosk_sessions")
     .update({ last_activity_at: new Date().toISOString() })
@@ -370,7 +456,7 @@ export async function assertAnyActiveKioskDeviceSession(token: string | null) {
 
   const result = await supabase
     .from("kiosk_sessions")
-    .select("id, status, expires_at")
+    .select("id, status, expires_at, metadata")
     .eq("session_token_hash", hashSessionToken(token))
     .maybeSingle();
 
@@ -378,7 +464,7 @@ export async function assertAnyActiveKioskDeviceSession(token: string | null) {
     throw new KioskSessionError("Unable to verify the kiosk session.", 500, "session_lookup_failed");
   }
 
-  const row = result.data as { id: string; status?: string; expires_at?: string } | null;
+  const row = result.data as { id: string; status?: string; expires_at?: string; metadata?: Record<string, unknown> } | null;
   const expired = row?.expires_at ? new Date(row.expires_at).getTime() <= Date.now() : true;
   if (!row || row.status !== "active" || expired) {
     throw new KioskSessionError(
@@ -387,6 +473,22 @@ export async function assertAnyActiveKioskDeviceSession(token: string | null) {
       "session_invalid"
     );
   }
+
+  const billingProfileId = typeof row.metadata?.billingProfileId === "string"
+    ? row.metadata.billingProfileId
+    : null;
+  const billingAccountRole = row.metadata?.billingAccountRole === "shop_owner_user"
+    || row.metadata?.billingAccountRole === "barber_user"
+    ? row.metadata.billingAccountRole
+    : null;
+  if (!billingProfileId || !billingAccountRole) {
+    throw new KioskSessionError(
+      "This kiosk session predates balance-lock verification. Relaunch Kiosk Mode from the staff account.",
+      423,
+      "kiosk_balance_unverified"
+    );
+  }
+  await assertKioskBalanceClear({ supabase, profileId: billingProfileId, accountRole: billingAccountRole });
 }
 
 /** Marks the device session completed (kiosk exit). Best-effort. */

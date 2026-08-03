@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser, toBookingViewer, toLifecycleActorRole } from "@/lib/booking/route-auth";
+import { normalizeAccountRole } from "@/lib/auth/roles";
+import { assertPr34BillingRiskAction, Pr34BillingServiceError } from "@/lib/billing/pr34-service";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
+import { roleToEntitlementRole } from "@/lib/entitlements/domain";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError, LiveOperationValidationError } from "@/lib/operations/live-state";
 
@@ -28,6 +32,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   }
 
   try {
+    const canonicalRole = normalizeAccountRole(user.role);
+    if (isSupabaseEnabled() && roleToEntitlementRole(canonicalRole)) {
+      await assertPr34BillingRiskAction({
+        user: { id: user.id, role: canonicalRole },
+        action: "booking"
+      });
+    }
+
     const { id } = await context.params;
     const provider = await getLiveOperationsProvider();
     const scopedSnapshot = await provider.readSnapshot(viewer);
@@ -58,6 +70,20 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     return NextResponse.json({ appointment: result.appointment });
   } catch (error) {
+    if (error instanceof Pr34BillingServiceError) {
+      const locked = error.code === "account_balance_locked";
+      return NextResponse.json(
+        {
+          error: locked
+            ? error.message
+            : "We could not verify the account balance. Rescheduling remains paused until server truth is available.",
+          code: locked ? error.code : "booking_balance_unverified",
+          recoveryHref: locked ? "/billing" : "mailto:support@bvrb3r.app"
+        },
+        { status: locked ? 423 : 503, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     if (error instanceof LiveOperationValidationError) {
       return NextResponse.json(
         { error: error.message, code: error.code, details: error.details ?? null },

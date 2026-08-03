@@ -5,7 +5,9 @@ import { queueBookingCreatedNotifications } from "@/lib/booking/notifications";
 import { recordReferralBookingProgress } from "@/lib/referrals/service";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 import { recordBookingCreatedPlatformEvent } from "@/lib/core/booking-events";
-import { isClientRole } from "@/lib/auth/roles";
+import { isClientRole, normalizeAccountRole } from "@/lib/auth/roles";
+import { assertPr34BillingRiskAction, Pr34BillingServiceError } from "@/lib/billing/pr34-service";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError, LiveOperationValidationError } from "@/lib/operations/live-state";
@@ -233,6 +235,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!isGuestBooking && isSupabaseEnabled()) {
+      await assertPr34BillingRiskAction({
+        user: {
+          id: clientContext.viewer.id,
+          role: normalizeAccountRole(clientContext.viewer.role)
+        },
+        action: "booking"
+      });
+    }
+
     const submittedClientEmail = normalizeBookingEmail(clientEmail);
     if (isGuestBooking && !submittedClientEmail) {
       return NextResponse.json(
@@ -359,6 +371,22 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ appointment: result.appointment });
   } catch (error) {
+    if (error instanceof Pr34BillingServiceError) {
+      const locked = error.code === "account_balance_locked";
+      const safeMessage = locked
+        ? error.message
+        : "We could not verify the account balance. Booking remains paused until server truth is available.";
+      logBookingRouteFailure("booking_balance_gate_failed", error, { safeMessage });
+      return NextResponse.json(
+        {
+          error: safeMessage,
+          code: locked ? error.code : "booking_balance_unverified",
+          recoveryHref: locked ? "/billing" : "mailto:support@bvrb3r.app"
+        },
+        { status: locked ? 423 : 503, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     if (error instanceof LiveOperationValidationError) {
       const serialized = serializeBookingValidationError(error);
       logBookingRouteFailure("booking_validation_failed", error, {

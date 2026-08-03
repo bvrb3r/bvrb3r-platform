@@ -4,6 +4,7 @@ import { createBookingHold } from "@/lib/booking/engine";
 import { publicBookingDoors } from "@/lib/booking/engine/attribution";
 import {
   bookingErrorResponse,
+  assertBookingBillingAccess,
   enforceBookingRateLimit,
   resolveBookingRouteContext,
   withBookingSession
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const context = await resolveBookingRouteContext(request);
+    await assertBookingBillingAccess(context);
     const result = await createBookingHold({
       actor: context.actor,
       barberId: parsed.data.barberId,
