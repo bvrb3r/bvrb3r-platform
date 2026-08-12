@@ -35,6 +35,10 @@ function printCheck(label, ok, detail) {
   console.log(`- ${ok ? "OK" : "ATTN"} ${label}: ${detail}`);
 }
 
+function hasEnvValue(env, key) {
+  return Boolean(env.get(key)?.trim());
+}
+
 function main() {
   const env = readEnv(envPath);
   const appUrl = env.get("NEXT_PUBLIC_APP_URL") ?? "";
@@ -50,9 +54,30 @@ function main() {
       detail: env.get("NEXT_PUBLIC_SUPABASE_URL") ? "present" : "missing"
     },
     {
-      label: "Stripe secrets",
-      ok: Boolean(env.get("STRIPE_SECRET_KEY") && env.get("STRIPE_WEBHOOK_SECRET")),
-      detail: env.get("STRIPE_SECRET_KEY") && env.get("STRIPE_WEBHOOK_SECRET") ? "present" : "missing"
+      label: "Stripe API secret",
+      ok: hasEnvValue(env, "STRIPE_SECRET_KEY"),
+      detail: hasEnvValue(env, "STRIPE_SECRET_KEY") ? "present" : "STRIPE_SECRET_KEY missing"
+    },
+    {
+      label: "Stripe Platform webhook secret",
+      ok: hasEnvValue(env, "STRIPE_WEBHOOK_SECRET"),
+      detail: hasEnvValue(env, "STRIPE_WEBHOOK_SECRET")
+        ? "present for /api/stripe/webhook"
+        : "STRIPE_WEBHOOK_SECRET missing"
+    },
+    {
+      label: "Stripe Connect webhook secret",
+      ok: hasEnvValue(env, "STRIPE_CONNECT_WEBHOOK_SECRET"),
+      detail: hasEnvValue(env, "STRIPE_CONNECT_WEBHOOK_SECRET")
+        ? "present for /api/stripe/connect/webhook"
+        : "STRIPE_CONNECT_WEBHOOK_SECRET missing"
+    },
+    {
+      label: "Stripe Identity webhook secret",
+      ok: hasEnvValue(env, "STRIPE_IDENTITY_WEBHOOK_SECRET"),
+      detail: hasEnvValue(env, "STRIPE_IDENTITY_WEBHOOK_SECRET")
+        ? "present for /api/stripe/identity/webhook"
+        : "STRIPE_IDENTITY_WEBHOOK_SECRET missing"
     },
     {
       label: "Automation secret",

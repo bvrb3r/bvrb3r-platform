@@ -57,12 +57,19 @@ import {
   createStripeTransfer,
   createStripeTransferReversal,
   retrieveStripeConnectedAccount,
+  retrieveStripeConnectedAccountPayout,
   retrieveStripePlatformAccount,
   retrieveStripePlatformBalance,
   retrieveStripePaymentIntentSettlement,
-  verifyStripeWebhookEvent,
+  verifyStripeConnectWebhookEvent,
+  verifyStripePlatformWebhookEvent,
   type StripeConnectEnvironmentView
 } from "@/lib/stripe/connect";
+import {
+  beginStripeWebhookAudit,
+  completeStripeWebhookAudit,
+  StripeWebhookAuditError
+} from "@/lib/stripe/webhook-audit";
 import { processStripeBillingWebhookEvent } from "@/lib/monetization/service";
 import { processGiftCardStripeEvent } from "@/lib/gift-cards/service";
 import { syncGroupPaymentIntentProviderStatus } from "@/lib/group-booking/payment-status-sync";
@@ -173,6 +180,11 @@ type ConnectedAccountRow = {
   processor_last_synced_at: string | null;
   processor_last_event_id: string | null;
   processor_last_event_type: string | null;
+  provider_payout_block_reason: string | null;
+  provider_payout_blocked_at: string | null;
+  provider_payout_block_destination_id: string | null;
+  provider_payout_block_currency: string | null;
+  provider_payout_block_cleared_at: string | null;
   dashboard_last_accessed_at: string | null;
   created_by: string | null;
   created_at: string;
@@ -380,23 +392,6 @@ type PayoutExecutionRow = {
   failed_at: string | null;
   reversed_at: string | null;
   created_at: string;
-  updated_at: string;
-};
-
-type StripeWebhookEventRow = {
-  id: string;
-  stripe_event_id: string;
-  stripe_account_id: string | null;
-  connected_account_id: string | null;
-  event_type: string;
-  livemode: boolean;
-  api_version: string | null;
-  processing_status: "received" | "processed" | "ignored" | "failed";
-  attempt_count: number;
-  payload_excerpt: Record<string, unknown>;
-  error_message: string | null;
-  received_at: string;
-  processed_at: string | null;
   updated_at: string;
 };
 
@@ -885,7 +880,7 @@ export class FintechServiceError extends Error {
   }
 }
 
-const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider, provider_account_id, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_eventually_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled, last_checked_at, onboarding_started_at, onboarding_completed_at, processor_last_synced_at, processor_last_event_id, processor_last_event_type, dashboard_last_accessed_at, created_by, created_at, updated_at";
+const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider, provider_account_id, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_eventually_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled, last_checked_at, onboarding_started_at, onboarding_completed_at, processor_last_synced_at, processor_last_event_id, processor_last_event_type, provider_payout_block_reason, provider_payout_blocked_at, provider_payout_block_destination_id, provider_payout_block_currency, provider_payout_block_cleared_at, dashboard_last_accessed_at, created_by, created_at, updated_at";
 const PAYMENT_SELECT = "id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, provider, provider_payment_intent_id, amount, currency, status, payment_status, payment_type, paid_at, created_at, updated_at";
 const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, pos_sale_id, membership_id, shop_barber_relationship_id, compensation_rule_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, service_amount, tip_amount, autobooth_percent_snapshot, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
 const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_id, membership_id, target_subject_type, execution_type, target_connected_account_id, target_provider_account_id, amount, currency, execution_status, blocked_reason, failure_reason, processor_transfer_id, processor_reversal_id, idempotency_key, source_execution_id, source_refund_id, payout_reference, payout_speed, instant_payout_fee_amount, net_transfer_amount, processor_payout_id, reconciliation_status, metadata, initiated_by, attempt_count, last_attempted_at, executed_at, failed_at, reversed_at, created_at, updated_at";
@@ -1340,6 +1335,10 @@ function toFintechServiceError(error: unknown, fallbackMessage: string, status =
   }
 
   if (error instanceof StripeConnectError) {
+    return new FintechServiceError(error.message, error.status);
+  }
+
+  if (error instanceof StripeWebhookAuditError) {
     return new FintechServiceError(error.message, error.status);
   }
 
@@ -1870,6 +1869,7 @@ async function syncConnectedAccountState(
   const legalState = evaluateLegalAgreementState(account.subject_type, acceptedVersions);
   const requirementsCurrentlyDue = normalizeRequirementList(account.requirements_currently_due as string[] | string | null);
   const requirementsPastDue = normalizeRequirementList(account.requirements_past_due as string[] | string | null);
+  const effectiveDisabledReason = account.disabled_reason ?? account.provider_payout_block_reason;
   const internallyApproved = isConnectedAccountInternallyApproved(account);
   const legalReadinessStatus = internallyApproved ? account.legal_readiness_status : legalState.legalReadinessStatus;
   const payoutReadinessStatus = internallyApproved ? account.payout_readiness_status : determinePayoutReadiness({
@@ -1880,7 +1880,7 @@ async function syncConnectedAccountState(
     payoutsEnabled: account.payouts_enabled,
     requirementsCurrentlyDue,
     requirementsPastDue,
-    disabledReason: account.disabled_reason
+    disabledReason: effectiveDisabledReason
   });
 
   const updatedAt = new Date().toISOString();
@@ -1924,8 +1924,8 @@ async function syncConnectedAccountState(
     missingSteps.push("Stripe account verification is still pending.");
   }
 
-  if (account.disabled_reason) {
-    missingSteps.push(account.disabled_reason);
+  if (effectiveDisabledReason) {
+    missingSteps.push(effectiveDisabledReason);
   }
 
   return {
@@ -1950,7 +1950,7 @@ function mapConnectedAccountView(state: ConnectedAccountState): ConnectedAccount
       payoutReadinessStatus: state.row.payout_readiness_status,
       requirementsCurrentlyDue,
       requirementsPastDue,
-      disabledReason: state.row.disabled_reason
+      disabledReason: state.row.disabled_reason ?? state.row.provider_payout_block_reason
     }),
     providerAccountId: state.row.provider_account_id,
     onboardingStatus: state.row.onboarding_status,
@@ -1965,7 +1965,7 @@ function mapConnectedAccountView(state: ConnectedAccountState): ConnectedAccount
     missingAgreements: state.missingAgreements,
     outdatedAgreements: state.outdatedAgreements,
     missingSteps: state.missingSteps,
-    disabledReason: state.row.disabled_reason,
+    disabledReason: state.row.disabled_reason ?? state.row.provider_payout_block_reason,
     lastCheckedAt: state.row.last_checked_at,
     onboardingStartedAt: state.row.onboarding_started_at,
     onboardingCompletedAt: state.row.onboarding_completed_at,
@@ -2006,7 +2006,7 @@ function stripePayoutApprovalBlockers(account: ConnectedAccountRow | null) {
   const blockers: string[] = [];
   const currentlyDue = normalizeRequirementList(account.requirements_currently_due as string[] | string | null);
   const pastDue = normalizeRequirementList(account.requirements_past_due as string[] | string | null);
-  const disabledReason = account.disabled_reason?.trim();
+  const disabledReason = (account.disabled_reason ?? account.provider_payout_block_reason)?.trim();
 
   if (!account.provider_account_id?.trim()) {
     blockers.push("Stripe payout account has not been created.");
@@ -2051,7 +2051,7 @@ function buildBarberStripePayoutReadinessView(
   const chargesEnabled = Boolean(account?.charges_enabled);
   const payoutsEnabled = Boolean(account?.payouts_enabled);
   const detailsSubmitted = inferStripeDetailsSubmitted(account);
-  const disabledReason = account?.disabled_reason?.trim() || null;
+  const disabledReason = (account?.disabled_reason ?? account?.provider_payout_block_reason)?.trim() || null;
   const stripeBlockers = [
     ...pastDue,
     ...currentlyDue,
@@ -2226,7 +2226,7 @@ async function syncVerificationLaneFromConnectedAccount(
   userId?: string
 ) {
   const role = row.subject_type === "barber" ? "barber" : "shop_owner";
-  await syncStripeConnectVerificationLane({
+  const syncResult = await syncStripeConnectVerificationLane({
     role,
     userId,
     barberId: row.barber_id,
@@ -2252,6 +2252,13 @@ async function syncVerificationLaneFromConnectedAccount(
     processorLastEventType: account.processorLastEventType,
     lastCheckedAt: account.lastCheckedAt
   });
+
+  if (syncResult.degraded) {
+    throw new FintechServiceError(
+      "Stripe Connect verification state could not be persisted durably.",
+      503
+    );
+  }
 }
 
 function scopeForConnectedAccount(account: ConnectedAccountRow) {
@@ -2305,6 +2312,14 @@ async function syncConnectedAccountFromStripe(
   options?: {
     eventId?: string | null;
     eventType?: string | null;
+    payoutBlockClearCandidate?: {
+      eventType: "account.external_account.created" | "account.external_account.updated";
+      externalAccountId: string;
+      currency: string | null;
+      defaultForCurrency: boolean;
+      status: string | null;
+      eventCreatedAt: string;
+    };
     markOnboardingStarted?: boolean;
     markDashboardAccessed?: boolean;
   }
@@ -2362,7 +2377,69 @@ async function syncConnectedAccountFromStripe(
     throw new FintechServiceError("Unable to sync the Stripe connected account.", 500);
   }
 
-  const refreshed = updateResult.data as ConnectedAccountRow;
+  let refreshed = updateResult.data as ConnectedAccountRow;
+  const clearCandidate = options?.payoutBlockClearCandidate;
+  const candidateIsExplicitlyHealthy = Boolean(
+    clearCandidate
+    && clearCandidate.status
+    && new Set(["new", "validated", "verified"]).has(clearCandidate.status)
+  );
+  const candidateMatchesBlockedDestination = Boolean(
+    clearCandidate
+    && (
+      (
+        clearCandidate.eventType === "account.external_account.updated"
+        && clearCandidate.externalAccountId === refreshed.provider_payout_block_destination_id
+      )
+      || (
+        clearCandidate.eventType === "account.external_account.created"
+        && clearCandidate.defaultForCurrency
+        && clearCandidate.currency === refreshed.provider_payout_block_currency
+      )
+    )
+  );
+  const canClearPayoutBlock = Boolean(
+    refreshed.provider_payout_block_reason
+    && refreshed.provider_payout_blocked_at
+    && candidateIsExplicitlyHealthy
+    && candidateMatchesBlockedDestination
+    && clearCandidate
+    && Date.parse(clearCandidate.eventCreatedAt) >= Date.parse(refreshed.provider_payout_blocked_at)
+    && stripeAccount.payouts_enabled
+    && requirementsCurrentlyDue.length === 0
+    && requirementsPastDue.length === 0
+    && !disabledReason
+  );
+
+  if (canClearPayoutBlock && clearCandidate && refreshed.provider_payout_blocked_at) {
+    const clearResult = await supabase
+      .rpc("clear_connected_account_payout_block", {
+        p_connected_account_id: refreshed.id,
+        p_expected_blocked_at: refreshed.provider_payout_blocked_at,
+        p_expected_destination_id: refreshed.provider_payout_block_destination_id,
+        p_clear_event_at: clearCandidate.eventCreatedAt
+      })
+      .maybeSingle();
+
+    if (clearResult.error) {
+      throw new FintechServiceError("Unable to clear the resolved Stripe payout block.", 500);
+    }
+
+    if (clearResult.data) {
+      refreshed = clearResult.data as ConnectedAccountRow;
+    } else {
+      const reloadResult = await supabase
+        .from("connected_accounts")
+        .select(CONNECTED_ACCOUNT_SELECT)
+        .eq("id", refreshed.id)
+        .maybeSingle();
+      if (reloadResult.error || !reloadResult.data) {
+        throw new FintechServiceError("Unable to reload the Stripe connected account after a concurrent payout update.", 500);
+      }
+      refreshed = reloadResult.data as ConnectedAccountRow;
+    }
+  }
+
   const acceptances = await loadLegalAcceptancesForScope(supabase, scopeForConnectedAccount(refreshed));
   const state = await syncConnectedAccountState(supabase, refreshed, acceptances);
   return state;
@@ -2390,112 +2467,6 @@ async function provisionStripeConnectedAccountForSubject(
     return syncConnectedAccountFromStripe(supabase, account, stripeAccount);
   } catch (error) {
     throw toFintechServiceError(error, "Unable to provision the Stripe connected account.");
-  }
-}
-
-function createStripeEventExcerpt(event: Stripe.Event) {
-  const object = typeof event.data.object === "object" && event.data.object
-    ? event.data.object as unknown as Record<string, unknown>
-    : null;
-
-  return {
-    id: event.id,
-    type: event.type,
-    created: event.created,
-    account: event.account ?? null,
-    objectType: object?.object ?? null,
-    objectId: typeof object?.id === "string" ? object.id : null
-  };
-}
-
-async function beginStripeWebhookAudit(supabase: SupabaseClient, event: Stripe.Event) {
-  const existingResult = await supabase
-    .from("stripe_webhook_events")
-    .select("id, stripe_event_id, stripe_account_id, connected_account_id, event_type, livemode, api_version, processing_status, attempt_count, payload_excerpt, error_message, received_at, processed_at, updated_at")
-    .eq("stripe_event_id", event.id)
-    .maybeSingle();
-
-  if (existingResult.error) {
-    throw new FintechServiceError("Unable to inspect Stripe webhook idempotency.", 500);
-  }
-
-  const now = new Date().toISOString();
-  if (existingResult.data) {
-    const existing = existingResult.data as StripeWebhookEventRow;
-    if (existing.processing_status === "processed" || existing.processing_status === "ignored") {
-      return { row: existing, duplicate: true };
-    }
-
-    const updateResult = await supabase
-      .from("stripe_webhook_events")
-      .update({
-        stripe_account_id: event.account ?? existing.stripe_account_id,
-        event_type: event.type,
-        livemode: event.livemode,
-        api_version: event.api_version ?? existing.api_version,
-        processing_status: "received",
-        attempt_count: existing.attempt_count + 1,
-        payload_excerpt: createStripeEventExcerpt(event),
-        error_message: null,
-        updated_at: now
-      })
-      .eq("id", existing.id)
-      .select("id, stripe_event_id, stripe_account_id, connected_account_id, event_type, livemode, api_version, processing_status, attempt_count, payload_excerpt, error_message, received_at, processed_at, updated_at")
-      .single();
-
-    if (updateResult.error) {
-      throw new FintechServiceError("Unable to update Stripe webhook audit state.", 500);
-    }
-
-    return { row: updateResult.data as StripeWebhookEventRow, duplicate: false };
-  }
-
-  const insertResult = await supabase
-    .from("stripe_webhook_events")
-    .insert({
-      stripe_event_id: event.id,
-      stripe_account_id: event.account ?? null,
-      event_type: event.type,
-      livemode: event.livemode,
-      api_version: event.api_version ?? null,
-      processing_status: "received",
-      payload_excerpt: createStripeEventExcerpt(event),
-      received_at: now,
-      updated_at: now
-    })
-    .select("id, stripe_event_id, stripe_account_id, connected_account_id, event_type, livemode, api_version, processing_status, attempt_count, payload_excerpt, error_message, received_at, processed_at, updated_at")
-    .single();
-
-  if (insertResult.error) {
-    throw new FintechServiceError("Unable to record the Stripe webhook audit.", 500);
-  }
-
-  return { row: insertResult.data as StripeWebhookEventRow, duplicate: false };
-}
-
-async function completeStripeWebhookAudit(
-  supabase: SupabaseClient,
-  rowId: string,
-  input: {
-    processingStatus: "processed" | "ignored" | "failed";
-    connectedAccountId?: string | null;
-    errorMessage?: string | null;
-  }
-) {
-  const now = new Date().toISOString();
-  const updateResult = await supabase
-    .from("stripe_webhook_events")
-    .update({
-      processing_status: input.processingStatus,
-      connected_account_id: input.connectedAccountId ?? null,
-      error_message: input.errorMessage ?? null,
-      processed_at: input.processingStatus === "failed" ? null : now,
-      updated_at: now
-    })
-    .eq("id", rowId);
-
-  if (updateResult.error) {
-    throw new FintechServiceError("Unable to finalize the Stripe webhook audit.", 500);
   }
 }
 
@@ -7380,7 +7351,236 @@ async function processStripeMoneyMovementWebhook(
   return { handled: false, connectedAccountId: null as string | null };
 }
 
-export async function processStripeConnectWebhook(
+const STRIPE_CONNECT_ACCOUNT_EVENT_TYPES = new Set([
+  "account.updated",
+  "capability.updated",
+  "person.created",
+  "person.updated",
+  "person.deleted",
+  "account.external_account.created",
+  "account.external_account.updated",
+  "account.external_account.deleted"
+]);
+
+const STRIPE_CONNECT_PAYOUT_EVENT_TYPES = new Set([
+  "payout.created",
+  "payout.updated",
+  "payout.paid",
+  "payout.failed",
+  "payout.canceled"
+]);
+
+export function classifyStripeConnectWebhookEvent(eventType: string) {
+  if (STRIPE_CONNECT_ACCOUNT_EVENT_TYPES.has(eventType)) {
+    return "account_state" as const;
+  }
+
+  if (STRIPE_CONNECT_PAYOUT_EVENT_TYPES.has(eventType)) {
+    return "bank_payout" as const;
+  }
+
+  return "unsupported" as const;
+}
+
+function stripeObjectId(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string") {
+    return (value as { id: string }).id;
+  }
+
+  return null;
+}
+
+function safeStripeFailureMessage(value: string | null | undefined) {
+  const normalized = value?.replaceAll(/\s+/g, " ").trim();
+  return normalized ? normalized.slice(0, 240) : null;
+}
+
+function normalizedConnectedPayoutStatus(status: string | null | undefined) {
+  if (status === "in_transit" || status === "paid" || status === "failed" || status === "canceled") {
+    return status;
+  }
+
+  return "pending" as const;
+}
+
+async function loadConnectedAccountForWebhook(supabase: SupabaseClient, providerAccountId: string) {
+  const accountResult = await supabase
+    .from("connected_accounts")
+    .select(CONNECTED_ACCOUNT_SELECT)
+    .eq("provider", "stripe_connect")
+    .eq("provider_account_id", providerAccountId)
+    .maybeSingle();
+
+  if (accountResult.error) {
+    throw new FintechServiceError("Unable to load the Stripe connected account record.", 500);
+  }
+
+  if (!accountResult.data) {
+    throw new FintechServiceError(
+      "Stripe delivered an event for a connected account that BVRB3R has not mapped yet.",
+      503
+    );
+  }
+
+  return accountResult.data as ConnectedAccountRow;
+}
+
+async function syncConnectedAccountWebhookState(
+  supabase: SupabaseClient,
+  account: ConnectedAccountRow,
+  event: Stripe.Event
+) {
+  const providerAccountId = event.account;
+  if (!providerAccountId) {
+    throw new FintechServiceError("Stripe Connect events must include a connected account identifier.", 400);
+  }
+
+  const stripeAccount = await retrieveStripeConnectedAccount(providerAccountId);
+  const eventObject = event.data.object as unknown as Record<string, unknown>;
+  const externalAccountId = stripeObjectId(eventObject);
+  const isClearCandidate = (
+    event.type === "account.external_account.created"
+    || event.type === "account.external_account.updated"
+  ) && externalAccountId;
+  const state = await syncConnectedAccountFromStripe(supabase, account, stripeAccount, {
+    eventId: event.id,
+    eventType: event.type,
+    payoutBlockClearCandidate: isClearCandidate ? {
+      eventType: event.type as "account.external_account.created" | "account.external_account.updated",
+      externalAccountId,
+      currency: typeof eventObject.currency === "string" ? eventObject.currency.toLowerCase() : null,
+      defaultForCurrency: eventObject.default_for_currency === true,
+      status: typeof eventObject.status === "string" ? eventObject.status.toLowerCase() : null,
+      eventCreatedAt: new Date(event.created * 1000).toISOString()
+    } : undefined
+  });
+  await syncVerificationLaneFromConnectedAccount(state.row, mapConnectedAccountView(state));
+  return state;
+}
+
+async function persistConnectedAccountPayout(
+  supabase: SupabaseClient,
+  account: ConnectedAccountRow,
+  event: Stripe.Event,
+  payout: Stripe.Payout
+) {
+  const existingResult = await supabase
+    .from("connected_account_payouts")
+    .select("paid_at, failed_at, canceled_at, last_event_id, last_event_type, last_event_created_at")
+    .eq("connected_account_id", account.id)
+    .eq("provider_payout_id", payout.id)
+    .maybeSingle();
+
+  if (existingResult.error) {
+    throw new FintechServiceError("Unable to inspect the connected-account bank payout.", 500);
+  }
+
+  const existing = existingResult.data as {
+    paid_at: string | null;
+    failed_at: string | null;
+    canceled_at: string | null;
+    last_event_id: string;
+    last_event_type: string;
+    last_event_created_at: string;
+  } | null;
+  const payoutStatus = normalizedConnectedPayoutStatus(payout.status);
+  const eventAt = new Date(event.created * 1000).toISOString();
+  const now = new Date().toISOString();
+  const payoutResult = await supabase
+    .from("connected_account_payouts")
+    .upsert({
+      connected_account_id: account.id,
+      provider_account_id: event.account,
+      provider_payout_id: payout.id,
+      payout_status: payoutStatus,
+      amount_cents: payout.amount,
+      currency: payout.currency.toLowerCase(),
+      arrival_at: payout.arrival_date ? new Date(payout.arrival_date * 1000).toISOString() : null,
+      automatic: payout.automatic,
+      payout_method: payout.method || null,
+      destination_type: payout.type || null,
+      destination_external_account_id: stripeObjectId(payout.destination),
+      balance_transaction_id: stripeObjectId(payout.balance_transaction),
+      failure_balance_transaction_id: stripeObjectId(payout.failure_balance_transaction),
+      failure_code: payout.failure_code || null,
+      failure_message_safe: safeStripeFailureMessage(payout.failure_message),
+      livemode: payout.livemode,
+      provider_created_at: payout.created ? new Date(payout.created * 1000).toISOString() : null,
+      last_event_id: event.id,
+      last_event_type: event.type,
+      last_event_created_at: eventAt,
+      paid_at: event.type === "payout.paid" ? (existing?.paid_at ?? eventAt) : existing?.paid_at ?? null,
+      failed_at: event.type === "payout.failed" ? (existing?.failed_at ?? eventAt) : existing?.failed_at ?? null,
+      canceled_at: event.type === "payout.canceled" ? (existing?.canceled_at ?? eventAt) : existing?.canceled_at ?? null,
+      updated_at: now
+    }, { onConflict: "connected_account_id,provider_payout_id" });
+
+  if (payoutResult.error) {
+    throw new FintechServiceError("Unable to persist the connected-account bank payout.", 500);
+  }
+
+  if (
+    event.type !== "payout.failed"
+    || payoutStatus !== "failed"
+  ) {
+    return account;
+  }
+
+  const failureReason = payout.failure_code
+    ? `Stripe bank payout failed (${payout.failure_code}). Update the payout account before retrying.`
+    : "Stripe bank payout failed. Update the payout account before retrying.";
+  const blockedResult = await supabase
+    .rpc("apply_connected_account_payout_block", {
+      p_connected_account_id: account.id,
+      p_event_at: eventAt,
+      p_reason: failureReason,
+      p_destination_id: stripeObjectId(payout.destination),
+      p_currency: payout.currency.toLowerCase()
+    })
+    .maybeSingle();
+
+  if (blockedResult.error) {
+    throw new FintechServiceError("Unable to block payouts after Stripe reported a bank payout failure.", 500);
+  }
+
+  if (blockedResult.data) {
+    return blockedResult.data as ConnectedAccountRow;
+  }
+
+  const reloadResult = await supabase
+    .from("connected_accounts")
+    .select(CONNECTED_ACCOUNT_SELECT)
+    .eq("id", account.id)
+    .maybeSingle();
+  if (reloadResult.error || !reloadResult.data) {
+    throw new FintechServiceError("Unable to reload the connected account after a concurrent payout failure.", 500);
+  }
+
+  return reloadResult.data as ConnectedAccountRow;
+}
+
+async function markWebhookFailure(
+  supabase: SupabaseClient,
+  rowId: string,
+  attemptCount: number,
+  error: FintechServiceError
+) {
+  try {
+    await completeStripeWebhookAudit(supabase, rowId, {
+      processingStatus: "failed",
+      attemptCount,
+      errorMessage: error.message
+    });
+  } catch (auditError) {
+    throw toFintechServiceError(auditError, "Unable to record the Stripe webhook failure.");
+  }
+}
+
+export async function processStripePlatformWebhook(
   payload: string,
   signature: string
 ): Promise<StripeWebhookSyncResult> {
@@ -7388,12 +7588,18 @@ export async function processStripeConnectWebhook(
   let event: Stripe.Event;
 
   try {
-    event = verifyStripeWebhookEvent(payload, signature);
+    event = verifyStripePlatformWebhookEvent(payload, signature);
   } catch (error) {
-    throw toFintechServiceError(error, "Unable to verify the Stripe webhook signature.", 400);
+    throw toFintechServiceError(error, "Unable to verify the Stripe Platform webhook signature.", 400);
   }
 
-  const audit = await beginStripeWebhookAudit(supabase, event);
+  let audit;
+  try {
+    audit = await beginStripeWebhookAudit(supabase, "platform", event);
+  } catch (error) {
+    throw toFintechServiceError(error, "Unable to claim the Stripe Platform webhook.");
+  }
+
   if (audit.duplicate) {
     return {
       received: true,
@@ -7403,10 +7609,15 @@ export async function processStripeConnectWebhook(
   }
 
   try {
+    if (event.account) {
+      throw new FintechServiceError("Connected-account events are not accepted by the Platform webhook.", 400);
+    }
+
     const billingResult = await processStripeBillingWebhookEvent(event);
     if (billingResult.handled) {
       await completeStripeWebhookAudit(supabase, audit.row.id, {
-        processingStatus: "processed"
+        processingStatus: "processed",
+        attemptCount: audit.row.attempt_count
       });
       return { received: true, duplicate: false, status: "processed" };
     }
@@ -7414,73 +7625,113 @@ export async function processStripeConnectWebhook(
     const giftCardResult = await processGiftCardStripeEvent(event);
     if (giftCardResult.handled) {
       await completeStripeWebhookAudit(supabase, audit.row.id, {
-        processingStatus: "processed"
+        processingStatus: "processed",
+        attemptCount: audit.row.attempt_count
+      });
+      return { received: true, duplicate: false, status: "processed" };
+    }
+
+    const moneyMovementResult = await processStripeMoneyMovementWebhook(supabase, event);
+    await completeStripeWebhookAudit(supabase, audit.row.id, {
+      processingStatus: moneyMovementResult.handled ? "processed" : "ignored",
+      attemptCount: audit.row.attempt_count,
+      connectedAccountId: moneyMovementResult.connectedAccountId
+    });
+    return {
+      received: true,
+      duplicate: false,
+      status: moneyMovementResult.handled ? "processed" : "ignored"
+    };
+  } catch (error) {
+    const fintechError = toFintechServiceError(error, "Unable to process the Stripe Platform webhook event.");
+    await markWebhookFailure(supabase, audit.row.id, audit.row.attempt_count, fintechError);
+    throw fintechError;
+  }
+}
+
+export async function processStripeConnectWebhook(
+  payload: string,
+  signature: string
+): Promise<StripeWebhookSyncResult> {
+  const supabase = getSupabaseOrThrow();
+  let event: Stripe.Event;
+
+  try {
+    event = verifyStripeConnectWebhookEvent(payload, signature);
+  } catch (error) {
+    throw toFintechServiceError(error, "Unable to verify the Stripe Connect webhook signature.", 400);
+  }
+
+  let audit;
+  try {
+    audit = await beginStripeWebhookAudit(supabase, "connect", event);
+  } catch (error) {
+    throw toFintechServiceError(error, "Unable to claim the Stripe Connect webhook.");
+  }
+
+  if (audit.duplicate) {
+    return {
+      received: true,
+      duplicate: true,
+      status: audit.row.processing_status === "ignored" ? "ignored" : "processed"
+    };
+  }
+
+  try {
+    if (!event.account) {
+      throw new FintechServiceError("Stripe Connect events must include a connected account identifier.", 400);
+    }
+
+    const eventFamily = classifyStripeConnectWebhookEvent(event.type);
+    if (eventFamily === "unsupported") {
+      await completeStripeWebhookAudit(supabase, audit.row.id, {
+        processingStatus: "ignored",
+        attemptCount: audit.row.attempt_count
+      });
+      return { received: true, duplicate: false, status: "ignored" };
+    }
+
+    let account = await loadConnectedAccountForWebhook(supabase, event.account);
+    if (eventFamily === "account_state") {
+      const state = await syncConnectedAccountWebhookState(supabase, account, event);
+      await completeStripeWebhookAudit(supabase, audit.row.id, {
+        processingStatus: "processed",
+        attemptCount: audit.row.attempt_count,
+        connectedAccountId: state.row.id
       });
       return { received: true, duplicate: false, status: "processed" };
     }
 
     const eventObject = event.data.object as unknown as Record<string, unknown>;
-    const processorAccountId =
-      event.account
-      || (eventObject.object === "account" && typeof eventObject.id === "string" ? eventObject.id : null)
-      || (typeof eventObject.account === "string" ? eventObject.account : null);
-    const supportedAccountEvents = new Set(["account.updated", "capability.updated", "person.updated"]);
-    if (supportedAccountEvents.has(event.type) && processorAccountId) {
-      const accountResult = await supabase
-        .from("connected_accounts")
-        .select(CONNECTED_ACCOUNT_SELECT)
-        .eq("provider", "stripe_connect")
-        .eq("provider_account_id", processorAccountId)
-        .maybeSingle();
-
-      if (accountResult.error) {
-        throw new FintechServiceError("Unable to load the Stripe connected account record.", 500);
-      }
-
-      if (!accountResult.data) {
-        await completeStripeWebhookAudit(supabase, audit.row.id, {
-          processingStatus: "ignored"
-        });
-        return { received: true, duplicate: false, status: "ignored" };
-      }
-
-      const stripeAccount = eventObject.object === "account" && eventObject.id === processorAccountId
-        ? event.data.object as Stripe.Account
-        : await retrieveStripeConnectedAccount(processorAccountId);
-      const state = await syncConnectedAccountFromStripe(supabase, accountResult.data as ConnectedAccountRow, stripeAccount, {
-        eventId: event.id,
-        eventType: event.type
-      });
-      await syncVerificationLaneFromConnectedAccount(state.row, mapConnectedAccountView(state));
-
-      await completeStripeWebhookAudit(supabase, audit.row.id, {
-        processingStatus: "processed",
-        connectedAccountId: state.row.id
-      });
-
-      return { received: true, duplicate: false, status: "processed" };
+    const payoutId = typeof eventObject.id === "string" ? eventObject.id : null;
+    if (!payoutId) {
+      throw new FintechServiceError("Stripe Connect payout event is missing its payout identifier.", 400);
     }
 
-    const moneyMovementResult = await processStripeMoneyMovementWebhook(supabase, event);
-    if (!moneyMovementResult.handled) {
-      await completeStripeWebhookAudit(supabase, audit.row.id, {
-        processingStatus: "ignored"
-      });
-      return { received: true, duplicate: false, status: "ignored" };
+    const [stripeAccount, payout] = await Promise.all([
+      retrieveStripeConnectedAccount(event.account),
+      retrieveStripeConnectedAccountPayout(event.account, payoutId)
+    ]);
+    let state = await syncConnectedAccountFromStripe(supabase, account, stripeAccount, {
+      eventId: event.id,
+      eventType: event.type
+    });
+    account = await persistConnectedAccountPayout(supabase, state.row, event, payout);
+    if (account.id !== state.row.id || account.provider_payout_block_reason !== state.row.provider_payout_block_reason) {
+      const acceptances = await loadLegalAcceptancesForScope(supabase, scopeForConnectedAccount(account));
+      state = await syncConnectedAccountState(supabase, account, acceptances);
     }
+    await syncVerificationLaneFromConnectedAccount(state.row, mapConnectedAccountView(state));
 
     await completeStripeWebhookAudit(supabase, audit.row.id, {
       processingStatus: "processed",
-      connectedAccountId: moneyMovementResult.connectedAccountId
+      attemptCount: audit.row.attempt_count,
+      connectedAccountId: state.row.id
     });
-
     return { received: true, duplicate: false, status: "processed" };
   } catch (error) {
-    const fintechError = toFintechServiceError(error, "Unable to process the Stripe webhook event.");
-    await completeStripeWebhookAudit(supabase, audit.row.id, {
-      processingStatus: "failed",
-      errorMessage: fintechError.message
-    });
+    const fintechError = toFintechServiceError(error, "Unable to process the Stripe Connect webhook event.");
+    await markWebhookFailure(supabase, audit.row.id, audit.row.attempt_count, fintechError);
     throw fintechError;
   }
 }

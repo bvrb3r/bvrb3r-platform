@@ -649,7 +649,7 @@ async function persistSyncResult(
   const supabase = getSupabase();
   if (!supabase) {
     setTrustState(clone(state));
-    return false;
+    return true;
   }
 
   let degraded = false;

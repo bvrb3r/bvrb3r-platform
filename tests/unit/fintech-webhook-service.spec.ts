@@ -2,12 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   createSupabaseAdminClientMock,
-  verifyStripeWebhookEventMock,
-  processStripeBillingWebhookEventMock
+  verifyStripePlatformWebhookEventMock,
+  processStripeBillingWebhookEventMock,
+  processGiftCardStripeEventMock,
+  beginStripeWebhookAuditMock,
+  completeStripeWebhookAuditMock
 } = vi.hoisted(() => ({
   createSupabaseAdminClientMock: vi.fn(),
-  verifyStripeWebhookEventMock: vi.fn(),
-  processStripeBillingWebhookEventMock: vi.fn()
+  verifyStripePlatformWebhookEventMock: vi.fn(),
+  processStripeBillingWebhookEventMock: vi.fn(),
+  processGiftCardStripeEventMock: vi.fn(),
+  beginStripeWebhookAuditMock: vi.fn(),
+  completeStripeWebhookAuditMock: vi.fn()
 }));
 
 vi.mock("@/lib/config/runtime", async () => {
@@ -26,7 +32,16 @@ vi.mock("@/lib/stripe/connect", async () => {
   const actual = await vi.importActual<typeof import("@/lib/stripe/connect")>("@/lib/stripe/connect");
   return {
     ...actual,
-    verifyStripeWebhookEvent: verifyStripeWebhookEventMock
+    verifyStripePlatformWebhookEvent: verifyStripePlatformWebhookEventMock
+  };
+});
+
+vi.mock("@/lib/stripe/webhook-audit", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/stripe/webhook-audit")>("@/lib/stripe/webhook-audit");
+  return {
+    ...actual,
+    beginStripeWebhookAudit: beginStripeWebhookAuditMock,
+    completeStripeWebhookAudit: completeStripeWebhookAuditMock
   };
 });
 
@@ -34,7 +49,16 @@ vi.mock("@/lib/monetization/service", () => ({
   processStripeBillingWebhookEvent: processStripeBillingWebhookEventMock
 }));
 
-import { processStripeConnectWebhook, syncStripeWebhookPaymentStatus } from "@/lib/fintech/service";
+vi.mock("@/lib/gift-cards/service", () => ({
+  processGiftCardStripeEvent: processGiftCardStripeEventMock
+}));
+
+import {
+  FintechServiceError,
+  processStripePlatformWebhook,
+  syncStripeWebhookPaymentStatus
+} from "@/lib/fintech/service";
+import { StripeWebhookAuditError } from "@/lib/stripe/webhook-audit";
 
 function createPlatformEventSupabaseStub(paymentOverrides: Record<string, unknown> = {}) {
   const payment = {
@@ -103,55 +127,18 @@ function createPlatformEventSupabaseStub(paymentOverrides: Record<string, unknow
   };
 }
 
-function createDuplicateWebhookSupabaseStub(processingStatus: "processed" | "ignored" = "processed") {
-  return {
-    from(table: string) {
-      if (table !== "stripe_webhook_events") {
-        throw new Error(`Unexpected table ${table}`);
-      }
-
-      return {
-        select(columns: string) {
-          expect(columns).toContain("processing_status");
-          return {
-            eq(column: string, value: string) {
-              expect(column).toBe("stripe_event_id");
-              expect(value).toBe("evt_live_duplicate");
-              return {
-                maybeSingle: async () => ({
-                  data: {
-                    id: "webhook-audit-1",
-                    stripe_event_id: "evt_live_duplicate",
-                    stripe_account_id: null,
-                    connected_account_id: null,
-                    event_type: "charge.succeeded",
-                    livemode: true,
-                    api_version: "2026-02-25.clover",
-                    processing_status: processingStatus,
-                    attempt_count: 1,
-                    payload_excerpt: {},
-                    error_message: null,
-                    received_at: "2026-04-21T12:00:00.000Z",
-                    processed_at: "2026-04-21T12:00:02.000Z",
-                    updated_at: "2026-04-21T12:00:02.000Z"
-                  },
-                  error: null
-                })
-              };
-            }
-          };
-        }
-      };
-    }
-  };
-}
-
 describe("phase 3 fintech webhook service", () => {
   beforeEach(() => {
     createSupabaseAdminClientMock.mockReset();
-    verifyStripeWebhookEventMock.mockReset();
+    verifyStripePlatformWebhookEventMock.mockReset();
     processStripeBillingWebhookEventMock.mockReset();
+    processGiftCardStripeEventMock.mockReset();
+    beginStripeWebhookAuditMock.mockReset();
+    completeStripeWebhookAuditMock.mockReset();
+    createSupabaseAdminClientMock.mockReturnValue({});
     processStripeBillingWebhookEventMock.mockResolvedValue({ handled: false });
+    processGiftCardStripeEventMock.mockResolvedValue({ handled: false });
+    completeStripeWebhookAuditMock.mockResolvedValue(undefined);
   });
 
   it("records a payment_succeeded platform event when a Stripe webhook captures a pending payment", async () => {
@@ -202,8 +189,7 @@ describe("phase 3 fintech webhook service", () => {
   });
 
   it("returns duplicate-safe results without reprocessing an already audited webhook event", async () => {
-    createSupabaseAdminClientMock.mockReturnValue(createDuplicateWebhookSupabaseStub());
-    verifyStripeWebhookEventMock.mockReturnValue({
+    verifyStripePlatformWebhookEventMock.mockReturnValue({
       id: "evt_live_duplicate",
       type: "charge.succeeded",
       account: null,
@@ -212,8 +198,16 @@ describe("phase 3 fintech webhook service", () => {
       api_version: "2026-02-25.clover",
       data: { object: { id: "ch_live_1", payment_intent: "pi_live_1" } }
     });
+    beginStripeWebhookAuditMock.mockResolvedValue({
+      duplicate: true,
+      row: {
+        id: "webhook-audit-1",
+        processing_status: "processed",
+        attempt_count: 1
+      }
+    });
 
-    const result = await processStripeConnectWebhook("{}", "test_signature");
+    const result = await processStripePlatformWebhook("{}", "test_signature");
 
     expect(result).toEqual({
       received: true,
@@ -221,5 +215,180 @@ describe("phase 3 fintech webhook service", () => {
       status: "processed"
     });
     expect(processStripeBillingWebhookEventMock).not.toHaveBeenCalled();
+    expect(processGiftCardStripeEventMock).not.toHaveBeenCalled();
+    expect(completeStripeWebhookAuditMock).not.toHaveBeenCalled();
+  });
+
+  it("suppresses a sequential duplicate before a billing or ledger mutation runs twice", async () => {
+    const event = {
+      id: "evt_platform_sequential_duplicate",
+      type: "invoice.paid",
+      account: null,
+      created: 1776769200,
+      livemode: true,
+      api_version: "2020-08-27",
+      data: { object: { id: "in_platform_duplicate", object: "invoice" } }
+    };
+    let ledgerMutations = 0;
+
+    verifyStripePlatformWebhookEventMock.mockReturnValue(event);
+    beginStripeWebhookAuditMock
+      .mockResolvedValueOnce({
+        duplicate: false,
+        row: { id: "platform-audit-sequential", processing_status: "received", attempt_count: 1 }
+      })
+      .mockResolvedValueOnce({
+        duplicate: true,
+        row: { id: "platform-audit-sequential", processing_status: "processed", attempt_count: 1 }
+      });
+    processStripeBillingWebhookEventMock.mockImplementation(async () => {
+      ledgerMutations += 1;
+      return { handled: true };
+    });
+
+    const first = await processStripePlatformWebhook("{}", "platform_signature");
+    const duplicate = await processStripePlatformWebhook("{}", "platform_signature");
+
+    expect(first).toMatchObject({ duplicate: false, status: "processed" });
+    expect(duplicate).toMatchObject({ duplicate: true, status: "processed" });
+    expect(ledgerMutations).toBe(1);
+    expect(processStripeBillingWebhookEventMock).toHaveBeenCalledTimes(1);
+    expect(processGiftCardStripeEventMock).not.toHaveBeenCalled();
+    expect(completeStripeWebhookAuditMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows only one concurrent Platform delivery to reach its billing or ledger mutation", async () => {
+    const event = {
+      id: "evt_platform_concurrent_duplicate",
+      type: "invoice.paid",
+      account: null,
+      created: 1776769200,
+      livemode: true,
+      api_version: "2020-08-27",
+      data: { object: { id: "in_platform_concurrent", object: "invoice" } }
+    };
+    let claimed = false;
+    let ledgerMutations = 0;
+
+    verifyStripePlatformWebhookEventMock.mockReturnValue(event);
+    beginStripeWebhookAuditMock.mockImplementation(async () => {
+      if (claimed) {
+        throw new StripeWebhookAuditError(
+          "This Stripe webhook event is already being processed.",
+          503,
+          "stripe_webhook_in_progress"
+        );
+      }
+      claimed = true;
+      return {
+        duplicate: false,
+        row: { id: "platform-audit-concurrent", processing_status: "received", attempt_count: 1 }
+      };
+    });
+    processStripeBillingWebhookEventMock.mockImplementation(async () => {
+      ledgerMutations += 1;
+      return { handled: true };
+    });
+
+    const results = await Promise.allSettled([
+      processStripePlatformWebhook("{}", "platform_signature"),
+      processStripePlatformWebhook("{}", "platform_signature")
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected") as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ status: 503 });
+    expect(ledgerMutations).toBe(1);
+    expect(processStripeBillingWebhookEventMock).toHaveBeenCalledTimes(1);
+    expect(completeStripeWebhookAuditMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks a transient Platform failure failed, then processes its retry exactly once", async () => {
+    const event = {
+      id: "evt_platform_retry",
+      type: "invoice.paid",
+      account: null,
+      created: 1776769200,
+      livemode: true,
+      api_version: "2020-08-27",
+      data: { object: { id: "in_platform_retry", object: "invoice" } }
+    };
+    let ledgerMutations = 0;
+
+    verifyStripePlatformWebhookEventMock.mockReturnValue(event);
+    beginStripeWebhookAuditMock
+      .mockResolvedValueOnce({
+        duplicate: false,
+        row: { id: "platform-audit-retry", processing_status: "received", attempt_count: 1 }
+      })
+      .mockResolvedValueOnce({
+        duplicate: false,
+        row: { id: "platform-audit-retry", processing_status: "received", attempt_count: 2 }
+      })
+      .mockResolvedValueOnce({
+        duplicate: true,
+        row: { id: "platform-audit-retry", processing_status: "processed", attempt_count: 2 }
+      });
+    processStripeBillingWebhookEventMock
+      .mockRejectedValueOnce(new FintechServiceError("Temporary ledger persistence failure.", 503))
+      .mockImplementationOnce(async () => {
+        ledgerMutations += 1;
+        return { handled: true };
+      });
+
+    await expect(
+      processStripePlatformWebhook("{}", "platform_signature")
+    ).rejects.toMatchObject({ status: 503 });
+    expect(completeStripeWebhookAuditMock).toHaveBeenNthCalledWith(
+      1,
+      {},
+      "platform-audit-retry",
+      {
+        processingStatus: "failed",
+        attemptCount: 1,
+        errorMessage: "Temporary ledger persistence failure."
+      }
+    );
+
+    const retry = await processStripePlatformWebhook("{}", "platform_signature");
+    const duplicate = await processStripePlatformWebhook("{}", "platform_signature");
+
+    expect(retry).toMatchObject({ duplicate: false, status: "processed" });
+    expect(duplicate).toMatchObject({ duplicate: true, status: "processed" });
+    expect(ledgerMutations).toBe(1);
+    expect(processStripeBillingWebhookEventMock).toHaveBeenCalledTimes(2);
+    expect(completeStripeWebhookAuditMock).toHaveBeenNthCalledWith(
+      2,
+      {},
+      "platform-audit-retry",
+      { processingStatus: "processed", attemptCount: 2 }
+    );
+  });
+
+  it("audits an unsupported Platform event as ignored without downstream mutation", async () => {
+    verifyStripePlatformWebhookEventMock.mockReturnValue({
+      id: "evt_platform_unsupported",
+      type: "balance.available",
+      account: null,
+      created: 1776769200,
+      livemode: true,
+      api_version: "2020-08-27",
+      data: { object: { id: "bal_platform", object: "balance" } }
+    });
+    beginStripeWebhookAuditMock.mockResolvedValue({
+      duplicate: false,
+      row: { id: "platform-audit-unsupported", processing_status: "received", attempt_count: 1 }
+    });
+
+    const result = await processStripePlatformWebhook("{}", "platform_signature");
+
+    expect(result).toEqual({ received: true, duplicate: false, status: "ignored" });
+    expect(processStripeBillingWebhookEventMock).toHaveBeenCalledTimes(1);
+    expect(processGiftCardStripeEventMock).toHaveBeenCalledTimes(1);
+    expect(completeStripeWebhookAuditMock).toHaveBeenCalledWith(
+      {},
+      "platform-audit-unsupported",
+      { processingStatus: "ignored", attemptCount: 1, connectedAccountId: null }
+    );
   });
 });

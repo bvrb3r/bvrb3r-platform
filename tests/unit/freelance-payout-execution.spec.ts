@@ -48,7 +48,9 @@ vi.mock("@/lib/stripe/connect", () => ({
   retrieveStripePlatformAccount: retrieveStripePlatformAccountMock,
   retrieveStripePlatformBalance: retrieveStripePlatformBalanceMock,
   retrieveStripePaymentIntentSettlement: vi.fn(),
-  verifyStripeWebhookEvent: vi.fn()
+  retrieveStripeConnectedAccountPayout: vi.fn(),
+  verifyStripeConnectWebhookEvent: vi.fn(),
+  verifyStripePlatformWebhookEvent: vi.fn()
 }));
 
 import {

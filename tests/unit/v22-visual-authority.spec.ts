@@ -48,6 +48,15 @@ describe("V22 visual authority", () => {
     expect(readiness).not.toContain("android\\\\app");
     expect(localEnv).toContain("AUTOMATION_PROCESS_SECRET=");
     expect(stagingEnv).toContain("AUTOMATION_PROCESS_SECRET=");
+    for (const key of [
+      "STRIPE_WEBHOOK_SECRET",
+      "STRIPE_CONNECT_WEBHOOK_SECRET",
+      "STRIPE_IDENTITY_WEBHOOK_SECRET"
+    ]) {
+      expect(localEnv).toContain(`${key}=`);
+      expect(stagingEnv).toContain(`${key}=`);
+      expect(readiness).toContain(key);
+    }
   });
 
   it("guards every private Client route and records denied Architect access", () => {

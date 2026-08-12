@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FintechServiceError, processStripeConnectWebhook } from "@/lib/fintech/service";
+import { FintechServiceError, processStripePlatformWebhook } from "@/lib/fintech/service";
 
 export const runtime = "nodejs";
 
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = await request.text();
-    const result = await processStripeConnectWebhook(payload, signature);
+    const result = await processStripePlatformWebhook(payload, signature);
     return NextResponse.json(result);
   } catch (error) {
     return toErrorResponse(error);

@@ -114,9 +114,7 @@ function currentProviderConfig() {
     paymentsProvider: process.env.PAYMENTS_PROVIDER ?? runtimeConfig.paymentProvider,
     stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
     stripePublishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "",
-    stripeWebhookSecret: process.env.STRIPE_CONNECT_WEBHOOK_SECRET
-      ?? process.env.STRIPE_WEBHOOK_SECRET
-      ?? "",
+    stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
     twilioReady: hasTwilioDeliveryConfig()
   };
 }

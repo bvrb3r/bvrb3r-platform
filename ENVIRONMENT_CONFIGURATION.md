@@ -143,18 +143,40 @@ This repo supports three environment profiles without changing application logic
 | `FCM_PRIVATE_KEY` | `lib/config/runtime.ts` | Declares Firebase private key material in runtime config readiness checks. |
 | `FCM_SENDER_ID` | `lib/config/runtime.ts` | Exposed in native push bootstrap metadata and readiness checks. |
 
-### Optional payments and other declared variables
+### Stripe
 
 | Variable | Used in | Notes |
 | --- | --- | --- |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | `lib/payments/provider.ts`, group split-payment page | Browser key used only when `PAYMENTS_PROVIDER=stripe`. |
 | `STRIPE_SECRET_KEY` | `lib/payments/provider.ts`, group split-payment service | Server secret for Stripe-backed payment flows. |
-| `STRIPE_WEBHOOK_SECRET` | Signed Stripe webhook verification | Required for payment-ledger and group-responsibility reconciliation. `STRIPE_CONNECT_WEBHOOK_SECRET` takes precedence when configured. |
+| `STRIPE_WEBHOOK_SECRET` | `/api/stripe/webhook` | Signing secret for the Platform Money destination only. It verifies payment-ledger, billing, gift-card, and group-responsibility events and is never accepted by the Connect or Identity routes. |
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | `/api/stripe/connect/webhook` | Signing secret for the Connected Account destination only. It is required independently and never falls back to `STRIPE_WEBHOOK_SECRET`. |
+| `STRIPE_IDENTITY_WEBHOOK_SECRET` | `/api/stripe/identity/webhook` | Signing secret for the Identity destination only. It is required independently and never falls back to either money-webhook secret. |
+
+Create one Stripe webhook destination per route and store the signing secret from
+that exact destination in its matching server-only variable. The three values
+must be distinct. Do not reuse a signing secret, concatenate secrets, or configure
+fallbacks between destinations. Configure all four Stripe server secrets in each
+Vercel environment that is expected to pass release readiness.
+
+### Other declared variables
+
+| Variable | Used in | Notes |
+| --- | --- | --- |
 | `GOOGLE_MAPS_API_KEY` | `.env.example` | Declared in the repo template, but not referenced by current application code. |
 
 ## Operational notes
 
 - Use `.env.staging.example` as the checklist for creating `.env.staging`.
+- For a webhook-separation cutover, first deploy the strict route code while
+  preserving the existing Platform destination and `STRIPE_WEBHOOK_SECRET`.
+  Confirm `/api/stripe/webhook` continues to return `2xx` for a signed Platform
+  delivery. Only then create the Connect and Identity destinations, save their
+  distinct signing secrets as `STRIPE_CONNECT_WEBHOOK_SECRET` and
+  `STRIPE_IDENTITY_WEBHOOK_SECRET`, and redeploy.
+- Release readiness remains in `attention` (and `npm run release:check` exits
+  nonzero) until `STRIPE_SECRET_KEY` and all three dedicated webhook signing
+  secrets are configured.
 - Run staging smoke tests with `npm run build:staging` and `npm run start:staging`; service worker and push behavior only fully activate in production mode.
 - The repo includes `capacitor.config.ts` plus native bootstrap and association routes, but it does not currently include checked-in `ios/` or `android/` project folders.
 - APNs and FCM settings currently drive readiness checks and native token metadata. The current native push delivery path is still placeholder-only in `lib/engagement/live-delivery.ts`.

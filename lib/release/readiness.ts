@@ -58,6 +58,8 @@ export function buildReleaseReadinessSummary(): ReleaseReadinessSummary {
   const storeDocExists = exists("STORE_LAUNCH_CHECKLIST.md");
   const hasStripeSecret = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
   const hasStripeWebhookSecret = Boolean(process.env.STRIPE_WEBHOOK_SECRET?.trim());
+  const hasStripeConnectWebhookSecret = Boolean(process.env.STRIPE_CONNECT_WEBHOOK_SECRET?.trim());
+  const hasStripeIdentityWebhookSecret = Boolean(process.env.STRIPE_IDENTITY_WEBHOOK_SECRET?.trim());
   const hasAutomationSecret = Boolean(process.env.AUTOMATION_PROCESS_SECRET?.trim());
   const appUrlReady = /^https:\/\/|^http:\/\/localhost:3000$/i.test(runtimeConfig.appUrl);
   const pushReady = deliveryHealth.push.webPushConfigured || deliveryHealth.push.apnsBridgeReady || deliveryHealth.push.fcmBridgeReady;
@@ -71,9 +73,21 @@ export function buildReleaseReadinessSummary(): ReleaseReadinessSummary {
       ready: "Supabase-backed auth/runtime is configured.",
       attention: "Supabase runtime is not configured, so wrapped-app auth parity cannot be release-validated."
     }),
-    check("stripe-secret", "Stripe billing secrets", hasStripeSecret && hasStripeWebhookSecret, {
-      ready: "Stripe secret and webhook secret are configured.",
-      attention: "Stripe billing/webhook secrets must be configured for mobile billing, receipt, and retry flows."
+    check("stripe-api-secret", "Stripe API secret", hasStripeSecret, {
+      ready: "Stripe API secret is configured.",
+      attention: "STRIPE_SECRET_KEY must be configured for Stripe-backed billing and Connected Account operations."
+    }),
+    check("stripe-platform-webhook-secret", "Stripe Platform webhook secret", hasStripeWebhookSecret, {
+      ready: "The Platform Money webhook has its dedicated signing secret.",
+      attention: "STRIPE_WEBHOOK_SECRET must be configured exclusively for /api/stripe/webhook."
+    }),
+    check("stripe-connect-webhook-secret", "Stripe Connect webhook secret", hasStripeConnectWebhookSecret, {
+      ready: "The Connected Account webhook has its dedicated signing secret.",
+      attention: "STRIPE_CONNECT_WEBHOOK_SECRET must be configured exclusively for /api/stripe/connect/webhook."
+    }),
+    check("stripe-identity-webhook-secret", "Stripe Identity webhook secret", hasStripeIdentityWebhookSecret, {
+      ready: "The Identity webhook has its dedicated signing secret.",
+      attention: "STRIPE_IDENTITY_WEBHOOK_SECRET must be configured exclusively for /api/stripe/identity/webhook."
     }),
     check("automation-secret", "Scheduled execution secret", hasAutomationSecret, {
       ready: "Scheduled execution secret is configured.",
