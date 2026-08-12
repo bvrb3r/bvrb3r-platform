@@ -98,4 +98,30 @@ describe("stripe identity verification routes", () => {
     expect(body.duplicate).toBe(true);
     expect(body.status).toBe("processed");
   });
+
+  it("preserves retryable Identity configuration failures", async () => {
+    processStripeIdentityWebhookMock.mockRejectedValue(
+      new VerificationFlowError("Identity webhook audit storage is unavailable.", 503, "identity_audit_unavailable")
+    );
+
+    const response = await postIdentityWebhook(new NextRequest("https://bvrb3r.demo/api/stripe/identity/webhook", {
+      method: "POST",
+      body: JSON.stringify({ id: "evt_identity_retry" }),
+      headers: { "stripe-signature": "test_signature" }
+    }));
+
+    expect(response.status).toBe(503);
+  });
+
+  it("returns 500 for unexpected Identity processing failures so Stripe can retry", async () => {
+    processStripeIdentityWebhookMock.mockRejectedValue(new Error("database connection reset"));
+
+    const response = await postIdentityWebhook(new NextRequest("https://bvrb3r.demo/api/stripe/identity/webhook", {
+      method: "POST",
+      body: JSON.stringify({ id: "evt_identity_failure" }),
+      headers: { "stripe-signature": "test_signature" }
+    }));
+
+    expect(response.status).toBe(500);
+  });
 });

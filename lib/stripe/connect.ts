@@ -63,12 +63,29 @@ function getStripeSecretKey() {
   return secretKey;
 }
 
-export function getStripeWebhookSecret() {
-  const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET?.trim()
-    || process.env.STRIPE_WEBHOOK_SECRET?.trim();
+export function getStripePlatformWebhookSecret() {
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
 
   if (!webhookSecret) {
-    throw new StripeConnectError("Stripe webhook verification is not configured for this environment.", 503, "stripe_webhook_not_configured");
+    throw new StripeConnectError(
+      "Stripe Platform webhook verification is not configured for this environment.",
+      503,
+      "stripe_platform_webhook_not_configured"
+    );
+  }
+
+  return webhookSecret;
+}
+
+export function getStripeConnectWebhookSecret() {
+  const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET?.trim();
+
+  if (!webhookSecret) {
+    throw new StripeConnectError(
+      "Stripe Connect webhook verification is not configured for this environment.",
+      503,
+      "stripe_connect_webhook_not_configured"
+    );
   }
 
   return webhookSecret;
@@ -223,7 +240,17 @@ export async function retrieveStripePaymentIntentSettlement(paymentIntentId: str
   });
 }
 
-export function verifyStripeWebhookEvent(payload: string | Buffer, signature: string) {
+export async function retrieveStripeConnectedAccountPayout(accountId: string, payoutId: string) {
   const stripe = getStripeConnectClient();
-  return stripe.webhooks.constructEvent(payload, signature, getStripeWebhookSecret());
+  return stripe.payouts.retrieve(payoutId, {}, { stripeAccount: accountId });
+}
+
+export function verifyStripePlatformWebhookEvent(payload: string | Buffer, signature: string) {
+  const stripe = getStripeConnectClient();
+  return stripe.webhooks.constructEvent(payload, signature, getStripePlatformWebhookSecret());
+}
+
+export function verifyStripeConnectWebhookEvent(payload: string | Buffer, signature: string) {
+  const stripe = getStripeConnectClient();
+  return stripe.webhooks.constructEvent(payload, signature, getStripeConnectWebhookSecret());
 }

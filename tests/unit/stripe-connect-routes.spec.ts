@@ -9,6 +9,7 @@ const {
   createStripeConnectOnboardingSessionMock,
   createStripeConnectDashboardSessionMock,
   refreshStripeConnectSubjectAccountMock,
+  processStripePlatformWebhookMock,
   processStripeConnectWebhookMock
 } = vi.hoisted(() => ({
   getSessionUserMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   createStripeConnectOnboardingSessionMock: vi.fn(),
   createStripeConnectDashboardSessionMock: vi.fn(),
   refreshStripeConnectSubjectAccountMock: vi.fn(),
+  processStripePlatformWebhookMock: vi.fn(),
   processStripeConnectWebhookMock: vi.fn()
 }));
 
@@ -31,6 +33,7 @@ vi.mock("@/lib/fintech/service", async () => {
     createStripeConnectOnboardingSession: createStripeConnectOnboardingSessionMock,
     createStripeConnectDashboardSession: createStripeConnectDashboardSessionMock,
     refreshStripeConnectSubjectAccount: refreshStripeConnectSubjectAccountMock,
+    processStripePlatformWebhook: processStripePlatformWebhookMock,
     processStripeConnectWebhook: processStripeConnectWebhookMock
   };
 });
@@ -50,6 +53,7 @@ describe("phase 14 stripe connect routes", () => {
     createStripeConnectOnboardingSessionMock.mockReset();
     createStripeConnectDashboardSessionMock.mockReset();
     refreshStripeConnectSubjectAccountMock.mockReset();
+    processStripePlatformWebhookMock.mockReset();
     processStripeConnectWebhookMock.mockReset();
   });
 
@@ -225,7 +229,7 @@ describe("phase 14 stripe connect routes", () => {
   });
 
   it("returns duplicate-safe webhook results", async () => {
-    processStripeConnectWebhookMock.mockResolvedValue({
+    processStripePlatformWebhookMock.mockResolvedValue({
       received: true,
       duplicate: true,
       status: "processed"
@@ -241,6 +245,11 @@ describe("phase 14 stripe connect routes", () => {
     expect(response.status).toBe(200);
     expect(body.duplicate).toBe(true);
     expect(body.status).toBe("processed");
+    expect(processStripePlatformWebhookMock).toHaveBeenCalledWith(
+      JSON.stringify({ id: "evt_1" }),
+      "test_signature"
+    );
+    expect(processStripeConnectWebhookMock).not.toHaveBeenCalled();
   });
 
   it("supports the dedicated Stripe Connect webhook route", async () => {
@@ -259,5 +268,27 @@ describe("phase 14 stripe connect routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.status).toBe("processed");
+    expect(processStripeConnectWebhookMock).toHaveBeenCalledWith(
+      JSON.stringify({ id: "evt_connect_1" }),
+      "test_signature"
+    );
+    expect(processStripePlatformWebhookMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Platform", postWebhook, processStripePlatformWebhookMock],
+    ["Connect", postConnectWebhook, processStripeConnectWebhookMock]
+  ])("returns retryable processor failures from the %s webhook", async (_label, handler, processor) => {
+    processor.mockRejectedValue(new FintechServiceError("Temporary webhook persistence failure.", 503));
+
+    const response = await handler(new NextRequest("https://bvrb3r.demo/api/stripe/webhook", {
+      method: "POST",
+      body: JSON.stringify({ id: "evt_retry" }),
+      headers: { "stripe-signature": "test_signature" }
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body.error).toMatch(/temporary webhook persistence failure/i);
   });
 });

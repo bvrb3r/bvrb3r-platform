@@ -95,6 +95,15 @@ jobs:
           tests/unit/public-site.spec.tsx
           tests/unit/runtime-resilience-provider.spec.tsx
           tests/unit/secret-hygiene-guard.spec.ts
+          tests/unit/fintech-webhook-service.spec.ts
+          tests/unit/stripe-connect-routes.spec.ts
+          tests/unit/stripe-connect-webhook-domain.spec.ts
+          tests/unit/stripe-connect-webhook-service.spec.ts
+          tests/unit/stripe-identity-routes.spec.ts
+          tests/unit/stripe-identity-service.spec.ts
+          tests/unit/stripe-webhook-audit.spec.ts
+          tests/unit/stripe-webhook-readiness.spec.ts
+          tests/unit/stripe-webhook-secret-boundaries.spec.ts
 
       - name: Full test suite
         run: npm test

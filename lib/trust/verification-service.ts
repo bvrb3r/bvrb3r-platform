@@ -9,8 +9,15 @@ import {
   createStripeIdentityVerificationSession,
   getStripeIdentitySessionStatus,
   retrieveStripeIdentityVerificationSession,
+  StripeIdentityError,
   verifyStripeIdentityWebhookEvent
 } from "@/lib/stripe/identity";
+import { StripeConnectError } from "@/lib/stripe/connect";
+import {
+  beginStripeWebhookAudit,
+  completeStripeWebhookAudit,
+  StripeWebhookAuditError
+} from "@/lib/stripe/webhook-audit";
 import { createStripeConnectOnboardingSession } from "@/lib/fintech/service";
 import { isRoleAllowed } from "@/lib/auth/roles";
 import type { UserAccount } from "@/types/domain";
@@ -412,138 +419,6 @@ function getSupabase() {
   return createSupabaseAdminClient();
 }
 
-function isMissingTableError(error: unknown) {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const candidate = error as { code?: string | null; message?: string | null };
-  const message = `${candidate.message ?? ""}`.toLowerCase();
-  return candidate.code === "42P01"
-    || candidate.code === "PGRST205"
-    || message.includes("does not exist")
-    || message.includes("could not find the table");
-}
-
-function createStripeEventExcerpt(event: Stripe.Event) {
-  const object = typeof event.data.object === "object" && event.data.object
-    ? event.data.object as unknown as Record<string, unknown>
-    : null;
-
-  return {
-    id: event.id,
-    type: event.type,
-    created: event.created,
-    account: event.account ?? null,
-    objectType: object?.object ?? null,
-    objectId: typeof object?.id === "string" ? object.id : null
-  };
-}
-
-async function beginStripeIdentityWebhookAudit(supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, event: Stripe.Event) {
-  const existingResult = await supabase
-    .from("stripe_webhook_events")
-    .select("id, stripe_event_id, processing_status, attempt_count")
-    .eq("stripe_event_id", event.id)
-    .maybeSingle();
-
-  if (existingResult.error) {
-    if (isMissingTableError(existingResult.error)) {
-      return { rowId: null, duplicate: false };
-    }
-
-    throw existingResult.error;
-  }
-
-  const now = new Date().toISOString();
-  if (existingResult.data) {
-    const existing = existingResult.data as { id: string; processing_status: string; attempt_count: number };
-    if (existing.processing_status === "processed" || existing.processing_status === "ignored") {
-      return { rowId: existing.id, duplicate: true };
-    }
-
-    const updateResult = await supabase
-      .from("stripe_webhook_events")
-      .update({
-        event_type: event.type,
-        livemode: event.livemode,
-        api_version: event.api_version ?? null,
-        processing_status: "received",
-        attempt_count: existing.attempt_count + 1,
-        payload_excerpt: createStripeEventExcerpt(event),
-        error_message: null,
-        updated_at: now
-      })
-      .eq("id", existing.id)
-      .select("id")
-      .single();
-
-    if (updateResult.error) {
-      if (isMissingTableError(updateResult.error)) {
-        return { rowId: null, duplicate: false };
-      }
-
-      throw updateResult.error;
-    }
-
-    return { rowId: updateResult.data.id as string, duplicate: false };
-  }
-
-  const insertResult = await supabase
-    .from("stripe_webhook_events")
-    .insert({
-      stripe_event_id: event.id,
-      stripe_account_id: event.account ?? null,
-      event_type: event.type,
-      livemode: event.livemode,
-      api_version: event.api_version ?? null,
-      processing_status: "received",
-      payload_excerpt: createStripeEventExcerpt(event),
-      received_at: now,
-      updated_at: now
-    })
-    .select("id")
-    .single();
-
-  if (insertResult.error) {
-    if (isMissingTableError(insertResult.error)) {
-      return { rowId: null, duplicate: false };
-    }
-
-    throw insertResult.error;
-  }
-
-  return { rowId: insertResult.data.id as string, duplicate: false };
-}
-
-async function completeStripeIdentityWebhookAudit(
-  supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
-  rowId: string | null,
-  input: {
-    processingStatus: "processed" | "ignored" | "failed";
-    errorMessage?: string | null;
-  }
-) {
-  if (!rowId) {
-    return;
-  }
-
-  const now = new Date().toISOString();
-  const updateResult = await supabase
-    .from("stripe_webhook_events")
-    .update({
-      processing_status: input.processingStatus,
-      error_message: input.errorMessage ?? null,
-      processed_at: input.processingStatus === "failed" ? null : now,
-      updated_at: now
-    })
-    .eq("id", rowId);
-
-  if (updateResult.error && !isMissingTableError(updateResult.error)) {
-    throw updateResult.error;
-  }
-}
-
 async function resolveIdentityWebhookLane(
   sessionId: string,
   metadata: Record<string, string>
@@ -740,6 +615,17 @@ export async function processStripeIdentityWebhook(
   try {
     event = verifyStripeIdentityWebhookEvent(payload, signature);
   } catch (error) {
+    if (
+      (error instanceof StripeIdentityError || error instanceof StripeConnectError)
+      && error.status === 503
+    ) {
+      throw new VerificationFlowError(
+        error.message,
+        503,
+        error.code ?? "identity_webhook_not_configured"
+      );
+    }
+
     throw new VerificationFlowError(
       error instanceof Error ? error.message : "Unable to verify the Stripe Identity webhook signature.",
       400,
@@ -748,12 +634,29 @@ export async function processStripeIdentityWebhook(
   }
 
   const supabase = getSupabase();
-  const audit = supabase ? await beginStripeIdentityWebhookAudit(supabase, event) : { rowId: null, duplicate: false };
+  if (!supabase) {
+    throw new VerificationFlowError(
+      "Stripe Identity webhook audit storage is not configured for this environment.",
+      503,
+      "identity_webhook_audit_unavailable"
+    );
+  }
+
+  let audit;
+  try {
+    audit = await beginStripeWebhookAudit(supabase, "identity", event);
+  } catch (error) {
+    if (error instanceof StripeWebhookAuditError) {
+      throw new VerificationFlowError(error.message, error.status, error.code);
+    }
+    throw error;
+  }
+
   if (audit.duplicate) {
     return {
       received: true,
       duplicate: true,
-      status: "processed"
+      status: audit.row.processing_status === "ignored" ? "ignored" : "processed"
     };
   }
 
@@ -766,9 +669,10 @@ export async function processStripeIdentityWebhook(
       "identity.verification_session.redacted"
     ]);
     if (!supportedEvents.has(event.type)) {
-      if (supabase) {
-        await completeStripeIdentityWebhookAudit(supabase, audit.rowId, { processingStatus: "ignored" });
-      }
+      await completeStripeWebhookAudit(supabase, audit.row.id, {
+        processingStatus: "ignored",
+        attemptCount: audit.row.attempt_count
+      });
 
       return {
         received: true,
@@ -782,7 +686,7 @@ export async function processStripeIdentityWebhook(
     const lane = await resolveIdentityWebhookLane(session.id, metadata);
     const providerStatus = getStripeIdentitySessionStatus(session, event.type);
 
-    await syncStripeIdentityVerificationLane({
+    const syncResult = await syncStripeIdentityVerificationLane({
       userId: lane.userId,
       barberId: lane.barberId,
       verificationProfileId: lane.verificationProfileId,
@@ -796,9 +700,18 @@ export async function processStripeIdentityWebhook(
       livemode: session.livemode
     });
 
-    if (supabase) {
-      await completeStripeIdentityWebhookAudit(supabase, audit.rowId, { processingStatus: "processed" });
+    if (syncResult.degraded) {
+      throw new VerificationFlowError(
+        "Stripe Identity state could not be persisted durably.",
+        503,
+        "identity_webhook_persistence_degraded"
+      );
     }
+
+    await completeStripeWebhookAudit(supabase, audit.row.id, {
+      processingStatus: "processed",
+      attemptCount: audit.row.attempt_count
+    });
 
     return {
       received: true,
@@ -806,11 +719,17 @@ export async function processStripeIdentityWebhook(
       status: "processed"
     };
   } catch (error) {
-    if (supabase) {
-      await completeStripeIdentityWebhookAudit(supabase, audit.rowId, {
+    try {
+      await completeStripeWebhookAudit(supabase, audit.row.id, {
         processingStatus: "failed",
+        attemptCount: audit.row.attempt_count,
         errorMessage: error instanceof Error ? error.message : "Identity webhook sync failed."
       });
+    } catch (auditError) {
+      if (auditError instanceof StripeWebhookAuditError) {
+        throw new VerificationFlowError(auditError.message, auditError.status, auditError.code);
+      }
+      throw auditError;
     }
     throw error;
   }

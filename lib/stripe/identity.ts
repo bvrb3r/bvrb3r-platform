@@ -4,8 +4,7 @@ import { StripeConnectError, buildStripeReturnUrl, getStripeConnectClient } from
 export class StripeIdentityError extends StripeConnectError {}
 
 export function getStripeIdentityWebhookSecret() {
-  const webhookSecret = process.env.STRIPE_IDENTITY_WEBHOOK_SECRET?.trim()
-    || process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  const webhookSecret = process.env.STRIPE_IDENTITY_WEBHOOK_SECRET?.trim();
 
   if (!webhookSecret) {
     throw new StripeIdentityError(
