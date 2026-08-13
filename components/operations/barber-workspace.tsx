@@ -7,6 +7,7 @@ import { StatusBadge as AppointmentStatusBadge } from "@/components/dashboard/st
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { RoadHomeWidget } from "@/components/road/road-home-widget";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataStatCard, PageHeader, StatusBadge } from "@/design/components";
@@ -270,6 +271,8 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
           {overviewError ? <FeedbackBanner tone="error" message={overviewError} /> : null}
         </div>
       </Card>
+
+      <RoadHomeWidget compact={Boolean(nextAppointment)} />
 
       <section className="grid gap-4 xl:grid-cols-[1.02fr_0.98fr]">
         <Card className="rounded-[32px] p-5">
