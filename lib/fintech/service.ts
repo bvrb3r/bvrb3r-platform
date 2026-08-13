@@ -21,7 +21,6 @@ import {
   evaluateLegalAgreementState,
   inferStripeProcessorStatuses,
   normalizeCompensationAssignment,
-  normalizeConnectedAccountStatus,
   normalizeLegalAcceptance,
   normalizeRequirementList,
   normalizeRoutingModel,
@@ -30,7 +29,6 @@ import {
   type AgreementType,
   type BoothRentFrequency,
   type CompensationAssignmentInput,
-  type ConnectedAccountStatusInput,
   type FintechLegalReadinessStatus,
   type FintechOnboardingStatus,
   type FintechOperationalStatus,
@@ -47,7 +45,12 @@ import {
 } from "@/lib/fintech/domain";
 import { canTransitionPaymentStatus, type InternalPaymentStatus, type InternalPaymentType } from "@/lib/payments/domain";
 import {
+  collectConnectedAccountLocationIds,
+  resolveMembershipConnectedAccountLocationId
+} from "@/lib/fintech/connected-account-scope";
+import {
   StripeConnectError,
+  buildStripeConnectedAccountIdempotencyKey,
   buildStripeReturnUrl,
   createStripeConnectedAccount,
   createStripeDashboardLoginLink,
@@ -63,6 +66,7 @@ import {
   retrieveStripePaymentIntentSettlement,
   verifyStripeConnectWebhookEvent,
   verifyStripePlatformWebhookEvent,
+  type StripeConnectEnvironmentMode,
   type StripeConnectEnvironmentView
 } from "@/lib/stripe/connect";
 import {
@@ -93,6 +97,7 @@ import { syncWalletBalancesForPayment } from "@/lib/wallet/service";
 import type { UserAccount } from "@/types/domain";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+type ActiveStripeConnectEnvironment = Exclude<StripeConnectEnvironmentMode, "missing">;
 
 type ProfileRow = {
   id: string;
@@ -164,6 +169,8 @@ type ConnectedAccountRow = {
   shop_id: string | null;
   provider: FintechProvider;
   provider_account_id: string | null;
+  provider_environment: ActiveStripeConnectEnvironment | null;
+  provider_account_generation: number;
   onboarding_status: FintechOnboardingStatus;
   payout_readiness_status: FintechPayoutReadinessStatus;
   legal_readiness_status: FintechLegalReadinessStatus;
@@ -880,7 +887,7 @@ export class FintechServiceError extends Error {
   }
 }
 
-const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider, provider_account_id, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_eventually_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled, last_checked_at, onboarding_started_at, onboarding_completed_at, processor_last_synced_at, processor_last_event_id, processor_last_event_type, provider_payout_block_reason, provider_payout_blocked_at, provider_payout_block_destination_id, provider_payout_block_currency, provider_payout_block_cleared_at, dashboard_last_accessed_at, created_by, created_at, updated_at";
+const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider, provider_account_id, provider_environment, provider_account_generation, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_eventually_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled, last_checked_at, onboarding_started_at, onboarding_completed_at, processor_last_synced_at, processor_last_event_id, processor_last_event_type, provider_payout_block_reason, provider_payout_blocked_at, provider_payout_block_destination_id, provider_payout_block_currency, provider_payout_block_cleared_at, dashboard_last_accessed_at, created_by, created_at, updated_at";
 const PAYMENT_SELECT = "id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, provider, provider_payment_intent_id, amount, currency, status, payment_status, payment_type, paid_at, created_at, updated_at";
 const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, pos_sale_id, membership_id, shop_barber_relationship_id, compensation_rule_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, service_amount, tip_amount, autobooth_percent_snapshot, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
 const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_id, membership_id, target_subject_type, execution_type, target_connected_account_id, target_provider_account_id, amount, currency, execution_status, blocked_reason, failure_reason, processor_transfer_id, processor_reversal_id, idempotency_key, source_execution_id, source_refund_id, payout_reference, payout_speed, instant_payout_fee_amount, net_transfer_amount, processor_payout_id, reconciliation_status, metadata, initiated_by, attempt_count, last_attempted_at, executed_at, failed_at, reversed_at, created_at, updated_at";
@@ -1851,6 +1858,95 @@ function latestAcceptancesForSubject(
   return [...latest.values()].sort((left, right) => right.accepted_at.localeCompare(left.accepted_at));
 }
 
+function requiredStripeConnectEnvironment(): ActiveStripeConnectEnvironment {
+  const environment = getStripeConnectEnvironment();
+  if (environment.mode === "missing") {
+    throw new FintechServiceError("Stripe Connect environment could not be verified.", 503);
+  }
+
+  return environment.mode;
+}
+
+function connectedAccountEnvironmentBlocker(account: ConnectedAccountRow | null) {
+  if (!account) {
+    return null;
+  }
+
+  if (account.provider !== "stripe_connect") {
+    return "Stripe payout account provider is not Stripe Connect.";
+  }
+
+  if (!account.provider_account_id?.trim()) {
+    return null;
+  }
+
+  if (!account.provider_environment) {
+    return "Stripe connected-account environment has not been classified.";
+  }
+
+  const runtimeEnvironment = getStripeConnectEnvironment().mode;
+  if (runtimeEnvironment === "missing") {
+    return "Stripe Connect runtime environment could not be verified.";
+  }
+
+  if (account.provider_environment !== runtimeEnvironment) {
+    return `Stripe connected account is ${account.provider_environment} while this runtime is ${runtimeEnvironment}.`;
+  }
+
+  return null;
+}
+
+async function requireCurrentStripeTransferDestination(
+  supabase: SupabaseClient,
+  expectedAccount: ConnectedAccountRow
+) {
+  const accountResult = await supabase
+    .from("connected_accounts")
+    .select(CONNECTED_ACCOUNT_SELECT)
+    .eq("id", expectedAccount.id)
+    .maybeSingle();
+
+  if (accountResult.error || !accountResult.data) {
+    throw new FintechServiceError(
+      "Release blocked: Stripe connected-account destination could not be revalidated.",
+      503
+    );
+  }
+
+  const currentAccount = accountResult.data as ConnectedAccountRow;
+  const currentProviderAccountId = currentAccount.provider_account_id?.trim() || null;
+  const expectedProviderAccountId = expectedAccount.provider_account_id?.trim() || null;
+  if (
+    !currentProviderAccountId
+    || currentProviderAccountId !== expectedProviderAccountId
+    || currentAccount.provider_account_generation !== expectedAccount.provider_account_generation
+  ) {
+    throw new FintechServiceError(
+      "Release blocked: Stripe connected-account destination changed before transfer.",
+      409
+    );
+  }
+
+  const environmentBlocker = connectedAccountEnvironmentBlocker(currentAccount);
+  if (environmentBlocker) {
+    throw new FintechServiceError(`Release blocked: ${environmentBlocker}`, 409);
+  }
+
+  if (
+    !currentAccount.charges_enabled
+    || !currentAccount.payouts_enabled
+    || currentAccount.onboarding_status !== "verified"
+    || !isPayoutReadinessEligible(currentAccount.payout_readiness_status)
+  ) {
+    throw new FintechServiceError(
+      "Release blocked: Stripe connected-account readiness changed before transfer.",
+      409
+    );
+  }
+
+  return currentProviderAccountId;
+}
+
 async function syncConnectedAccountState(
   supabase: SupabaseClient,
   account: ConnectedAccountRow,
@@ -1870,18 +1966,23 @@ async function syncConnectedAccountState(
   const requirementsCurrentlyDue = normalizeRequirementList(account.requirements_currently_due as string[] | string | null);
   const requirementsPastDue = normalizeRequirementList(account.requirements_past_due as string[] | string | null);
   const effectiveDisabledReason = account.disabled_reason ?? account.provider_payout_block_reason;
-  const internallyApproved = isConnectedAccountInternallyApproved(account);
+  const environmentBlocker = connectedAccountEnvironmentBlocker(account);
+  const internallyApproved = isConnectedAccountInternallyApproved(account) && !environmentBlocker;
   const legalReadinessStatus = internallyApproved ? account.legal_readiness_status : legalState.legalReadinessStatus;
-  const payoutReadinessStatus = internallyApproved ? account.payout_readiness_status : determinePayoutReadiness({
-    onboardingStatus: account.onboarding_status,
-    legalReadinessStatus,
-    taxReadinessStatus: account.tax_readiness_status,
-    chargesEnabled: account.charges_enabled,
-    payoutsEnabled: account.payouts_enabled,
-    requirementsCurrentlyDue,
-    requirementsPastDue,
-    disabledReason: effectiveDisabledReason
-  });
+  const payoutReadinessStatus = environmentBlocker
+    ? "blocked"
+    : internallyApproved
+      ? account.payout_readiness_status
+      : determinePayoutReadiness({
+        onboardingStatus: account.onboarding_status,
+        legalReadinessStatus,
+        taxReadinessStatus: account.tax_readiness_status,
+        chargesEnabled: account.charges_enabled,
+        payoutsEnabled: account.payouts_enabled,
+        requirementsCurrentlyDue,
+        requirementsPastDue,
+        disabledReason: effectiveDisabledReason
+      });
 
   const updatedAt = new Date().toISOString();
   if (
@@ -1922,6 +2023,10 @@ async function syncConnectedAccountState(
 
   if (account.provider === "stripe_connect" && account.provider_account_id && !account.charges_enabled && !account.payouts_enabled) {
     missingSteps.push("Stripe account verification is still pending.");
+  }
+
+  if (environmentBlocker) {
+    missingSteps.push(environmentBlocker);
   }
 
   if (effectiveDisabledReason) {
@@ -2007,6 +2112,7 @@ function stripePayoutApprovalBlockers(account: ConnectedAccountRow | null) {
   const currentlyDue = normalizeRequirementList(account.requirements_currently_due as string[] | string | null);
   const pastDue = normalizeRequirementList(account.requirements_past_due as string[] | string | null);
   const disabledReason = (account.disabled_reason ?? account.provider_payout_block_reason)?.trim();
+  const environmentBlocker = connectedAccountEnvironmentBlocker(account);
 
   if (!account.provider_account_id?.trim()) {
     blockers.push("Stripe payout account has not been created.");
@@ -2028,6 +2134,9 @@ function stripePayoutApprovalBlockers(account: ConnectedAccountRow | null) {
   }
   if (disabledReason) {
     blockers.push(`Stripe disabled reason: ${disabledReason}.`);
+  }
+  if (environmentBlocker) {
+    blockers.push(environmentBlocker);
   }
 
   return blockers;
@@ -2052,10 +2161,12 @@ function buildBarberStripePayoutReadinessView(
   const payoutsEnabled = Boolean(account?.payouts_enabled);
   const detailsSubmitted = inferStripeDetailsSubmitted(account);
   const disabledReason = (account?.disabled_reason ?? account?.provider_payout_block_reason)?.trim() || null;
+  const environmentBlocker = connectedAccountEnvironmentBlocker(account);
   const stripeBlockers = [
     ...pastDue,
     ...currentlyDue,
-    ...(disabledReason ? [disabledReason] : [])
+    ...(disabledReason ? [disabledReason] : []),
+    ...(environmentBlocker ? [environmentBlocker] : [])
   ];
   const canReceivePayouts = Boolean(
     hasAccount
@@ -2083,6 +2194,25 @@ function buildBarberStripePayoutReadinessView(
       requiresOnboarding: true,
       displayStatus: "no_account",
       displayMessage: "Stripe payout account has not been created."
+    };
+  }
+
+  if (environmentBlocker) {
+    return {
+      barberId,
+      stripeConnectAccountId,
+      hasAccount,
+      chargesEnabled,
+      payoutsEnabled,
+      detailsSubmitted,
+      currentlyDue,
+      eventuallyDue,
+      pastDue,
+      disabledReason,
+      canReceivePayouts: false,
+      requiresOnboarding: false,
+      displayStatus: "restricted",
+      displayMessage: environmentBlocker
     };
   }
 
@@ -2312,6 +2442,7 @@ async function syncConnectedAccountFromStripe(
   options?: {
     eventId?: string | null;
     eventType?: string | null;
+    providerEnvironment?: ActiveStripeConnectEnvironment;
     payoutBlockClearCandidate?: {
       eventType: "account.external_account.created" | "account.external_account.updated";
       externalAccountId: string;
@@ -2324,6 +2455,28 @@ async function syncConnectedAccountFromStripe(
     markDashboardAccessed?: boolean;
   }
 ) {
+  const providerEnvironment = options?.providerEnvironment ?? requiredStripeConnectEnvironment();
+  if (account.provider_environment && account.provider_environment !== providerEnvironment) {
+    throw new FintechServiceError(
+      `Stripe connected account is ${account.provider_environment} while this runtime is ${providerEnvironment}.`,
+      409
+    );
+  }
+
+  const bindingResult = await supabase
+    .rpc("register_connected_account_provider_binding", {
+      p_connected_account_id: account.id,
+      p_provider_account_id: stripeAccount.id,
+      p_provider_environment: providerEnvironment,
+      p_binding_generation: account.provider_account_generation
+    })
+    .maybeSingle();
+
+  if (bindingResult.error || !bindingResult.data) {
+    throw new FintechServiceError("Unable to register the Stripe connected-account binding.", 500);
+  }
+
+  account = bindingResult.data as ConnectedAccountRow;
   const now = new Date().toISOString();
   const requirementsCurrentlyDue = normalizeRequirementList((stripeAccount.requirements?.currently_due ?? []) as string[]);
   const requirementsEventuallyDue = normalizeRequirementList(
@@ -2352,6 +2505,7 @@ async function syncConnectedAccountFromStripe(
     .update({
       provider: "stripe_connect",
       provider_account_id: stripeAccount.id,
+      provider_environment: providerEnvironment,
       onboarding_status: onboardingStatus,
       tax_readiness_status: inferredStatuses.taxReadinessStatus,
       charges_enabled: Boolean(stripeAccount.charges_enabled),
@@ -2452,19 +2606,32 @@ async function provisionStripeConnectedAccountForSubject(
   const account = await ensureConnectedAccountForSubject(supabase, subject);
 
   try {
+    const providerEnvironment = requiredStripeConnectEnvironment();
+    if (account.provider_environment && account.provider_environment !== providerEnvironment) {
+      throw new FintechServiceError(
+        `Stripe connected account is ${account.provider_environment} while this runtime is ${providerEnvironment}.`,
+        409
+      );
+    }
+
     if (account.provider_account_id) {
       const stripeAccount = await retrieveStripeConnectedAccount(account.provider_account_id);
-      return syncConnectedAccountFromStripe(supabase, account, stripeAccount);
+      return syncConnectedAccountFromStripe(supabase, account, stripeAccount, { providerEnvironment });
     }
 
     const stripeAccount = await createStripeConnectedAccount({
       subjectType: subject.subjectType,
       email: subject.email,
       displayName: subject.displayName,
-      metadata: buildStripeMetadata(subject)
+      metadata: buildStripeMetadata(subject),
+      idempotencyKey: buildStripeConnectedAccountIdempotencyKey({
+        connectedAccountId: account.id,
+        generation: account.provider_account_generation,
+        environment: providerEnvironment
+      })
     });
 
-    return syncConnectedAccountFromStripe(supabase, account, stripeAccount);
+    return syncConnectedAccountFromStripe(supabase, account, stripeAccount, { providerEnvironment });
   } catch (error) {
     throw toFintechServiceError(error, "Unable to provision the Stripe connected account.");
   }
@@ -3677,6 +3844,8 @@ function evaluateRoutingExecutionReadiness(
       targetAmount: target.amount,
       processorChargeId: routing.processor_charge_id,
       targetProviderAccountId: target.connectedAccount?.provider_account_id ?? null,
+      targetProviderEnvironment: target.connectedAccount?.provider_environment ?? null,
+      runtimeProviderEnvironment: getStripeConnectEnvironment().mode,
       blockedReason: routing.blocked_reason
     }))
     .filter(Boolean) as string[];
@@ -4596,6 +4765,8 @@ async function executeTransferForRoutingTarget(
     targetAmount: target.amount,
     processorChargeId: routing.processor_charge_id,
     targetProviderAccountId: target.connectedAccount?.provider_account_id ?? null,
+    targetProviderEnvironment: target.connectedAccount?.provider_environment ?? null,
+    runtimeProviderEnvironment: getStripeConnectEnvironment().mode,
     blockedReason: routing.blocked_reason
   });
   const now = new Date().toISOString();
@@ -6119,10 +6290,14 @@ export async function releaseFreelanceRoutingPayout(input: {
 
   let transfer: { id: string };
   try {
+    const destinationAccountId = await requireCurrentStripeTransferDestination(
+      supabase,
+      context.connectedAccount!
+    );
     transfer = await createStripeTransfer({
       amount: eligibility.releaseAmount,
       currency: context.routing.currency,
-      destinationAccountId: context.connectedAccount!.provider_account_id!,
+      destinationAccountId,
       transferGroup: `bvrb3r:freelance:${context.routing.payment_id}`,
       metadata: {
         phase: "phase_1_freelance_manual_release",
@@ -6624,19 +6799,16 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
   const barber = actor.barber!;
   const memberships = await loadMembershipsForBarber(barber.profile_id, supabase);
   const membershipShopContexts = await loadMembershipShopContexts(memberships, supabase);
-  const shopIds = [...new Set(memberships.flatMap((membership) => [
-    membership.location_id,
-    membership.shop_id
-  ]).filter((value): value is string => Boolean(value)))];
+  const shopLocationIds = collectConnectedAccountLocationIds(memberships, membershipShopContexts);
   await ensureConnectedAccounts(supabase, {
     barberIds: [barber.id],
-    shopIds,
+    shopIds: shopLocationIds,
     createdBy: actor.profile.id
   });
 
   const [accounts, acceptances] = await Promise.all([
-    loadConnectedAccountsForScope(supabase, { barberIds: [barber.id], shopIds }),
-    loadLegalAcceptancesForScope(supabase, { barberIds: [barber.id], shopIds })
+    loadConnectedAccountsForScope(supabase, { barberIds: [barber.id], shopIds: shopLocationIds }),
+    loadLegalAcceptancesForScope(supabase, { barberIds: [barber.id], shopIds: shopLocationIds })
   ]);
   const syncedStates = await Promise.all(accounts.map((account) => syncConnectedAccountState(supabase, account, acceptances)));
   const connectedAccountState = syncedStates.find((state) => state.row.subject_type === "barber" && state.row.barber_id === barber.id);
@@ -6708,6 +6880,7 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
   );
   const membershipsView = memberships.map((membership) => {
     const context = membershipShopContexts.get(membership.id);
+    const connectedAccountLocationId = resolveMembershipConnectedAccountLocationId(membership, context);
     const view = mapMembershipCompensationView({
       membership,
       barber,
@@ -6716,7 +6889,9 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
     });
     return {
       ...view,
-      shopAccount: shopStateById.get(view.shopId) ? mapConnectedAccountView(shopStateById.get(view.shopId)!) : null
+      shopAccount: connectedAccountLocationId && shopStateById.get(connectedAccountLocationId)
+        ? mapConnectedAccountView(shopStateById.get(connectedAccountLocationId)!)
+        : null
     } satisfies BarberFintechMembershipView;
   });
   const latestBarberAcceptances = latestAcceptancesForSubject("barber", barber.id, acceptances).map(mapAgreementView);
@@ -7407,12 +7582,17 @@ function normalizedConnectedPayoutStatus(status: string | null | undefined) {
   return "pending" as const;
 }
 
-async function loadConnectedAccountForWebhook(supabase: SupabaseClient, providerAccountId: string) {
+async function loadConnectedAccountForWebhook(
+  supabase: SupabaseClient,
+  providerAccountId: string,
+  providerEnvironment: ActiveStripeConnectEnvironment
+) {
   const accountResult = await supabase
     .from("connected_accounts")
     .select(CONNECTED_ACCOUNT_SELECT)
     .eq("provider", "stripe_connect")
     .eq("provider_account_id", providerAccountId)
+    .eq("provider_environment", providerEnvironment)
     .maybeSingle();
 
   if (accountResult.error) {
@@ -7449,6 +7629,7 @@ async function syncConnectedAccountWebhookState(
   const state = await syncConnectedAccountFromStripe(supabase, account, stripeAccount, {
     eventId: event.id,
     eventType: event.type,
+    providerEnvironment: event.livemode ? "live" : "test",
     payoutBlockClearCandidate: isClearCandidate ? {
       eventType: event.type as "account.external_account.created" | "account.external_account.updated",
       externalAccountId,
@@ -7678,6 +7859,16 @@ export async function processStripeConnectWebhook(
   }
 
   try {
+    const runtimeEnvironment = requiredStripeConnectEnvironment();
+    const eventEnvironment: ActiveStripeConnectEnvironment = event.livemode ? "live" : "test";
+    if (eventEnvironment !== runtimeEnvironment) {
+      await completeStripeWebhookAudit(supabase, audit.row.id, {
+        processingStatus: "ignored",
+        attemptCount: audit.row.attempt_count
+      });
+      return { received: true, duplicate: false, status: "ignored" };
+    }
+
     if (!event.account) {
       throw new FintechServiceError("Stripe Connect events must include a connected account identifier.", 400);
     }
@@ -7691,7 +7882,7 @@ export async function processStripeConnectWebhook(
       return { received: true, duplicate: false, status: "ignored" };
     }
 
-    let account = await loadConnectedAccountForWebhook(supabase, event.account);
+    let account = await loadConnectedAccountForWebhook(supabase, event.account, eventEnvironment);
     if (eventFamily === "account_state") {
       const state = await syncConnectedAccountWebhookState(supabase, account, event);
       await completeStripeWebhookAudit(supabase, audit.row.id, {
@@ -7714,7 +7905,8 @@ export async function processStripeConnectWebhook(
     ]);
     let state = await syncConnectedAccountFromStripe(supabase, account, stripeAccount, {
       eventId: event.id,
-      eventType: event.type
+      eventType: event.type,
+      providerEnvironment: eventEnvironment
     });
     account = await persistConnectedAccountPayout(supabase, state.row, event, payout);
     if (account.id !== state.row.id || account.provider_payout_block_reason !== state.row.provider_payout_block_reason) {
@@ -7895,107 +8087,5 @@ export async function updateMembershipCompensation(
       barberName: (profileResult.data as ProfileRow).full_name ?? (profileResult.data as ProfileRow).email,
       context: membershipShopContexts.get(membership.id)
     })
-  };
-}
-
-export async function updateConnectedAccountStatus(
-  user: UserAccount,
-  accountId: string,
-  input: ConnectedAccountStatusInput
-) {
-  const supabase = getSupabaseOrThrow();
-  const actor = await resolveActor(user, supabase);
-  assertManagementActor(actor);
-
-  const accountResult = await supabase
-    .from("connected_accounts")
-    .select(CONNECTED_ACCOUNT_SELECT)
-    .eq("id", accountId)
-    .maybeSingle();
-
-  if (accountResult.error) {
-    throw new FintechServiceError("Unable to load the connected account.", 500);
-  }
-
-  if (!accountResult.data) {
-    throw new FintechServiceError("Connected account not found.", 404);
-  }
-
-  const account = accountResult.data as ConnectedAccountRow;
-  const scopedLocationId = account.shop_id;
-  if (!scopedLocationId && account.barber_id && actor.role !== "owner") {
-    const barberLookup = await supabase
-      .from("barbers")
-      .select("profile_id")
-      .eq("id", account.barber_id)
-      .maybeSingle();
-
-    if (barberLookup.error || !barberLookup.data) {
-      throw new FintechServiceError("Unable to scope the connected account.", 500);
-    }
-
-    const membershipLookup = await supabase
-      .from("staff_locations")
-      .select("location_id")
-      .eq("profile_id", (barberLookup.data as { profile_id: string }).profile_id)
-      .order("location_id");
-
-    if (membershipLookup.error) {
-      throw new FintechServiceError("Unable to scope the connected account.", 500);
-    }
-
-    const membershipLocationIds = ((membershipLookup.data ?? []) as Array<{ location_id: string }>).map((row) => row.location_id);
-    if (!membershipLocationIds.some((locationId) => isLocationReadableByActor(actor, locationId))) {
-      throw new FintechServiceError("This connected account is outside the viewer's shop scope.", 403);
-    }
-  }
-
-  if (scopedLocationId && !isLocationReadableByActor(actor, scopedLocationId)) {
-    throw new FintechServiceError("This connected account is outside the viewer's shop scope.", 403);
-  }
-
-  const normalized = normalizeConnectedAccountStatus(input);
-  const updatedAt = new Date().toISOString();
-  const updateResult = await supabase
-    .from("connected_accounts")
-    .update({
-      provider: normalized.provider,
-      provider_account_id: normalized.providerAccountId,
-      onboarding_status: normalized.onboardingStatus,
-      tax_readiness_status: normalized.taxReadinessStatus,
-      charges_enabled: normalized.chargesEnabled,
-      payouts_enabled: normalized.payoutsEnabled,
-      requirements_currently_due: normalized.requirementsCurrentlyDue,
-      requirements_eventually_due: normalized.requirementsEventuallyDue,
-      requirements_past_due: normalized.requirementsPastDue,
-      disabled_reason: normalized.disabledReason,
-      last_checked_at: updatedAt,
-      updated_at: updatedAt
-    })
-    .eq("id", account.id);
-
-  if (updateResult.error) {
-    throw new FintechServiceError("Unable to update the connected account readiness.", 500);
-  }
-
-  const [accounts, acceptances] = await Promise.all([
-    loadConnectedAccountsForScope(supabase, {
-      barberIds: account.barber_id ? [account.barber_id] : [],
-      shopIds: account.shop_id ? [account.shop_id] : []
-    }),
-    loadLegalAcceptancesForScope(supabase, {
-      barberIds: account.barber_id ? [account.barber_id] : [],
-      shopIds: account.shop_id ? [account.shop_id] : []
-    })
-  ]);
-  const syncedStates = await Promise.all(accounts.map((row) => syncConnectedAccountState(supabase, row, acceptances)));
-  const currentState = syncedStates.find((state) => state.row.id === account.id);
-
-  if (!currentState) {
-    throw new FintechServiceError("Unable to rebuild the connected account state.", 500);
-  }
-
-  return {
-    account: mapConnectedAccountView(currentState)
   };
 }

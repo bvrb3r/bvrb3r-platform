@@ -142,7 +142,16 @@ export type StripeConnectedAccountInput = {
   displayName: string;
   country?: string | null;
   metadata: Record<string, string>;
+  idempotencyKey: string;
 };
+
+export function buildStripeConnectedAccountIdempotencyKey(input: {
+  connectedAccountId: string;
+  generation: number;
+  environment: Exclude<StripeConnectEnvironmentMode, "missing">;
+}) {
+  return `bvrb3r:connect-account:${input.connectedAccountId}:${input.generation}:${input.environment}`;
+}
 
 export async function createStripeConnectedAccount(input: StripeConnectedAccountInput) {
   const stripe = getStripeConnectClient();
@@ -161,6 +170,8 @@ export async function createStripeConnectedAccount(input: StripeConnectedAccount
       transfers: { requested: true }
     },
     metadata: input.metadata
+  }, {
+    idempotencyKey: input.idempotencyKey
   });
 }
 

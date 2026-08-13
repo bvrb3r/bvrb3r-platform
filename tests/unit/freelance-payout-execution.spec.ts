@@ -36,6 +36,7 @@ vi.mock("@/lib/stripe/connect", () => ({
   StripeConnectError: class StripeConnectError extends Error {
     status = 502;
   },
+  buildStripeConnectedAccountIdempotencyKey: vi.fn(),
   buildStripeReturnUrl: vi.fn(),
   createStripeConnectedAccount: vi.fn(),
   createStripeDashboardLoginLink: vi.fn(),
@@ -171,6 +172,8 @@ function createBaseTables(overrides: Partial<Record<string, Row[]>> = {}) {
       shop_id: null,
       provider: "stripe_connect",
       provider_account_id: "acct_barber",
+      provider_environment: "test",
+      provider_account_generation: 0,
       onboarding_status: "verified",
       payout_readiness_status: "ready",
       legal_readiness_status: "accepted",
@@ -685,6 +688,22 @@ describe("freelance payout execution", () => {
     expect(result.displayStatus).toBe("ready");
     expect(result.canReceivePayouts).toBe(true);
     expect(result.displayMessage).toBe("Payout account ready.");
+  });
+
+  it("rejects a legacy manual provider as Stripe payout readiness", async () => {
+    const supabase = createSupabaseStub(createBaseTables({
+      connected_accounts: [{
+        ...createBaseTables().connected_accounts[0],
+        provider: "manual"
+      }]
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await getBarberStripePayoutReadiness(BARBER_ID);
+
+    expect(result.canReceivePayouts).toBe(false);
+    expect(result.displayStatus).toBe("restricted");
+    expect(result.displayMessage).toMatch(/provider is not Stripe Connect/i);
   });
 
   it("lists ready freelance POS payouts without requiring an appointment", async () => {
@@ -1501,6 +1520,191 @@ describe("freelance payout execution", () => {
     expect(result.eligibility.reasons).toContain("Missing: external_account.");
     expect(tables.payout_executions).toHaveLength(0);
     expect(tables.payment_routing_records[0].released_at).toBeNull();
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("does not create a Stripe transfer for a legacy manual provider", async () => {
+    const tables = createBaseTables({
+      connected_accounts: [{
+        ...createBaseTables().connected_accounts[0],
+        provider: "manual"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.eligibility.reasons.join(" ")).toMatch(/provider is not Stripe Connect/i);
+    expect(tables.payout_executions).toHaveLength(0);
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("revalidates the provider immediately before a freelance Stripe transfer", async () => {
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+    retrieveStripePlatformBalanceMock.mockImplementation(async () => {
+      tables.connected_accounts[0].provider = "manual";
+      return {
+        available: [{ amount: 10000, currency: "usd" }],
+        pending: []
+      };
+    });
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(tables.payout_executions[0]).toMatchObject({
+      execution_status: "failed",
+      failure_reason: "Release blocked: Stripe payout account provider is not Stripe Connect."
+    });
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("revalidates the environment immediately before a freelance Stripe transfer", async () => {
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+    retrieveStripePlatformBalanceMock.mockImplementation(async () => {
+      tables.connected_accounts[0].provider_environment = "live";
+      return {
+        available: [{ amount: 10000, currency: "usd" }],
+        pending: []
+      };
+    });
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(tables.payout_executions[0]).toMatchObject({
+      execution_status: "failed",
+      failure_reason: "Release blocked: Stripe connected account is live while this runtime is test."
+    });
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks a missing connected-account environment immediately before transfer", async () => {
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+    retrieveStripePlatformBalanceMock.mockImplementation(async () => {
+      const connectedAccounts = tables.connected_accounts as Row[];
+      connectedAccounts[0] = {
+        ...connectedAccounts[0],
+        provider_environment: null
+      };
+      return {
+        available: [{ amount: 10000, currency: "usd" }],
+        pending: []
+      };
+    });
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(tables.payout_executions[0]).toMatchObject({
+      execution_status: "failed",
+      failure_reason: "Release blocked: Stripe connected-account environment has not been classified."
+    });
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks an unidentified runtime environment immediately before transfer", async () => {
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+    retrieveStripePlatformBalanceMock.mockImplementation(async () => {
+      getStripeConnectEnvironmentMock.mockReturnValue({
+        mode: "missing",
+        label: "Stripe key mode could not be verified.",
+        blocksLivePayouts: true
+      });
+      return {
+        available: [{ amount: 10000, currency: "usd" }],
+        pending: []
+      };
+    });
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(tables.payout_executions[0]).toMatchObject({
+      execution_status: "failed",
+      failure_reason: "Release blocked: Stripe Connect runtime environment could not be verified."
+    });
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks a replaced Stripe destination immediately before transfer", async () => {
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+    retrieveStripePlatformBalanceMock.mockImplementation(async () => {
+      tables.connected_accounts[0] = {
+        ...tables.connected_accounts[0],
+        provider_account_id: "acct_replaced"
+      };
+      return {
+        available: [{ amount: 10000, currency: "usd" }],
+        pending: []
+      };
+    });
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(tables.payout_executions[0]).toMatchObject({
+      execution_status: "failed",
+      failure_reason: "Release blocked: Stripe connected-account destination changed before transfer."
+    });
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks a provider-binding generation change immediately before transfer", async () => {
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+    retrieveStripePlatformBalanceMock.mockImplementation(async () => {
+      tables.connected_accounts[0] = {
+        ...tables.connected_accounts[0],
+        provider_account_generation: 1
+      };
+      return {
+        available: [{ amount: 10000, currency: "usd" }],
+        pending: []
+      };
+    });
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(tables.payout_executions[0]).toMatchObject({
+      execution_status: "failed",
+      failure_reason: "Release blocked: Stripe connected-account destination changed before transfer."
+    });
     expect(createStripeTransferMock).not.toHaveBeenCalled();
   });
 

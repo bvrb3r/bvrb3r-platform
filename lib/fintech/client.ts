@@ -47,9 +47,6 @@ type LegalAcceptanceResponse = {
   acceptance: LegalAcceptanceView;
   accounts: ConnectedAccountReadinessView[];
 };
-type UpdateConnectedAccountResponse = {
-  account: ConnectedAccountReadinessView;
-};
 type UpdateMembershipCompensationResponse = {
   membership: MembershipCompensationView;
 };
@@ -243,44 +240,6 @@ export function useRecordLegalAcceptanceMutation() {
       requestJson<LegalAcceptanceResponse>("/api/fintech/legal-acceptance", {
         method: "POST",
         body: JSON.stringify(input)
-      }),
-    onSuccess: async () => {
-      await invalidateFintechQueries(queryClient);
-    }
-  });
-}
-
-export function useUpdateConnectedAccountStatusMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (input: {
-      accountId: string;
-      provider?: "stripe_connect" | "manual";
-      providerAccountId?: string | null;
-      onboardingStatus: "not_started" | "invited" | "pending" | "submitted" | "restricted" | "verified";
-      taxReadinessStatus: "pending" | "submitted" | "verified";
-      chargesEnabled?: boolean;
-      payoutsEnabled?: boolean;
-      requirementsCurrentlyDue?: string[] | string | null;
-      requirementsEventuallyDue?: string[] | string | null;
-      requirementsPastDue?: string[] | string | null;
-      disabledReason?: string | null;
-    }) =>
-      requestJson<UpdateConnectedAccountResponse>(`/api/operations/fintech/accounts/${input.accountId}/status`, {
-        method: "POST",
-        body: JSON.stringify({
-          provider: input.provider,
-          providerAccountId: input.providerAccountId,
-          onboardingStatus: input.onboardingStatus,
-          taxReadinessStatus: input.taxReadinessStatus,
-          chargesEnabled: input.chargesEnabled,
-          payoutsEnabled: input.payoutsEnabled,
-          requirementsCurrentlyDue: input.requirementsCurrentlyDue,
-          requirementsEventuallyDue: input.requirementsEventuallyDue,
-          requirementsPastDue: input.requirementsPastDue,
-          disabledReason: input.disabledReason
-        })
       }),
     onSuccess: async () => {
       await invalidateFintechQueries(queryClient);

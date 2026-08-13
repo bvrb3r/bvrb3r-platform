@@ -58,19 +58,6 @@ export type CompensationAssignmentInput = {
   payoutBlockReason?: string | null;
 };
 
-export type ConnectedAccountStatusInput = {
-  provider?: FintechProvider;
-  providerAccountId?: string | null;
-  onboardingStatus: FintechOnboardingStatus;
-  taxReadinessStatus: FintechTaxReadinessStatus;
-  chargesEnabled?: boolean;
-  payoutsEnabled?: boolean;
-  requirementsCurrentlyDue?: string[] | string | null;
-  requirementsEventuallyDue?: string[] | string | null;
-  requirementsPastDue?: string[] | string | null;
-  disabledReason?: string | null;
-};
-
 export type LegalAcceptanceInput = {
   agreementType: AgreementType;
   agreementVersion?: string | null;
@@ -138,6 +125,8 @@ export type PayoutExecutionEligibilityInput = {
   targetAmount: number;
   processorChargeId?: string | null;
   targetProviderAccountId?: string | null;
+  targetProviderEnvironment?: "live" | "test" | null;
+  runtimeProviderEnvironment?: "live" | "test" | "missing" | null;
   blockedReason?: string | null;
 };
 
@@ -403,21 +392,6 @@ export function normalizeCompensationAssignment(input: CompensationAssignmentInp
   };
 }
 
-export function normalizeConnectedAccountStatus(input: ConnectedAccountStatusInput) {
-  return {
-    provider: input.provider ?? ("stripe_connect" as const),
-    providerAccountId: input.providerAccountId?.trim() || null,
-    onboardingStatus: input.onboardingStatus,
-    taxReadinessStatus: input.taxReadinessStatus,
-    chargesEnabled: input.chargesEnabled ?? false,
-    payoutsEnabled: input.payoutsEnabled ?? false,
-    requirementsCurrentlyDue: normalizeRequirementList(input.requirementsCurrentlyDue),
-    requirementsEventuallyDue: normalizeRequirementList(input.requirementsEventuallyDue),
-    requirementsPastDue: normalizeRequirementList(input.requirementsPastDue),
-    disabledReason: input.disabledReason?.trim() || null
-  };
-}
-
 export function normalizeLegalAcceptance(input: LegalAcceptanceInput) {
   const agreementType = input.agreementType;
   const agreementVersion = input.agreementVersion?.trim() || CURRENT_AGREEMENT_VERSIONS[agreementType];
@@ -620,6 +594,18 @@ export function determinePayoutExecutionBlockReason(input: PayoutExecutionEligib
 
   if (!input.targetProviderAccountId?.trim()) {
     return "A Stripe connected account is required before funds can be transferred.";
+  }
+
+  if (!input.targetProviderEnvironment) {
+    return "The Stripe connected-account environment is not classified.";
+  }
+
+  if (!input.runtimeProviderEnvironment || input.runtimeProviderEnvironment === "missing") {
+    return "The Stripe runtime environment could not be verified.";
+  }
+
+  if (input.targetProviderEnvironment !== input.runtimeProviderEnvironment) {
+    return `The Stripe connected account is ${input.targetProviderEnvironment} while this runtime is ${input.runtimeProviderEnvironment}.`;
   }
 
   return null;

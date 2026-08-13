@@ -46,4 +46,25 @@ describe("stripe connect helpers", () => {
       blocksLivePayouts: true
     });
   });
+
+  it("builds account-creation idempotency keys from mapping generation and environment", async () => {
+    const { buildStripeConnectedAccountIdempotencyKey } = await import("@/lib/stripe/connect");
+
+    const firstGeneration = buildStripeConnectedAccountIdempotencyKey({
+      connectedAccountId: "82e6e619-fe69-49e1-90a1-26b5559a846e",
+      generation: 1,
+      environment: "live"
+    });
+    expect(firstGeneration).toBe("bvrb3r:connect-account:82e6e619-fe69-49e1-90a1-26b5559a846e:1:live");
+    expect(buildStripeConnectedAccountIdempotencyKey({
+      connectedAccountId: "82e6e619-fe69-49e1-90a1-26b5559a846e",
+      generation: 1,
+      environment: "live"
+    })).toBe(firstGeneration);
+    expect(buildStripeConnectedAccountIdempotencyKey({
+      connectedAccountId: "82e6e619-fe69-49e1-90a1-26b5559a846e",
+      generation: 2,
+      environment: "live"
+    })).not.toBe(firstGeneration);
+  });
 });
