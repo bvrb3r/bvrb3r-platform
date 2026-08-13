@@ -47,6 +47,7 @@ export type GiftCardPayoutConnectedAccount = {
   barberId: string;
   provider: string;
   providerAccountId: string | null;
+  providerEnvironment: "live" | "test" | null;
   onboardingStatus: string;
   payoutReadinessStatus: string;
   legalReadinessStatus: string;
@@ -174,6 +175,7 @@ type DatabaseConnectedAccountRow = {
   barber_id: string;
   provider: string;
   provider_account_id: string | null;
+  provider_environment: "live" | "test" | null;
   onboarding_status: string;
   payout_readiness_status: string;
   legal_readiness_status: string;
@@ -219,6 +221,7 @@ function mapConnectedAccount(row: DatabaseConnectedAccountRow): GiftCardPayoutCo
     barberId: row.barber_id,
     provider: row.provider,
     providerAccountId: row.provider_account_id,
+    providerEnvironment: row.provider_environment,
     onboardingStatus: row.onboarding_status,
     payoutReadinessStatus: row.payout_readiness_status,
     legalReadinessStatus: row.legal_readiness_status,
@@ -256,7 +259,7 @@ export function createGiftCardPayoutRepository(supabase: SupabaseAdmin): GiftCar
           .in("id", applicationIds),
         supabase.from("appointments").select("id, status, completed_at").in("id", appointmentIds),
         supabase.from("connected_accounts")
-          .select("id, barber_id, provider, provider_account_id, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled")
+          .select("id, barber_id, provider, provider_account_id, provider_environment, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled")
           .eq("subject_type", "barber")
           .in("barber_id", barberIds)
       ]);
@@ -463,12 +466,18 @@ function candidateIntegrityReason(candidate: GiftCardPayoutCandidate) {
   return null;
 }
 
-function databaseAccountReadinessReason(candidate: GiftCardPayoutCandidate) {
+function databaseAccountReadinessReason(
+  candidate: GiftCardPayoutCandidate,
+  providerEnvironment: StripeConnectEnvironmentMode
+) {
   const account = candidate.connectedAccount;
   if (!account) return "connected_account_missing";
   if (account.barberId !== candidate.obligation.barberId) return "connected_account_barber_mismatch";
   if (account.provider !== "stripe_connect") return "connected_account_provider_invalid";
   if (!account.providerAccountId?.trim()) return "connected_account_provider_id_missing";
+  if (!account.providerEnvironment) return "connected_account_environment_missing";
+  if (providerEnvironment === "missing") return "stripe_runtime_environment_missing";
+  if (account.providerEnvironment !== providerEnvironment) return "connected_account_environment_mismatch";
   if (account.onboardingStatus !== "verified") return "connected_account_onboarding_incomplete";
   if (account.payoutReadinessStatus !== "ready") return "connected_account_payout_not_ready";
   if (account.legalReadinessStatus !== "accepted") return "connected_account_legal_incomplete";
@@ -730,7 +739,7 @@ async function processCandidate(input: {
     return finalizePaid(repository, obligation.id, now, true, transfer.id);
   }
 
-  const accountReason = databaseAccountReadinessReason(candidate);
+  const accountReason = databaseAccountReadinessReason(candidate, provider.environmentMode);
   if (accountReason) return { obligationId: obligation.id, outcome: "not_ready", reason: accountReason };
   const connectedAccount = candidate.connectedAccount!;
   const currentAccountId = connectedAccount.providerAccountId!;

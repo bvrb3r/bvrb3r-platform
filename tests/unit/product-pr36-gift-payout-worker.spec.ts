@@ -40,6 +40,7 @@ function readyCandidate(overrides: Partial<GiftCardPayoutCandidate> = {}): GiftC
       barberId: "barber-1",
       provider: "stripe_connect",
       providerAccountId: "acct_ready_1",
+      providerEnvironment: "test",
       onboardingStatus: "verified",
       payoutReadinessStatus: "ready",
       legalReadinessStatus: "accepted",
@@ -98,6 +99,7 @@ function createRepository(
 }
 
 function createProvider(options: {
+  environmentMode?: GiftCardPayoutProvider["environmentMode"];
   availableCents?: number;
   order?: string[];
   account?: Partial<Awaited<ReturnType<GiftCardPayoutProvider["inspectConnectedAccount"]>>>;
@@ -143,7 +145,7 @@ function createProvider(options: {
     }
   }));
   const provider: GiftCardPayoutProvider = {
-    environmentMode: "test",
+    environmentMode: options.environmentMode ?? "test",
     inspectConnectedAccount,
     availableCents,
     createTransfer,
@@ -284,6 +286,69 @@ describe("Product PR36 gift-card payout worker", () => {
     expect(providerState.createTransfer).not.toHaveBeenCalled();
   });
 
+  it("fails closed before provider calls when the connected-account environment is missing", async () => {
+    const base = readyCandidate();
+    const candidate = readyCandidate({
+      connectedAccount: { ...base.connectedAccount!, providerEnvironment: null }
+    });
+    const repositoryState = createRepository(candidate);
+    const providerState = createProvider();
+    const result = await runGiftCardPayoutWorker({
+      repository: repositoryState.repository,
+      provider: providerState.provider,
+      now: () => new Date(NOW)
+    });
+
+    expect(result).toMatchObject({ notReady: 1, paid: 0 });
+    expect(result.items[0]).toMatchObject({ reason: "connected_account_environment_missing" });
+    expect(repositoryState.status()).toBe("ready_for_payout");
+    expect(providerState.inspectConnectedAccount).not.toHaveBeenCalled();
+    expect(providerState.availableCents).not.toHaveBeenCalled();
+    expect(providerState.createTransfer).not.toHaveBeenCalled();
+    expect(providerState.retrieveTransfer).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before provider calls when the stored and runtime environments differ", async () => {
+    const base = readyCandidate();
+    const candidate = readyCandidate({
+      connectedAccount: { ...base.connectedAccount!, providerEnvironment: "live" }
+    });
+    const repositoryState = createRepository(candidate);
+    const providerState = createProvider({ environmentMode: "test" });
+    const result = await runGiftCardPayoutWorker({
+      repository: repositoryState.repository,
+      provider: providerState.provider,
+      now: () => new Date(NOW)
+    });
+
+    expect(result).toMatchObject({ notReady: 1, paid: 0 });
+    expect(result.items[0]).toMatchObject({ reason: "connected_account_environment_mismatch" });
+    expect(repositoryState.status()).toBe("ready_for_payout");
+    expect(providerState.inspectConnectedAccount).not.toHaveBeenCalled();
+    expect(providerState.availableCents).not.toHaveBeenCalled();
+    expect(providerState.createTransfer).not.toHaveBeenCalled();
+    expect(providerState.retrieveTransfer).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before provider calls when the runtime environment cannot be identified", async () => {
+    const candidate = readyCandidate();
+    const repositoryState = createRepository(candidate);
+    const providerState = createProvider({ environmentMode: "missing" });
+    const result = await runGiftCardPayoutWorker({
+      repository: repositoryState.repository,
+      provider: providerState.provider,
+      now: () => new Date(NOW)
+    });
+
+    expect(result).toMatchObject({ notReady: 1, paid: 0 });
+    expect(result.items[0]).toMatchObject({ reason: "stripe_runtime_environment_missing" });
+    expect(repositoryState.status()).toBe("ready_for_payout");
+    expect(providerState.inspectConnectedAccount).not.toHaveBeenCalled();
+    expect(providerState.availableCents).not.toHaveBeenCalled();
+    expect(providerState.createTransfer).not.toHaveBeenCalled();
+    expect(providerState.retrieveTransfer).not.toHaveBeenCalled();
+  });
+
   it("does not create a transfer when Stripe platform balance is insufficient", async () => {
     const candidate = readyCandidate();
     const repositoryState = createRepository(candidate);
@@ -301,7 +366,14 @@ describe("Product PR36 gift-card payout worker", () => {
   });
 
   it("recovers a recorded processor release without creating a second transfer", async () => {
-    const candidate = readyCandidate();
+    const base = readyCandidate();
+    const candidate = readyCandidate({
+      connectedAccount: {
+        ...base.connectedAccount!,
+        providerAccountId: "acct_current_live_replacement",
+        providerEnvironment: "live"
+      }
+    });
     const evidence = payoutEvidence(candidate);
     const repositoryState = createRepository(candidate, { events: [evidence.plan, evidence.release] });
     const providerState = createProvider();

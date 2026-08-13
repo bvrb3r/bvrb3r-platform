@@ -4,6 +4,7 @@ type Row = Record<string, unknown>;
 
 const {
   createSupabaseAdminClientMock,
+  getStripeConnectEnvironmentMock,
   verifyStripeConnectWebhookEventMock,
   retrieveStripeConnectedAccountMock,
   retrieveStripeConnectedAccountPayoutMock,
@@ -14,6 +15,7 @@ const {
   processGiftCardStripeEventMock
 } = vi.hoisted(() => ({
   createSupabaseAdminClientMock: vi.fn(),
+  getStripeConnectEnvironmentMock: vi.fn(),
   verifyStripeConnectWebhookEventMock: vi.fn(),
   retrieveStripeConnectedAccountMock: vi.fn(),
   retrieveStripeConnectedAccountPayoutMock: vi.fn(),
@@ -37,6 +39,7 @@ vi.mock("@/lib/stripe/connect", async () => {
   const actual = await vi.importActual<typeof import("@/lib/stripe/connect")>("@/lib/stripe/connect");
   return {
     ...actual,
+    getStripeConnectEnvironment: getStripeConnectEnvironmentMock,
     verifyStripeConnectWebhookEvent: verifyStripeConnectWebhookEventMock,
     retrieveStripeConnectedAccount: retrieveStripeConnectedAccountMock,
     retrieveStripeConnectedAccountPayout: retrieveStripeConnectedAccountPayoutMock
@@ -79,6 +82,8 @@ function connectedAccountRow(): Row {
     shop_id: null,
     provider: "stripe_connect",
     provider_account_id: PROVIDER_ACCOUNT_ID,
+    provider_environment: "live",
+    provider_account_generation: 0,
     onboarding_status: "verified",
     payout_readiness_status: "ready",
     legal_readiness_status: "accepted",
@@ -161,6 +166,15 @@ function createSupabaseStub(accountOverrides: Row = {}) {
       rpc(name: string, values: Row) {
         return {
           async maybeSingle() {
+            if (name === "register_connected_account_provider_binding") {
+              account = {
+                ...account,
+                provider_account_id: values.p_provider_account_id,
+                provider_environment: values.p_provider_environment
+              };
+              return { data: { ...account }, error: null };
+            }
+
             if (name === "clear_connected_account_payout_block") {
               const matches = account.id === values.p_connected_account_id
                 && account.provider_payout_blocked_at === values.p_expected_blocked_at
@@ -322,6 +336,7 @@ function stripePayout(status: string, overrides: Row = {}) {
 describe("Stripe Connect webhook processor", () => {
   beforeEach(() => {
     createSupabaseAdminClientMock.mockReset();
+    getStripeConnectEnvironmentMock.mockReset();
     verifyStripeConnectWebhookEventMock.mockReset();
     retrieveStripeConnectedAccountMock.mockReset();
     retrieveStripeConnectedAccountPayoutMock.mockReset();
@@ -335,6 +350,11 @@ describe("Stripe Connect webhook processor", () => {
       row: { id: "connect-audit-1", processing_status: "received", attempt_count: 1 }
     });
     completeStripeWebhookAuditMock.mockResolvedValue(undefined);
+    getStripeConnectEnvironmentMock.mockReturnValue({
+      mode: "live",
+      label: "Stripe live mode.",
+      blocksLivePayouts: false
+    });
     retrieveStripeConnectedAccountMock.mockResolvedValue(stripeAccount());
     syncStripeConnectVerificationLaneMock.mockResolvedValue({ degraded: false });
   });
@@ -425,6 +445,24 @@ describe("Stripe Connect webhook processor", () => {
     const result = await processStripeConnectWebhook("{}", "connect_signature");
 
     expect(result.status).toBe("ignored");
+    expect(retrieveStripeConnectedAccountMock).not.toHaveBeenCalled();
+    expect(completeStripeWebhookAuditMock).toHaveBeenCalledWith(
+      supabase.client,
+      "connect-audit-1",
+      { processingStatus: "ignored", attemptCount: 1 }
+    );
+  });
+
+  it("ignores a signed test-mode Connect event in the live runtime", async () => {
+    const supabase = createSupabaseStub();
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+    verifyStripeConnectWebhookEventMock.mockReturnValue(connectEvent("account.updated", {
+      livemode: false
+    }));
+
+    const result = await processStripeConnectWebhook("{}", "connect_signature");
+
+    expect(result).toEqual({ received: true, duplicate: false, status: "ignored" });
     expect(retrieveStripeConnectedAccountMock).not.toHaveBeenCalled();
     expect(completeStripeWebhookAuditMock).toHaveBeenCalledWith(
       supabase.client,

@@ -438,8 +438,22 @@ describe("phase 13 fintech domain", () => {
       payoutReadinessStatus: "ready",
       targetAmount: 55,
       processorChargeId: "ch_123",
-      targetProviderAccountId: "acct_123"
+      targetProviderAccountId: "acct_123",
+      targetProviderEnvironment: "live",
+      runtimeProviderEnvironment: "live"
     })).toBeNull();
+
+    expect(determinePayoutExecutionBlockReason({
+      paymentProvider: "stripe",
+      paymentStatus: "captured",
+      moneyRoutingStatus: "ready_for_payout",
+      payoutReadinessStatus: "ready",
+      targetAmount: 55,
+      processorChargeId: "ch_123",
+      targetProviderAccountId: "acct_123",
+      targetProviderEnvironment: "test",
+      runtimeProviderEnvironment: "live"
+    })).toMatch(/test.*runtime is live/i);
   });
 
   it("derives reconciliation status for settled, reversed, and manual-review flows", () => {

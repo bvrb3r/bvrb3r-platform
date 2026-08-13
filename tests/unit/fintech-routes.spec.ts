@@ -8,15 +8,13 @@ const {
   getBarberFintechReadinessMock,
   recordLegalAcceptanceMock,
   listFintechManagementPayloadMock,
-  updateMembershipCompensationMock,
-  updateConnectedAccountStatusMock
+  updateMembershipCompensationMock
 } = vi.hoisted(() => ({
   getSessionUserMock: vi.fn(),
   getBarberFintechReadinessMock: vi.fn(),
   recordLegalAcceptanceMock: vi.fn(),
   listFintechManagementPayloadMock: vi.fn(),
-  updateMembershipCompensationMock: vi.fn(),
-  updateConnectedAccountStatusMock: vi.fn()
+  updateMembershipCompensationMock: vi.fn()
 }));
 
 vi.mock("@/lib/booking/route-auth", () => ({
@@ -30,8 +28,7 @@ vi.mock("@/lib/fintech/service", async () => {
     getBarberFintechReadiness: getBarberFintechReadinessMock,
     recordLegalAcceptance: recordLegalAcceptanceMock,
     listFintechManagementPayload: listFintechManagementPayloadMock,
-    updateMembershipCompensation: updateMembershipCompensationMock,
-    updateConnectedAccountStatus: updateConnectedAccountStatusMock
+    updateMembershipCompensation: updateMembershipCompensationMock
   };
 });
 
@@ -48,7 +45,6 @@ describe("phase 13 fintech routes", () => {
     recordLegalAcceptanceMock.mockReset();
     listFintechManagementPayloadMock.mockReset();
     updateMembershipCompensationMock.mockReset();
-    updateConnectedAccountStatusMock.mockReset();
   });
 
   it("returns barber payout readiness for an authenticated barber", async () => {
@@ -186,61 +182,32 @@ describe("phase 13 fintech routes", () => {
     expect(body.error).toMatch(/shop scope/i);
   });
 
-  it("rejects invalid connected account payloads", async () => {
+  it("retires manual connected-account status updates", async () => {
     getSessionUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
     const request = new NextRequest("https://bvrb3r.demo/api/operations/fintech/accounts/acct-1/status", {
       method: "POST",
-      body: JSON.stringify({ onboardingStatus: "ready" })
-    });
-
-    const response = await postConnectedAccountStatus(request, {
-      params: Promise.resolve({ id: "acct-1" })
-    });
-
-    expect(response.status).toBe(400);
-  });
-
-  it("updates connected account status with a stable response shape", async () => {
-    getSessionUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
-    updateConnectedAccountStatusMock.mockResolvedValue({
-      account: {
-        id: "acct-1",
-        subjectType: "shop",
-        provider: "stripe_connect",
-        providerAccountId: "acct_123",
+      body: JSON.stringify({
+        provider: "not-stripe",
+        providerAccountId: "acct_spoofed",
         onboardingStatus: "verified",
-        payoutReadinessStatus: "ready",
-        legalReadinessStatus: "accepted",
         taxReadinessStatus: "verified",
         chargesEnabled: true,
         payoutsEnabled: true,
         requirementsCurrentlyDue: [],
         requirementsEventuallyDue: [],
         requirementsPastDue: [],
-        missingAgreements: [],
-        outdatedAgreements: [],
-        missingSteps: [],
         disabledReason: null,
-        lastCheckedAt: "2026-03-20T10:30:00.000Z",
-        createdAt: "2026-03-20T10:00:00.000Z",
-        updatedAt: "2026-03-20T10:30:00.000Z"
-      }
+        lastCheckedAt: "2099-01-01T00:00:00.000Z"
+      })
     });
 
-    const response = await postConnectedAccountStatus(new NextRequest("https://bvrb3r.demo/api/operations/fintech/accounts/acct-1/status", {
-      method: "POST",
-      body: JSON.stringify({
-        onboardingStatus: "verified",
-        taxReadinessStatus: "verified",
-        chargesEnabled: true,
-        payoutsEnabled: true
-      })
-    }), {
+    const response = await postConnectedAccountStatus(request, {
       params: Promise.resolve({ id: "acct-1" })
     });
+
     const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body.account.payoutReadinessStatus).toBe("ready");
+    expect(response.status).toBe(409);
+    expect(body.error).toMatch(/read-only/i);
   });
 });

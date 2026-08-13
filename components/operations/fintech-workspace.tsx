@@ -16,7 +16,6 @@ import {
   useFintechPayoutsQuery,
   useRefreshStripeConnectedAccountMutation,
   useRecordLegalAcceptanceMutation,
-  useUpdateConnectedAccountStatusMutation,
   useUpdateMembershipCompensationMutation,
   type FintechApiError
 } from "@/lib/fintech/client";
@@ -27,18 +26,7 @@ import type { Role } from "@/types/domain";
 
 type FintechWorkspaceRole = Extract<Role, "owner" | "manager">;
 
-type AccountFormState = {
-  provider: "stripe_connect" | "manual";
-  providerAccountId: string;
-  onboardingStatus: "not_started" | "invited" | "pending" | "submitted" | "restricted" | "verified";
-  taxReadinessStatus: "pending" | "submitted" | "verified";
-  chargesEnabled: boolean;
-  payoutsEnabled: boolean;
-  requirementsCurrentlyDue: string;
-  requirementsEventuallyDue: string;
-  requirementsPastDue: string;
-  disabledReason: string;
-};
+type ManagedConnectedAccount = FintechManagementPayload["shops"][number] | FintechManagementPayload["barbers"][number];
 
 type MembershipFormState = {
   routingModel: "freelance" | "booth_rent" | "autobooth_rent";
@@ -47,21 +35,6 @@ type MembershipFormState = {
   boothRentFrequency: "" | "weekly" | "monthly";
   payoutBlockReason: string;
 };
-
-function createAccountForm(account: FintechManagementPayload["shops"][number] | FintechManagementPayload["barbers"][number]): AccountFormState {
-  return {
-    provider: account.provider,
-    providerAccountId: account.providerAccountId ?? "",
-    onboardingStatus: account.onboardingStatus,
-    taxReadinessStatus: account.taxReadinessStatus,
-    chargesEnabled: account.chargesEnabled,
-    payoutsEnabled: account.payoutsEnabled,
-    requirementsCurrentlyDue: account.requirementsCurrentlyDue.join(", "),
-    requirementsEventuallyDue: account.requirementsEventuallyDue.join(", "),
-    requirementsPastDue: account.requirementsPastDue.join(", "),
-    disabledReason: account.disabledReason ?? ""
-  };
-}
 
 function createMembershipForm(membership: FintechManagementPayload["memberships"][number]): MembershipFormState {
   return {
@@ -96,6 +69,39 @@ function SummarySkeleton() {
   );
 }
 
+function formatStripeRequirements(requirements: string[]) {
+  return requirements.length ? requirements.join(", ") : "None";
+}
+
+function StripeOwnedAccountState({ account }: { account: ManagedConnectedAccount }) {
+  const facts = [
+    ["Provider", account.provider.replaceAll("_", " ")],
+    ["Provider account", account.providerAccountId ?? "Not created"],
+    ["Onboarding", account.onboardingStatus.replaceAll("_", " ")],
+    ["Charges", account.chargesEnabled ? "Enabled" : "Not enabled"],
+    ["Payouts", account.payoutsEnabled ? "Enabled" : "Not enabled"],
+    ["Tax readiness", account.taxReadinessStatus.replaceAll("_", " ")],
+    ["Current requirements", formatStripeRequirements(account.requirementsCurrentlyDue)],
+    ["Future requirements", formatStripeRequirements(account.requirementsEventuallyDue)],
+    ["Past-due requirements", formatStripeRequirements(account.requirementsPastDue)],
+    ["Stripe restriction", account.disabledReason ?? "None"]
+  ];
+
+  return (
+    <div className="mt-4 rounded-[20px] border border-white/8 bg-black/18 p-4">
+      <p className="surface-label">Stripe-owned status · read only</p>
+      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+        {facts.map(([label, value]) => (
+          <div key={label} className="min-w-0 rounded-2xl border border-white/6 bg-black/15 p-3">
+            <dt className="text-xs uppercase tracking-[0.14em] text-white/40">{label}</dt>
+            <dd className="mt-1 break-words text-white/72">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 export function FintechWorkspace({
   viewerRole,
   locationIds
@@ -105,7 +111,6 @@ export function FintechWorkspace({
 }) {
   const fintechQuery = useFintechManagementQuery();
   const payoutsQuery = useFintechPayoutsQuery();
-  const updateAccountMutation = useUpdateConnectedAccountStatusMutation();
   const updateMembershipMutation = useUpdateMembershipCompensationMutation();
   const recordLegalAcceptanceMutation = useRecordLegalAcceptanceMutation();
   const onboardingMutation = useCreateStripeOnboardingLinkMutation();
@@ -113,7 +118,6 @@ export function FintechWorkspace({
   const refreshStripeMutation = useRefreshStripeConnectedAccountMutation();
   const executePayoutsMutation = useExecuteFintechPayoutsMutation();
   const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
-  const [accountForms, setAccountForms] = useState<Record<string, AccountFormState>>({});
   const [membershipForms, setMembershipForms] = useState<Record<string, MembershipFormState>>({});
 
   const payload = fintechQuery.data;
@@ -135,16 +139,6 @@ export function FintechWorkspace({
       return;
     }
 
-    setAccountForms((current) => {
-      const next = { ...current };
-      for (const account of [...payload.shops, ...payload.barbers]) {
-        if (!next[account.id]) {
-          next[account.id] = createAccountForm(account);
-        }
-      }
-      return next;
-    });
-
     setMembershipForms((current) => {
       const next = { ...current };
       for (const membership of payload.memberships) {
@@ -162,33 +156,6 @@ export function FintechWorkspace({
       const url = await loadUrl();
       setFeedback({ tone: "success", message: successMessage });
       window.location.assign(url);
-    } catch (error) {
-      setFeedback({ tone: "error", message: getReadableActionError(error as FintechApiError) });
-    }
-  }
-
-  async function handleSaveAccount(accountId: string) {
-    const form = accountForms[accountId];
-    if (!form) {
-      return;
-    }
-
-    setFeedback(null);
-    try {
-      await updateAccountMutation.mutateAsync({
-        accountId,
-        provider: form.provider,
-        providerAccountId: form.providerAccountId || null,
-        onboardingStatus: form.onboardingStatus,
-        taxReadinessStatus: form.taxReadinessStatus,
-        chargesEnabled: form.chargesEnabled,
-        payoutsEnabled: form.payoutsEnabled,
-        requirementsCurrentlyDue: form.requirementsCurrentlyDue,
-        requirementsEventuallyDue: form.requirementsEventuallyDue,
-        requirementsPastDue: form.requirementsPastDue,
-        disabledReason: form.disabledReason || null
-      });
-      setFeedback({ tone: "success", message: "Connected account readiness updated." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as FintechApiError) });
     }
@@ -330,7 +297,6 @@ export function FintechWorkspace({
                 <SummarySkeleton />
               </>
             ) : scopedShops.length ? scopedShops.map((account) => {
-              const form = accountForms[account.id] ?? createAccountForm(account);
               return (
                 <div key={account.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -342,37 +308,8 @@ export function FintechWorkspace({
                     </div>
                     <span className="status-pill text-[#e4f9b8]">{account.legalReadinessStatus.replaceAll("_", " ")}</span>
                   </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <Select value={form.onboardingStatus} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, onboardingStatus: event.target.value as AccountFormState["onboardingStatus"] } }))}>
-                      <option value="not_started">Not started</option>
-                      <option value="invited">Invited</option>
-                      <option value="pending">Pending</option>
-                      <option value="submitted">Submitted</option>
-                      <option value="restricted">Restricted</option>
-                      <option value="verified">Verified</option>
-                    </Select>
-                    <Select value={form.taxReadinessStatus} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, taxReadinessStatus: event.target.value as AccountFormState["taxReadinessStatus"] } }))}>
-                      <option value="pending">Tax pending</option>
-                      <option value="submitted">Tax submitted</option>
-                      <option value="verified">Tax verified</option>
-                    </Select>
-                    <Input value={form.providerAccountId} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, providerAccountId: event.target.value } }))} placeholder="Provider account id" />
-                    <Input value={form.requirementsCurrentlyDue} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, requirementsCurrentlyDue: event.target.value } }))} placeholder="Current requirements" />
-                    <Input value={form.requirementsPastDue} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, requirementsPastDue: event.target.value } }))} placeholder="Past-due requirements" />
-                    <Input value={form.disabledReason} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, disabledReason: event.target.value } }))} placeholder="Disabled reason" />
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-3 text-sm text-white/58">
-                    <label className="inline-flex items-center gap-2">
-                      <input type="checkbox" checked={form.chargesEnabled} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, chargesEnabled: event.target.checked } }))} />
-                      Charges enabled
-                    </label>
-                    <label className="inline-flex items-center gap-2">
-                      <input type="checkbox" checked={form.payoutsEnabled} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, payoutsEnabled: event.target.checked } }))} />
-                      Payouts enabled
-                    </label>
-                  </div>
+                  <StripeOwnedAccountState account={account} />
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Button variant="secondary" onClick={() => handleSaveAccount(account.id)} disabled={updateAccountMutation.isPending}>Save readiness</Button>
                     {account.operationalStatus !== "payout_ready" && account.shopId ? (
                       <Button
                         variant="primary"
@@ -446,7 +383,6 @@ export function FintechWorkspace({
                 <SummarySkeleton />
               </>
             ) : scopedBarbers.length ? scopedBarbers.map((account) => {
-              const form = accountForms[account.id] ?? createAccountForm(account);
               const membership = scopedMemberships.find((entry) => entry.barberId === account.barberId);
               const membershipForm = membership ? (membershipForms[membership.id] ?? createMembershipForm(membership)) : null;
               return (
@@ -460,35 +396,9 @@ export function FintechWorkspace({
                     </div>
                     <span className="status-pill text-[#e4f9b8]">{account.taxReadinessStatus.replaceAll("_", " ")}</span>
                   </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <Select value={form.onboardingStatus} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, onboardingStatus: event.target.value as AccountFormState["onboardingStatus"] } }))}>
-                      <option value="not_started">Not started</option>
-                      <option value="invited">Invited</option>
-                      <option value="pending">Pending</option>
-                      <option value="submitted">Submitted</option>
-                      <option value="restricted">Restricted</option>
-                      <option value="verified">Verified</option>
-                    </Select>
-                    <Select value={form.taxReadinessStatus} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, taxReadinessStatus: event.target.value as AccountFormState["taxReadinessStatus"] } }))}>
-                      <option value="pending">Tax pending</option>
-                      <option value="submitted">Tax submitted</option>
-                      <option value="verified">Tax verified</option>
-                    </Select>
-                    <Input value={form.providerAccountId} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, providerAccountId: event.target.value } }))} placeholder="Provider account id" />
-                    <Input value={form.requirementsCurrentlyDue} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, requirementsCurrentlyDue: event.target.value } }))} placeholder="Current requirements" />
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-3 text-sm text-white/58">
-                    <label className="inline-flex items-center gap-2">
-                      <input type="checkbox" checked={form.chargesEnabled} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, chargesEnabled: event.target.checked } }))} />
-                      Charges enabled
-                    </label>
-                    <label className="inline-flex items-center gap-2">
-                      <input type="checkbox" checked={form.payoutsEnabled} onChange={(event) => setAccountForms((current) => ({ ...current, [account.id]: { ...form, payoutsEnabled: event.target.checked } }))} />
-                      Payouts enabled
-                    </label>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button variant="secondary" onClick={() => handleSaveAccount(account.id)} disabled={updateAccountMutation.isPending}>Save barber readiness</Button>
+                  <StripeOwnedAccountState account={account} />
+                  <div className="mt-4 rounded-[18px] border border-white/8 bg-black/15 p-3 text-sm text-white/55">
+                    The barber controls Stripe onboarding and account refresh from their own payout settings.
                   </div>
 
                   {membership && membershipForm ? (

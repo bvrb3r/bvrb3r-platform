@@ -1,44 +1,28 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
-import { FintechServiceError, updateConnectedAccountStatus } from "@/lib/fintech/service";
-
-const connectedAccountStatusSchema = z.object({
-  provider: z.enum(["stripe_connect", "manual"]).optional(),
-  providerAccountId: z.string().trim().optional().nullable(),
-  onboardingStatus: z.enum(["not_started", "invited", "pending", "submitted", "restricted", "verified"]),
-  taxReadinessStatus: z.enum(["pending", "submitted", "verified"]),
-  chargesEnabled: z.boolean().optional(),
-  payoutsEnabled: z.boolean().optional(),
-  requirementsCurrentlyDue: z.union([z.array(z.string().trim()), z.string().trim()]).optional().nullable(),
-  requirementsEventuallyDue: z.union([z.array(z.string().trim()), z.string().trim()]).optional().nullable(),
-  requirementsPastDue: z.union([z.array(z.string().trim()), z.string().trim()]).optional().nullable(),
-  disabledReason: z.string().trim().optional().nullable()
-});
+import { FintechServiceError } from "@/lib/fintech/service";
 
 function toErrorResponse(error: unknown) {
   if (error instanceof FintechServiceError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
 
-  const message = error instanceof Error ? error.message : "Unable to update the connected account.";
+  const message = error instanceof Error ? error.message : "Unable to access connected-account status.";
   return NextResponse.json({ error: message }, { status: 500 });
 }
 
 export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  _request: Request,
+  _context: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const user = await getSessionUser();
-    const parsed = connectedAccountStatusSchema.safeParse(await request.json().catch(() => null));
-    if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid connected account payload." }, { status: 400 });
-    }
+  void _request;
+  void _context;
 
-    const { id } = await params;
-    const payload = await updateConnectedAccountStatus(user, id, parsed.data);
-    return NextResponse.json(payload);
+  try {
+    await getSessionUser();
+    return NextResponse.json({
+      error: "Stripe connected-account status is read-only. Use Stripe onboarding or refresh the Stripe status."
+    }, { status: 409 });
   } catch (error) {
     return toErrorResponse(error);
   }
