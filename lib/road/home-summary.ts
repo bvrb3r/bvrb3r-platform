@@ -1,4 +1,5 @@
 import type { RoadSnapshot } from "@/lib/road/domain";
+import type { RoadSetupStatus } from "@/lib/road/setup";
 
 export const ROAD_HOME_SET_COMPLETE_HIDE_MS = 24 * 60 * 60 * 1000;
 
@@ -13,6 +14,12 @@ export type RoadHomeSummary = {
     totalAchievements: number;
   };
   nextAchievement: string | null;
+  setupReady: boolean;
+  currentAttention: {
+    label: string;
+    status: RoadSetupStatus;
+    reason: string | null;
+  } | null;
   completedAchievements: number;
   totalAchievements: number;
   percent: number;
@@ -26,10 +33,16 @@ export function buildRoadHomeSummary(
   now = new Date()
 ): RoadHomeSummary {
   const current = snapshot.sets[snapshot.currentSet] ?? snapshot.sets[0];
-  const nextAchievement = current?.achievements.find((achievement) => !achievement.complete)?.label ?? null;
+  const attention = current?.achievements.find((achievement) => (
+    achievement.setupStatus === "action_required" || achievement.setupStatus === "pending_review"
+  )) ?? null;
+  const nextAchievement = attention?.label
+    ?? current?.achievements.find((achievement) => !achievement.complete)?.label
+    ?? null;
   const earnedAt = snapshot.latestBadge ? new Date(snapshot.latestBadge.earnedAt).getTime() : Number.NaN;
   const nowTime = now.getTime();
-  const hidden = Number.isFinite(earnedAt)
+  const hidden = !attention
+    && Number.isFinite(earnedAt)
     && earnedAt <= nowTime
     && nowTime - earnedAt < ROAD_HOME_SET_COMPLETE_HIDE_MS;
   const hiddenUntil = hidden
@@ -47,6 +60,14 @@ export function buildRoadHomeSummary(
       totalAchievements: current?.totalCount ?? 0
     },
     nextAchievement,
+    setupReady: !attention,
+    currentAttention: attention && attention.setupStatus
+      ? {
+          label: attention.label,
+          status: attention.setupStatus,
+          reason: attention.statusReason
+        }
+      : null,
     completedAchievements: snapshot.completedAchievements,
     totalAchievements: snapshot.totalAchievements,
     percent: snapshot.percent,

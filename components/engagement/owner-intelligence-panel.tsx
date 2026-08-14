@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Globe2, HandCoins, RefreshCcw, ShieldCheck, Smartphone, Target, UploadCloud, Users } from "lucide-react";
+import { Globe2, HandCoins, RefreshCcw, ShieldCheck, Smartphone, Target, Users } from "lucide-react";
 import { usePwa } from "@/components/pwa/pwa-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOwnerEngagementIntelligence, useProcessOwnerAutomationMutation } from "@/lib/engagement/client";
 import {
@@ -26,9 +25,7 @@ import {
   useReversePointsCashoutMutation
 } from "@/lib/points/client";
 import {
-  useCreateVerificationUploadMutation,
   useStartOwnerConnectOnboardingMutation,
-  useSubmitShopVerificationMutation,
   useVerificationMe
 } from "@/lib/trust/client";
 import { currency } from "@/lib/utils";
@@ -64,14 +61,11 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
   const dismissAnomalyMutation = useDismissFinancialAnomalyMutation();
   const pwa = usePwa();
   const releaseReadinessQuery = useReleaseReadinessQuery(viewerRole === "owner" || viewerRole === "manager");
-  const uploadMutation = useCreateVerificationUploadMutation();
-  const submitShopVerificationMutation = useSubmitShopVerificationMutation();
   const verificationMeQuery = useVerificationMe();
   const connectOnboardingMutation = useStartOwnerConnectOnboardingMutation();
   const featureMutation = useCreateFeaturedPlacementMutation();
   const rolloutMutation = useUpdateCityRolloutMutation();
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
-  const [shopDocumentName, setShopDocumentName] = useState("bvrb3r-business-license.pdf");
 
   function handleRequestPush() {
     const result = pwa.requestPushPrimer("owner");
@@ -105,9 +99,7 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
   const money = summary.money;
   const mobileSummary = mobileSummaryQuery.data;
   const releaseReadiness = releaseReadinessQuery.data;
-  const isPending = uploadMutation.isPending
-    || submitShopVerificationMutation.isPending
-    || connectOnboardingMutation.isPending
+  const isPending = connectOnboardingMutation.isPending
     || featureMutation.isPending
     || rolloutMutation.isPending;
   const cashoutActionPending = reviewCashoutMutation.isPending
@@ -144,28 +136,6 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
         tone: "success",
         message: `Scheduled execution ran ${result.jobs.recentRuns.length} finance and growth job${result.jobs.recentRuns.length === 1 ? "" : "s"} on the current scope.`
       });
-    } catch (error) {
-      setFeedback({ tone: "error", message: getReadableActionError(error as Error) });
-    }
-  }
-
-  async function handleShopVerification() {
-    setFeedback(null);
-    try {
-      await uploadMutation.mutateAsync({
-        ownerType: "shop",
-        ownerId: "shop-bvrb3r",
-        category: "business_verification",
-        fileName: shopDocumentName,
-        contentType: "application/pdf",
-        fileSizeBytes: 410000
-      });
-      await submitShopVerificationMutation.mutateAsync({
-        shopId: "shop-bvrb3r",
-        category: "business_verification",
-        businessName: "The BVRB3R Shop(TM)"
-      });
-      setFeedback({ tone: "success", message: "Shop verification was submitted with a private document reference for trust review." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as Error) });
     }
@@ -968,9 +938,9 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <div className="flex items-center justify-between gap-3"><p className="surface-label">Shop verification upload</p><UploadCloud className="h-4 w-4 text-[#d9f985]" /></div>
-                  <Input className="mt-4" value={shopDocumentName} onChange={(event) => setShopDocumentName(event.target.value)} />
-                  <Button className="mt-4 h-11 w-full" disabled={isPending} onClick={() => void handleShopVerification()}>{uploadMutation.isPending || submitShopVerificationMutation.isPending ? "Submitting verification..." : "Submit shop verification"}</Button>
+                  <div className="flex items-center justify-between gap-3"><p className="surface-label">Shop verification upload</p><ShieldCheck className="h-4 w-4 text-[#d9f985]" /></div>
+                  <p className="mt-4 text-sm leading-6 text-white/58">Actual business evidence is required. Open the secure verification flow to choose and upload the document before submission.</p>
+                  <Button className="mt-4 h-11 w-full" onClick={() => window.location.assign("/onboarding/owner/verification")}>Open secure verification</Button>
                   <div className="mt-4 rounded-[18px] border border-white/8 bg-black/25 px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
                       <p className="surface-label">Stripe provider status</p>
@@ -1009,4 +979,3 @@ export function OwnerIntelligencePanel({ viewerRole = "owner" }: { viewerRole?: 
     </section>
   );
 }
-

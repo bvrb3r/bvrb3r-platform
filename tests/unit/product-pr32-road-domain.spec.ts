@@ -23,7 +23,7 @@ describe("Product PR32 Road domain", () => {
 
     expect(client.totalAchievements).toBe(25);
     expect(barber.totalAchievements).toBe(24);
-    expect(owner.totalAchievements).toBe(21);
+    expect(owner.totalAchievements).toBe(22);
     expect(client.completedAchievements).toBe(0);
     expect(client.percent).toBe(0);
     expect(client.sets[1].locked).toBe(true);
@@ -123,5 +123,95 @@ describe("Product PR32 Road domain", () => {
 
     const barber = buildRoadSnapshot({ role: "barber_user", serverTruth: "connected" });
     expect(barber.streak).toBeNull();
+  });
+
+  it("uses current setup truth to reopen the earliest regressed setup set", () => {
+    const snapshot = buildRoadSnapshot({
+      role: "client_user",
+      serverTruth: "connected",
+      badges: [badge(0), badge(1)],
+      progress: [{
+        achievementKey: "client.contact_verified",
+        setIndex: 0,
+        completedAt: "2026-08-01T12:00:00.000Z",
+        sourceEventId: "00000000-0000-4000-8000-000000000091"
+      }],
+      setupChecks: [{
+        achievementKey: "client.contact_verified",
+        status: "action_required",
+        reason: "verify_email_and_phone",
+        observedAt: null
+      }]
+    });
+
+    expect(snapshot.currentSet).toBe(0);
+    expect(snapshot.sets[0]).toMatchObject({ active: true, complete: false, setupReady: false });
+    expect(snapshot.sets[1].locked).toBe(true);
+    expect(snapshot.sets[0].badge).toEqual(badge(0));
+    expect(snapshot.sets[0].achievements.find((entry) => entry.key === "client.contact_verified")).toMatchObject({
+      complete: false,
+      historicallyEarned: true,
+      setupStatus: "action_required",
+      actionHref: "/verify-contact",
+      actionLabel: "Verify contact"
+    });
+  });
+
+  it("keeps earned progress immutable while live setup readiness regresses", () => {
+    const snapshot = buildRoadSnapshot({
+      role: "barber_user",
+      serverTruth: "connected",
+      progress: [{
+        achievementKey: "barber.license_verified",
+        setIndex: 1,
+        completedAt: "2026-08-01T12:00:00.000Z",
+        sourceEventId: "00000000-0000-4000-8000-000000000092"
+      }],
+      setupChecks: [{
+        achievementKey: "barber.license_verified",
+        status: "pending_review",
+        reason: "license_verification_in_review",
+        observedAt: null
+      }]
+    });
+
+    const license = snapshot.sets[1].achievements.find((entry) => entry.key === "barber.license_verified");
+    expect(snapshot.completedAchievements).toBe(1);
+    expect(snapshot.percent).toBe(4);
+    expect(license).toMatchObject({
+      complete: false,
+      historicallyEarned: true,
+      setupStatus: "pending_review",
+      actionHref: "/onboarding/barber/verification",
+      actionLabel: "View review status"
+    });
+  });
+
+  it("uses reason-specific corrective actions for client profile truth", () => {
+    const snapshot = buildRoadSnapshot({
+      role: "client_user",
+      serverTruth: "connected",
+      setupChecks: [{
+        achievementKey: "client.profile_completed",
+        status: "action_required",
+        reason: "add_client_profile_photo",
+        observedAt: null
+      }]
+    });
+    const profile = snapshot.sets[1].achievements.find((entry) => entry.key === "client.profile_completed");
+    expect(profile).toMatchObject({
+      statusReason: "Add a real profile photo to finish your client setup.",
+      actionHref: "/dashboard/client/public-profile",
+      actionLabel: "Add profile photo"
+    });
+  });
+
+  it("includes verified contact in Owner Set 0", () => {
+    expect(ROAD_DEFINITIONS.shop_owner_user.sets[0].achievements.map((entry) => entry.key)).toEqual([
+      "owner.account_created",
+      "owner.contact_verified",
+      "owner.shop_identity_completed",
+      "owner.shop_hours_set"
+    ]);
   });
 });

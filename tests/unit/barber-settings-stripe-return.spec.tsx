@@ -1415,6 +1415,23 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(availabilityDialog).getByTestId("availability-blocked-tab")).toBeInTheDocument();
   });
 
+  it("opens the full location and hours editor from the Road availability deep link", async () => {
+    render(
+      <BarberSettingsScreen
+        user={{ ...resolveDemoUser("blaze@bvrb3r.demo"), barberSubtype: "freelance" }}
+        initialSection="availability"
+        embedded
+      />
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Set your working hours" });
+    expect(within(dialog).getByLabelText("Start time")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("End time")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Location name")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Address")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("City")).toBeInTheDocument();
+  });
+
   it("opens booking, reports, verification, legal, and account nested workspaces", () => {
     render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
 

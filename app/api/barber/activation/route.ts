@@ -5,6 +5,7 @@ import { isBarberAccountRole } from "@/lib/auth/roles";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { normalizeWorkingHoursRows } from "@/lib/barber/domain";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { resolveApprovedShopLocation } from "@/lib/marketplace/barber-shop-location";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
 import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
 import { syncOnboardingBarberServicesForUser } from "@/lib/marketplace/service-sync";
@@ -84,6 +85,33 @@ function isMissingRelationOrColumn(error: unknown) {
 
 function getIndependentLocationReference(barberReference: string) {
   return `independent-${barberReference}`;
+}
+
+async function replaceBarberAvailability(
+  supabase: SupabaseClient,
+  input: {
+    actorProfileId: string;
+    barberId: string;
+    locationId: string;
+    locationMode: "freelance" | "shop";
+    workingHours: ReturnType<typeof normalizeWorkingHoursRows>;
+  }
+) {
+  const result = await supabase.rpc("pr40_replace_barber_availability", {
+    p_actor_profile_id: input.actorProfileId,
+    p_barber_id: input.barberId,
+    p_location_id: input.locationId,
+    p_location_mode: input.locationMode,
+    p_working_hours: input.workingHours.map((row) => ({
+      weekday: row.weekday,
+      startTime: row.startTime,
+      endTime: row.endTime
+    }))
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
 }
 
 function formatServiceLocationLabel(input: SaveAvailabilityInput["serviceLocation"] | SaveBookingLocationInput["serviceLocation"]) {
@@ -345,7 +373,8 @@ async function persistActivationAvailability(
       postal_code: input.serviceLocation.postalCode ?? null,
       phone: null,
       hours: {},
-      tax_rate: 0
+      tax_rate: 0,
+      location_active: true
     };
     const locationResult = existingLocation.data
       ? await supabase
@@ -365,56 +394,34 @@ async function persistActivationAvailability(
     }
 
     const location = locationResult.data as { id: string; reference_code: string | null; name: string; neighborhood: string; city: string; state: string };
-    const membershipResult = await supabase
-      .from("staff_locations")
-      .upsert({
-        profile_id: barber.profile_id,
-        location_id: location.id,
-        routing_model: "freelance",
-        autobooth_percent: barber.autobooth_percent,
-        booth_rent_amount: barber.booth_rent_amount,
-        booth_rent_frequency: barber.booth_rent_frequency,
-        updated_at: now,
-        fintech_updated_at: now
-      }, { onConflict: "profile_id,location_id" });
-
-    if (membershipResult.error) {
-      throw membershipResult.error;
-    }
-
-    const deleteResult = await supabase
-      .from("availability_rules")
-      .delete()
-      .eq("barber_id", barber.id)
-      .eq("location_id", location.id);
-
-    if (deleteResult.error) {
-      throw deleteResult.error;
-    }
-
-    const insertResult = await supabase
-      .from("availability_rules")
-      .insert(workingHours.map((row) => ({
-        barber_id: barber.id,
-        location_id: location.id,
-        weekday: row.weekday,
-        start_time: row.startTime,
-        end_time: row.endTime
-      })));
-
-    if (insertResult.error) {
-      throw insertResult.error;
-    }
+    await replaceBarberAvailability(supabase, {
+      actorProfileId: user.id,
+      barberId: barber.id,
+      locationId: location.id,
+      locationMode: "freelance",
+      workingHours
+    });
 
     hasServiceLocation = true;
     serviceLocationLabel = [location.name, [location.city, location.state].filter(Boolean).join(", ")].filter(Boolean).join(" | ");
   } else if (input.locationMode === "shop" && input.shopId) {
-    requestedShopId = input.shopId;
+    const approvedShopLocation = await resolveApprovedShopLocation(supabase, input.shopId);
+    if (!approvedShopLocation) {
+      return NextResponse.json({
+        error: "This approved shop must finish its canonical location setup before Barber availability can be published."
+      }, { status: 409 });
+    }
+
+    requestedShopId = approvedShopLocation.shopId;
     const membershipResult = await supabase
       .from("staff_locations")
-      .select("id, location_id")
+      .select("id, location_id, relationship_status, approved_by_owner_at, approved_by_barber_at, ended_at")
       .eq("profile_id", barber.profile_id)
-      .eq("location_id", input.shopId)
+      .eq("location_id", approvedShopLocation.locationId)
+      .eq("relationship_status", "active")
+      .is("ended_at", null)
+      .not("approved_by_owner_at", "is", null)
+      .not("approved_by_barber_at", "is", null)
       .maybeSingle();
 
     if (membershipResult.error) {
@@ -422,34 +429,18 @@ async function persistActivationAvailability(
     }
 
     if (membershipResult.data) {
-      const deleteResult = await supabase
-        .from("availability_rules")
-        .delete()
-        .eq("barber_id", barber.id)
-        .eq("location_id", input.shopId);
-
-      if (deleteResult.error) {
-        throw deleteResult.error;
-      }
-
-      const insertResult = await supabase
-        .from("availability_rules")
-        .insert(workingHours.map((row) => ({
-          barber_id: barber.id,
-          location_id: input.shopId,
-          weekday: row.weekday,
-          start_time: row.startTime,
-          end_time: row.endTime
-        })));
-
-      if (insertResult.error) {
-        throw insertResult.error;
-      }
+      await replaceBarberAvailability(supabase, {
+        actorProfileId: user.id,
+        barberId: barber.id,
+        locationId: approvedShopLocation.locationId,
+        locationMode: "shop",
+        workingHours
+      });
 
       hasServiceLocation = true;
     } else {
       await createBarberShopJoinRequest(user, {
-        shopId: input.shopId,
+        shopId: approvedShopLocation.shopId,
         message: "Barber requested to join this shop while setting activation availability."
       });
     }
@@ -515,7 +506,8 @@ async function persistBookingLocation(
     postal_code: input.serviceLocation.postalCode ?? null,
     phone: null,
     hours: {},
-    tax_rate: 0
+    tax_rate: 0,
+    location_active: true
   };
   const locationResult = existingLocation.data
     ? await supabase
@@ -540,7 +532,22 @@ async function persistBookingLocation(
     .upsert({
       profile_id: barber.profile_id,
       location_id: location.id,
+      shop_id: null,
       routing_model: "freelance",
+      relationship_status: null,
+      requested_by_profile_id: null,
+      invited_by_profile_id: null,
+      approved_by_owner_at: null,
+      approved_by_barber_at: null,
+      rejected_at: null,
+      declined_at: null,
+      paused_at: null,
+      paused_by_profile_id: null,
+      pause_reason: null,
+      ended_at: null,
+      ended_by_profile_id: null,
+      ended_by_role: null,
+      ended_reason: null,
       autobooth_percent: barber.autobooth_percent,
       booth_rent_amount: barber.booth_rent_amount,
       booth_rent_frequency: barber.booth_rent_frequency,

@@ -70,6 +70,7 @@ import { getStripePayoutReadinessLabel, isStripeConnectReadyForActivation } from
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { formatPublicAddressLocation, formatPublicUsernameLine } from "@/lib/profile/public-identity-summary";
 import {
+  uploadVerificationDocument,
   useCreateVerificationUploadMutation,
   useStartBarberIdentitySessionMutation,
   useSubmitBarberVerificationMutation,
@@ -931,12 +932,13 @@ export function BarberSettingsScreen({
   const [selectedSubtype, setSelectedSubtype] = useState<BarberSubtype>(user.barberSubtype ?? "freelance");
   const [verificationCategory, setVerificationCategory] = useState<"identity_verification" | "license_verification" | "payout_verification" | "shop_affiliation_verification">("license_verification");
   const [legalName, setLegalName] = useState(user.name);
-  const [fileName, setFileName] = useState("updated-license.pdf");
+  const [verificationFile, setVerificationFile] = useState<File | null>(null);
   const [licenseNumber, setLicenseNumber] = useState("");
   const [issuingState, setIssuingState] = useState("");
   const [expirationDate, setExpirationDate] = useState("");
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const stripeReturnSyncRef = useRef(false);
+  const quickSetupDeepLinkHandledRef = useRef(false);
   const [accountEditorOpen, setAccountEditorOpen] = useState(false);
   const [quickSetupModal, setQuickSetupModal] = useState<BarberQuickSetupModal>(null);
   const [activeBusinessTool, setActiveBusinessTool] = useState<BusinessToolKey | null>(null);
@@ -1226,6 +1228,12 @@ export function BarberSettingsScreen({
 
   useEffect(() => {
     if (!selectedSection) {
+      return;
+    }
+
+    if (selectedSection === "availability" && !quickSetupDeepLinkHandledRef.current) {
+      setQuickSetupModal("availability");
+      quickSetupDeepLinkHandledRef.current = true;
       return;
     }
 
@@ -1819,22 +1827,28 @@ export function BarberSettingsScreen({
 
   async function handleVerificationSubmit() {
     setFeedback(null);
+    if (!verificationFile) {
+      setFeedback({ tone: "error", message: "Choose a verification document before submitting." });
+      return;
+    }
     try {
-      await uploadMutation.mutateAsync({
+      const uploadResult = await uploadMutation.mutateAsync({
         ownerType: "barber",
         category: verificationCategory,
-        fileName,
-        contentType: "application/pdf",
-        fileSizeBytes: 240_000,
+        fileName: verificationFile.name,
+        contentType: verificationFile.type,
+        fileSizeBytes: verificationFile.size,
         expiresAt: verificationCategory === "license_verification" && expirationDate ? expirationDate : undefined
       });
+      const uploadId = await uploadVerificationDocument(uploadResult.upload, verificationFile);
       await submitVerificationMutation.mutateAsync({
         category: verificationCategory,
         legalName,
         licenseType: verificationCategory === "license_verification" ? "State barber license" : undefined,
         licenseNumber: verificationCategory === "license_verification" ? licenseNumber : undefined,
         issuingState: verificationCategory === "license_verification" ? issuingState : undefined,
-        expirationDate: verificationCategory === "license_verification" ? expirationDate : undefined
+        expirationDate: verificationCategory === "license_verification" ? expirationDate : undefined,
+        uploadId
       });
       setFeedback({ tone: "success", message: "Verification upload submitted into the canonical trust review lane." });
     } catch (error) {
@@ -2979,7 +2993,12 @@ export function BarberSettingsScreen({
                   </Select>
                 </div>
                 <Input aria-label="Legal name" value={legalName} onChange={(event) => setLegalName(event.target.value)} />
-                <Input aria-label="Document name" value={fileName} onChange={(event) => setFileName(event.target.value)} />
+                <Input
+                  aria-label="Verification document"
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                  onChange={(event) => setVerificationFile(event.target.files?.[0] ?? null)}
+                />
                 {verificationCategory === "license_verification" ? (
                   <>
                     <Input placeholder="License number" value={licenseNumber} onChange={(event) => setLicenseNumber(event.target.value)} />

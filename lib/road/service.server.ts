@@ -13,6 +13,7 @@ import {
   type RoadStreakWindow
 } from "@/lib/road/domain";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getRoadSetupAchievementKeys, isRoadSetupStatus, type RoadSetupCheck } from "@/lib/road/setup";
 import type { UserAccount } from "@/types/domain";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -138,6 +139,22 @@ function mapWindowRows(value: unknown): RoadStreakWindow[] {
   }).filter((row) => row.windowStart.length > 0);
 }
 
+function mapSetupChecks(value: unknown): RoadSetupCheck[] {
+  return objectRows(value).flatMap<RoadSetupCheck>((row) => {
+    const achievementKey = stringValue(row.achievementKey ?? row.achievement_key);
+    const status = row.status;
+    if (achievementKey.length === 0 || !isRoadSetupStatus(status)) {
+      return [];
+    }
+    return [{
+      achievementKey,
+      status,
+      reason: stringValue(row.reason, status === "complete" ? "Verified from current account records." : "Finish this account requirement."),
+      observedAt: nullableString(row.observedAt ?? row.observed_at)
+    }];
+  });
+}
+
 function emptyRoadSnapshot(role: RoadRole): RoadSnapshot {
   return buildRoadSnapshot({ role, serverTruth: "unavailable" });
 }
@@ -156,6 +173,25 @@ export async function loadRoadSnapshot(
   }
 
   const userId = requireUuid(user.id, "Road account");
+  const reconcileResult = await supabase.rpc("pr32_reconcile_road_setup", {
+    p_user_id: userId,
+    p_role: role
+  });
+  if (reconcileResult.error) {
+    throw new RoadServiceError("Your account setup could not be verified against current canonical server records.", "road_setup_reconcile_failed", 503);
+  }
+  const reconcilePayload = reconcileResult.data && typeof reconcileResult.data === "object"
+    ? reconcileResult.data as Record<string, unknown>
+    : {};
+  const setupChecks = mapSetupChecks(reconcilePayload.checks);
+  const expectedSetupKeys = getRoadSetupAchievementKeys(role);
+  if (
+    setupChecks.length !== expectedSetupKeys.length
+    || expectedSetupKeys.some((key) => !setupChecks.some((check) => check.achievementKey === key))
+  ) {
+    throw new RoadServiceError("Account setup verification returned incomplete evidence.", "road_setup_evidence_incomplete", 503);
+  }
+
   const codeResult = await supabase.rpc("pr32_ensure_referral_code", {
     p_user_id: userId,
     p_role: role
@@ -234,7 +270,8 @@ export async function loadRoadSnapshot(
     leaderboardPushesEnabled: preference.leaderboard_pushes_enabled === true,
     leaderboardRows: mapLeaderboardRows(leaderboardResult.data, userId),
     streakShields: mapShieldRows(shieldResult.data),
-    streakWindows: mapWindowRows(windowResult.data)
+    streakWindows: mapWindowRows(windowResult.data),
+    setupChecks
   });
 }
 

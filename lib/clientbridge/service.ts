@@ -46,6 +46,17 @@ export class ClientBridgeServiceError extends Error {
   }
 }
 
+export type ClientBridgeGuestHistoryResolution = {
+  status: "claimed" | "already_resolved";
+  targetClientId: string;
+  invitationsClaimed: number;
+  sourceClientsMerged: number;
+  appointmentsMerged: number;
+  queueEntriesMerged: number;
+  chairSyncAppointmentsMerged: number;
+  consentEventsMerged: number;
+};
+
 function getSupabase() {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
@@ -515,6 +526,62 @@ export async function issueClientBridgeInvitation(input: {
     expiresAt: row.expires_at,
     suppressionReason: row.suppression_reason
   };
+}
+
+function nonNegativeInteger(value: unknown) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+export async function claimMatchingClientBridgeHistory(user: Pick<UserAccount, "id" | "role">) {
+  if (!user.id || user.id === "guest-user" || !isClientRole(user.role)) {
+    throw new ClientBridgeServiceError("Sign in with the client account that should own this visit history.", 401);
+  }
+
+  const supabase = getSupabase();
+  const result = await supabase.rpc("pr32_claim_matching_clientbridge_history", {
+    p_user_id: user.id
+  });
+  if (result.error) {
+    const status = result.error.code === "42501"
+      ? 403
+      : result.error.code === "P0002"
+        ? 404
+        : 500;
+    throw new ClientBridgeServiceError(
+      status === 403
+        ? "Verify both email and phone before resolving guest history."
+        : status === 404
+          ? "The canonical client account could not be found."
+          : "Guest history could not be resolved from current server records.",
+      status,
+      result.error.code
+    );
+  }
+
+  const payload = result.data && typeof result.data === "object" && !Array.isArray(result.data)
+    ? result.data as Record<string, unknown>
+    : null;
+  const status = payload?.status;
+  const targetClientId = payload?.targetClientId;
+  if (
+    !payload
+    || (status !== "claimed" && status !== "already_resolved")
+    || typeof targetClientId !== "string"
+    || targetClientId.length === 0
+  ) {
+    throw new ClientBridgeServiceError("Guest history returned incomplete server evidence.", 500);
+  }
+
+  return {
+    status,
+    targetClientId,
+    invitationsClaimed: nonNegativeInteger(payload.invitationsClaimed),
+    sourceClientsMerged: nonNegativeInteger(payload.sourceClientsMerged),
+    appointmentsMerged: nonNegativeInteger(payload.appointmentsMerged),
+    queueEntriesMerged: nonNegativeInteger(payload.queueEntriesMerged),
+    chairSyncAppointmentsMerged: nonNegativeInteger(payload.chairSyncAppointmentsMerged),
+    consentEventsMerged: nonNegativeInteger(payload.consentEventsMerged)
+  } satisfies ClientBridgeGuestHistoryResolution;
 }
 
 export async function getClientBridgeClaim(token: string) {

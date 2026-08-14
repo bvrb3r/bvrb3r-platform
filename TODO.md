@@ -2,6 +2,14 @@
 
 `TODO.md` tracks deferred work against the long-range architecture in `VISION.md`.
 
+## Road Account Setup Release Follow-up
+
+- Publish the reconstructed Road application bundle as an exact-head stacked pull request after installing and authenticating the required GitHub CLI.
+- Run the complete lint, typecheck, unit, production-build, Vercel preview, and human QA gates against the exact commit that will merge.
+- Complete a signed-in production walkthrough for Client, Barber, and Shop Owner Road home entry, corrective actions, autosaved progress, sequential locks, and role isolation.
+- Exercise the signed verification upload capability against deployed Supabase Storage and confirm the stored MIME and byte-size integrity checks with real files.
+- Monitor reconciliation errors, Road invariant queries, setup-truth event growth, and badge single-fire behavior after application release.
+
 ## Phase 1: Core platform
 
 - Execute a real human browser walkthrough against a staging-like Supabase environment and complete sign-off in `QA_MANUAL_CHECKLIST.md` and `RELEASE_CERTIFICATION.md`

@@ -105,6 +105,15 @@ describe("Product PR27 migration contract", () => {
     expect(serviceSource).toContain("const setup = await getPr27BarberSetup(user)");
   });
 
+  it("cannot claim Barber marketplace activation from the weaker PR27 checklist alone", () => {
+    expect(serviceSource).toContain('supabase.rpc("pr32_get_road_setup_checks"');
+    expect(serviceSource).toContain('isRoadCheckComplete(roadSetupChecks, "barber.profile_published")');
+    expect(serviceSource).toContain("const canRequestActivation = setup.requiredComplete");
+    expect(serviceSource).toContain("publishBarberMarketplaceReadiness(supabase, user.barberId)");
+    expect(serviceSource).toContain('status: "paused"');
+    expect(serviceSource).toContain('"canonical_marketplace_blocked"');
+  });
+
   it("clears PR27 advisor debt without opening client writes", () => {
     expect(certificationSql).toContain("account_export_deliveries_request_idx");
     expect(certificationSql).toContain("culture_safety_reports_reporter_idx");

@@ -56,4 +56,13 @@ describe("Product PR32 Road surface", () => {
     expect(screen).toContain("snapshot.latestBadge.sharedAt");
     expect(service).toContain('.not("shared_at", "is", null)');
   });
+
+  it("shows server-owned setup attention with reachable corrective actions", () => {
+    expect(screen).toContain("data-road-setup-status");
+    expect(screen).toContain("Action required");
+    expect(screen).toContain("Pending review");
+    expect(screen).toContain("achievement.actionHref");
+    expect(screen).toContain("Previously earned. Current setup truth needs attention");
+    expect(screen).toContain("complete: Boolean(set.badge)");
+  });
 });

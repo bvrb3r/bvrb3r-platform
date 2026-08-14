@@ -3,15 +3,43 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
+import {
+  ensureCanonicalOwnerShopLocation,
+  type OwnerShopLocationSource
+} from "@/lib/marketplace/owner-shop-location";
 import { publishShopMarketplaceReadiness } from "@/lib/marketplace/publishing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { UserAccount } from "@/types/domain";
 
+const ownerTimeSchema = z.string().trim().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+
 const hoursSchema = z.array(z.object({
   weekday: z.number().int().min(0).max(6),
-  startTime: z.string().trim().regex(/^\d{2}:\d{2}$/),
-  endTime: z.string().trim().regex(/^\d{2}:\d{2}$/)
-}));
+  startTime: ownerTimeSchema,
+  endTime: ownerTimeSchema
+}).strict())
+  .min(1)
+  .max(7)
+  .superRefine((hours, context) => {
+    const weekdays = new Set<number>();
+    hours.forEach((entry, index) => {
+      if (weekdays.has(entry.weekday)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Each weekday can appear only once.",
+          path: [index, "weekday"]
+        });
+      }
+      weekdays.add(entry.weekday);
+      if (entry.endTime <= entry.startTime) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Closing time must be later than opening time.",
+          path: [index, "endTime"]
+        });
+      }
+    });
+  });
 
 const ownerActivationSchema = z.discriminatedUnion("action", [
   z.object({
@@ -35,7 +63,7 @@ const ownerActivationSchema = z.discriminatedUnion("action", [
 ]);
 
 function assertOwner(user: UserAccount) {
-  if (!(user.role === "owner" || user.role === "manager")) {
+  if (!(user.role === "shop_owner_user" || user.role === "owner" || user.role === "manager")) {
     return null;
   }
 
@@ -55,6 +83,14 @@ function formatHours(hours: z.infer<typeof hoursSchema>) {
   return hours
     .map((entry) => `${days[entry.weekday]} ${entry.startTime}-${entry.endTime}`)
     .join(", ");
+}
+
+function canonicalOwnerHours(hours: z.infer<typeof hoursSchema>) {
+  return {
+    version: 1,
+    source: "owner_settings",
+    weekly: [...hours].sort((left, right) => left.weekday - right.weekday)
+  };
 }
 
 function updateDemoOwnerActivation(user: UserAccount, input: z.infer<typeof ownerActivationSchema>) {
@@ -159,6 +195,28 @@ export async function POST(request: Request) {
       );
     }
 
+    const shopResult = await supabase
+      .from("shops")
+      .select("id, owner_profile_id, name, neighborhood, city, state, zip_code, phone, address")
+      .eq("id", shopId)
+      .maybeSingle();
+    if (shopResult.error) {
+      throw shopResult.error;
+    }
+    if (
+      !shopResult.data
+      || (
+        (shopResult.data as { owner_profile_id: string }).owner_profile_id !== user.id
+        && user.ownedShopId !== shopId
+      )
+    ) {
+      return NextResponse.json({ error: "This shop does not belong to the signed-in owner." }, { status: 403 });
+    }
+    const location = await ensureCanonicalOwnerShopLocation(
+      supabase,
+      shopResult.data as OwnerShopLocationSource
+    );
+
     if (parsed.data.action === "update_shop_profile") {
       const shopPatch = {
         name: parsed.data.shopName,
@@ -173,7 +231,7 @@ export async function POST(request: Request) {
 
       const [shopUpdate, locationUpdate] = await Promise.all([
         supabase.from("shops").update(shopPatch).eq("id", shopId),
-        supabase.from("locations").update(locationPatch).or(`id.eq.${shopId},reference_code.eq.${shopId}`)
+        supabase.from("locations").update(locationPatch).eq("id", location.id)
       ]);
 
       if (shopUpdate.error) {
@@ -185,13 +243,16 @@ export async function POST(request: Request) {
     }
 
     if (parsed.data.action === "update_shop_hours") {
-      const locationUpdate = await supabase
-        .from("locations")
-        .update({ hours: formatHours(parsed.data.hours) })
-        .or(`id.eq.${shopId},reference_code.eq.${shopId}`);
+      const hours = canonicalOwnerHours(parsed.data.hours);
+      const hoursUpdate = await supabase.rpc("pr40_update_owner_hours", {
+        p_actor_profile_id: user.id,
+        p_shop_id: shopId,
+        p_location_id: location.id,
+        p_hours: hours
+      });
 
-      if (locationUpdate.error) {
-        throw locationUpdate.error;
+      if (hoursUpdate.error) {
+        throw hoursUpdate.error;
       }
     }
 

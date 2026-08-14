@@ -12,12 +12,12 @@ const verificationSchema = z.object({
   shopId: z.string().min(1),
   category: z.enum(["business_verification", "ownership_verification"]),
   businessName: z.string().min(2),
-  documentPath: z.string().optional()
+  uploadId: z.string().trim().min(1)
 });
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireTrustActor(["owner"]);
+    const actor = await requireTrustActor(["shop_owner_user"]);
     const payload = verificationSchema.parse(await request.json());
     const trustProvider = await getTrustProvider();
     const result = await trustProvider.submitShopVerification(actor, payload);

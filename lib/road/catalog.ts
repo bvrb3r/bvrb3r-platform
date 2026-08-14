@@ -50,9 +50,9 @@ export const ROAD_DEFINITIONS = {
         badgeReward: "Welcome flair on your profile",
         achievements: [
           achievement("client.account_created", "Create account", "Phone or email — 30 seconds, no forms wall"),
-          achievement("client.contact_verified", "Verify contact", "One code. This is the identity truth."),
+          achievement("client.contact_verified", "Verify contact", "Verified email + phone are the identity truth"),
           achievement("client.username_claimed", "Pick a username", "How the culture knows you"),
-          achievement("client.guest_visits_claimed", "Claim guest visits", "Walk-in history merges into the new account")
+          achievement("client.guest_visits_claimed", "Resolve guest history", "Claim eligible walk-ins, or verify that there is no guest history to merge")
         ]
       },
       {
@@ -140,7 +140,7 @@ export const ROAD_DEFINITIONS = {
         achievements: [
           achievement("barber.account_created", "Create account", "Role: barber"),
           achievement("barber.username_claimed", "Pick your @username", "Your name on the door"),
-          achievement("barber.contact_verified", "Verify contact", "Identity truth")
+          achievement("barber.contact_verified", "Verify contact", "Verified email + phone protect the chair")
         ]
       },
       {
@@ -227,6 +227,7 @@ export const ROAD_DEFINITIONS = {
         badgeReward: "Shop page draft + setup console",
         achievements: [
           achievement("owner.account_created", "Create account", "Role: shop owner"),
+          achievement("owner.contact_verified", "Verify contact", "Verified email + phone protect the shop account"),
           achievement("owner.shop_identity_completed", "Shop identity", "Name, logo, address, description"),
           achievement("owner.shop_hours_set", "Set hours", "Daily hours + closures")
         ]
@@ -242,7 +243,7 @@ export const ROAD_DEFINITIONS = {
         achievements: [
           achievement("owner.business_verified", "Business verification", "Documents → verified badge"),
           achievement("owner.stripe_connected", "Stripe connected", "Rent revenue lands here"),
-          achievement("owner.policies_published", "Publish policies", "8 house rules, versioned"),
+          achievement("owner.policies_published", "Publish policies", "Real client-facing shop policies on the public profile"),
           achievement("owner.shop_profile_published", "Shop profile live", "Findable in search")
         ]
       },

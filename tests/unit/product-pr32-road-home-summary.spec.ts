@@ -82,4 +82,28 @@ describe("Product PR32 Road home summary", () => {
     expect(buildRoadHomeSummary(invalid, new Date("2026-08-03T12:00:00.000Z")).hidden).toBe(false);
     expect(buildRoadHomeSummary(future, new Date("2026-08-03T12:00:00.000Z")).hidden).toBe(false);
   });
+
+  it("keeps current setup attention visible even after a historical badge", () => {
+    const snapshot = buildRoadSnapshot({
+      role: "client_user",
+      serverTruth: "connected",
+      badges: [earnedBadge("2026-08-03T12:00:00.000Z")],
+      setupChecks: [{
+        achievementKey: "client.contact_verified",
+        status: "action_required",
+        reason: "verify_email_and_phone",
+        observedAt: null
+      }]
+    });
+    const summary = buildRoadHomeSummary(snapshot, new Date("2026-08-03T13:00:00.000Z"));
+
+    expect(summary.hidden).toBe(false);
+    expect(summary.setupReady).toBe(false);
+    expect(summary.nextAchievement).toBe("Verify contact");
+    expect(summary.currentAttention).toMatchObject({
+      label: "Verify contact",
+      status: "action_required",
+      reason: "Verify both your email address and phone number."
+    });
+  });
 });

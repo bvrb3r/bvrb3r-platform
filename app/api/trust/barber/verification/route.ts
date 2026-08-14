@@ -21,7 +21,15 @@ const verificationSchema = z.object({
   licenseNumber: z.string().optional(),
   issuingState: z.string().optional(),
   expirationDate: z.string().optional(),
-  documentPath: z.string().optional()
+  uploadId: z.string().trim().min(1).optional()
+}).superRefine((input, context) => {
+  if (input.category === "license_verification" && !input.uploadId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["uploadId"],
+      message: "A securely uploaded license document is required."
+    });
+  }
 });
 
 export async function GET() {
