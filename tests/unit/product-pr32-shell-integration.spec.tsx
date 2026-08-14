@@ -24,14 +24,15 @@ describe("Product PR32 shell integration", () => {
 
   it("places the Road widget on all three role homes after their primary truth", () => {
     const client = source("components/client-experience/client-home-screen.tsx");
-    const barber = source("components/operations/barber-schedule-workspace.tsx");
+    const barberHome = source("components/operations/barber-workspace.tsx");
+    const barberSchedule = source("components/operations/barber-schedule-workspace.tsx");
     const owner = source("components/operations/owner-operations-workspace.tsx");
 
     expect(client).toContain("<RoadHomeWidget compact={Boolean(nextAppointment)} />");
-    expect(barber).toContain("<RoadHomeWidget compact={Boolean(currentOrNextAppointmentId)} />");
+    expect(barberHome).toContain("<RoadHomeWidget compact={Boolean(nextAppointment)} />");
     expect(owner).toContain('<RoadHomeWidget tone="gold" className="mt-4" />');
-    expect(barber).toContain("<KioskLaunchAction");
-    expect(barber).toContain("Kiosk Mode");
+    expect(barberSchedule).toContain("<KioskLaunchAction");
+    expect(barberSchedule).toContain("Kiosk Mode");
   });
 
   it("deep-links the exact client appointment and exposes the real referral route", () => {
