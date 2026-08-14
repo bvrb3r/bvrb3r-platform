@@ -4,6 +4,10 @@ import {
   assertArchitectRuntimeControlAllows
 } from "@/lib/architect/city-map/runtime-controls.server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  ensureCanonicalOwnerShopLocation,
+  type OwnerShopLocationSource
+} from "@/lib/marketplace/owner-shop-location";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
   buildPlatformEventIdempotencyKey,
@@ -1386,31 +1390,66 @@ async function resolveStripeConnectSubject(
     throw new FintechServiceError("A shop is required for Stripe Connect management actions.", 400);
   }
 
-  if (!isLocationReadableByActor(actor, shopId)) {
-    throw new FintechServiceError("This shop is outside the viewer's scope.", 403);
-  }
-
-  const locationResult = await supabase
-    .from("locations")
-    .select("id, reference_code, name, neighborhood, city, state")
+  const ownedShopResult = await supabase
+    .from("shops")
+    .select("id, owner_profile_id, name, neighborhood, city, state, zip_code, phone, address")
     .eq("id", shopId)
     .maybeSingle();
-
-  if (locationResult.error) {
+  if (ownedShopResult.error) {
     throw new FintechServiceError("Unable to load the shop for Stripe Connect.", 500);
   }
 
-  if (!locationResult.data) {
+  let location: LocationRow | null = null;
+  if (ownedShopResult.data) {
+    const shop = ownedShopResult.data as OwnerShopLocationSource;
+    if (
+      isShopOwnerRole(actor.role)
+      && shop.owner_profile_id !== actor.profile.id
+    ) {
+      throw new FintechServiceError("This shop is outside the viewer's scope.", 403);
+    }
+    if (
+      !isShopOwnerRole(actor.role)
+      && !actor.locationIds.includes(shop.id)
+    ) {
+      throw new FintechServiceError("This shop is outside the viewer's scope.", 403);
+    }
+    const canonical = await ensureCanonicalOwnerShopLocation(supabase, shop);
+    const canonicalResult = await supabase
+      .from("locations")
+      .select("id, reference_code, name, neighborhood, city, state")
+      .eq("id", canonical.id)
+      .single();
+    if (canonicalResult.error || !canonicalResult.data) {
+      throw new FintechServiceError("Unable to load the shop for Stripe Connect.", 500);
+    }
+    location = canonicalResult.data as LocationRow;
+  } else {
+    if (!isLocationReadableByActor(actor, shopId)) {
+      throw new FintechServiceError("This shop is outside the viewer's scope.", 403);
+    }
+    const locationResult = await supabase
+      .from("locations")
+      .select("id, reference_code, name, neighborhood, city, state")
+      .eq("id", shopId)
+      .maybeSingle();
+    if (locationResult.error) {
+      throw new FintechServiceError("Unable to load the shop for Stripe Connect.", 500);
+    }
+    location = locationResult.data as LocationRow | null;
+  }
+
+  if (!location) {
     throw new FintechServiceError("Shop not found for Stripe Connect.", 404);
   }
 
   return {
     subjectType: "shop",
     barberId: null,
-    shopId,
+    shopId: location.id,
     barber: null,
-    location: locationResult.data as LocationRow,
-    displayName: (locationResult.data as LocationRow).name,
+    location,
+    displayName: location.name,
     email: actor.profile.email,
     createdBy: actor.profile.id
   };

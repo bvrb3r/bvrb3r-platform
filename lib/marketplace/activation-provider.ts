@@ -1,4 +1,5 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
+import { randomUUID } from "node:crypto";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { createEmptyMarketplaceActivationState, getMonetizationEligibility, type MarketplaceActivationState } from "@/lib/marketplace/activation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -19,6 +20,7 @@ type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
 export interface ActivationActor {
   role: Role;
+  userId?: string;
   barberId?: string;
   userEmail?: string;
 }
@@ -52,7 +54,7 @@ export interface MarketplaceActivationProvider {
     contentType: string;
     fileSizeBytes: number;
     expiresAt?: string;
-  }): Promise<{ upload: VerificationUploadRecord }>;
+  }): Promise<{ upload: VerificationUploadRecord; signedUploadUrl: string }>;
   createBoostCampaign(actor: ActivationActor, input: {
     scopeType: "barber" | "shop";
     scopeId?: string;
@@ -325,7 +327,7 @@ function createEmptyProvider(): MarketplaceActivationProvider {
   };
 }
 
-function createSupabaseProvider(supabase: SupabaseClient): MarketplaceActivationProvider {
+export function createSupabaseMarketplaceActivationProvider(supabase: SupabaseClient): MarketplaceActivationProvider {
   return {
     kind: "supabase",
     async readState() {
@@ -335,32 +337,65 @@ function createSupabaseProvider(supabase: SupabaseClient): MarketplaceActivation
       if (input.ownerType === "shop") {
         assertOwner(actor);
       }
-      if (input.ownerType === "barber" && actor.role !== "owner" && actor.barberId !== (input.ownerId ?? actor.barberId)) {
-        throw new ActivationPermissionError("You can only upload verification documents for your own barber profile.");
+      if (input.ownerType === "barber") {
+        if (!isBarberAccountRole(actor.role) || !actor.barberId || actor.barberId !== (input.ownerId ?? actor.barberId)) {
+          throw new ActivationPermissionError("Only a barber can upload verification documents for their own profile.");
+        }
+      }
+      if (input.ownerType === "shop" && (
+        input.category !== "business_verification"
+        && input.category !== "ownership_verification"
+      )) {
+        throw new ActivationValidationError("Shop documents require a shop verification category.");
+      }
+      if (input.ownerType === "barber" && (
+        input.category === "business_verification"
+        || input.category === "ownership_verification"
+      )) {
+        throw new ActivationValidationError("Barber documents require a barber verification category.");
       }
       const ownerId = input.ownerId ?? actor.barberId;
       if (!ownerId) {
         throw new ActivationValidationError("A real owner reference is required for verification uploads.");
       }
+      if (!actor.userId) {
+        throw new ActivationPermissionError("A signed-in account is required for verification uploads.");
+      }
+      if (input.ownerType === "shop") {
+        const shopResult = await supabase
+          .from("shops")
+          .select("id")
+          .eq("id", ownerId)
+          .eq("owner_profile_id", actor.userId)
+          .limit(1)
+          .maybeSingle();
+        if (shopResult.error) throw shopResult.error;
+        if (!shopResult.data) {
+          throw new ActivationPermissionError("You can only upload verification documents for your own shop.");
+        }
+      }
+      const uploadId = randomUUID();
       const upload: VerificationUploadRecord = {
-        id: makeId("upload"),
+        id: uploadId,
         ownerType: input.ownerType,
         ownerId,
         category: input.category,
         fileName: input.fileName,
         contentType: input.contentType,
         fileSizeBytes: input.fileSizeBytes,
-        storagePath: `verification/${input.ownerType}s/${ownerId}/${input.fileName}`,
-        secureReference: `secure://verification/${input.ownerType}/${ownerId}/${makeId("doc")}`,
+        storagePath: `verification/uploads/${randomUUID()}`,
+        secureReference: `secure://verification/${randomUUID()}`,
         uploadStatus: "uploaded",
         uploadedByRole: actor.role,
         uploadedAt: nowIso(),
         expiresAt: input.expiresAt
       };
-      const result = await supabase.from("verification_documents").upsert({
+      const result = await supabase.from("verification_documents").insert({
         id: upload.id,
         owner_type: upload.ownerType,
         owner_reference: upload.ownerId,
+        user_id: actor.userId,
+        shop_id: upload.ownerType === "shop" ? upload.ownerId : null,
         category: upload.category,
         storage_path: upload.storagePath,
         uploaded_at: upload.uploadedAt,
@@ -370,10 +405,24 @@ function createSupabaseProvider(supabase: SupabaseClient): MarketplaceActivation
         file_size_bytes: upload.fileSizeBytes,
         upload_status: upload.uploadStatus,
         uploaded_by_role: upload.uploadedByRole,
-        secure_reference: upload.secureReference
-      }, { onConflict: "id" });
+        secure_reference: upload.secureReference,
+        storage_bucket: "verification-private"
+      });
       if (result.error) throw result.error;
-      return { upload };
+
+      const signedUpload = await supabase.storage
+        .from("verification-private")
+        .createSignedUploadUrl(upload.storagePath, { upsert: false });
+      if (signedUpload.error || !signedUpload.data?.signedUrl) {
+        await supabase
+          .from("verification_documents")
+          .delete()
+          .eq("id", upload.id)
+          .eq("user_id", actor.userId);
+        throw signedUpload.error ?? new Error("Unable to create a secure verification upload capability.");
+      }
+
+      return { upload, signedUploadUrl: signedUpload.data.signedUrl };
     },
     async createBoostCampaign(actor, input) {
       if (!(isShopOwnerRole(actor.role) || isBarberAccountRole(actor.role))) {
@@ -485,7 +534,7 @@ export async function getMarketplaceActivationProvider(): Promise<MarketplaceAct
     return createEmptyProvider();
   }
 
-  return createSupabaseProvider(supabase);
+  return createSupabaseMarketplaceActivationProvider(supabase);
 }
 
 

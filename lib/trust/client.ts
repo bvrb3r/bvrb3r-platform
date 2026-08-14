@@ -76,6 +76,27 @@ export function useCreateVerificationUploadMutation() {
   });
 }
 
+export async function uploadVerificationDocument(upload: VerificationUploadView, file: File) {
+  if (file.type !== upload.contentType || file.size !== upload.fileSizeBytes) {
+    throw new Error("The selected verification file no longer matches the secure upload request.");
+  }
+
+  const body = new FormData();
+  body.append("cacheControl", "3600");
+  body.append("", file);
+  const response = await fetch(upload.signedUploadUrl, {
+    method: "PUT",
+    body,
+    credentials: "omit",
+    referrerPolicy: "no-referrer",
+    headers: { "x-upsert": "false" }
+  });
+  if (!response.ok) {
+    throw new Error("Unable to upload verification evidence to secure storage.");
+  }
+  return upload.uploadId;
+}
+
 export function useSubmitBarberVerificationMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -86,7 +107,7 @@ export function useSubmitBarberVerificationMutation() {
       licenseNumber?: string;
       issuingState?: string;
       expirationDate?: string;
-      documentPath?: string;
+      uploadId?: string;
     }) => requestJson<{ verification: { id: string } }>("/api/trust/barber/verification", { method: "POST", body: JSON.stringify(payload) }),
     onSuccess: async () => {
       await Promise.all([
@@ -101,7 +122,7 @@ export function useSubmitBarberVerificationMutation() {
 export function useSubmitShopVerificationMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { shopId: string; category: "business_verification" | "ownership_verification"; businessName: string; documentPath?: string }) =>
+    mutationFn: (payload: { shopId: string; category: "business_verification" | "ownership_verification"; businessName: string; uploadId: string }) =>
       requestJson<{ verification: { id: string } }>("/api/trust/owner/shop-verification", { method: "POST", body: JSON.stringify(payload) }),
     onSuccess: async () => {
       await Promise.all([

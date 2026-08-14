@@ -161,9 +161,12 @@ export function serializeVerificationProviderStatus(
   };
 }
 
-export function serializeVerificationUpload(upload: VerificationUploadRecord): VerificationUploadView {
+export function serializeVerificationUpload(
+  upload: VerificationUploadRecord,
+  signedUploadUrl: string
+): VerificationUploadView {
   return {
-    id: upload.id,
+    uploadId: upload.id,
     ownerType: upload.ownerType,
     ownerId: upload.ownerId,
     category: upload.category,
@@ -173,7 +176,8 @@ export function serializeVerificationUpload(upload: VerificationUploadRecord): V
     uploadStatus: upload.uploadStatus,
     uploadedByRole: upload.uploadedByRole,
     uploadedAt: upload.uploadedAt,
-    expiresAt: upload.expiresAt
+    expiresAt: upload.expiresAt,
+    signedUploadUrl
   };
 }
 

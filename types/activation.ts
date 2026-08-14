@@ -46,7 +46,7 @@ export interface VerificationUploadRecord {
 }
 
 export interface VerificationUploadView {
-  id: string;
+  uploadId: string;
   ownerType: VerificationOwnerType;
   ownerId: string;
   category: BarberVerificationCategory | ShopVerificationCategory;
@@ -57,6 +57,7 @@ export interface VerificationUploadView {
   uploadedByRole: Role;
   uploadedAt: string;
   expiresAt?: string;
+  signedUploadUrl: string;
 }
 
 export interface NotificationDeliveryRecord {

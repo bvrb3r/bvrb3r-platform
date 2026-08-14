@@ -60,6 +60,8 @@ type ShopMediaRow = {
   public_username?: string | null;
   brand_line?: string | null;
   public_bio?: string | null;
+  public_hours?: unknown;
+  policies?: string | null;
   neighborhood: string;
   city: string;
   state?: string | null;
@@ -113,6 +115,8 @@ export type ShopMediaWorkspaceView = {
   publicUsername?: string | null;
   brandLine?: string | null;
   publicBio?: string | null;
+  publicHours?: unknown;
+  policies?: string | null;
   neighborhood?: string | null;
   city?: string | null;
   state?: string | null;
@@ -784,7 +788,7 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
   const [shopResult, galleryResult] = await Promise.all([
     supabase
       .from("shops")
-      .select("id, name, public_username, brand_line, public_bio, neighborhood, city, state, zip_code, phone, address, profile_photo_path, profile_photo_url")
+      .select("id, name, public_username, brand_line, public_bio, public_hours, policies, neighborhood, city, state, zip_code, phone, address, profile_photo_path, profile_photo_url")
       .eq("id", shopId)
       .maybeSingle(),
     supabase
@@ -820,6 +824,8 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
     publicUsername: shop.public_username ?? null,
     brandLine: shop.brand_line ?? null,
     publicBio: shop.public_bio ?? null,
+    publicHours: shop.public_hours ?? null,
+    policies: shop.policies ?? null,
     neighborhood: shop.neighborhood,
     city: shop.city,
     state: shop.state ?? null,
@@ -923,6 +929,8 @@ function readDemoShopMedia(shopId: string): ShopMediaWorkspaceView | null {
     brandLine: shop.brandLine ?? null,
     publicUsername: shop.shopUsername ?? null,
     publicBio: shop.publicBio ?? null,
+    publicHours: shop.publicHours,
+    policies: shop.policies ?? null,
     neighborhood: shop.neighborhood ?? location?.neighborhood ?? null,
     city: shop.city ?? location?.city ?? null,
     state: shop.state ?? location?.state ?? null,

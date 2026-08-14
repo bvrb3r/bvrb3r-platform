@@ -102,6 +102,7 @@ export function RoadHomeWidget({
         className
       )}
       data-testid="road-home-widget"
+      data-road-setup-ready={summary.setupReady ? "true" : "false"}
     >
       <div className={cn("flex items-center gap-3", compact && "sm:contents")}>
         <span className={cn("inline-flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.18em]", accentText)}>
@@ -128,7 +129,11 @@ export function RoadHomeWidget({
 
       {!compact ? (
         <p className="mt-3 text-xs leading-5 text-white/58">
-          {summary.nextAchievement ? `Next: ${summary.nextAchievement}` : "The summit is complete."}
+          {summary.currentAttention
+            ? `${summary.currentAttention.status === "pending_review" ? "Pending" : "Setup attention"}: ${summary.currentAttention.label}${summary.currentAttention.reason ? ` — ${summary.currentAttention.reason}` : ""}`
+            : summary.nextAchievement
+              ? `Next: ${summary.nextAchievement}`
+              : "The summit is complete."}
         </p>
       ) : null}
     </Link>

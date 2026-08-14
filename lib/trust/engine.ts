@@ -70,6 +70,7 @@ const REPORT_SUBJECTS: Record<Role, readonly SafetyReportRecord["subjectType"][]
 
 export interface TrustActor {
   role: Role;
+  userId?: string;
   userEmail?: string;
   clientId?: string;
   barberId?: string;
@@ -83,14 +84,14 @@ export interface SubmitBarberVerificationInput {
   licenseNumber?: string;
   issuingState?: string;
   expirationDate?: string;
-  documentPath?: string;
+  uploadId?: string;
 }
 
 export interface SubmitShopVerificationInput {
   shopId: string;
   category: ShopVerificationCategory;
   businessName: string;
-  documentPath?: string;
+  uploadId: string;
 }
 
 export interface SubmitSafetyReportInput {
@@ -1044,14 +1045,38 @@ export function submitBarberVerification(state: TrustState, actor: TrustActor, i
   ) {
     throw new TrustValidationError("License number, issuing state, and expiration date are required for license verification.");
   }
+  if (input.category === "license_verification") {
+    const expiration = new Date(`${input.expirationDate}T23:59:59.999Z`);
+    if (Number.isNaN(expiration.getTime()) || expiration.getTime() < Date.now()) {
+      throw new TrustValidationError("The barber license must have a current future expiration date.");
+    }
+  }
 
   const now = new Date().toISOString();
   const existing = getBarberVerificationRecord(state, actor.barberId, input.category);
+  const verificationProfileId = state.verificationProfiles?.find((profile) => profile.userId === actor.userId && profile.role === "barber")?.id;
+  const existingDocument = input.uploadId
+    ? state.verificationDocuments.find((record) => (
+        record.id === input.uploadId
+        && record.ownerType === "barber"
+        && record.ownerId === actor.barberId
+        && record.userId === actor.userId
+        && record.category === input.category
+      ))
+    : undefined;
+  if (input.uploadId && !existingDocument) {
+    throw new TrustValidationError("The verification upload is not owned by this barber account.");
+  }
+  if (input.category === "license_verification" && !existingDocument) {
+    throw new TrustValidationError("A securely uploaded license document owned by this account is required.");
+  }
   const verification: BarberVerificationRecord = {
     id: existing?.id ?? createId("barber-verification"),
     barberId: actor.barberId,
     category: input.category,
     legalName: input.legalName.trim(),
+    userId: actor.userId ?? existing?.userId,
+    verificationProfileId: verificationProfileId ?? existing?.verificationProfileId,
     licenseType: input.licenseType?.trim() || undefined,
     licenseNumber: input.licenseNumber?.trim() || undefined,
     issuingState: input.issuingState?.trim() || undefined,
@@ -1060,19 +1085,24 @@ export function submitBarberVerification(state: TrustState, actor: TrustActor, i
     verificationSubmittedAt: now,
     verificationReviewedAt: existing?.verificationReviewedAt,
     verificationNotes: "Submission received and queued for trust review.",
-    documentPath: input.documentPath ?? existing?.documentPath,
+    documentPath: existingDocument?.storagePath ?? existing?.documentPath,
     updatedAt: now
   };
-  const document: VerificationDocumentRecord | undefined = input.documentPath
+  const document: VerificationDocumentRecord | undefined = existingDocument
     ? {
-        id: createId("verification-document"),
+        ...existingDocument,
+        id: existingDocument.id,
         ownerType: "barber" as const,
         ownerId: actor.barberId,
+        userId: actor.userId ?? existingDocument.userId,
+        verificationProfileId: verificationProfileId ?? existingDocument.verificationProfileId,
         category: input.category,
-        storagePath: input.documentPath,
-        uploadedAt: now,
+        storagePath: existingDocument.storagePath,
+        storageBucket: existingDocument.storageBucket ?? "verification-private",
+        uploadedAt: existingDocument.uploadedAt,
         expiresAt: input.expirationDate,
-        status: "submitted" as const
+        status: "submitted" as const,
+        updatedAt: now
       }
     : undefined;
 
@@ -1085,7 +1115,9 @@ export function submitBarberVerification(state: TrustState, actor: TrustActor, i
           (record) => !(record.barberId === actor.barberId && record.category === input.category)
         )
       ],
-      verificationDocuments: document ? [document, ...state.verificationDocuments] : state.verificationDocuments
+      verificationDocuments: document
+        ? [document, ...state.verificationDocuments.filter((record) => record.id !== document.id)]
+        : state.verificationDocuments
     },
     verification,
     document
@@ -1104,29 +1136,46 @@ export function submitShopVerification(state: TrustState, actor: TrustActor, inp
   const existing = state.shopVerifications.find(
     (record) => record.shopId === input.shopId && record.category === input.category
   );
+  const verificationProfileId = state.verificationProfiles?.find((profile) => profile.userId === actor.userId && profile.role === "shop_owner")?.id;
+  const existingDocument = state.verificationDocuments.find((record) => (
+    record.id === input.uploadId
+    && record.ownerType === "shop"
+    && record.ownerId === input.shopId
+    && record.userId === actor.userId
+    && record.category === input.category
+  ));
+  if (!existingDocument) {
+    throw new TrustValidationError("A securely uploaded business document owned by this account is required.");
+  }
   const verification: ShopVerificationRecord = {
     id: existing?.id ?? createId("shop-verification"),
     shopId: input.shopId,
     category: input.category,
     businessName: input.businessName.trim(),
+    userId: actor.userId ?? existing?.userId,
+    verificationProfileId: verificationProfileId ?? existing?.verificationProfileId,
     verificationStatus: "pending",
     verificationSubmittedAt: now,
     verificationReviewedAt: existing?.verificationReviewedAt,
     verificationNotes: "Submission received and queued for trust review.",
-    documentPath: input.documentPath ?? existing?.documentPath,
+    documentPath: existingDocument.storagePath,
     updatedAt: now
   };
-  const document: VerificationDocumentRecord | undefined = input.documentPath
-    ? {
-        id: createId("verification-document"),
-        ownerType: "shop" as const,
-        ownerId: input.shopId,
-        category: input.category,
-        storagePath: input.documentPath,
-        uploadedAt: now,
-        status: "submitted" as const
-      }
-    : undefined;
+  const document: VerificationDocumentRecord = {
+    ...existingDocument,
+    id: existingDocument.id,
+    ownerType: "shop" as const,
+    ownerId: input.shopId,
+    userId: actor.userId ?? existingDocument.userId,
+    shopId: input.shopId,
+    verificationProfileId: verificationProfileId ?? existingDocument.verificationProfileId,
+    category: input.category,
+    storagePath: existingDocument.storagePath,
+    storageBucket: existingDocument.storageBucket ?? "verification-private",
+    uploadedAt: existingDocument.uploadedAt,
+    status: "submitted" as const,
+    updatedAt: now
+  };
 
   return {
     state: {
@@ -1137,7 +1186,9 @@ export function submitShopVerification(state: TrustState, actor: TrustActor, inp
           (record) => !(record.shopId === input.shopId && record.category === input.category)
         )
       ],
-      verificationDocuments: document ? [document, ...state.verificationDocuments] : state.verificationDocuments
+      verificationDocuments: document
+        ? [document, ...state.verificationDocuments.filter((record) => record.id !== document.id)]
+        : state.verificationDocuments
     },
     verification,
     document

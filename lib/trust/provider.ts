@@ -11,6 +11,8 @@ import {
   submitShopVerification as submitShopVerificationInState,
   submitDispute as submitDisputeInState,
   submitSafetyReport as submitSafetyReportInState,
+  TrustPermissionError,
+  TrustValidationError,
   type SubmitBarberVerificationInput,
   type SubmitDisputeInput,
   type SubmitShopVerificationInput,
@@ -383,14 +385,103 @@ function createEmptyProvider(): TrustProvider {
   };
 }
 
-function createSupabaseProvider(supabase: SupabaseClient): TrustProvider {
+export function createSupabaseTrustProvider(supabase: SupabaseClient): TrustProvider {
+  async function assertStoredVerificationDocument(input: {
+    actor: TrustActor;
+    ownerType: "barber" | "shop";
+    ownerId: string;
+    category: string;
+    uploadId?: string;
+  }) {
+    if (!input.actor.userId || !input.uploadId) {
+      throw new TrustValidationError("A securely uploaded verification document is required.");
+    }
+
+    const document = await supabase
+      .from("verification_documents")
+      .select("id, user_id, owner_type, owner_reference, category, storage_bucket, storage_path, content_type, file_size_bytes")
+      .eq("id", input.uploadId)
+      .eq("user_id", input.actor.userId)
+      .eq("owner_type", input.ownerType)
+      .eq("owner_reference", input.ownerId)
+      .eq("category", input.category)
+      .limit(1)
+      .maybeSingle();
+    if (document.error) throw document.error;
+    if (!document.data) {
+      throw new TrustPermissionError("The verification document is not owned by this signed-in account.");
+    }
+
+    const storagePath = document.data.storage_path as string;
+    const slashIndex = storagePath.lastIndexOf("/");
+    const directory = slashIndex >= 0 ? storagePath.slice(0, slashIndex) : "";
+    const fileName = slashIndex >= 0 ? storagePath.slice(slashIndex + 1) : storagePath;
+    const bucket = typeof document.data.storage_bucket === "string" && document.data.storage_bucket
+      ? document.data.storage_bucket
+      : "verification-private";
+    const objects = await supabase.storage.from(bucket).list(directory, {
+      limit: 10,
+      search: fileName
+    });
+    if (objects.error) throw objects.error;
+    const storedObject = (objects.data ?? []).find((object) => object.name === fileName);
+    if (!storedObject) {
+      throw new TrustValidationError("Finish the secure document upload before submitting verification.");
+    }
+    const metadata = storedObject.metadata && typeof storedObject.metadata === "object"
+      ? storedObject.metadata as Record<string, unknown>
+      : {};
+    const actualSize = Number(metadata.size ?? metadata.contentLength ?? metadata.content_length);
+    const actualContentType = `${metadata.mimetype ?? metadata.mimeType ?? metadata.contentType ?? metadata.content_type ?? ""}`
+      .split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    const declaredSize = Number(document.data.file_size_bytes);
+    const declaredContentType = `${document.data.content_type ?? ""}`.trim().toLowerCase();
+    if (
+      !Number.isSafeInteger(actualSize)
+      || actualSize !== declaredSize
+      || !actualContentType
+      || actualContentType !== declaredContentType
+    ) {
+      throw new TrustValidationError("The stored verification document does not match the secure upload request.");
+    }
+    return document.data as {
+      id: string;
+      user_id: string;
+      owner_type: "barber" | "shop";
+      owner_reference: string;
+      category: string;
+      storage_bucket: string | null;
+      storage_path: string;
+      content_type: string;
+      file_size_bytes: number;
+    };
+  }
+
   return {
     kind: "supabase",
     async readState() {
       return readSupabaseState(supabase);
     },
     async submitBarberVerification(actor, input) {
-      const result = submitBarberVerificationInState(await readSupabaseState(supabase), actor, input);
+      if (!actor.barberId) {
+        throw new TrustPermissionError("A canonical barber profile is required for verification.");
+      }
+      if (input.uploadId) {
+        await assertStoredVerificationDocument({
+          actor,
+          ownerType: "barber",
+          ownerId: actor.barberId,
+          category: input.category,
+          uploadId: input.uploadId
+        });
+      }
+      const state = await readSupabaseState(supabase);
+      if (input.uploadId && !state.verificationDocuments.some((document) => document.id === input.uploadId)) {
+        throw new TrustValidationError("Verification upload evidence could not be loaded.");
+      }
+      const result = submitBarberVerificationInState(state, actor, input);
 
       await upsertRows(
         supabase,
@@ -400,6 +491,8 @@ function createSupabaseProvider(supabase: SupabaseClient): TrustProvider {
           barber_reference: result.verification.barberId,
           category: result.verification.category,
           legal_name: result.verification.legalName,
+          user_id: result.verification.userId ?? null,
+          verification_profile_id: result.verification.verificationProfileId ?? null,
           license_type: result.verification.licenseType ?? null,
           license_number: result.verification.licenseNumber ?? null,
           issuing_state: result.verification.issuingState ?? null,
@@ -423,10 +516,15 @@ function createSupabaseProvider(supabase: SupabaseClient): TrustProvider {
             owner_type: result.document.ownerType,
             owner_reference: result.document.ownerId,
             category: result.document.category,
+            user_id: result.document.userId ?? null,
+            shop_id: result.document.shopId ?? null,
+            verification_profile_id: result.document.verificationProfileId ?? null,
+            storage_bucket: result.document.storageBucket ?? "verification-private",
             storage_path: result.document.storagePath,
             uploaded_at: result.document.uploadedAt,
             expires_at: result.document.expiresAt ?? null,
-            status: result.document.status ?? null
+            status: result.document.status ?? null,
+            updated_at: result.document.updatedAt ?? null
           }],
           "id"
         );
@@ -435,7 +533,32 @@ function createSupabaseProvider(supabase: SupabaseClient): TrustProvider {
       return result;
     },
     async submitShopVerification(actor, input) {
-      const result = submitShopVerificationInState(await readSupabaseState(supabase), actor, input);
+      if (!actor.userId) {
+        throw new TrustPermissionError("A signed-in shop owner account is required for verification.");
+      }
+      const ownedShop = await supabase
+        .from("shops")
+        .select("id")
+        .eq("id", input.shopId)
+        .eq("owner_profile_id", actor.userId)
+        .limit(1)
+        .maybeSingle();
+      if (ownedShop.error) throw ownedShop.error;
+      if (!ownedShop.data) {
+        throw new TrustPermissionError("You can only submit verification for your own shop.");
+      }
+      await assertStoredVerificationDocument({
+        actor,
+        ownerType: "shop",
+        ownerId: input.shopId,
+        category: input.category,
+        uploadId: input.uploadId
+      });
+      const state = await readSupabaseState(supabase);
+      if (!state.verificationDocuments.some((document) => document.id === input.uploadId)) {
+        throw new TrustValidationError("Verification upload evidence could not be loaded.");
+      }
+      const result = submitShopVerificationInState(state, actor, input);
 
       await upsertRows(
         supabase,
@@ -445,6 +568,8 @@ function createSupabaseProvider(supabase: SupabaseClient): TrustProvider {
           shop_reference: result.verification.shopId,
           category: result.verification.category,
           business_name: result.verification.businessName,
+          user_id: result.verification.userId ?? null,
+          verification_profile_id: result.verification.verificationProfileId ?? null,
           verification_status: result.verification.verificationStatus,
           verification_submitted_at: result.verification.verificationSubmittedAt ?? null,
           verification_reviewed_at: result.verification.verificationReviewedAt ?? null,
@@ -464,10 +589,15 @@ function createSupabaseProvider(supabase: SupabaseClient): TrustProvider {
             owner_type: result.document.ownerType,
             owner_reference: result.document.ownerId,
             category: result.document.category,
+            user_id: result.document.userId ?? null,
+            shop_id: result.document.shopId ?? null,
+            verification_profile_id: result.document.verificationProfileId ?? null,
+            storage_bucket: result.document.storageBucket ?? "verification-private",
             storage_path: result.document.storagePath,
             uploaded_at: result.document.uploadedAt,
             expires_at: result.document.expiresAt ?? null,
-            status: result.document.status ?? null
+            status: result.document.status ?? null,
+            updated_at: result.document.updatedAt ?? null
           }],
           "id"
         );
@@ -589,7 +719,7 @@ export async function getTrustProvider(): Promise<TrustProvider> {
     return createEmptyProvider();
   }
 
-  return createSupabaseProvider(supabase);
+  return createSupabaseTrustProvider(supabase);
 }
 
 

@@ -37,6 +37,7 @@ describe("trust privacy routes", () => {
     requireTrustActorMock.mockResolvedValue({ role: "barber_user", barberId: "barber-fade", userEmail: "fade@bvrb3r.demo" });
     getMarketplaceActivationProviderMock.mockResolvedValue({
       createVerificationUpload: vi.fn().mockResolvedValue({
+        signedUploadUrl: "https://storage.example.invalid/object/upload/sign/verification-private/opaque?token=secret-capability",
         upload: {
           id: "upload-1",
           ownerType: "barber",
@@ -68,6 +69,11 @@ describe("trust privacy routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
+    expect(body.upload.uploadId).toBe("upload-1");
+    expect(body.upload.signedUploadUrl).toContain("token=secret-capability");
+    expect(body.upload).not.toHaveProperty("id");
+    expect(body.upload).not.toHaveProperty("storageBucket");
     expect(body.upload).not.toHaveProperty("storagePath");
     expect(body.upload).not.toHaveProperty("secureReference");
   });
@@ -100,7 +106,8 @@ describe("trust privacy routes", () => {
       method: "POST",
       body: JSON.stringify({
         category: "license_verification",
-        legalName: "Fade Monroe"
+        legalName: "Fade Monroe",
+        uploadId: "upload-1"
       })
     }));
     const body = await response.json();
@@ -141,7 +148,8 @@ describe("trust privacy routes", () => {
       body: JSON.stringify({
         shopId: "shop-bvrb3r",
         category: "business_verification",
-        businessName: "The BVRB3R Shop(TM) & Co."
+        businessName: "The BVRB3R Shop(TM) & Co.",
+        uploadId: "upload-shop-1"
       })
     }));
     const body = await response.json();

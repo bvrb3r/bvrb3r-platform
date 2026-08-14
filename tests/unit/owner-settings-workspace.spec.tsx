@@ -483,6 +483,23 @@ describe("owner More workspace", () => {
       hours: expect.arrayContaining([expect.objectContaining({ startTime: "10:00" })])
     }));
 
+    fireEvent.click(screen.getByRole("button", { name: /Shop Policies Shop rules/ }));
+    dialog = screen.getByRole("dialog", { name: "Shop Policies" });
+    const publishPoliciesButton = within(dialog).getByRole("button", { name: "Publish Policies" });
+    expect(publishPoliciesButton).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText("Client-facing shop policies"), {
+      target: { value: "Appointments require 24 hours notice for cancellation." }
+    });
+    expect(publishPoliciesButton).toBeEnabled();
+    fireEvent.click(publishPoliciesButton);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/owner/shop/profile", expect.objectContaining({
+      method: "PATCH"
+    })));
+    const ownerPoliciesRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find((call) => call[0] === "/api/owner/shop/profile")?.[1] as RequestInit | undefined;
+    expect(JSON.parse(String(ownerPoliciesRequest?.body))).toEqual(expect.objectContaining({
+      policies: "Appointments require 24 hours notice for cancellation."
+    }));
+
     fireEvent.click(screen.getByRole("link", { name: /Business Verification Barber shop license, LLC\/business document/ }));
     dialog = screen.getByRole("dialog", { name: "Business Verification" });
     expect(within(dialog).getByText("Shop license")).toBeInTheDocument();
@@ -560,6 +577,36 @@ describe("owner More workspace", () => {
     render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} initialSection="services" />);
 
     expect(screen.getByTestId("service-catalog-workspace-stub")).toBeInTheDocument();
+  });
+
+  it("opens the exact editor for Road hours and policy deep links", async () => {
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+      data: {
+        viewer: { notificationPreference: { inAppEnabled: true, emailEnabled: true, smsEnabled: false, pushEnabled: true } },
+        shops: [{
+          shopId: "shop-owned",
+          label: "The BVRB3R Shop",
+          name: "The BVRB3R Shop",
+          policies: "Existing cancellation and no-show policies.",
+          gallery: []
+        }]
+      }
+    });
+
+    const hoursRender = render(
+      <OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} initialSection="hours" />
+    );
+    expect(await screen.findByRole("dialog", { name: "Shop Hours" })).toBeInTheDocument();
+    hoursRender.unmount();
+
+    render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} initialSection="policies" />);
+    const policiesDialog = await screen.findByRole("dialog", { name: "Shop Policies" });
+    expect(within(policiesDialog).getByLabelText("Client-facing shop policies")).toHaveValue(
+      "Existing cancellation and no-show policies."
+    );
   });
 
   it("shows verified status when owner and shop approvals are clear", () => {

@@ -7,6 +7,10 @@ import {
   forwardPermanentMapboxAddress,
   MapboxGeocodingError
 } from "@/lib/marketplace/mapbox-geocoding";
+import {
+  ensureCanonicalOwnerShopLocation,
+  type OwnerShopLocationSource
+} from "@/lib/marketplace/owner-shop-location";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -16,6 +20,8 @@ const requestSchema = z.object({
   addressLine2: z.string().trim().max(120).optional(),
   visibility: z.enum(["exact", "approximate"]).default("exact")
 });
+
+const SHOP_LOCATION_SETUP_STATUSES = new Set(["pending", "under_review", "approved"]);
 
 export async function POST(
   request: Request,
@@ -38,21 +44,28 @@ export async function POST(
 
   const shopResult = await supabase
     .from("shops")
-    .select("id, owner_profile_id")
+    .select("id, owner_profile_id, name, neighborhood, city, state, zip_code, phone, address, app_approval_status")
     .eq("id", shopId)
     .eq("owner_profile_id", session.user.id)
     .maybeSingle();
   if (shopResult.error || !shopResult.data) {
     return NextResponse.json({ error: "This shop does not belong to the signed-in owner." }, { status: 403 });
   }
-  const locationResult = await supabase
-    .from("locations")
-    .select("id")
-    .eq("reference_code", shopId)
-    .maybeSingle();
-  if (locationResult.error || !locationResult.data) {
-    return NextResponse.json({ error: "Create the shop location before publishing its map pin." }, { status: 409 });
+  const approvalStatus = String(shopResult.data.app_approval_status ?? "");
+  if (!SHOP_LOCATION_SETUP_STATUSES.has(approvalStatus)) {
+    return NextResponse.json(
+      { error: "Resolve the shop approval status before saving a verified map location." },
+      { status: 409 }
+    );
   }
+  const admin = createSupabaseAdminClient();
+  if (!admin) {
+    return NextResponse.json({ error: "Shop location storage is unavailable." }, { status: 503 });
+  }
+  const location = await ensureCanonicalOwnerShopLocation(
+    admin,
+    shopResult.data as OwnerShopLocationSource
+  );
 
   const rate = consumeRateLimit({
     bucket: "marketplace-permanent-geocode",
@@ -86,12 +99,8 @@ export async function POST(
     );
   }
 
-  const admin = createSupabaseAdminClient();
-  if (!admin) {
-    return NextResponse.json({ error: "Shop location storage is unavailable." }, { status: 503 });
-  }
   const saved = await admin.rpc("pr39_save_verified_shop_location", {
-    p_location_id: locationResult.data.id,
+    p_location_id: location.id,
     p_owner_profile_id: session.user.id,
     p_formatted_address: geocoded.formattedAddress,
     p_address_line_2: parsed.data.addressLine2 ?? "",
@@ -115,7 +124,7 @@ export async function POST(
 
   return NextResponse.json({
     location: {
-      id: locationResult.data.id,
+      id: location.id,
       address: geocoded.formattedAddress,
       city: geocoded.city,
       region: geocoded.region,
@@ -124,7 +133,8 @@ export async function POST(
       longitude: geocoded.longitude,
       visibility: savedLocation.location_visibility,
       verified: savedLocation.location_verified,
-      geocodedAt: savedLocation.geocoded_at
+      geocodedAt: savedLocation.geocoded_at,
+      publicationStatus: approvalStatus === "approved" ? "published" : "pending_review"
     }
   });
 }

@@ -15,6 +15,7 @@ export type SavedShopLocation = {
   latitude: number;
   longitude: number;
   verified: boolean;
+  publicationStatus?: "pending_review" | "published";
 };
 
 export type ShopAddressMapboxFieldProps = {
@@ -87,7 +88,12 @@ export function ShopAddressMapboxField({
       }
       onSaved?.(body.location);
       setHasSavedPin(true);
-      setFeedback({ tone: "success", message: "Verified shop address and PostGIS map pin saved." });
+      setFeedback({
+        tone: "success",
+        message: body.location.publicationStatus === "pending_review"
+          ? "Verified shop address saved. The pin will stay out of public search until shop approval finishes."
+          : "Verified shop address and PostGIS map pin saved."
+      });
     } catch (error) {
       setFeedback({ tone: "error", message: error instanceof Error ? error.message : "The shop pin could not be saved." });
     } finally {
@@ -129,7 +135,7 @@ export function ShopAddressMapboxField({
         <div>
           <p className="text-base font-extrabold text-white">Verified shop address & map pin</p>
           <p className="mt-1 text-sm leading-6 text-white/56">
-            Suggestions stay temporary. Saving performs a permanent server-side geocode, then Supabase stores the confirmed point.
+            Suggestions stay temporary. Saving performs a permanent server-side geocode, then Supabase stores the confirmed point. Pending shops stay out of public search until approval.
           </p>
         </div>
       </div>

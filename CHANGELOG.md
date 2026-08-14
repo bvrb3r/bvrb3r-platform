@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Added server-owned Road account-setup reconciliation for 71 Client, Barber, and Shop Owner achievements, including 22 live setup checks, sequential replay, immutable evidence, and role-isolated service RPCs.
+- Added corrective setup actions for verified contact, profiles, payment and payout readiness, Barber services and availability, Owner location, hours and policies, and secure ClientBridge guest-history resolution.
+- Replaced verification path submission with opaque, signed Supabase Storage uploads that bind the actor, owner, category, object, MIME type, and byte size before evidence can be submitted.
+- Applied and certified migration `20260814023406_road_account_setup_reconciliation` database-first in production; the idempotent initial reconcile produced 23 setup-truth events, 21 Road progress rows, and 3 badges with no duplicate or sequencing invariant failures.
+- Applied and rollback-certified migration `20260814091007_road_setup_atomic_writes` database-first in production, making Owner hours and Barber availability writes transactional while extending owned pending-shop geocoding without exposing unapproved shops to discovery.
+- Application release remains gated on the exact-head pull-request, CI, Vercel preview, signed-in three-role walkthrough, and production smoke sequence.
+
 ## 0.8.3
 
 - Added Real Device QA and Store Submission on top of the verified Native Distribution and Live Delivery milestone without weakening role protections or destabilizing the stable marketplace and operating-system MVP
@@ -166,7 +175,6 @@
 - Added role-based dashboards for owner, manager, front desk, barber, and client
 - Added seeded domain model, business logic helpers, and Supabase-ready schema
 - Added tests, docs, env example, and operational runbook
-
 
 
 

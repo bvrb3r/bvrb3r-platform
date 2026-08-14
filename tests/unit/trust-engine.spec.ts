@@ -90,10 +90,21 @@ describe("trust engine", () => {
 
   it("allows a barber to submit verification and creates a document reference", () => {
     const state = createInitialTrustState();
+    state.verificationDocuments.unshift({
+      id: "upload-license-renewal",
+      ownerType: "barber",
+      ownerId: "barber-wave",
+      userId: "user-wave",
+      category: "license_verification",
+      storageBucket: "verification-private",
+      storagePath: "verification/uploads/opaque-license-renewal",
+      uploadedAt: "2026-08-14T12:00:00.000Z"
+    });
     const result = submitBarberVerification(
       state,
       {
         role: "barber_user",
+        userId: "user-wave",
         barberId: "barber-wave",
         userEmail: "wave@bvrb3r.demo"
       },
@@ -104,12 +115,12 @@ describe("trust engine", () => {
         licenseNumber: "FL-BR-884201",
         issuingState: "FL",
         expirationDate: "2027-06-30",
-        documentPath: "verification/barber-wave/license-renewal.pdf"
+        uploadId: "upload-license-renewal"
       }
     );
 
     expect(result.verification.verificationStatus).toBe("pending");
-    expect(result.document?.storagePath).toContain("license-renewal.pdf");
+    expect(result.document?.storagePath).toBe("verification/uploads/opaque-license-renewal");
     expect(result.document?.status).toBe("submitted");
     expect(result.state.barberVerifications.some((record) => record.id === result.verification.id)).toBe(true);
   });

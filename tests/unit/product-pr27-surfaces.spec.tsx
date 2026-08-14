@@ -34,7 +34,51 @@ describe("Product PR27 redesign surfaces", () => {
     expect(screen.getByText(/ChairSync · optional/)).toBeInTheDocument();
     expect(screen.getByText(/Portfolio & Culture · optional/)).toBeInTheDocument();
     expect(screen.getByText(/Chair QR \/ NFC · optional/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Go live →" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Verify & activate →" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: /Profile photo & portfolio/i })).toHaveAttribute(
+      "href",
+      "/dashboard/barber/profile?section=portfolio"
+    );
+    expect(screen.getByRole("link", { name: /Bookable services/i })).toHaveAttribute(
+      "href",
+      "/dashboard/barber/services"
+    );
+    expect(screen.getByRole("link", { name: /Operational availability/i })).toHaveAttribute(
+      "href",
+      "/dashboard/barber/more?section=availability"
+    );
+    expect(screen.getByRole("link", { name: /Business visibility/i })).toHaveAttribute(
+      "href",
+      "/dashboard/barber/more?section=visibility"
+    );
+    expect(screen.getByText(/never marks you live by itself/i)).toBeInTheDocument();
+  });
+
+  it("does not claim live when the activation response lacks canonical Road confirmation", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ live: true, marketplaceProfileComplete: false })
+    }));
+    const setup = buildPr27BarberSetup({
+      public_profile: "done",
+      services_prices: "done",
+      license_verification: "done",
+      stripe_payouts: "done",
+      shop_link_or_independent: "done"
+    });
+    render(<BarberSetupChecklistWorkspace initial={{
+      ...setup,
+      firstName: "Phil",
+      live: false,
+      demo: false,
+      canRequestActivation: true,
+      marketplaceProfileComplete: false
+    }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Verify & activate →" }));
+
+    expect(await screen.findByText(/Activation was not confirmed by canonical Road setup truth/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marketplace live ✓" })).not.toBeInTheDocument();
   });
 
   it("shows the Account Privacy export, deactivation, and open-booking deletion states", () => {

@@ -3126,6 +3126,8 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
       profilePhotoUrl: shopMedia?.profilePhotoUrl ?? visibleShop.profilePhotoUrl ?? undefined,
       coverPhotoUrl: shopFeaturedCoverUrl,
       publicBio: shopMedia?.publicBio ?? ("publicBio" in visibleShop ? (visibleShop as { publicBio?: string }).publicBio : undefined),
+      publicHours: shopMedia?.publicHours,
+      policies: shopMedia?.policies ?? undefined,
       brandLine: shopMedia?.brandLine ?? visibleShop.brandLine,
       address: shopMedia?.address ?? visibleShop.address,
       neighborhood: shopMedia?.neighborhood ?? visibleShop.neighborhood,

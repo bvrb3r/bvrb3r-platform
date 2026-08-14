@@ -19,6 +19,35 @@ function getInitials(name: string) {
     .join("") || "BV";
 }
 
+function formatPublicHours(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+  const weekly = (value as { weekly?: unknown }).weekly;
+  if (!Array.isArray(weekly)) {
+    return "";
+  }
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return weekly
+    .flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const row = entry as { weekday?: unknown; startTime?: unknown; endTime?: unknown };
+      if (
+        typeof row.weekday !== "number"
+        || typeof row.startTime !== "string"
+        || typeof row.endTime !== "string"
+        || !days[row.weekday]
+      ) {
+        return [];
+      }
+      return [`${days[row.weekday]} ${row.startTime}–${row.endTime}`];
+    })
+    .join(" · ");
+}
+
 export function PublicShopProfile({
   payload,
   viewerCanFavorite = false
@@ -259,7 +288,7 @@ export function PublicShopProfile({
               <div className="mt-4 space-y-3 text-sm leading-6 text-white/62">
                 {shop.publicHours ? (
                   <p className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                    {typeof shop.publicHours === "string" ? shop.publicHours : "Shop hours are managed by the owner."}
+                    {formatPublicHours(shop.publicHours) || "Shop hours are managed by the owner."}
                   </p>
                 ) : null}
                 {shop.policies ? (

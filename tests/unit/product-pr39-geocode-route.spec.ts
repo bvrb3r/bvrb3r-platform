@@ -4,16 +4,21 @@ import { resetRateLimits } from "@/lib/kiosk/rate-limit";
 const {
   sessionMock,
   serverClientMock,
-  adminClientMock
+  adminClientMock,
+  ensureCanonicalOwnerShopLocationMock
 } = vi.hoisted(() => ({
   sessionMock: vi.fn(),
   serverClientMock: vi.fn(),
-  adminClientMock: vi.fn()
+  adminClientMock: vi.fn(),
+  ensureCanonicalOwnerShopLocationMock: vi.fn()
 }));
 
 vi.mock("@/lib/auth/session", () => ({ getCurrentUserFromServer: sessionMock }));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: serverClientMock }));
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: adminClientMock }));
+vi.mock("@/lib/marketplace/owner-shop-location", () => ({
+  ensureCanonicalOwnerShopLocation: ensureCanonicalOwnerShopLocationMock
+}));
 
 import { POST } from "@/app/api/marketplace/locations/[shopId]/geocode/route";
 
@@ -58,12 +63,23 @@ function permanentFeature(countryCode = "US") {
   };
 }
 
-function buildServerClient() {
+function buildServerClient(appApprovalStatus = "pending") {
   const shopQuery = {
     select: vi.fn(),
     eq: vi.fn(),
     maybeSingle: vi.fn().mockResolvedValue({
-      data: { id: "southside", owner_profile_id: OWNER_ID },
+      data: {
+        id: "southside",
+        owner_profile_id: OWNER_ID,
+        name: "Southside Cuts",
+        neighborhood: "Southside",
+        city: "Tampa",
+        state: "FL",
+        zip_code: "33602",
+        phone: "+18135550123",
+        address: "101 Verified Ave",
+        app_approval_status: appApprovalStatus
+      },
       error: null
     })
   };
@@ -102,6 +118,8 @@ describe("POST /api/marketplace/locations/[shopId]/geocode", () => {
     sessionMock.mockReset();
     serverClientMock.mockReset();
     adminClientMock.mockReset();
+    ensureCanonicalOwnerShopLocationMock.mockReset();
+    ensureCanonicalOwnerShopLocationMock.mockResolvedValue({ id: LOCATION_ID, reference_code: "southside" });
     sessionMock.mockResolvedValue({
       authenticated: true,
       user: { id: OWNER_ID, role: "shop_owner_user" }
@@ -127,7 +145,16 @@ describe("POST /api/marketplace/locations/[shopId]/geocode", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.location).toMatchObject({ id: LOCATION_ID, verified: true, visibility: "exact" });
+    expect(body.location).toMatchObject({
+      id: LOCATION_ID,
+      verified: true,
+      visibility: "exact",
+      publicationStatus: "pending_review"
+    });
+    expect(ensureCanonicalOwnerShopLocationMock).toHaveBeenCalledWith(
+      admin.client,
+      expect.objectContaining({ id: "southside", owner_profile_id: OWNER_ID })
+    );
     expect(admin.rpc).toHaveBeenCalledWith("pr39_save_verified_shop_location", expect.objectContaining({
       p_location_id: LOCATION_ID,
       p_owner_profile_id: OWNER_ID,
@@ -166,6 +193,21 @@ describe("POST /api/marketplace/locations/[shopId]/geocode", () => {
     const response = await POST(request(), { params: Promise.resolve({ shopId: "southside" }) });
 
     expect(response.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminClientMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks a rejected shop before creating a location or spending a geocode", async () => {
+    const server = buildServerClient("rejected");
+    serverClientMock.mockResolvedValue(server.client);
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const response = await POST(request(), { params: Promise.resolve({ shopId: "southside" }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error).toContain("approval status");
+    expect(ensureCanonicalOwnerShopLocationMock).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(adminClientMock).not.toHaveBeenCalled();
   });

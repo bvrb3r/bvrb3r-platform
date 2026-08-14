@@ -4,12 +4,14 @@ const {
   getSessionUserMock,
   isSupabaseEnabledMock,
   createSupabaseAdminClientMock,
-  createSupabaseServerClientMock
+  createSupabaseServerClientMock,
+  ensureCanonicalOwnerShopLocationMock
 } = vi.hoisted(() => ({
   getSessionUserMock: vi.fn(),
   isSupabaseEnabledMock: vi.fn(),
   createSupabaseAdminClientMock: vi.fn(),
-  createSupabaseServerClientMock: vi.fn()
+  createSupabaseServerClientMock: vi.fn(),
+  ensureCanonicalOwnerShopLocationMock: vi.fn()
 }));
 
 vi.mock("@/lib/booking/route-auth", () => ({
@@ -26,6 +28,10 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: createSupabaseServerClientMock
+}));
+
+vi.mock("@/lib/marketplace/owner-shop-location", () => ({
+  ensureCanonicalOwnerShopLocation: ensureCanonicalOwnerShopLocationMock
 }));
 
 import { GET, PATCH } from "@/app/api/owner/shop/profile/route";
@@ -100,6 +106,8 @@ describe("owner shop profile route", () => {
     isSupabaseEnabledMock.mockReset();
     createSupabaseAdminClientMock.mockReset();
     createSupabaseServerClientMock.mockReset();
+    ensureCanonicalOwnerShopLocationMock.mockReset();
+    ensureCanonicalOwnerShopLocationMock.mockResolvedValue({ id: "location-owned" });
     isSupabaseEnabledMock.mockReturnValue(true);
     createSupabaseServerClientMock.mockResolvedValue({
       auth: {
@@ -141,7 +149,6 @@ describe("owner shop profile route", () => {
       publicBio: "A public shop bio.",
       coverPhotoUrl: "https://cdn.example.com/cover.jpg",
       policies: "Arrive five minutes early.",
-      shopUsername: "BVRB3RShop",
       address: "2200 E Fowler Ave",
       city: "Tampa",
       state: "FL"
@@ -158,11 +165,43 @@ describe("owner shop profile route", () => {
       public_bio: "A public shop bio.",
       cover_photo_url: "https://cdn.example.com/cover.jpg",
       policies: "Arrive five minutes early.",
-      public_username: "bvrb3rshop",
       address: "2200 E Fowler Ave",
       city: "Tampa",
       state: "FL"
     });
+    expect(ensureCanonicalOwnerShopLocationMock).toHaveBeenCalledWith(
+      supabase.client,
+      expect.objectContaining({ id: "shop-owned" })
+    );
+  });
+
+  it("rejects policies that cannot satisfy public policy readiness", async () => {
+    const response = await PATCH(createRequest({
+      shopId: "shop-owned",
+      policies: "Too short"
+    }));
+
+    expect(response.status).toBe(400);
+    expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "arbitrary public hours",
+      payload: {
+        shopId: "shop-owned",
+        publicHours: { version: 1, weekly: [{ weekday: 1, startTime: "09:00", endTime: "17:00" }] }
+      }
+    },
+    {
+      label: "a direct public username",
+      payload: { shopId: "shop-owned", shopUsername: "bypass-registry" }
+    }
+  ])("rejects $label so canonical setup routes cannot be bypassed", async ({ payload }) => {
+    const response = await PATCH(createRequest(payload));
+
+    expect(response.status).toBe(400);
+    expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
   });
 
   it("loads the owner canonical shop profile for the Team editor", async () => {

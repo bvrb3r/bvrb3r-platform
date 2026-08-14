@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
+import {
+  ensureCanonicalOwnerShopLocation,
+  type OwnerShopLocationSource
+} from "@/lib/marketplace/owner-shop-location";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
 import { resolveSignedInProfile, CurrentProfileResolverError } from "@/lib/profile/current-profile";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -21,10 +25,8 @@ const shopProfileSchema = z.object({
   profilePhotoUrl: z.string().trim().max(1000).optional().nullable(),
   coverPhotoUrl: z.string().trim().max(1000).optional().nullable(),
   publicBio: z.string().trim().max(2000).optional().nullable(),
-  publicHours: z.union([z.record(z.unknown()), z.string().trim().max(2000)]).optional().nullable(),
-  policies: z.string().trim().max(2000).optional().nullable(),
-  shopUsername: z.string().trim().min(2).max(80).regex(/^[a-zA-Z0-9._-]+$/).optional().nullable()
-});
+  policies: z.string().trim().min(20).max(2000).optional().nullable()
+}).strict();
 
 const ownerShopSelect = "id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, public_username, shop_username:public_username, neighborhood, city, state, zip_code, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status";
 
@@ -69,9 +71,7 @@ function updateDemoShopProfile(user: UserAccount, input: z.infer<typeof shopProf
       profilePhotoUrl: cleanNullable(input.profilePhotoUrl) ?? shop.profilePhotoUrl,
       coverPhotoUrl: cleanNullable(input.coverPhotoUrl) ?? shop.coverPhotoUrl,
       publicBio: cleanNullable(input.publicBio) ?? shop.publicBio,
-      publicHours: input.publicHours ?? shop.publicHours,
-      policies: cleanNullable(input.policies) ?? shop.policies,
-      shopUsername: cleanNullable(input.shopUsername) ?? shop.shopUsername
+      policies: cleanNullable(input.policies) ?? shop.policies
     };
   });
 
@@ -219,9 +219,7 @@ export async function PATCH(request: Request) {
       ...(parsed.data.profilePhotoUrl !== undefined ? { profile_photo_url: cleanNullable(parsed.data.profilePhotoUrl) } : {}),
       ...(parsed.data.coverPhotoUrl !== undefined ? { cover_photo_url: cleanNullable(parsed.data.coverPhotoUrl) } : {}),
       ...(parsed.data.publicBio !== undefined ? { public_bio: cleanNullable(parsed.data.publicBio) } : {}),
-      ...(parsed.data.publicHours !== undefined ? { public_hours: typeof parsed.data.publicHours === "string" ? cleanNullable(parsed.data.publicHours) : parsed.data.publicHours } : {}),
       ...(parsed.data.policies !== undefined ? { policies: cleanNullable(parsed.data.policies) } : {}),
-      ...(parsed.data.shopUsername !== undefined ? { public_username: cleanNullable(parsed.data.shopUsername)?.toLowerCase() ?? null } : {}),
       updated_at: new Date().toISOString()
     };
 
@@ -235,6 +233,11 @@ export async function PATCH(request: Request) {
     if (updateResult.error) {
       throw updateResult.error;
     }
+
+    await ensureCanonicalOwnerShopLocation(
+      supabase,
+      updateResult.data as OwnerShopLocationSource
+    );
 
     return NextResponse.json({ shop: updateResult.data });
   } catch (error) {

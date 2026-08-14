@@ -1,9 +1,12 @@
 import Link from "next/link";
+import type { Route } from "next";
 import {
   ArrowLeft,
+  ArrowUpRight,
   BellRing,
   Check,
   ChevronRight,
+  Clock3,
   LockKeyhole,
   Medal,
   ShieldCheck,
@@ -19,7 +22,7 @@ import { ROAD_DEFINITIONS, ROAD_ROLES, type RoadRole } from "@/lib/road/catalog"
 import type { RoadSetSnapshot, RoadSnapshot } from "@/lib/road/domain";
 import { cn } from "@/lib/utils";
 
-function homeRoute(role: RoadRole) {
+function homeRoute(role: RoadRole): Route {
   if (role === "client_user") return "/dashboard/client";
   if (role === "barber_user") return "/dashboard/barber";
   return "/dashboard/owner";
@@ -38,8 +41,8 @@ function SummaryStrip({ snapshot }: { snapshot: RoadSnapshot }) {
   const current = snapshot.sets[snapshot.currentSet];
   const cards = [
     { label: "Current set", value: `${current.code} · ${current.name}`, accent: true },
-    { label: "Achievements", value: `${snapshot.completedAchievements} / ${snapshot.totalAchievements}` },
-    { label: "Progress to V3", value: `${snapshot.percent}%`, progress: true },
+    { label: "Achievements earned", value: `${snapshot.completedAchievements} / ${snapshot.totalAchievements}` },
+    { label: "Earned progress to V3", value: `${snapshot.percent}%`, progress: true },
     { label: "The summit", value: snapshot.summit, gold: true }
   ];
 
@@ -92,20 +95,54 @@ function SetCardContent({ set }: { set: RoadSetSnapshot }) {
       </header>
       <div className="grid gap-x-6 px-5 py-3 md:grid-cols-2">
         {set.achievements.map((achievement) => (
-          <div key={achievement.key} className="flex items-start gap-3 py-3">
+          <div
+            key={achievement.key}
+            className="flex items-start gap-3 py-3"
+            data-road-achievement={achievement.key}
+            data-road-setup-status={achievement.setupStatus ?? undefined}
+          >
             <span className={cn(
               "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border",
               achievement.complete
                 ? "border-[#C4F24E] bg-[#C4F24E] text-[#0A0A0C]"
+                : achievement.setupStatus === "pending_review"
+                  ? "border-amber-300/50 bg-amber-300/10 text-amber-200"
                 : "border-white/20 text-transparent"
             )}>
-              <Check className="h-3 w-3" strokeWidth={3} />
+              {achievement.setupStatus === "pending_review" && !achievement.complete
+                ? <Clock3 className="h-3 w-3" />
+                : <Check className="h-3 w-3" strokeWidth={3} />}
             </span>
-            <span>
+            <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold text-[var(--text-primary)]">{achievement.label}</span>
               <span className="mt-1 block text-xs leading-5 text-[var(--text-muted)]">{achievement.detail}</span>
+              {achievement.setupStatus && !achievement.complete ? (
+                <span className={cn(
+                  "mt-2 block text-xs leading-5",
+                  achievement.setupStatus === "pending_review" ? "text-amber-100/75" : "text-white/62"
+                )}>
+                  <span className="font-mono text-[8px] font-bold uppercase tracking-[0.13em]">
+                    {achievement.setupStatus === "pending_review" ? "Pending review" : "Action required"}
+                  </span>
+                  {achievement.statusReason ? <span className="ml-2">{achievement.statusReason}</span> : null}
+                </span>
+              ) : null}
+              {achievement.historicallyEarned && !achievement.complete ? (
+                <span className="mt-1 block text-[10px] leading-4 text-amber-100/58">
+                  Previously earned. Current setup truth needs attention before this set is treated as ready.
+                </span>
+              ) : null}
               {achievement.complete && achievement.sourceEventId ? (
-                <span className="mt-1 block font-mono text-[8px] uppercase tracking-[0.1em] text-[var(--text-faint)]">Event {achievement.sourceEventId.slice(0, 8)}</span>
+                <span className="mt-1 block font-mono text-[8px] uppercase tracking-[0.1em] text-[var(--text-faint)]">Server verified · Event {achievement.sourceEventId.slice(0, 8)}</span>
+              ) : null}
+              {!set.locked && achievement.actionHref && achievement.actionLabel ? (
+                <Link
+                  href={achievement.actionHref as Route}
+                  className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-full border border-[color:var(--bvr-green-border)] bg-[var(--bvr-green-soft)] px-4 text-[11px] font-bold text-[var(--bvr-green-text)] transition hover:border-[#C4F24E]/65 hover:bg-[#C4F24E]/14"
+                >
+                  {achievement.actionLabel}
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
               ) : null}
             </span>
           </div>
@@ -421,7 +458,7 @@ export function RoadScreen({ snapshot }: { snapshot: RoadSnapshot }) {
         <SummaryStrip snapshot={snapshot} />
 
         <div className="mt-9"><SectionHeading title="The trail" detail="Five sets · locked sets stay visible and frosted" /><Trail sets={snapshot.sets} /></div>
-        <div className="mt-10"><SectionHeading title="Badge case — achievements & rewards" detail="Click an earned badge to celebrate" /><RoadBadgeCase badges={snapshot.sets.map((set) => ({ index: set.index, code: set.code, badgeName: set.badgeName, badgeReward: set.badgeReward, complete: set.complete, badge: set.badge }))} /></div>
+        <div className="mt-10"><SectionHeading title="Badge case — achievements & rewards" detail="Click an earned badge to celebrate" /><RoadBadgeCase badges={snapshot.sets.map((set) => ({ index: set.index, code: set.code, badgeName: set.badgeName, badgeReward: set.badgeReward, complete: Boolean(set.badge), badge: set.badge }))} /></div>
         <div className="mt-10"><SectionHeading title="Share the badge — straight to Culture" detail="4:5 card · optional · one share per badge" /><BadgeShare snapshot={snapshot} /></div>
         <div id="road-referrals" className="mt-10 scroll-mt-24"><SectionHeading title="Referrals" detail="Counts only when the referred account completes SET 1" /><Referrals snapshot={snapshot} /></div>
         <div className="mt-10"><SectionHeading title="Leaderboard — among your people" detail="Friends-only · off by default" /><Leaderboard snapshot={snapshot} /></div>

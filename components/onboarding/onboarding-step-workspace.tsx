@@ -8,9 +8,13 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useOnboardingMe, useOnboardingStepMutation } from "@/lib/onboarding/client";
 import {
+  uploadVerificationDocument,
+  useCreateVerificationUploadMutation,
   useStartBarberConnectOnboardingMutation,
   useStartBarberIdentitySessionMutation,
   useStartOwnerConnectOnboardingMutation,
+  useSubmitBarberVerificationMutation,
+  useSubmitShopVerificationMutation,
   useVerificationMe
 } from "@/lib/trust/client";
 import type { OnboardingRole, OnboardingStepKey } from "@/types/onboarding";
@@ -128,7 +132,15 @@ export function OnboardingStepWorkspace({ role, step }: { role: OnboardingRole; 
   const startIdentity = useStartBarberIdentitySessionMutation();
   const startBarberConnect = useStartBarberConnectOnboardingMutation();
   const startOwnerConnect = useStartOwnerConnectOnboardingMutation();
+  const createVerificationUpload = useCreateVerificationUploadMutation();
+  const submitBarberVerification = useSubmitBarberVerificationMutation();
+  const submitShopVerification = useSubmitShopVerificationMutation();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [verificationFile, setVerificationFile] = useState<File | null>(null);
+  const [verificationName, setVerificationName] = useState("");
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [issuingState, setIssuingState] = useState("");
+  const [expirationDate, setExpirationDate] = useState("");
 
   const lane = useMemo(
     () => onboardingQuery.data?.lanes.find((entry) => entry.role === role) ?? null,
@@ -160,6 +172,56 @@ export function OnboardingStepWorkspace({ role, step }: { role: OnboardingRole; 
   async function handleVerificationContinue() {
     setErrorMessage(null);
     try {
+      if (!verificationFile) {
+        throw new Error("Choose a verification document before continuing.");
+      }
+      if (role === "barber") {
+        const legalName = verificationName.trim()
+          || (typeof lane?.profileData.fullName === "string" ? lane.profileData.fullName : "");
+        if (!legalName || !licenseNumber.trim() || !issuingState.trim() || !expirationDate) {
+          throw new Error("Legal name, license number, issuing state, and expiration date are required.");
+        }
+        const uploadResult = await createVerificationUpload.mutateAsync({
+          ownerType: "barber",
+          category: "license_verification",
+          fileName: verificationFile.name,
+          contentType: verificationFile.type,
+          fileSizeBytes: verificationFile.size,
+          expiresAt: expirationDate
+        });
+        const uploadId = await uploadVerificationDocument(uploadResult.upload, verificationFile);
+        await submitBarberVerification.mutateAsync({
+          category: "license_verification",
+          legalName,
+          licenseType: "State barber license",
+          licenseNumber: licenseNumber.trim(),
+          issuingState: issuingState.trim(),
+          expirationDate,
+          uploadId
+        });
+      } else {
+        const shopId = typeof lane?.profileData.shopId === "string" ? lane.profileData.shopId : "";
+        const businessName = verificationName.trim()
+          || (typeof lane?.profileData.shopName === "string" ? lane.profileData.shopName : "");
+        if (!shopId || !businessName) {
+          throw new Error("A saved shop and business name are required before verification.");
+        }
+        const uploadResult = await createVerificationUpload.mutateAsync({
+          ownerType: "shop",
+          ownerId: shopId,
+          category: "business_verification",
+          fileName: verificationFile.name,
+          contentType: verificationFile.type,
+          fileSizeBytes: verificationFile.size
+        });
+        const uploadId = await uploadVerificationDocument(uploadResult.upload, verificationFile);
+        await submitShopVerification.mutateAsync({
+          shopId,
+          category: "business_verification",
+          businessName,
+          uploadId
+        });
+      }
       const result = await completeVerificationMutation.mutateAsync({});
       router.replace(result.nextPath);
     } catch (error) {
@@ -213,7 +275,7 @@ export function OnboardingStepWorkspace({ role, step }: { role: OnboardingRole; 
               ? "Identity, payouts, and compliance are now driven by the canonical verification lane. Finish the setup now, then continue to activation while review runs."
               : "Business payouts and compliance now run through the same canonical verification lane the architect team reviews."}
           </p>
-          <div className="mt-8 grid gap-4 lg:grid-cols-2">
+          <div className="mt-8 grid gap-4 lg:grid-cols-3">
             <Card className="rounded-[28px] border border-white/8 bg-black/20 p-5">
               <p className="surface-label">Verification state</p>
               <div className="mt-4 space-y-3 text-sm text-white/72">
@@ -227,6 +289,30 @@ export function OnboardingStepWorkspace({ role, step }: { role: OnboardingRole; 
                   {verificationProfile.currentRequirements.join(" • ")}
                 </div>
               ) : null}
+            </Card>
+            <Card className="rounded-[28px] border border-white/8 bg-black/20 p-5">
+              <p className="surface-label">Secure evidence</p>
+              <div className="mt-4 grid gap-3">
+                <Input
+                  aria-label={role === "barber" ? "Legal name" : "Business name"}
+                  value={verificationName}
+                  onChange={(event) => setVerificationName(event.target.value)}
+                  placeholder={role === "barber" ? "Legal name" : "Registered business name"}
+                />
+                {role === "barber" ? (
+                  <>
+                    <Input aria-label="License number" value={licenseNumber} onChange={(event) => setLicenseNumber(event.target.value)} placeholder="License number" />
+                    <Input aria-label="Issuing state" value={issuingState} onChange={(event) => setIssuingState(event.target.value)} placeholder="Issuing state" />
+                    <Input aria-label="License expiration date" type="date" value={expirationDate} onChange={(event) => setExpirationDate(event.target.value)} />
+                  </>
+                ) : null}
+                <Input
+                  aria-label="Verification document"
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                  onChange={(event) => setVerificationFile(event.target.files?.[0] ?? null)}
+                />
+              </div>
             </Card>
             <Card className="rounded-[28px] border border-white/8 bg-black/20 p-5">
               <p className="surface-label">Provider actions</p>
@@ -245,8 +331,15 @@ export function OnboardingStepWorkspace({ role, step }: { role: OnboardingRole; 
                     {startOwnerConnect.isPending ? "Opening business payouts..." : "Connect business payouts"}
                   </Button>
                 )}
-                <Button type="button" className="h-12 w-full" onClick={() => void handleVerificationContinue()} disabled={completeVerificationMutation.isPending}>
-                  Continue to activation
+                <Button
+                  type="button"
+                  className="h-12 w-full"
+                  onClick={() => void handleVerificationContinue()}
+                  disabled={completeVerificationMutation.isPending || createVerificationUpload.isPending || submitBarberVerification.isPending || submitShopVerification.isPending}
+                >
+                  {createVerificationUpload.isPending || submitBarberVerification.isPending || submitShopVerification.isPending
+                    ? "Submitting verification..."
+                    : "Upload and continue"}
                 </Button>
               </div>
             </Card>

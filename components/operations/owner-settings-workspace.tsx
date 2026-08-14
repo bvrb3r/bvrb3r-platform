@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -101,7 +101,7 @@ const sectionIdMap = {
 } as const;
 
 type OwnerSettingsSectionKey = keyof typeof sectionIdMap;
-type OwnerQuickSetupModal = "hours" | "invite" | "visibility" | null;
+type OwnerQuickSetupModal = "hours" | "policies" | "invite" | "visibility" | null;
 
 const defaultOwnerWorkingDays = [1, 2, 3, 4, 5, 6];
 const ownerDayOptions = [
@@ -292,6 +292,7 @@ export function OwnerSettingsWorkspace({
   const mediaMutation = useMutateProfileMediaMutation();
   const fintechQuery = useFintechManagementQuery();
   const [quickSetupModal, setQuickSetupModal] = useState<OwnerQuickSetupModal>(null);
+  const quickSetupDeepLinkHandled = useRef(false);
   const [planAccessOpen, setPlanAccessOpen] = useState(false);
   const [accountEditorOpen, setAccountEditorOpen] = useState(false);
   const [savedOwnerName, setSavedOwnerName] = useState<string | null>(null);
@@ -300,6 +301,8 @@ export function OwnerSettingsWorkspace({
   const [savedShopPublicUsername, setSavedShopPublicUsername] = useState<string | null>(null);
   const [quickSetupFeedback, setQuickSetupFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [ownerHoursSaving, setOwnerHoursSaving] = useState(false);
+  const [ownerPoliciesSaving, setOwnerPoliciesSaving] = useState(false);
+  const [shopPoliciesDraft, setShopPoliciesDraft] = useState("");
   const [shopHoursDraft, setShopHoursDraft] = useState({
     days: defaultOwnerWorkingDays,
     startTime: "12:00",
@@ -493,6 +496,46 @@ export function OwnerSettingsWorkspace({
     }
   }
 
+  function openPoliciesSetup() {
+    setShopPoliciesDraft(primaryShop?.policies?.trim() ?? "");
+    setQuickSetupFeedback(null);
+    setQuickSetupModal("policies");
+  }
+
+  async function handleQuickPoliciesSave() {
+    const policies = shopPoliciesDraft.trim();
+    if (!ownerShopId) {
+      setQuickSetupFeedback({ tone: "error", message: "Complete your shop profile before publishing policies." });
+      return;
+    }
+    if (policies.length < 20) {
+      setQuickSetupFeedback({ tone: "error", message: "Shop policies must contain at least 20 characters." });
+      return;
+    }
+
+    setQuickSetupFeedback(null);
+    setOwnerPoliciesSaving(true);
+    try {
+      const response = await fetch("/api/owner/shop/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shopId: ownerShopId, policies })
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error ?? "Unable to publish shop policies.");
+      }
+
+      await profileQuery.refetch();
+      closeQuickSetupModal();
+      setQuickSetupFeedback({ tone: "success", message: "Shop policies published to the canonical public shop profile." });
+    } catch (error) {
+      setQuickSetupFeedback({ tone: "error", message: error instanceof Error ? error.message : "Unable to publish shop policies." });
+    } finally {
+      setOwnerPoliciesSaving(false);
+    }
+  }
+
   async function handleQuickInviteBarber(barberId: string) {
     setQuickSetupFeedback(null);
     try {
@@ -532,7 +575,22 @@ export function OwnerSettingsWorkspace({
     if (typeof target?.scrollIntoView === "function") {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [selectedSection]);
+
+    if (quickSetupDeepLinkHandled.current) {
+      return;
+    }
+    if (selectedSection === "policies" && profileQuery.isLoading) {
+      return;
+    }
+    if (selectedSection === "hours") {
+      setQuickSetupModal("hours");
+      quickSetupDeepLinkHandled.current = true;
+    } else if (selectedSection === "policies") {
+      setShopPoliciesDraft(primaryShop?.policies?.trim() ?? "");
+      setQuickSetupModal("policies");
+      quickSetupDeepLinkHandled.current = true;
+    }
+  }, [primaryShop?.policies, profileQuery.isLoading, selectedSection]);
 
   const businessSetupRows: SettingRow[] = [
     {
@@ -552,7 +610,7 @@ export function OwnerSettingsWorkspace({
     {
       title: "Shop Policies",
       subtitle: "Shop rules, client policies, barber agreements, cancellation/no-show rules, and shop contracts",
-      href: "/onboarding/owner/structure",
+      onClick: openPoliciesSetup,
       icon: <FileText className="h-5 w-5" />
     },
     {
@@ -764,17 +822,26 @@ export function OwnerSettingsWorkspace({
         title:
           quickSetupModal === "hours"
             ? "Shop Hours"
+            : quickSetupModal === "policies"
+              ? "Shop Policies"
             : quickSetupModal === "invite"
               ? "Invite barber"
               : "Turn shop public?",
-        eyebrow: quickSetupModal === "hours" ? "Shop Business Settings" : quickSetupModal === "invite" ? "Team setup" : "Quick setup",
+        eyebrow:
+          quickSetupModal === "hours" || quickSetupModal === "policies"
+            ? "Shop Business Settings"
+            : quickSetupModal === "invite"
+              ? "Team setup"
+              : "Quick setup",
         helper:
           quickSetupModal === "hours"
             ? "These hours feed the owner schedule and public shop readiness."
+            : quickSetupModal === "policies"
+              ? "Publish the client-facing rules that appear on your public shop profile."
             : quickSetupModal === "invite"
               ? "Search real barber accounts and send a canonical team invite."
               : "This confirms public intent only. Approval, profile data, team, and bookable barber readiness still control marketplace visibility.",
-        mode: quickSetupModal === "hours" ? "editable" as const : "read_only" as const
+        mode: quickSetupModal === "hours" || quickSetupModal === "policies" ? "editable" as const : "read_only" as const
       }
     : null;
 
@@ -843,8 +910,13 @@ export function OwnerSettingsWorkspace({
           <ShopAddressMapboxField
             shopId={primaryShop.shopId}
             currentAddress={shopPublicLocationLine === "Add shop address" ? null : shopPublicLocationLine}
-            onSaved={() => {
-              setQuickSetupFeedback({ tone: "success", message: "Verified shop address and public map pin saved." });
+            onSaved={(location) => {
+              setQuickSetupFeedback({
+                tone: "success",
+                message: location.publicationStatus === "pending_review"
+                  ? "Verified shop address saved. Public search stays locked until approval finishes."
+                  : "Verified shop address and public map pin saved."
+              });
               void profileQuery.refetch();
             }}
           />
@@ -983,15 +1055,17 @@ export function OwnerSettingsWorkspace({
           onClose={closeQuickSetupModal}
           closeLabel="Close owner quick setup"
           maxWidthClassName="max-w-2xl"
-          primaryEnabled={quickSetupModal === "hours"}
-          footerPrimary={quickSetupModal === "hours" ? (
+          primaryEnabled={quickSetupModal === "hours" || quickSetupModal === "policies"}
+          footerPrimary={quickSetupModal === "hours" || quickSetupModal === "policies" ? (
             <button
               type="button"
               className="min-h-12 rounded-full border border-[#C4F24E]/45 bg-[#C4F24E] px-5 text-sm font-extrabold text-black hover:bg-[#b3e63a] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-[#050505]/34 bvr-on-green"
-              disabled={ownerHoursSaving}
-              onClick={() => void handleQuickShopHoursSave()}
+              disabled={quickSetupModal === "hours" ? ownerHoursSaving : ownerPoliciesSaving || shopPoliciesDraft.trim().length < 20}
+              onClick={() => void (quickSetupModal === "hours" ? handleQuickShopHoursSave() : handleQuickPoliciesSave())}
             >
-              {ownerHoursSaving ? "Saving..." : "Save Changes"}
+              {quickSetupModal === "hours"
+                ? ownerHoursSaving ? "Saving..." : "Save Changes"
+                : ownerPoliciesSaving ? "Publishing..." : "Publish Policies"}
             </button>
           ) : undefined}
         >
@@ -1029,6 +1103,32 @@ export function OwnerSettingsWorkspace({
                     <Input type="time" value={shopHoursDraft.endTime} onChange={(event) => setShopHoursDraft((current) => ({ ...current, endTime: event.target.value }))} className="mt-2" />
                   </label>
                 </div>
+              </div>
+            ) : null}
+
+            {quickSetupModal === "policies" ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C4F24E]">Public shop policy</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-[-0.04em]">Publish shop policies</h2>
+                  <p className="mt-2 text-sm leading-6 text-white/58">
+                    Add the cancellation, no-show, service, and conduct rules clients should review before booking.
+                  </p>
+                </div>
+                <label className="block text-sm font-bold text-white/72">
+                  Client-facing shop policies
+                  <textarea
+                    value={shopPoliciesDraft}
+                    onChange={(event) => setShopPoliciesDraft(event.target.value)}
+                    rows={8}
+                    maxLength={2000}
+                    placeholder="Example: Appointments may be cancelled up to 24 hours before the scheduled service..."
+                    className="mt-2 w-full resize-y rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/35 focus:border-[#C4F24E]/55"
+                  />
+                </label>
+                <p className="text-xs font-semibold text-white/46">
+                  {shopPoliciesDraft.trim().length}/2000 characters · minimum 20
+                </p>
               </div>
             ) : null}
 

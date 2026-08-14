@@ -1,5 +1,7 @@
 import { createHmac, randomBytes, randomInt } from "node:crypto";
+import type { Route } from "next";
 import { buildPr27BarberSetup, resolvePr27DeletionEligibility } from "@/lib/trust/product-pr27-domain";
+import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isDemoMode } from "@/lib/config/runtime";
 import { sendAccountDeletionChallengeEmail } from "@/lib/trust/account-data-export";
@@ -53,21 +55,132 @@ function toSetupStatus(approved: boolean, inReview = false) {
   return approved ? "done" as const : inReview ? "in_review" as const : "to_do" as const;
 }
 
+type BarberRoadSetupCheck = {
+  achievementKey: string;
+  status: "complete" | "action_required" | "pending_review";
+  reason: string;
+};
+
+type MarketplaceLaunchCheck = {
+  key: "profile_portfolio" | "services" | "availability" | "business_visibility";
+  name: string;
+  description: string;
+  href: Route;
+  status: "done" | "to_do";
+};
+
+const BARBER_PRE_ACTIVATION_ROAD_KEYS = [
+  "barber.account_created",
+  "barber.username_claimed",
+  "barber.contact_verified",
+  "barber.license_verified",
+  "barber.payout_connected",
+  "barber.menu_built",
+  "barber.availability_published"
+] as const;
+
+function mapBarberRoadSetupChecks(value: unknown): BarberRoadSetupCheck[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): BarberRoadSetupCheck[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    const achievementKey = String(row.achievement_key ?? row.achievementKey ?? "").trim();
+    const status = String(row.status ?? "").trim();
+    if (!achievementKey || !["complete", "action_required", "pending_review"].includes(status)) return [];
+    return [{
+      achievementKey,
+      status: status as BarberRoadSetupCheck["status"],
+      reason: String(row.reason ?? "").trim()
+    }];
+  });
+}
+
+async function readBarberRoadSetupChecks(supabase: AdminClient, profileId: string) {
+  const result = await supabase.rpc("pr32_get_road_setup_checks", {
+    p_user_id: profileId,
+    p_role: "barber_user"
+  });
+  if (result.error) {
+    throw new ProductPr27ServiceError(
+      "Unable to resolve the canonical Barber Road setup checks.",
+      500,
+      "road_setup_truth_failed"
+    );
+  }
+  const checks = mapBarberRoadSetupChecks(result.data);
+  if (checks.length !== 8) {
+    throw new ProductPr27ServiceError(
+      "The canonical Barber Road setup response is incomplete.",
+      500,
+      "road_setup_truth_incomplete"
+    );
+  }
+  return checks;
+}
+
+function isRoadCheckComplete(checks: BarberRoadSetupCheck[], achievementKey: string) {
+  return checks.find((check) => check.achievementKey === achievementKey)?.status === "complete";
+}
+
+function buildMarketplaceLaunchChecks(
+  checks: BarberRoadSetupCheck[],
+  evidence: { profilePortfolioReady?: boolean; visibilityReady?: boolean } = {}
+): MarketplaceLaunchCheck[] {
+  const statusFor = (achievementKey: string) => isRoadCheckComplete(checks, achievementKey) ? "done" as const : "to_do" as const;
+  return [
+    {
+      key: "profile_portfolio" as const,
+      name: "Profile photo & portfolio",
+      description: "Add a real profile photo and at least three portfolio posts.",
+      href: "/dashboard/barber/profile?section=portfolio",
+      status: evidence.profilePortfolioReady ? "done" as const : "to_do" as const
+    },
+    {
+      key: "services" as const,
+      name: "Bookable services",
+      description: "Publish at least three priced services with valid durations.",
+      href: "/dashboard/barber/services",
+      status: statusFor("barber.menu_built")
+    },
+    {
+      key: "availability" as const,
+      name: "Operational availability",
+      description: "Publish hours for an independent chair or mutually approved shop location.",
+      href: "/dashboard/barber/more?section=availability",
+      status: statusFor("barber.availability_published")
+    },
+    {
+      key: "business_visibility" as const,
+      name: "Business visibility",
+      description: "Turn on public visibility, then let server truth confirm booking eligibility.",
+      href: "/dashboard/barber/more?section=visibility",
+      status: evidence.visibilityReady ? "done" as const : "to_do" as const
+    }
+  ];
+}
+
 function demoBarberSetup(user: UserAccount) {
+  const setup = buildPr27BarberSetup({
+    public_profile: "done",
+    services_prices: "done",
+    license_verification: "done",
+    stripe_payouts: "done",
+    shop_link_or_independent: "in_review",
+    chairsync: "to_do",
+    portfolio_culture: "to_do",
+    chair_qr_nfc: "to_do"
+  });
   return {
     firstName: user.firstName ?? user.name.split(/\s+/)[0] ?? "Barber",
     live: false,
     demo: true,
-    ...buildPr27BarberSetup({
-      public_profile: "done",
-      services_prices: "done",
-      license_verification: "done",
-      stripe_payouts: "done",
-      shop_link_or_independent: "in_review",
-      chairsync: "to_do",
-      portfolio_culture: "to_do",
-      chair_qr_nfc: "to_do"
-    })
+    ...setup,
+    canReceiveBookings: false,
+    kioskEligible: false,
+    walkInEligible: false,
+    marketplaceProfileComplete: false,
+    canRequestActivation: false,
+    marketplaceLaunchChecks: buildMarketplaceLaunchChecks([])
   };
 }
 
@@ -81,7 +194,7 @@ export async function getPr27BarberSetup(user: UserAccount) {
   const supabase = requireAdminClient();
   const publicProfileResult = await supabase
     .from("barber_profiles")
-    .select("barber_reference, display_name, bio, profile_photo_path, specialties")
+    .select("barber_reference, display_name, bio, profile_photo_path, profile_photo_url, specialties, visibility_state")
     .eq("barber_email", user.email)
     .maybeSingle();
 
@@ -94,7 +207,9 @@ export async function getPr27BarberSetup(user: UserAccount) {
     display_name?: string | null;
     bio?: string | null;
     profile_photo_path?: string | null;
+    profile_photo_url?: string | null;
     specialties?: string[] | null;
+    visibility_state?: string | null;
   } | null;
   const barberReference = publicProfile?.barber_reference ?? user.barberId;
 
@@ -137,7 +252,7 @@ export async function getPr27BarberSetup(user: UserAccount) {
       .eq("barber_id", user.barberId),
     supabase
       .from("barber_portfolios")
-      .select("id", { count: "exact", head: true })
+      .select("id, storage_path, image_url")
       .eq("barber_reference", barberReference),
     supabase
       .from("barber_setup_activations")
@@ -170,10 +285,14 @@ export async function getPr27BarberSetup(user: UserAccount) {
     payouts_enabled?: boolean | null;
     onboarding_status?: string | null;
   } | null;
+  const publicPortfolioCount = ((portfolioResult.data ?? []) as Array<{
+    storage_path?: string | null;
+    image_url?: string | null;
+  }>).filter((row) => safeText(row.storage_path) || safeText(row.image_url)).length;
   const profileComplete = Boolean(
     safeText(publicProfile?.display_name)
     && safeText(publicProfile?.bio)
-    && safeText(publicProfile?.profile_photo_path)
+    && (safeText(publicProfile?.profile_photo_path) || safeText(publicProfile?.profile_photo_url))
     && publicProfile?.specialties?.length
   );
   const servicesComplete = serviceRows.some((row) => safeNumber(row.price) > 0 && safeNumber(row.duration_min) > 0);
@@ -192,7 +311,7 @@ export async function getPr27BarberSetup(user: UserAccount) {
     ),
     shop_link_or_independent: toSetupStatus(relationshipComplete, !relationshipComplete && Boolean(relationshipResult.data?.length)),
     chairsync: toSetupStatus((chairSyncResult.count ?? 0) > 0),
-    portfolio_culture: toSetupStatus((portfolioResult.count ?? 0) > 0),
+    portfolio_culture: toSetupStatus(publicPortfolioCount > 0),
     chair_qr_nfc: "to_do" as const
   };
 
@@ -232,12 +351,36 @@ export async function getPr27BarberSetup(user: UserAccount) {
   // Required steps are always resolved from canonical server truth. Stored
   // evidence may retain optional progress but can never spoof go-live.
   const setup = buildPr27BarberSetup({ ...stored, ...computed });
+  const roadSetupChecks = await readBarberRoadSetupChecks(supabase, user.id);
+  const marketplaceProfileComplete = isRoadCheckComplete(roadSetupChecks, "barber.profile_published");
+  const preActivationRoadComplete = BARBER_PRE_ACTIVATION_ROAD_KEYS.every((achievementKey) =>
+    isRoadCheckComplete(roadSetupChecks, achievementKey)
+  );
+  const publicVisibilityReady = ["public", "featured"].includes(
+    String(publicProfile?.visibility_state ?? "").toLowerCase()
+  );
+  const canRequestActivation = setup.requiredComplete
+    && preActivationRoadComplete
+    && profileComplete
+    && publicPortfolioCount >= 3
+    && publicVisibilityReady;
+  const live = activationResult.data?.status === "live" && marketplaceProfileComplete;
 
   return {
     firstName: user.firstName ?? user.name.split(/\s+/)[0] ?? "Barber",
-    live: activationResult.data?.status === "live",
+    live,
     demo: false,
-    ...setup
+    ...setup,
+    canGoLive: canRequestActivation,
+    canReceiveBookings: live,
+    kioskEligible: live,
+    walkInEligible: live,
+    marketplaceProfileComplete,
+    canRequestActivation,
+    marketplaceLaunchChecks: buildMarketplaceLaunchChecks(roadSetupChecks, {
+      profilePortfolioReady: profileComplete && publicPortfolioCount >= 3,
+      visibilityReady: publicVisibilityReady
+    })
   };
 }
 
@@ -248,14 +391,26 @@ export async function activatePr27BarberSetup(user: UserAccount) {
   }
   if (isDemoMode()) return { live: true, activatedAt: new Date().toISOString(), demo: true };
   const setup = await getPr27BarberSetup(user);
-  if (!setup.requiredComplete) {
+  if (!setup.canRequestActivation) {
     throw new ProductPr27ServiceError(
-      "Finish all five required setup steps before going live.",
+      "Clear every Barber Road launch blocker before requesting marketplace activation.",
       409,
-      "required_setup_incomplete"
+      "canonical_setup_incomplete"
     );
   }
   const supabase = requireAdminClient();
+  const publishResult = await publishBarberMarketplaceReadiness(supabase, user.barberId);
+  if (!publishResult.published) {
+    const blockerSummary = publishResult.blockers.slice(0, 3).join("; ");
+    throw new ProductPr27ServiceError(
+      blockerSummary
+        ? `Marketplace activation is still blocked: ${blockerSummary}.`
+        : "Marketplace activation is still blocked by canonical server truth.",
+      409,
+      "canonical_marketplace_blocked"
+    );
+  }
+
   const activatedAt = new Date().toISOString();
   const result = await supabase.from("barber_setup_activations").upsert({
     barber_id: user.barberId,
@@ -268,7 +423,35 @@ export async function activatePr27BarberSetup(user: UserAccount) {
   if (result.error) {
     throw new ProductPr27ServiceError("Unable to activate this chair.", 500, "setup_activation_failed");
   }
-  return { live: true, activatedAt, demo: false };
+
+  const roadSetupChecks = await readBarberRoadSetupChecks(supabase, user.id);
+  const marketplaceProfileComplete = isRoadCheckComplete(roadSetupChecks, "barber.profile_published");
+  if (!marketplaceProfileComplete) {
+    const pausedAt = new Date().toISOString();
+    const pauseResult = await supabase
+      .from("barber_setup_activations")
+      .update({ status: "paused", paused_at: pausedAt, updated_at: pausedAt })
+      .eq("barber_id", user.barberId);
+    if (pauseResult.error) {
+      throw new ProductPr27ServiceError(
+        "Canonical activation verification failed and the activation could not be safely paused.",
+        500,
+        "activation_compensation_failed"
+      );
+    }
+    throw new ProductPr27ServiceError(
+      "Marketplace activation is still blocked by canonical Road setup truth.",
+      409,
+      "canonical_marketplace_blocked"
+    );
+  }
+
+  return {
+    live: true,
+    activatedAt,
+    demo: false,
+    marketplaceProfileComplete: true
+  };
 }
 
 async function countOpenAppointments(supabase: AdminClient, user: UserAccount) {

@@ -22,6 +22,15 @@ type SetupSnapshot = {
   canReceiveBookings: boolean;
   kioskEligible: boolean;
   walkInEligible: boolean;
+  marketplaceProfileComplete?: boolean;
+  canRequestActivation?: boolean;
+  marketplaceLaunchChecks?: Array<{
+    key: "profile_portfolio" | "services" | "availability" | "business_visibility";
+    name: string;
+    description: string;
+    href: Route;
+    status: "done" | "to_do";
+  }>;
 };
 
 const ITEM_LINKS: Record<Pr27SetupItem["key"], Route> = {
@@ -35,10 +44,43 @@ const ITEM_LINKS: Record<Pr27SetupItem["key"], Route> = {
   chair_qr_nfc: "/dashboard/barber/more?section=chair"
 };
 
+const DEFAULT_MARKETPLACE_LAUNCH_CHECKS: NonNullable<SetupSnapshot["marketplaceLaunchChecks"]> = [
+  {
+    key: "profile_portfolio",
+    name: "Profile photo & portfolio",
+    description: "Add a real profile photo and at least three portfolio posts.",
+    href: "/dashboard/barber/profile?section=portfolio",
+    status: "to_do"
+  },
+  {
+    key: "services",
+    name: "Bookable services",
+    description: "Publish at least three priced services with valid durations.",
+    href: "/dashboard/barber/services",
+    status: "to_do"
+  },
+  {
+    key: "availability",
+    name: "Operational availability",
+    description: "Publish hours for an independent chair or mutually approved shop location.",
+    href: "/dashboard/barber/more?section=availability",
+    status: "to_do"
+  },
+  {
+    key: "business_visibility",
+    name: "Business visibility",
+    description: "Turn on public visibility, then let server truth confirm booking eligibility.",
+    href: "/dashboard/barber/more?section=visibility",
+    status: "to_do"
+  }
+];
+
 export function BarberSetupChecklistWorkspace({ initial }: { initial: SetupSnapshot }) {
   const [live, setLive] = useState(initial.live);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const canRequestActivation = initial.canRequestActivation === true;
+  const marketplaceLaunchChecks = initial.marketplaceLaunchChecks ?? DEFAULT_MARKETPLACE_LAUNCH_CHECKS;
   const headline = live
     ? `Your chair is live, ${initial.firstName}`
     : initial.requiredComplete
@@ -50,10 +92,17 @@ export function BarberSetupChecklistWorkspace({ initial }: { initial: SetupSnaps
     setMessage(null);
     try {
       const response = await fetch("/api/barber/setup-checklist", { method: "POST" });
-      const body = await response.json().catch(() => ({}));
+      const body = await response.json().catch(() => ({})) as {
+        error?: string;
+        live?: boolean;
+        marketplaceProfileComplete?: boolean;
+      };
       if (!response.ok) throw new Error(body.error ?? "Unable to activate this chair.");
+      if (body.live !== true || body.marketplaceProfileComplete !== true) {
+        throw new Error("Activation was not confirmed by canonical Road setup truth.");
+      }
       setLive(true);
-      setMessage("Chair is live. Booking, kiosk, and floor eligibility are active.");
+      setMessage("Server truth confirmed: your public profile is live and booking-eligible.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to activate this chair.");
     } finally {
@@ -81,7 +130,7 @@ export function BarberSetupChecklistWorkspace({ initial }: { initial: SetupSnaps
           {headline}<span className="text-[#C4F24E]">.</span>
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-white/56">
-          Your chair goes live when the required steps clear. Optional ones make it earn harder.
+          This page never marks you live by itself. Road and marketplace server truth must clear every launch requirement first.
         </p>
         <div className="mt-6 h-2 max-w-xl overflow-hidden rounded-full bg-white/8">
           <div
@@ -136,16 +185,48 @@ export function BarberSetupChecklistWorkspace({ initial }: { initial: SetupSnaps
             })}
           </div>
 
+          <div className="mt-6 border-t border-white/10 pt-6">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#C9A87C]">Canonical Road launch checks</p>
+                <h2 className="mt-2 font-display text-lg font-black text-white">Clear the blockers clients actually depend on.</h2>
+              </div>
+              <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-white/38">
+                {initial.marketplaceProfileComplete ? "server confirmed" : "not yet confirmed"}
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {marketplaceLaunchChecks.map((check) => (
+                <Link
+                  key={check.key}
+                  href={check.href}
+                  className="rounded-[18px] border border-white/10 bg-white/[0.025] p-4 transition hover:border-[#C4F24E]/30"
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="font-display text-sm font-bold text-white">{check.name}</span>
+                    <span className={`font-mono text-[9px] uppercase tracking-[0.15em] ${check.status === "done" ? "text-[#9BE15D]" : "text-[#C9A87C]"}`}>
+                      {check.status === "done" ? "cleared" : "open"}
+                    </span>
+                  </span>
+                  <span className="mt-2 block text-xs leading-5 text-white/48">{check.description}</span>
+                  <span className="mt-3 block font-mono text-[9px] uppercase tracking-[0.16em] text-white/38">Open setup →</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+
           <div className="mt-6 flex flex-col items-center gap-3 border-t border-white/10 pt-6 text-center">
-            <Pr27PrimaryButton onClick={goLive} disabled={!initial.canGoLive || live || busy}>
-              {busy ? "Checking truth…" : live ? "Chair is live ✓" : "Go live →"}
+            <Pr27PrimaryButton onClick={goLive} disabled={!canRequestActivation || live || busy}>
+              {busy ? "Checking server truth…" : live ? "Marketplace live ✓" : "Verify & activate →"}
             </Pr27PrimaryButton>
             <p className="max-w-xl text-xs leading-5 text-white/44">
               {live
-                ? "You’re bookable, kiosk-eligible, and on the shop floor."
-                : initial.requiredComplete
-                  ? "All required steps clear."
-                  : "Blocked: finish the required steps above."}
+                ? "Canonical Road truth confirms your profile is live and booking-eligible."
+                : canRequestActivation
+                  ? "Setup evidence is ready for the final server verification."
+                  : initial.requiredComplete
+                    ? "PR27 basics are complete; clear the canonical Road launch checks above."
+                    : "Blocked: finish the required setup steps and Road launch checks above."}
             </p>
             {message ? <p role="status" className="text-xs text-[#C9A87C]">{message}</p> : null}
           </div>
