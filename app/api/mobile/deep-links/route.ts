@@ -10,7 +10,7 @@ const recordSchema = z.object({
   label: z.string().optional(),
   source: z.enum(["push", "share", "shortcut", "manual", "install_prompt", "native_wrap"]),
   deviceId: z.string().optional(),
-  metadata: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional()
+  metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional()
 });
 
 function mobileErrorResponse(error: unknown) {

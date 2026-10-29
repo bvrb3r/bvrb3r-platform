@@ -13,7 +13,7 @@ export async function GET(
     const url = new URL(request.url);
     const format = url.searchParams.get("format");
     const shopId = url.searchParams.get("shopId");
-    if (!z.string().uuid().safeParse(obligationId).success || !["csv", "pdf"].includes(format ?? "")) {
+    if (!z.guid().safeParse(obligationId).success || !["csv", "pdf"].includes(format ?? "")) {
       return Response.json({ error: "Choose a valid statement and export format." }, { status: 400 });
     }
     const exported = await exportRentStatement(

@@ -11,13 +11,13 @@ const createSchema = z.object({
   shopId: z.string().trim().min(1),
   label: z.string().trim().min(1).max(80),
   sortOrder: z.number().int().min(0).max(999).default(0),
-  assignedBarberId: z.string().uuid().nullable().optional(),
+  assignedBarberId: z.guid().nullable().optional(),
   reason: z.string().trim().min(3).max(500)
 }).strict();
 
 const retireSchema = z.object({
   shopId: z.string().trim().min(1),
-  chairId: z.string().uuid(),
+  chairId: z.guid(),
   reason: z.string().trim().min(3).max(500)
 }).strict();
 

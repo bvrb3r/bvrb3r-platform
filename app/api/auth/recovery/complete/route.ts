@@ -7,7 +7,7 @@ import {
 import { clientKeyFromRequest, consumeRateLimit } from "@/lib/kiosk/rate-limit";
 
 const completeSchema = z.object({
-  challengeId: z.string().uuid(),
+  challengeId: z.guid(),
   resetToken: z.string().min(32).max(200),
   newPassword: z.string().min(8).max(128)
 });

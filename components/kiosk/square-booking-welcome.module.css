@@ -1,0 +1,55 @@
+.screen {
+  --kiosk-ink: #f3efe6;
+  --kiosk-muted: #b7b4ad;
+  --kiosk-gold: #d3b46f;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  padding: max(32px, env(safe-area-inset-top)) max(40px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(40px, env(safe-area-inset-left));
+  color: var(--kiosk-ink);
+  background: radial-gradient(ellipse at 50% 35%, #24221c 0, #111211 48%, #0b0d0c 100%);
+  font-family: var(--font-archivo), Arial, sans-serif;
+}
+.header, .footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.header { padding-bottom: 28px; border-bottom: 1px solid #ffffff22; }
+.wordmark { font-size: 29px; font-weight: 800; letter-spacing: -1.4px; }
+.wordmark > span { vertical-align: super; font-size: 10px; margin-left: 4px; }
+.location, .footerLabel { font-family: var(--font-space-mono), monospace; font-size: 10px; letter-spacing: 1.8px; color: var(--kiosk-muted); }
+.welcome { width: min(100%, 940px); margin: auto; padding: 66px 0 58px; text-align: center; }
+.eyebrow { display: flex; justify-content: center; align-items: center; gap: 11px; margin: 0 0 27px; color: var(--kiosk-gold); font-family: var(--font-space-mono), monospace; font-size: 10px; letter-spacing: 2.1px; }
+.eyebrow > span { width: 22px; height: 1px; background: currentColor; }
+.title { margin: 0; font-family: var(--font-instrument-serif), Georgia, serif; font-size: clamp(48px, 6.8vw, 88px); font-weight: 400; line-height: 1.06; letter-spacing: -1.8px; text-wrap: balance; }
+.period { color: var(--kiosk-gold); }
+.intro { margin: 25px 0 0; font-size: 17px; line-height: 1.7; color: var(--kiosk-muted); }
+.action { width: min(100%, 440px); margin: 38px auto 0; }
+.book { min-height: 76px; display: flex; align-items: center; justify-content: center; gap: 36px; width: 100%; padding: 20px 27px; border: 1px solid transparent; border-radius: 10px; background: var(--kiosk-gold); color: #141610; font: inherit; font-weight: 700; font-size: 20px; text-decoration: none; touch-action: manipulation; transition: background 160ms ease; }
+.book:hover { background: #e6c988; }
+.book:focus-visible { outline: 3px solid #fff; outline-offset: 6px; }
+.book:disabled { background: #3a3b36; color: #ddd; cursor: not-allowed; }
+.hint { min-height: 24px; margin: 17px 0 0; color: var(--kiosk-muted); font-size: 13px; line-height: 1.6; }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); margin: 56px auto 0; padding: 30px 0 0; list-style: none; border-top: 1px solid #ffffff22; max-width: 700px; }
+.steps li { display: flex; justify-content: center; align-items: center; gap: 13px; text-align: left; font-size: 13px; }
+.steps li + li { border-left: 1px solid #ffffff22; }
+.steps svg { width: 22px; height: 22px; color: var(--kiosk-gold); stroke-width: 1.5; flex-shrink: 0; }
+.steps small { display: block; margin-bottom: 6px; color: var(--kiosk-muted); font-family: var(--font-space-mono), monospace; font-size: 10px; }
+.footer { border-top: 1px solid #ffffff22; padding-top: 24px; }
+.footer p { margin: 0; font-family: var(--font-instrument-serif), Georgia, serif; font-size: 21px; }
+.footer p span { color: var(--kiosk-gold); }
+@media (max-width: 600px) {
+  .screen { padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); }
+  .header { padding-bottom: 22px; gap: 12px; }
+  .wordmark { font-size: 25px; }
+  .location { font-size: 8px; letter-spacing: 1px; }
+  .welcome { padding: 48px 0; }
+  .title { font-size: clamp(44px, 10vw, 60px); }
+  .intro { font-size: 15px; }
+  .desktopBreak { display: none; }
+  .book { font-size: 18px; gap: 20px; }
+  .steps { gap: 20px; grid-template-columns: 1fr; width: max-content; max-width: 100%; margin-top: 36px; padding-top: 26px; }
+  .steps li { justify-content: flex-start; }
+  .steps li + li { border: 0; }
+  .steps small { display: inline; margin-right: 10px; }
+  .footer { text-align: center; justify-content: center; flex-wrap: wrap; gap: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .book { transition: none; } }

@@ -7,7 +7,7 @@ import {
 import { clientKeyFromRequest, consumeRateLimit } from "@/lib/kiosk/rate-limit";
 
 const verifySchema = z.object({
-  challengeId: z.string().uuid(),
+  challengeId: z.guid(),
   code: z.string().regex(/^\d{6}$/)
 });
 

@@ -8,7 +8,7 @@ export const ROLE_NORMALIZATION_APPROVAL_CONFIRMATIONS = {
 export type RoleNormalizationApprovalDecision =
   keyof typeof ROLE_NORMALIZATION_APPROVAL_CONFIRMATIONS;
 
-const aggregateCountsSchema = z.record(z.number().int().nonnegative());
+const aggregateCountsSchema = z.record(z.string(), z.number().int().nonnegative());
 
 const approvalPacketSchema = z.object({
   schemaVersion: z.literal(1),

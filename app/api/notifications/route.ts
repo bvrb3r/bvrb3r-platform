@@ -45,7 +45,7 @@ const preferencesSchema = z.object({
 });
 
 const readStateSchema = z.object({
-  notificationId: z.string().uuid().optional()
+  notificationId: z.guid().optional()
 });
 
 function errorResponse(error: unknown) {

@@ -8,11 +8,11 @@ const quoteSchema = z.object({
   tipCents: z.coerce.number().int().nonnegative().optional().nullable(),
   discountCents: z.coerce.number().int().nonnegative().optional().nullable(),
   note: z.string().max(500).optional().nullable(),
-  clientId: z.string().uuid().optional().nullable(),
+  clientId: z.guid().optional().nullable(),
   customerName: z.string().max(120).optional().nullable(),
   items: z.array(z.object({
     itemType: z.enum(["custom_amount", "service", "product", "tip", "discount"]).optional(),
-    serviceId: z.string().uuid().optional().nullable(),
+    serviceId: z.guid().optional().nullable(),
     name: z.string().max(120).optional().nullable(),
     quantity: z.coerce.number().int().positive().optional().nullable(),
     unitAmountCents: z.coerce.number().int().nonnegative().optional().nullable()

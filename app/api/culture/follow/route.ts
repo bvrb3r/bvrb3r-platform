@@ -4,10 +4,10 @@ import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { performCultureFollowAction } from "@/lib/culture/service";
 
 const cultureFollowSchema = z.object({
-  targetProfileId: z.string().uuid(),
+  targetProfileId: z.guid(),
   action: z.enum(["follow", "unfollow"]),
-  sourcePostId: z.string().uuid().optional().nullable(),
-  metadata: z.record(z.unknown()).optional()
+  sourcePostId: z.guid().optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional()
 });
 
 function unauthenticatedResponse() {

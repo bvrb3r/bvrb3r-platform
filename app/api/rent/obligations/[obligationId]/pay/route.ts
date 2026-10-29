@@ -25,7 +25,7 @@ export async function POST(
     }
     const { obligationId } = await context.params;
     const parsed = schema.safeParse(await request.json().catch(() => null));
-    if (!z.string().uuid().safeParse(obligationId).success || !parsed.success) {
+    if (!z.guid().safeParse(obligationId).success || !parsed.success) {
       return NextResponse.json(
         { error: parsed.success ? "Invalid rent obligation." : parsed.error.issues[0]?.message },
         { status: 400 }

@@ -13,7 +13,7 @@ const postSchema = z.object({
   locationId: z.string().optional(),
   sourceKind: z.enum(["direct", "discovery", "public_profile", "haircut_now", "client_dashboard"]),
   sourceReference: z.string().optional(),
-  metadata: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional()
+  metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional()
 });
 
 const getSchema = z.object({

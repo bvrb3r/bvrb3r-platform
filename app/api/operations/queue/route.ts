@@ -27,10 +27,10 @@ const createQueueSchema = z.object({
     "external:thecut"
   ]).optional(),
   idempotencyKey: z.string().trim().min(8).max(200).optional(),
-  chairsyncAppointmentId: z.string().uuid().optional(),
+  chairsyncAppointmentId: z.guid().optional(),
   sourceServiceName: z.string().trim().min(1).max(200).optional(),
   operationalSmsConsent: z.boolean().optional(),
-  rejoinOfEntryId: z.string().uuid().optional(),
+  rejoinOfEntryId: z.guid().optional(),
   notes: z.string().trim().max(500).optional()
 });
 

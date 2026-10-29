@@ -24,7 +24,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("square_mapping_options") }).strict(),
   z.object({
     action: z.literal("square_mapping_save"),
-    locationId: z.string().uuid(),
+    locationId: z.guid(),
     teamMemberId: z.string().trim().min(1).max(255)
   }).strict(),
   z.object({

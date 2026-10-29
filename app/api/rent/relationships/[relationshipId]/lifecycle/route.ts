@@ -12,7 +12,7 @@ const schema = z.object({
   reason: z.string().trim().min(3).max(1000),
   effectiveAt: z.string().datetime(),
   idempotencyKey: z.string().min(8).max(200),
-  proposedTerms: z.record(z.unknown()).default({}),
+  proposedTerms: z.record(z.string(), z.unknown()).default({}),
   shopId: z.string().min(1).max(200).optional()
 });
 
@@ -29,7 +29,7 @@ export async function POST(
       parsed.success ? parsed.data.shopId : null
     );
     const { relationshipId } = await context.params;
-    if (!z.string().uuid().safeParse(relationshipId).success || !parsed.success) {
+    if (!z.guid().safeParse(relationshipId).success || !parsed.success) {
       return NextResponse.json(
         { error: parsed.success ? "Invalid shop relationship." : parsed.error.issues[0]?.message },
         { status: 400 }

@@ -16,8 +16,8 @@ import { bookingErrorResponse, enforceBookingRateLimit } from "@/lib/booking/eng
  */
 
 const availabilitySchema = z.object({
-  barberId: z.string().uuid(),
-  serviceId: z.string().uuid(),
+  barberId: z.guid(),
+  serviceId: z.guid(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   days: z.coerce.number().int().min(1).max(30).optional()
 });

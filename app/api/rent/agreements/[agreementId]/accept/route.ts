@@ -4,7 +4,7 @@ import { getSessionUser } from "@/lib/booking/route-auth";
 import { rentErrorResponse } from "@/lib/rent/http";
 import { acceptRentAgreement, getRentWorkspacePayload } from "@/lib/rent/service";
 
-const idSchema = z.string().uuid();
+const idSchema = z.guid();
 
 export async function POST(
   request: Request,

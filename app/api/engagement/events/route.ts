@@ -21,7 +21,7 @@ const eventSchema = z.object({
   ]),
   targetType: z.enum(["client", "barber", "owner", "location", "referral", "service"]),
   targetId: z.string().min(1),
-  metadata: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional()
+  metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional()
 });
 
 export async function POST(request: Request) {

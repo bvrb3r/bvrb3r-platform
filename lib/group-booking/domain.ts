@@ -13,9 +13,9 @@ export const groupMemberInputSchema = z.object({
   email: z.string().trim().email().max(200),
   phone: z.string().trim().min(7).max(40),
   isMinor: z.boolean().default(false),
-  barberId: z.string().uuid(),
-  serviceId: z.string().uuid(),
-  locationId: z.string().uuid(),
+  barberId: z.guid(),
+  serviceId: z.guid(),
+  locationId: z.guid(),
   startsAt: z.string().datetime({ offset: true })
 });
 

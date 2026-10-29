@@ -24,7 +24,7 @@ export async function POST(
     }
     const { contributionId } = await context.params;
     const parsed = schema.safeParse(await request.json().catch(() => null));
-    if (!z.string().uuid().safeParse(contributionId).success || !parsed.success) {
+    if (!z.guid().safeParse(contributionId).success || !parsed.success) {
       return NextResponse.json(
         { error: parsed.success ? "Invalid rent line." : parsed.error.issues[0]?.message },
         { status: 400 }

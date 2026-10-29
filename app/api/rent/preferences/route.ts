@@ -5,7 +5,7 @@ import { rentErrorResponse } from "@/lib/rent/http";
 import { getRentWorkspacePayload, setRentAutopay } from "@/lib/rent/service";
 
 const schema = z.object({
-  agreementId: z.string().uuid(),
+  agreementId: z.guid(),
   enabled: z.boolean(),
   paymentMethodReference: z.string().min(3).max(500).nullable().optional()
 });

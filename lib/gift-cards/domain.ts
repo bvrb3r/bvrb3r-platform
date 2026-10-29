@@ -10,7 +10,7 @@ export type GiftCardScopeType = (typeof giftCardScopeTypes)[number];
 export const giftCardPurchaseSchema = z.object({
   amountCents: z.number().int().min(GIFT_CARD_MIN_CENTS).max(GIFT_CARD_MAX_CENTS),
   scopeType: z.enum(giftCardScopeTypes),
-  scopeId: z.string().uuid().nullable().optional(),
+  scopeId: z.guid().nullable().optional(),
   senderName: z.string().trim().min(2).max(120),
   recipientName: z.string().trim().min(2).max(120),
   deliveryChannel: z.enum(["email", "sms"]),
@@ -36,7 +36,7 @@ export const giftCardPurchaseSchema = z.object({
 export type GiftCardPurchaseInput = z.infer<typeof giftCardPurchaseSchema>;
 
 export const giftCardConfirmSchema = z.object({
-  purchaseId: z.string().uuid(),
+  purchaseId: z.guid(),
   purchaseToken: z.string().min(32).max(200),
   claimToken: z.string().min(32).max(200)
 });
@@ -46,7 +46,7 @@ export const giftCardClaimSchema = z.object({
 });
 
 export const giftCardRedeemSchema = z.object({
-  appointmentId: z.string().uuid(),
+  appointmentId: z.guid(),
   idempotencyKey: z.string().trim().min(8).max(200)
 });
 

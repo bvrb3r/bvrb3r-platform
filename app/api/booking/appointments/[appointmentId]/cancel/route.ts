@@ -27,7 +27,7 @@ const cancelSchema = z.object({
   idempotencyKey: z.string().min(8).max(200).optional()
 });
 
-const paramsSchema = z.object({ appointmentId: z.string().uuid() });
+const paramsSchema = z.object({ appointmentId: z.guid() });
 
 export async function POST(request: NextRequest, context: { params: Promise<{ appointmentId: string }> }) {
   const limited = enforceBookingRateLimit(request, "booking-cancel", 15);

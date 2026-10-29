@@ -10,7 +10,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const requestSchema = z.object({
   decision: z.enum(["approved", "rejected"]),
-  idempotencyKey: z.string().uuid(),
+  idempotencyKey: z.guid(),
   reason: z.string().trim().min(8).max(1000),
   confirmation: z.string()
 }).strict();
