@@ -10,10 +10,10 @@ import {
 
 const schema = z.object({
   shopId: z.string().min(1),
-  locationId: z.string().uuid(),
+  locationId: z.guid(),
   gateKey: z.enum(RENT_SETUP_GATE_KEYS),
   status: z.enum(["pending", "passed", "approved_exception"]),
-  evidence: z.record(z.unknown()).optional(),
+  evidence: z.record(z.string(), z.unknown()).optional(),
   exceptionReason: z.string().trim().min(3).max(500).optional()
 });
 

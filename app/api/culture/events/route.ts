@@ -12,12 +12,12 @@ const cultureEventSchema = z.object({
   action: z.enum(["feed_event", "engagement"]),
   eventType: z.string().optional(),
   engagementType: z.string().optional(),
-  postId: z.string().uuid().optional().nullable(),
-  feedSessionId: z.string().uuid().optional().nullable(),
+  postId: z.guid().optional().nullable(),
+  feedSessionId: z.guid().optional().nullable(),
   surface: z.string().optional(),
   position: z.number().int().optional().nullable(),
   reasonCodes: z.array(z.string()).optional(),
-  metadata: z.record(z.unknown()).optional()
+  metadata: z.record(z.string(), z.unknown()).optional()
 });
 
 function unauthenticatedResponse() {

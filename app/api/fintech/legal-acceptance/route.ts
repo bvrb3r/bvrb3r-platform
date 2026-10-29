@@ -6,7 +6,7 @@ import { FintechServiceError, recordLegalAcceptance } from "@/lib/fintech/servic
 const legalAcceptanceSchema = z.object({
   agreementType: z.enum(["platform_terms", "barber_agreement", "shop_agreement", "payout_tax_acknowledgment"]),
   agreementVersion: z.string().trim().optional(),
-  shopId: z.string().uuid().optional()
+  shopId: z.guid().optional()
 });
 
 function toErrorResponse(error: unknown) {

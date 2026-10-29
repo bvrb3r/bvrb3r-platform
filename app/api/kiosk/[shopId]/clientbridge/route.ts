@@ -13,7 +13,7 @@ import {
 } from "@/lib/kiosk/session-service";
 
 const invitationSchema = z.object({
-  waitlistEntryId: z.string().uuid(),
+  waitlistEntryId: z.guid(),
   contactChannel: z.enum(["sms", "email"]),
   contactValue: z.string().trim().min(5).max(320),
   consentGranted: z.literal(true)

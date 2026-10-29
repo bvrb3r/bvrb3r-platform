@@ -19,7 +19,7 @@ export async function POST(
       return NextResponse.json({ error: "Only the shop owner may confirm cash transfer evidence." }, { status: 403 });
     }
     const { contributionId } = await context.params;
-    if (!z.string().uuid().safeParse(contributionId).success) {
+    if (!z.guid().safeParse(contributionId).success) {
       return NextResponse.json({ error: "Invalid contribution." }, { status: 400 });
     }
     const parsed = schema.safeParse(await request.json().catch(() => null));

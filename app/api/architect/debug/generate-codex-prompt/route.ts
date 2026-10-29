@@ -5,7 +5,7 @@ import { requireArchitectDebugAccess } from "@/lib/architect/debug/guards";
 import type { ArchitectDebugPacket } from "@/lib/architect/debug/types";
 
 const promptSchema = z.object({
-  packet: z.record(z.unknown())
+  packet: z.record(z.string(), z.unknown())
 });
 
 export async function POST(request: Request) {

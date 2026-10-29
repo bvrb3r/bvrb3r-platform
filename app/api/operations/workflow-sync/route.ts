@@ -15,7 +15,7 @@ const workflowSyncSchema = z.object({
     eventType: z.enum(["booking", "check_in", "service_start", "service_complete", "checkout"]),
     title: z.string().min(1),
     detail: z.string().min(1),
-    eventPayload: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])),
+    eventPayload: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
     createdAt: z.string().min(1)
   }),
   compensationSnapshot: z.object({

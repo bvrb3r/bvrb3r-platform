@@ -27,9 +27,9 @@ import {
  */
 
 const holdSchema = z.object({
-  barberId: z.string().uuid(),
-  serviceId: z.string().uuid(),
-  locationId: z.string().uuid().optional(),
+  barberId: z.guid(),
+  serviceId: z.guid(),
+  locationId: z.guid().optional(),
   startsAt: z.string().datetime({ offset: true }),
   sourceDoor: z.string().optional(),
   sourceSurface: z.string().max(120).optional(),

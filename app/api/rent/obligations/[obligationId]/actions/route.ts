@@ -28,7 +28,7 @@ export async function POST(
       return NextResponse.json({ error: "Only the shop owner may perform rent recovery actions." }, { status: 403 });
     }
     const { obligationId } = await context.params;
-    if (!z.string().uuid().safeParse(obligationId).success) {
+    if (!z.guid().safeParse(obligationId).success) {
       return NextResponse.json({ error: "Invalid obligation." }, { status: 400 });
     }
     const parsed = schema.safeParse(await request.json().catch(() => null));

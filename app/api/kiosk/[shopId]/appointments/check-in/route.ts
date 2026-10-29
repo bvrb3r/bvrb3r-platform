@@ -13,7 +13,7 @@ import {
 } from "@/lib/kiosk/session-service";
 
 const checkInSchema = z.object({
-  appointmentId: z.string().uuid(),
+  appointmentId: z.guid(),
   sourceProvider: z.enum(["bvrb3r", "booksy", "square", "thecut"]),
   idempotencyKey: z.string().trim().min(8).max(200),
   operationalSmsConsent: z.boolean(),

@@ -16,7 +16,7 @@ const saveSchema = z.object({
     "update_app_preferences",
     "update_privacy_preferences"
   ]),
-  values: z.record(z.union([z.string(), z.boolean(), z.number(), z.array(z.string()), z.null()])).default({})
+  values: z.record(z.string(), z.union([z.string(), z.boolean(), z.number(), z.array(z.string()), z.null()])).default({})
 });
 
 function unauthenticatedResponse() {

@@ -4,7 +4,7 @@ import { getSessionUser } from "@/lib/booking/route-auth";
 import { createAppointmentPayment, PaymentServiceError } from "@/lib/payments/service";
 
 const createAppointmentPaymentSchema = z.object({
-  paymentMethodId: z.string().uuid().optional(),
+  paymentMethodId: z.guid().optional(),
   provider: z.literal("stripe").optional()
 });
 

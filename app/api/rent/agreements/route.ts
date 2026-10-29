@@ -5,7 +5,7 @@ import { rentErrorResponse } from "@/lib/rent/http";
 import { createRentAgreement, getRentWorkspacePayload } from "@/lib/rent/service";
 
 const schema = z.object({
-  relationshipId: z.string().uuid(),
+  relationshipId: z.guid(),
   model: z.enum(["booth_rent", "autobooth_rent"]),
   rentAmountCents: z.number().int().positive(),
   billingFrequency: z.enum(["weekly", "monthly"]),
@@ -13,7 +13,7 @@ const schema = z.object({
   graceHours: z.number().int().min(0).max(168).default(24),
   lateFeeCents: z.number().int().min(0).default(0),
   cashSettlementMethod: z.enum(["provider_transfer", "manual_transfer_with_evidence"]),
-  termsSnapshot: z.record(z.unknown()).default({}),
+  termsSnapshot: z.record(z.string(), z.unknown()).default({}),
   effectiveAt: z.string().datetime(),
   shopId: z.string().min(1).max(200).optional()
 }).superRefine((value, context) => {

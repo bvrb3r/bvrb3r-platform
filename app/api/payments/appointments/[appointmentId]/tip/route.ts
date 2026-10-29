@@ -5,7 +5,7 @@ import { createAppointmentTip, PaymentServiceError } from "@/lib/payments/servic
 
 const tipSchema = z.object({
   amount: z.number().positive(),
-  paymentId: z.string().uuid().optional()
+  paymentId: z.guid().optional()
 });
 
 function toErrorResponse(error: unknown) {

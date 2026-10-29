@@ -4,7 +4,7 @@ import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { createCultureComment, listCultureComments } from "@/lib/culture/service";
 
 const cultureCommentsPostSchema = z.object({
-  postId: z.string().uuid(),
+  postId: z.guid(),
   body: z.string()
 });
 

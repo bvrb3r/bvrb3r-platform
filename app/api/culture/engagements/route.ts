@@ -4,10 +4,10 @@ import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { performCulturePostEngagementAction } from "@/lib/culture/service";
 
 const cultureEngagementActionSchema = z.object({
-  postId: z.string().uuid(),
+  postId: z.guid(),
   action: z.enum(["like", "unlike", "save", "unsave", "share", "report", "profile_click", "book_click", "shop_click", "not_interested"]),
   reason: z.string().trim().min(1).max(120).optional(),
-  metadata: z.record(z.unknown()).optional()
+  metadata: z.record(z.string(), z.unknown()).optional()
 });
 
 function unauthenticatedResponse() {

@@ -22,7 +22,7 @@ import {
  * catalog that may have changed since.
  */
 
-const paramsSchema = z.object({ appointmentId: z.string().uuid() });
+const paramsSchema = z.object({ appointmentId: z.guid() });
 
 export async function GET(request: NextRequest, context: { params: Promise<{ appointmentId: string }> }) {
   const limited = enforceBookingRateLimit(request, "booking-read", 60);
